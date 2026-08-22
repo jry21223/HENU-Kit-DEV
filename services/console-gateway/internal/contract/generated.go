@@ -39,7 +39,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "2346d16766e6735ebfddfdb7931fd0b201bd6a3fe9b4c9cc8cdf72c8dda0f78b"
+	SourceSHA256                        = "f2ee851d04c317355fc0a9f2cecb535552031ae936fbb3d881d8e9cec00eceba"
 )
 
 type ConsoleAccessContext struct {
@@ -321,16 +321,29 @@ type FoodAnomalyTicket struct {
 	Version   int64     `json:"version"`
 }
 
+type FoodCampus string
+
 type FoodCommand struct {
-	ExpectedVersion int64           `json:"expected_version"`
-	Kind            FoodCommandKind `json:"kind"`
-	Payload         struct {
-		Note string `json:"note"`
-	} `json:"payload"`
-	ResourceID string `json:"resource_id"`
+	ExpectedVersion int64              `json:"expected_version"`
+	Kind            FoodCommandKind    `json:"kind"`
+	Payload         FoodCommandPayload `json:"payload"`
+	ResourceID      string             `json:"resource_id"`
 }
 
 type FoodCommandKind string
+
+type FoodCommandPayload struct {
+	Campus         *FoodCampus   `json:"campus,omitempty"`
+	Description    *string       `json:"description,omitempty"`
+	Hidden         *bool         `json:"hidden,omitempty"`
+	HoursReference *string       `json:"hours_reference,omitempty"`
+	ItemName       *string       `json:"item_name,omitempty"`
+	Note           string        `json:"note"`
+	PriceReference *string       `json:"price_reference,omitempty"`
+	ReviewText     *string       `json:"review_text,omitempty"`
+	Tier           *FoodPostTier `json:"tier,omitempty"`
+	VenueName      *string       `json:"venue_name,omitempty"`
+}
 
 type FoodOperationResult struct {
 	Operation  FoodCommandKind `json:"operation"`
@@ -339,7 +352,25 @@ type FoodOperationResult struct {
 	Version    *int64          `json:"version,omitempty"`
 }
 
+type FoodPost struct {
+	AuthorDisplayName string       `json:"author_display_name"`
+	Campus            FoodCampus   `json:"campus"`
+	CreatedAt         time.Time    `json:"created_at"`
+	Hidden            bool         `json:"hidden"`
+	HoursReference    string       `json:"hours_reference"`
+	ID                string       `json:"id"`
+	PriceReference    string       `json:"price_reference"`
+	ReviewText        string       `json:"review_text"`
+	Tier              FoodPostTier `json:"tier"`
+	UpdatedAt         time.Time    `json:"updated_at"`
+	VenueName         string       `json:"venue_name"`
+	Version           int64        `json:"version"`
+}
+
+type FoodPostTier string
+
 type FoodSubmission struct {
+	Campus      any       `json:"campus"`
 	Description string    `json:"description"`
 	ID          string    `json:"id"`
 	ItemName    string    `json:"item_name"`
@@ -365,6 +396,7 @@ type FoodTierAdjustment struct {
 type FoodWorkspace struct {
 	AnomalyTickets  []FoodAnomalyTicket  `json:"anomaly_tickets"`
 	AsOf            time.Time            `json:"as_of"`
+	Posts           []FoodPost           `json:"posts"`
 	Stale           bool                 `json:"stale"`
 	Status          string               `json:"status"`
 	StatusMessage   string               `json:"status_message"`

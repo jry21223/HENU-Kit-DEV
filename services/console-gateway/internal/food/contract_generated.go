@@ -1,4 +1,4 @@
-// Code generated from food.yaml (SHA256 7dc9197f95f580b9ef191f7df62d0ae711784b7c0c96173903c71f681f1236d7); DO NOT EDIT.
+// Code generated from food.yaml (SHA256 8b789969ac6bb86f0d8ebe641ea0ec755515f46832c16619b846977e6dad98b0); DO NOT EDIT.
 package food
 
 const (

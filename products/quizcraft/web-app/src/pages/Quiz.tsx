@@ -885,6 +885,7 @@ function useQuizController() {
   const swipeStartRef = useRef<SwipeStart | null>(null);
   const favoriteReturnHandledRef = useRef(false);
   const favoriteMutationVersionRef = useRef(0);
+  const serverFavoriteIdsRef = useRef<string[]>([]);
 
 
   const currentIndex = practice?.currentIndex ?? -1;
@@ -931,16 +932,20 @@ function useQuizController() {
     if (!QUIZCRAFT_GO_SHADOW_ENABLED || !activeBankId) return;
     let cancelled = false;
     const mutationVersion = favoriteMutationVersionRef.current;
+    serverFavoriteIdsRef.current = [];
     setUi({ serverFavoriteIds: [], favoriteError: "" });
     void shadowFavoritesApi.list(activeBankId).then((items) => {
       if (!cancelled && mutationVersion === favoriteMutationVersionRef.current) {
+        const favoriteIds = items.filter((item) => item.available).map((item) => item.question_id);
+        serverFavoriteIdsRef.current = favoriteIds;
         setUi({
-          serverFavoriteIds: items.filter((item) => item.available).map((item) => item.question_id),
+          serverFavoriteIds: favoriteIds,
           favoriteError: "",
         });
       }
     }).catch((error) => {
       if (!cancelled && mutationVersion === favoriteMutationVersionRef.current) {
+        serverFavoriteIdsRef.current = [];
         setUi({
           serverFavoriteIds: [],
           favoriteError: isQuizcraftAuthenticationError(error)
@@ -964,20 +969,41 @@ function useQuizController() {
       browserIntent = {};
     }
     if (!pendingBankId || !pendingQuestionId || pendingQuestionId !== activeQuestionId || browserIntent.bankId !== pendingBankId || browserIntent.questionId !== pendingQuestionId || typeof browserIntent.favorite !== 'boolean') return;
+    const pendingFavorite = browserIntent.favorite;
     favoriteReturnHandledRef.current = true;
     favoriteMutationVersionRef.current += 1;
     window.sessionStorage.removeItem('quizcraft_pending_favorite');
     setUi({ favoriteSubmitting: true });
-    void shadowFavoritesApi.set(pendingBankId, pendingQuestionId, browserIntent.favorite).then(() => {
+    void shadowFavoritesApi.set(pendingBankId, pendingQuestionId, pendingFavorite).then(() => {
+      favoriteMutationVersionRef.current += 1;
+      const mutationVersion = favoriteMutationVersionRef.current;
+      const confirmedIds = pendingFavorite
+        ? Array.from(new Set([...serverFavoriteIdsRef.current, pendingQuestionId]))
+        : serverFavoriteIdsRef.current.filter((id) => id !== pendingQuestionId);
+      serverFavoriteIdsRef.current = confirmedIds;
       setUi({
-        serverFavoriteIds: browserIntent.favorite
-          ? Array.from(new Set([...ui.serverFavoriteIds, pendingQuestionId]))
-          : ui.serverFavoriteIds.filter((id) => id !== pendingQuestionId),
+        serverFavoriteIds: confirmedIds,
         favoriteSubmitting: false,
       });
       url.searchParams.delete('favorite_question_id');
       url.searchParams.delete('favorite_bank_id');
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+
+      // The write is already confirmed, so never keep the UI or return URL
+      // blocked on a read. Reconcile the rest of the bank in the background;
+      // a later mutation generation always wins over this refresh.
+      void shadowFavoritesApi.list(pendingBankId).then((items) => {
+        if (mutationVersion !== favoriteMutationVersionRef.current) return;
+        const authoritativeIds = items.filter((item) => item.available).map((item) => item.question_id);
+        const favoriteIds = pendingFavorite
+          ? Array.from(new Set([...authoritativeIds, pendingQuestionId]))
+          : authoritativeIds.filter((id) => id !== pendingQuestionId);
+        serverFavoriteIdsRef.current = favoriteIds;
+        setUi({ serverFavoriteIds: favoriteIds });
+      }).catch(() => {
+        // Keep the already-confirmed current-question state. A later page or
+        // bank refresh will retry the authoritative list read.
+      });
     }).catch((error) => {
       setUi({
         favoriteSubmitting: false,
@@ -987,13 +1013,13 @@ function useQuizController() {
       });
       if (isQuizcraftAuthenticationError(error)) {
         try {
-          redirectToQuizcraftLogin(pendingBankId, pendingQuestionId, browserIntent.favorite!);
+          redirectToQuizcraftLogin(pendingBankId, pendingQuestionId, pendingFavorite);
         } catch {
           setUi({ favoriteError: "登录入口暂不可用，请稍后重试" });
         }
       }
     });
-  }, [activeBankId, activeQuestionId, ui.serverFavoriteIds]);
+  }, [activeBankId, activeQuestionId]);
 
   useEffect(() => () => {
     if (autoAdvanceTimerRef.current !== null) {
@@ -1655,12 +1681,14 @@ function useQuizController() {
     favoriteMutationVersionRef.current += 1;
     setUi({ favoriteSubmitting: true, favoriteError: "" });
     void shadowFavoritesApi.set(activeBankId, activeQuestion.id, nextFavorite).then(() => {
+      const favoriteIds = nextFavorite
+        ? Array.from(new Set([...serverFavoriteIdsRef.current, activeQuestion.id]))
+        : serverFavoriteIdsRef.current.filter((id) => id !== activeQuestion.id);
+      serverFavoriteIdsRef.current = favoriteIds;
       setUi({
         favoriteSubmitting: false,
         favoriteError: "",
-        serverFavoriteIds: nextFavorite
-          ? Array.from(new Set([...ui.serverFavoriteIds, activeQuestion.id]))
-          : ui.serverFavoriteIds.filter((id) => id !== activeQuestion.id),
+        serverFavoriteIds: favoriteIds,
       });
     }).catch((error) => {
       setUi({

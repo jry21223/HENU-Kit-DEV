@@ -8,7 +8,7 @@ overrides:
   nanoid@3: 3.3.18
   postcss: 8.5.23
 
-packageExtensionsChecksum: sha256-1yhJGCYGfJsODSw0DPrOLGC/cV7+3c0zfiwlQ+0vciQ=
+packageExtensionsChecksum: sha256-o17bGUe/DI7f2kF2TUn0pmX2CWjo8cGWNxAwyrwIlYg=
 
 importers:
 
@@ -2942,7 +2942,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    deprecated: Glob versions prior to v9 are no longer supported
 
   globals@13.24.0:
     resolution: {integrity: sha512-AhO5QUcj8llrbG09iWhPU2B204J1xnPeL8kQmVorSsy+Sjj1sk8gIyh6cUocGmH4L0UuhAJy+hJMRA4mgA4mFQ==}
@@ -6388,6 +6388,8 @@ snapshots:
 
   '@vue/test-utils@2.4.6':
     dependencies:
+      '@vue/compiler-dom': 3.5.41
+      '@vue/server-renderer': 3.5.41
       js-beautify: 1.15.4
       vue-component-type-helpers: 2.2.12
 

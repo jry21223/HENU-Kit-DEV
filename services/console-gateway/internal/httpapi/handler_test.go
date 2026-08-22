@@ -72,8 +72,8 @@ type fakeLibrary struct {
 }
 
 type fakeFood struct {
-	actor, key        string
-	workspace, result json.RawMessage
+	actor, key, campus string
+	workspace, result  json.RawMessage
 }
 
 type fakeAccountPortfolio struct {
@@ -153,8 +153,8 @@ func (f *fakeAccountPortfolio) MembershipOrderRefund(_ context.Context, actor, o
 	return f.order, f.err
 }
 
-func (f *fakeFood) Workspace(_ context.Context, actor string) (json.RawMessage, error) {
-	f.actor = actor
+func (f *fakeFood) Workspace(_ context.Context, actor, campus string) (json.RawMessage, error) {
+	f.actor, f.campus = actor, campus
 	return f.workspace, nil
 }
 func (f *fakeFood) Command(_ context.Context, actor, key string, _ []byte) (json.RawMessage, error) {
@@ -554,20 +554,20 @@ func TestFoodForwardingUsesExactPermissionActorAndIdempotency(t *testing.T) {
 	userID := "171f1c6f-7b10-4c92-91a2-b39bf5af5302"
 	token := "exchange_token_with_at_least_32_characters"
 	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
-	owner := &fakeFood{workspace: json.RawMessage(`{"status":"ok","status_message":"Food 数据正常","stale":false,"as_of":"2026-07-20T00:00:00Z","submissions":[],"anomaly_tickets":[],"tier_adjustments":[]}`), result: json.RawMessage(`{"operation":"anomaly_resolve","resource_id":"22222222-2222-4222-8222-222222222222","state":"succeeded","version":2}`)}
+	owner := &fakeFood{workspace: json.RawMessage(`{"status":"ok","status_message":"Food 数据正常","stale":false,"as_of":"2026-07-20T00:00:00Z","submissions":[],"anomaly_tickets":[],"tier_adjustments":[],"posts":[]}`), result: json.RawMessage(`{"operation":"anomaly_resolve","resource_id":"22222222-2222-4222-8222-222222222222","state":"succeeded","version":2}`)}
 	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil, owner)
 	server := httptest.NewTLSServer(handler)
 	defer server.Close()
 	encoded, _ := codec.Encode(session.Value{UserID: userID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
-	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/food", nil)
+	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/food?campus=minglun", nil)
 	read.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
 	response, err := server.Client().Do(read)
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || owner.actor != userID {
-		t.Fatalf("Food read status/actor=%d/%s", response.StatusCode, owner.actor)
+	if response.StatusCode != http.StatusOK || owner.actor != userID || owner.campus != "minglun" {
+		t.Fatalf("Food read status/actor/campus=%d/%s/%s", response.StatusCode, owner.actor, owner.campus)
 	}
 	command, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/food/commands", strings.NewReader(`{"kind":"anomaly_resolve","resource_id":"22222222-2222-4222-8222-222222222222","expected_version":1,"payload":{"note":"已核验"}}`))
 	command.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})

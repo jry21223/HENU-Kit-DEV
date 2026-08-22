@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import {
@@ -30,11 +30,22 @@ export default function LeaderboardPage() {
   const [period, setPeriod] = useState<QuizCraftRankingPeriod>("weekly");
   const [state, setState] = useState<State>(enabled ? { status: "loading" } : { status: "disabled" });
   const [retry, setRetry] = useState(0);
+  const requestRef = useRef<{
+    key: string;
+    promise: ReturnType<typeof fetchQuizCraftOverallRanking>;
+  } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    void fetchQuizCraftOverallRanking(period).then(
+    const requestKey = `${period}:${retry}`;
+    if (requestRef.current?.key !== requestKey) {
+      requestRef.current = {
+        key: requestKey,
+        promise: fetchQuizCraftOverallRanking(period),
+      };
+    }
+    void requestRef.current.promise.then(
       (response) => {
         if (!cancelled) setState({ status: "ready", data: response.data });
       },

@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $composeFile = Join-Path $repositoryRoot "services\platform-core\compose.test.yml"
 $migrationDirectory = Join-Path $repositoryRoot "services\platform-core\db\migrations"
-$goImage = "mirror.gcr.io/library/golang:1.26.5-alpine"
+$goImage = "mirror.gcr.io/library/golang:1.26.6-alpine"
 
 function Invoke-SqlFile([string]$path) {
     Get-Content -Raw -LiteralPath $path |

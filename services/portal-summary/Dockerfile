@@ -1,4 +1,4 @@
-FROM docker.m.daocloud.io/library/golang:1.26.5-alpine AS build
+FROM docker.m.daocloud.io/library/golang:1.26.6-alpine AS build
 RUN apk add --no-cache git ca-certificates
 ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src

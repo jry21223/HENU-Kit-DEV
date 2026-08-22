@@ -168,6 +168,7 @@ jobs:
           pnpm --dir products/quizcraft/web-app run test:syntax
           pnpm --dir products/quizcraft/web-app exec playwright install --with-deps chromium
           pnpm --dir products/quizcraft/web-app run test:browser:practice
+          pnpm --dir products/quizcraft/web-app run test:browser:practice:production
           pnpm --dir products/quizcraft/web-app run test:browser:legacy-ranking
       - name: Verify cutover release switch rollback
         run: |

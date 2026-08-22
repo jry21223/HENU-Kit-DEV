@@ -36,17 +36,17 @@ func NewMeituanSource(endpoint string, client *http.Client) (*MeituanSource, err
 	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Hostname() == "" {
-		return nil, errors.New("Meituan source endpoint is invalid")
+		return nil, errors.New("meituan source endpoint is invalid")
 	}
 	loopback := parsed.Hostname() == "localhost"
 	if address := net.ParseIP(parsed.Hostname()); address != nil {
 		loopback = address.IsLoopback()
 	}
 	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && loopback) {
-		return nil, errors.New("Meituan source endpoint must use HTTPS")
+		return nil, errors.New("meituan source endpoint must use HTTPS")
 	}
 	if !loopback && (parsed.Hostname() != "zhaopin.meituan.com" || (parsed.Port() != "" && parsed.Port() != "443") || parsed.Path != "/api/official/job/getJobList") {
-		return nil, errors.New("Meituan source endpoint must be the official job API")
+		return nil, errors.New("meituan source endpoint must be the official job API")
 	}
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
@@ -141,19 +141,19 @@ func (source *MeituanSource) fetchPage(ctx context.Context, profile meituanProfi
 	request.Header.Set("User-Agent", "HENU-Kit-Career/1.0")
 	response, err := source.httpClient.Do(request)
 	if err != nil {
-		return meituanResponse{}, fmt.Errorf("Meituan source request failed: %w", err)
+		return meituanResponse{}, fmt.Errorf("meituan source request failed: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return meituanResponse{}, fmt.Errorf("Meituan source returned status %d", response.StatusCode)
+		return meituanResponse{}, fmt.Errorf("meituan source returned status %d", response.StatusCode)
 	}
 	var result meituanResponse
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 8<<20))
 	if err := decoder.Decode(&result); err != nil {
-		return meituanResponse{}, fmt.Errorf("Meituan source response is invalid: %w", err)
+		return meituanResponse{}, fmt.Errorf("meituan source response is invalid: %w", err)
 	}
 	if result.Message != "" && result.Message != "成功" {
-		return meituanResponse{}, fmt.Errorf("Meituan source rejected the request: %s", result.Message)
+		return meituanResponse{}, fmt.Errorf("meituan source rejected the request: %s", result.Message)
 	}
 	return result, nil
 }

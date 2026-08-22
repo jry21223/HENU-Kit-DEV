@@ -526,9 +526,10 @@ export async function resolveLibraryOperation(operation: LibraryCommandKind, ide
 
 export type FoodWorkspaceResult = { state: "authenticated"; workspace: FoodWorkspace } | { state: "signed_out" | "denied" | "unavailable" };
 
-export async function fetchFoodWorkspace(): Promise<FoodWorkspaceResult> {
+export async function fetchFoodWorkspace(campus?: FoodCampus): Promise<FoodWorkspaceResult> {
   try {
-    const response = await fetch("{{FOOD_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const route = "{{FOOD_ROUTE}}" + (campus ? "?campus=" + encodeURIComponent(campus) : "");
+    const response = await fetch(route, { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
