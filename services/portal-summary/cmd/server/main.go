@@ -117,7 +117,7 @@ func verifySummary() error {
 	keyID := strings.TrimSpace(os.Getenv("PORTAL_SUMMARY_ACTIVE_KEY_ID"))
 	secret := os.Getenv("PORTAL_SUMMARY_ACTIVE_SECRET")
 	if clientID == "" || keyID == "" || len(secret) < 16 {
-		return errors.New("Portal summary verification credentials are incomplete")
+		return errors.New("portal summary verification credentials are incomplete")
 	}
 	nonceBytes := make([]byte, 24)
 	if _, err := rand.Read(nonceBytes); err != nil {
@@ -142,7 +142,7 @@ func verifySummary() error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("Portal summary returned HTTP %d", response.StatusCode)
+		return fmt.Errorf("portal summary returned HTTP %d", response.StatusCode)
 	}
 	var envelope contract.PortalSummaryEnvelope
 	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {

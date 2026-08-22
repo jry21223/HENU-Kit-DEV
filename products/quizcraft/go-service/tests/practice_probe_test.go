@@ -46,9 +46,9 @@ func TestVerifyPracticeFlowRollsBackEveryBusinessFact(t *testing.T) {
 	for _, bank := range storedNames {
 		name := "zzzz-release-probe-" + bank.id.String()
 		if bank.id == invalidBankID {
-			name = ""
+			name = "0-release-probe-invalid"
 		} else if bank.id == mixedBankID {
-			name = "a-release-probe-mixed"
+			name = "1-release-probe-mixed"
 		}
 		if _, err := pool.Exec(context.Background(), `UPDATE quizcraft_banks SET name=$1 WHERE id=$2`, name, bank.id); err != nil {
 			t.Fatal(err)
