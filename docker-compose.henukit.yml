@@ -71,6 +71,9 @@ services:
       PLATFORM_CORE_IDEMPOTENCY_TTL: ${PLATFORM_CORE_IDEMPOTENCY_TTL:-24h}
       PLATFORM_CORE_VERIFICATION_CODE_TTL: ${PLATFORM_CORE_VERIFICATION_CODE_TTL:-10m}
       PLATFORM_CORE_VERIFICATION_RESEND_DELAY: ${PLATFORM_CORE_VERIFICATION_RESEND_DELAY:-60s}
+      PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID: ${PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID:-}
+      PLATFORM_CORE_CAREER_DIGEST_KEY_ID: ${PLATFORM_CORE_CAREER_DIGEST_KEY_ID:-}
+      PLATFORM_CORE_CAREER_DIGEST_SECRET: ${PLATFORM_CORE_CAREER_DIGEST_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -305,13 +308,22 @@ services:
   career-opportunities:
     build:
       context: ./services/career-opportunities
+    mem_limit: 256m
     environment:
+      GOMEMLIMIT: 192MiB
       CAREER_ADDR: ${CAREER_ADDR:-:8097}
       CAREER_DATABASE_URL: ${CAREER_DATABASE_URL:-postgres://henukit:henukit_dev_change_me@postgres:5432/career?sslmode=disable}
       CAREER_REDIS_URL: ${CAREER_REDIS_URL:-redis://redis:6379/6}
       CAREER_SERVICE_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
       CAREER_SERVICE_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
       CAREER_SERVICE_SECRET: ${CAREER_CLIENT_SECRET:-replace-career-service-secret-32bytes!!}
+      CAREER_SOURCE_ALLOWLIST: ${CAREER_SOURCE_ALLOWLIST:-}
+      CAREER_MEITUAN_API_URL: ${CAREER_MEITUAN_API_URL:-https://zhaopin.meituan.com/api/official/job/getJobList}
+      PLATFORM_CORE_CAREER_DIGEST_URL: ${PLATFORM_CORE_CAREER_DIGEST_URL:-}
+      PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID: ${PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID:-}
+      PLATFORM_CORE_CAREER_DIGEST_KEY_ID: ${PLATFORM_CORE_CAREER_DIGEST_KEY_ID:-}
+      PLATFORM_CORE_CAREER_DIGEST_SECRET: ${PLATFORM_CORE_CAREER_DIGEST_SECRET:-}
+      CAREER_RESULT_URL: ${CAREER_RESULT_URL:-http://localhost:8088/career}
       # Resume AI extraction (#resume-upload): leave the AI vars empty for the
       # production-safe off state, or fill in a custom OpenAI-compatible
       # provider (CAREER_AI_MODE=mock selects the deterministic dev extractor).
@@ -319,12 +331,18 @@ services:
       CAREER_AI_BASE_URL: ${CAREER_AI_BASE_URL:-}
       CAREER_AI_API_KEY: ${CAREER_AI_API_KEY:-}
       CAREER_AI_MODEL: ${CAREER_AI_MODEL:-}
+      CAREER_REQUIRE_AI: ${CAREER_REQUIRE_AI:-0}
+      CAREER_ALLOW_INSECURE_AI_HTTP: ${CAREER_ALLOW_INSECURE_AI_HTTP:-0}
       CAREER_EXTRACT_RATE_LIMIT: ${CAREER_EXTRACT_RATE_LIMIT:-5}
+      CAREER_SEARCH_RATE_LIMIT: ${CAREER_SEARCH_RATE_LIMIT:-10}
+      CAREER_SEARCH_ACTIVE_LIMIT: ${CAREER_SEARCH_ACTIVE_LIMIT:-1}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      platform-core:
+        condition: service_started
     expose:
       - "8097"
     healthcheck:

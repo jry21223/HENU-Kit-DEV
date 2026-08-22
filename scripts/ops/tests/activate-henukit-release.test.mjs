@@ -58,7 +58,11 @@ function fixture({
   executable(join(release, "bin", "deploy-epay-gateway-patches.sh"), "#!/usr/bin/env bash\nexit 0\n");
   writeFileSync(join(release, "infra", "epay-gateway", "patches", "0001.patch"), "patch\n");
   writeFileSync(log, "");
-  writeFileSync(envFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
+  writeFileSync(
+    envFile,
+    "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\nQUIZCRAFT_CORE_URL=http://host.docker.internal:10089\n",
+    { mode: 0o600 },
+  );
   writeFileSync(tokenFile, "test-token\n", { mode: 0o600 });
   if (existingApproval) {
     const backup = join(state, `platform-backup-${releaseSha.slice(0, 12)}.dump`);
@@ -179,6 +183,15 @@ test("one command prepares, exact-SHA approves, and activates a release", () => 
   );
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
   assert.match(readFileSync(join(setup.root, "henukit.env"), "utf8"), /EASYPAY_ENABLED=1/);
+  assert.match(
+    readFileSync(join(setup.root, "henukit.env"), "utf8"),
+    /^QUIZCRAFT_CORE_URL=http:\/\/quizcraft:10089$/m,
+    "containerized releases must atomically replace the retired host listener URL",
+  );
+  assert.doesNotMatch(
+    readFileSync(join(setup.root, "henukit.env"), "utf8"),
+    /host\.docker\.internal:10089/,
+  );
   assert.equal((readFileSync(setup.log, "utf8").match(/^watcher /gm) ?? []).length, 2);
   const calls = readFileSync(setup.log, "utf8");
   assert.match(calls, /ssh root@metaview\.top .*deploy-epay-gateway-patches\.sh.*--execute/);

@@ -288,7 +288,7 @@ export default function CareerProfilePage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">求职画像</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          画像用于求职雷达匹配受控招聘来源，只保存文字信息，不存储简历文件、招聘站账号或密码。
+          画像用于求职雷达匹配受控招聘来源；简历文件仅在识别任务期间临时保存，任务完成或失败后删除原文件字节，不保存招聘站账号或密码。
         </p>
       </section>
 
@@ -349,10 +349,10 @@ export default function CareerProfilePage() {
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
                   上传简历 · 自动识别填写（默认方式）
                 </p>
-                <p className="font-mono text-[10px] text-ink/40">PDF / DOCX / TXT · ≤10 MB</p>
+                <p className="font-mono text-[10px] text-ink/40">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
               </div>
               <p className="mt-2 text-sm leading-6 text-ink/55">
-                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；文件解析后即弃，只保存提取出的文字信息。
+                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；原文件字节在任务完成或失败后删除，只保留提取结果。
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <input

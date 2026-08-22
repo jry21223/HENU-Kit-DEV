@@ -261,21 +261,33 @@ export default function QuizPage() {
   const sessionBankID = session?.bank_id;
   // Best-effort seed of this bank's favorite set; a failed read keeps the
   // toggle usable and the server write result remains the source of truth.
-  const { data: favoritesData } = useDeferredFetch(
+  const { data: favoritesData, error: favoritesLoadError } = useDeferredFetch(
     () => {
       if (!user || !sessionBankID) return undefined;
       return fetchBankFavorites(sessionBankID);
     },
     [user, sessionID, sessionBankID]
   );
+  const [favoritesSeedSessionID, setFavoritesSeedSessionID] = useState("");
   useEffect(() => {
-    if (favoritesData) {
-      setFavorites(new Set(favoritesData.data.map((item) => item.question_id)));
-      return;
-    }
-    setFavorites(null);
-    setFavoriteError(null);
-  }, [favoritesData]);
+    const timer = window.setTimeout(() => {
+      if (favoritesData) {
+        setFavorites(new Set(favoritesData.data.map((item) => item.question_id)));
+        setFavoritesSeedSessionID(sessionID ?? "");
+        return;
+      }
+      if (favoritesLoadError !== undefined && user) {
+        setFavorites(new Set());
+        setFavoriteError("收藏状态暂时无法读取，仍可重试收藏本题。");
+        setFavoritesSeedSessionID(sessionID ?? "");
+        return;
+      }
+      setFavorites(null);
+      setFavoritesSeedSessionID("");
+      setFavoriteError(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [favoritesData, favoritesLoadError, sessionID, user]);
 
   const questions = session?.questions ?? [];
   const question = questions[idx];
@@ -630,12 +642,15 @@ export default function QuizPage() {
   }
 
   const confirmed = result !== undefined;
+  const favoriteSeedReady = !user || favoritesSeedSessionID === sessionID;
   const isFavorited = !!(user && favorites?.has(question.question_id));
   const favoriteLabel = !authReady
     ? "收藏"
     : !user
       ? "登录后收藏"
-      : favoriteBusy
+      : !favoriteSeedReady
+        ? "读取收藏中…"
+        : favoriteBusy
         ? isFavorited
           ? "取消收藏中…"
           : "收藏中…"
@@ -644,7 +659,7 @@ export default function QuizPage() {
           : "收藏 +";
 
   const toggleFavorite = () => {
-    if (!question || !session || favoriteBusy) return;
+    if (!question || !session || favoriteBusy || !favoriteSeedReady) return;
     if (!authReady) return;
     if (!user) {
       redirectToLogin(window.location.pathname + window.location.search);
@@ -714,11 +729,11 @@ export default function QuizPage() {
                 <button
                   type="button"
                   onClick={toggleFavorite}
-                  disabled={favoriteBusy || !authReady}
+                  disabled={favoriteBusy || !authReady || !favoriteSeedReady}
                   aria-pressed={user ? isFavorited : undefined}
                   className={cn(
                     "border px-3 py-1.5 font-mono text-xs tracking-widest transition-colors",
-                    favoriteBusy || !authReady
+                    favoriteBusy || !authReady || !favoriteSeedReady
                       ? "cursor-not-allowed border-line text-ink/30"
                       : !user
                         ? "border-ink/30 text-ink/60 hover:border-ink hover:text-ink"

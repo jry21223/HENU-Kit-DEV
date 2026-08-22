@@ -62,10 +62,9 @@ func TestGetWorkAllowlistGatesSources(t *testing.T) {
 	}
 }
 
-// TestGetWorkAllSourcesFailedStillCompletes verifies the all-fail case: the
-// search still completes (never hard-fails) with an empty result and every
-// source marked failed, so the UI can distinguish it from a worker crash.
-func TestGetWorkAllSourcesFailedStillCompletes(t *testing.T) {
+// TestGetWorkAllSourcesFailedFailsSearch verifies an upstream outage is never
+// disguised as a successful zero-result scan.
+func TestGetWorkAllSourcesFailedFailsSearch(t *testing.T) {
 	work := NewGetWorkWork(GetWorkConfig{
 		AllowSources: map[string]bool{"bad.a": true, "bad.b": true},
 		Sources: []Source{
@@ -73,22 +72,8 @@ func TestGetWorkAllSourcesFailedStillCompletes(t *testing.T) {
 			&failingSource{key: "bad.b"},
 		},
 	})
-	result, err := work(context.Background(), map[string]any{"target_roles": "后端"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.SourceCount != 2 || result.JobCount != 0 {
-		t.Fatalf("all-failed source_count=%d job_count=%d, want 2/0", result.SourceCount, result.JobCount)
-	}
-	payload := result.Payload.(map[string]any)
-	if jobs := payload["jobs"].([]Job); len(jobs) != 0 {
-		t.Fatalf("all-failed sources produced jobs: %v", jobs)
-	}
-	sources := payload["sources"].(map[string]any)
-	for _, key := range []string{"bad.a", "bad.b"} {
-		if sources[key].(map[string]any)["status"] != "failed" {
-			t.Fatalf("source %s status = %v, want failed", key, sources[key])
-		}
+	if _, err := work(context.Background(), map[string]any{"target_roles": "后端"}); err == nil {
+		t.Fatal("all failed sources were reported as a successful scan")
 	}
 }
 

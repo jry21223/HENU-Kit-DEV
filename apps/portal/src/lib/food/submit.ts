@@ -54,6 +54,7 @@ export interface FoodPostCreateResponse {
 
 /** Food 每日投稿上限错误码(food.yaml 429 响应,经 Gateway 原样透传)。 */
 export const FOOD_POST_DAILY_CAP_CODE = "DAILY_POST_CAP_REACHED";
+export const FOOD_POST_PLACEHOLDER_CODE = "PLACEHOLDER_POST";
 
 /** 每日上限的中文提示,直接展示给用户。 */
 export function foodPostDailyCapMessage(): string {
@@ -70,6 +71,14 @@ export function foodPostDailyCapMessage(): string {
  */
 export function isFoodPostDailyCapError(error: unknown): boolean {
   return error instanceof PortalHttpError && error.status === 429;
+}
+
+export function isFoodPostPlaceholderError(error: unknown): boolean {
+  return error instanceof PortalHttpError && error.errorCode === FOOD_POST_PLACEHOLDER_CODE;
+}
+
+export function foodPostPlaceholderMessage(): string {
+  return "请把测试店名或测试正文改成真实的店铺与体验后再投稿";
 }
 
 // ---- create 命令 ----

@@ -35,6 +35,17 @@ func TestPublicationProvenancePolicyCanonicalValues(t *testing.T) {
 	}
 }
 
+func TestManifestMaterialTypePreservesElectronicTextbooksAsTheirOwnSection(t *testing.T) {
+	for _, role := range []string{"电子版教材", "电子教材"} {
+		if got := manifestMaterialType(role); got != "textbook" {
+			t.Fatalf("manifestMaterialType(%q) = %q, want textbook", role, got)
+		}
+	}
+	if got := manifestMaterialType("教材重点复习讲义"); got != "note" {
+		t.Fatalf("ordinary review notes were misclassified as textbooks: %q", got)
+	}
+}
+
 func TestPublicationProvenanceViolation(t *testing.T) {
 	clean := manifestAsset{Subject: "数学", Role: "讲义", Title: "讲义.pdf", PublicPath: "note.pdf", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		ReviewStatus: "basic-reviewed", LicenseStatus: "learning-reference"}

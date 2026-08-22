@@ -9,6 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"strconv"
 	"strings"
@@ -108,12 +112,15 @@ func TestCreatePostPublishesImmediatelyAndIsPubliclyReadable(t *testing.T) {
 	defer pool.Close()
 	cleanPosts(t, pool)
 
-	body := []byte(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"胡辣汤很顶，早餐必去。"}`)
+	body := []byte(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"胡辣汤很顶，早餐必去。","price_reference":"18元"}`)
 	created := expectPostBody(t, createPostVia(t, server.URL, body, "idem_public_1"), http.StatusOK)
-	for _, expected := range []string{`"hidden":false`, `"title":"仁和食堂"`, `"author":"测试同学"`, `"tags":["夯"]`, `"campus":"minglun"`} {
+	for _, expected := range []string{`"hidden":false`, `"title":"仁和食堂"`, `"author":"测试同学"`, `"tags":["夯"]`, `"campus":"minglun"`, `"text":"价格参考：18元"`} {
 		if !bytes.Contains(created, []byte(expected)) {
 			t.Fatalf("create payload omitted %s: %s", expected, created)
 		}
+	}
+	if bytes.Contains(created, []byte(`"lat"`)) || bytes.Contains(created, []byte(`"lng"`)) {
+		t.Fatalf("map coordinates remain in the Food post contract: %s", created)
 	}
 	postID := decodeData(t, created)["post"].(map[string]any)["id"].(string)
 	if _, err := uuid.Parse(postID); err != nil {
@@ -121,12 +128,12 @@ func TestCreatePostPublishesImmediatelyAndIsPubliclyReadable(t *testing.T) {
 	}
 
 	list := expectPostBody(t, readPostVia(t, server.URL, http.MethodGet, "/api/v1/food/posts"), http.StatusOK)
-	if !bytes.Contains(list, []byte(`"title":"仁和食堂"`)) {
-		t.Fatalf("public list omitted the new post: %s", list)
+	if !bytes.Contains(list, []byte(`"title":"仁和食堂"`)) || !bytes.Contains(list, []byte(`"text":"价格参考：18元"`)) {
+		t.Fatalf("public list omitted the new post or its price reference: %s", list)
 	}
 	detail := expectPostBody(t, readPostVia(t, server.URL, http.MethodGet, "/api/v1/food/posts/"+postID), http.StatusOK)
-	if !bytes.Contains(detail, []byte(`"comments":[]`)) {
-		t.Fatalf("detail omitted empty comments: %s", detail)
+	if !bytes.Contains(detail, []byte(`"comments":[]`)) || !bytes.Contains(detail, []byte(`"text":"价格参考：18元"`)) {
+		t.Fatalf("detail omitted comments or the price reference: %s", detail)
 	}
 	venues := expectPostBody(t, readPostVia(t, server.URL, http.MethodGet, "/api/v1/food/venues?campus=minglun"), http.StatusOK)
 	if !bytes.Contains(venues, []byte(`"name":"仁和食堂"`)) {
@@ -154,7 +161,11 @@ func TestCreatePostRejectsMissingRequiredFieldsAndBadEnums(t *testing.T) {
 		{"missing tier", `{"venue_name":"仁和食堂","campus":"minglun","review_text":"好吃好吃。"}`},
 		{"invalid tier", `{"venue_name":"仁和食堂","campus":"minglun","tier":"ssr","review_text":"好吃好吃。"}`},
 		{"missing review", `{"venue_name":"仁和食堂","campus":"minglun","tier":"hang"}`},
+		{"whitespace venue", `{"venue_name":"　 ","campus":"minglun","tier":"hang","review_text":"好吃好吃。"}`},
+		{"whitespace review", `{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"　 \n"}`},
 		{"short review", `{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好"}`},
+		{"placeholder venue", `{"venue_name":"test","campus":"minglun","tier":"hang","review_text":"这是一条能够公开展示的完整推荐理由。"}`},
+		{"placeholder review", `{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"测试"}`},
 		{"oversize price", fmt.Sprintf(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好吃好吃。","price_reference":%q}`, strings.Repeat("贵", 201))},
 		{"too many dishes", `{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好吃好吃。","dishes":[{"name":"一"},{"name":"二"},{"name":"三"},{"name":"四"},{"name":"五"},{"name":"六"},{"name":"七"}]}`},
 		{"empty dish name", `{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好吃好吃。","dishes":[{"name":""}]}`},
@@ -163,7 +174,11 @@ func TestCreatePostRejectsMissingRequiredFieldsAndBadEnums(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			response := createPostVia(t, server.URL, []byte(test.body), fmt.Sprintf("idem_invalid_%d", index))
 			payload := readBody(t, response)
-			if response.StatusCode != http.StatusBadRequest || !bytes.Contains(payload, []byte(`"code":"INVALID_POST"`)) {
+			wantCode := `"code":"INVALID_POST"`
+			if strings.Contains(test.name, "placeholder") {
+				wantCode = `"code":"PLACEHOLDER_POST"`
+			}
+			if response.StatusCode != http.StatusBadRequest || !bytes.Contains(payload, []byte(wantCode)) {
 				t.Fatalf("status = %d, payload = %s", response.StatusCode, payload)
 			}
 		})
@@ -181,6 +196,13 @@ func TestCreatePostRejectsInvalidImages(t *testing.T) {
 	cleanPosts(t, pool)
 
 	tinyPNG := base64.StdEncoding.EncodeToString([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a})
+	var validPNGBuffer bytes.Buffer
+	validCanvas := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	validCanvas.Set(0, 0, color.RGBA{R: 255, A: 255})
+	if err := png.Encode(&validPNGBuffer, validCanvas); err != nil {
+		t.Fatal(err)
+	}
+	validPNG := base64.StdEncoding.EncodeToString(validPNGBuffer.Bytes())
 	oversized := base64.StdEncoding.EncodeToString(make([]byte, 2<<20+1))
 	sevenImages := make([]string, 7)
 	for index := range sevenImages {
@@ -194,6 +216,7 @@ func TestCreatePostRejectsInvalidImages(t *testing.T) {
 		{"single image over 2MiB", fmt.Sprintf(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好吃好吃。","images":[{"content_type":"image/png","data":%q}]}`, oversized)},
 		{"unlisted content type", fmt.Sprintf(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好吃好吃。","images":[{"content_type":"image/gif","data":%q}]}`, tinyPNG)},
 		{"invalid base64", `{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好吃好吃。","images":[{"content_type":"image/png","data":"%%%not-base64%%%"}]}`},
+		{"declared type does not match bytes", fmt.Sprintf(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"好吃好吃。","images":[{"content_type":"image/jpeg","data":%q}]}`, validPNG)},
 	}
 	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -207,6 +230,71 @@ func TestCreatePostRejectsInvalidImages(t *testing.T) {
 	var count int
 	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM food_posts`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("invalid images wrote rows: count=%d, err=%v", count, err)
+	}
+}
+
+func TestCreatePostAcceptsAValidDecodedImage(t *testing.T) {
+	server, pool := newFoodServer(t)
+	defer server.Close()
+	defer pool.Close()
+	cleanPosts(t, pool)
+
+	canvas := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	canvas.Set(0, 0, color.RGBA{R: 255, G: 80, B: 20, A: 255})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, canvas); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(fmt.Sprintf(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"图片和文字都是真实投稿。","images":[{"content_type":"image/png","data":%q}]}`, base64.StdEncoding.EncodeToString(encoded.Bytes())))
+	payload := expectPostBody(t, createPostVia(t, server.URL, body, "idem_valid_image"), http.StatusOK)
+	if !bytes.Contains(payload, []byte(`"images":["/api/v1/food/posts/`)) {
+		t.Fatalf("valid image URL missing: %s", payload)
+	}
+}
+
+func TestCreatePostStripsEmbeddedImageMetadataBeforePublishing(t *testing.T) {
+	server, pool := newFoodServer(t)
+	defer server.Close()
+	defer pool.Close()
+	cleanPosts(t, pool)
+
+	canvas := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	canvas.Set(0, 0, color.RGBA{R: 20, G: 80, B: 255, A: 255})
+	canvas.Set(1, 0, color.RGBA{R: 255, G: 80, B: 20, A: 255})
+	var base bytes.Buffer
+	if err := jpeg.Encode(&base, canvas, &jpeg.Options{Quality: 90}); err != nil {
+		t.Fatal(err)
+	}
+	marker := []byte{
+		'E', 'x', 'i', 'f', 0, 0,
+		'I', 'I', 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,
+		0x01, 0x00,
+		0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	}
+	marker = append(marker, []byte("GPSLatitude=34.797;GPSLongitude=114.307")...)
+	app1Length := len(marker) + 2
+	withMetadata := []byte{0xff, 0xd8, 0xff, 0xe1, byte(app1Length >> 8), byte(app1Length)}
+	withMetadata = append(withMetadata, marker...)
+	withMetadata = append(withMetadata, base.Bytes()[2:]...)
+
+	body := []byte(fmt.Sprintf(`{"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"照片公开前应移除位置元数据。","images":[{"content_type":"image/jpeg","data":%q}]}`, base64.StdEncoding.EncodeToString(withMetadata)))
+	created := expectPostBody(t, createPostVia(t, server.URL, body, "idem_strip_metadata"), http.StatusOK)
+	postID := decodeData(t, created)["post"].(map[string]any)["id"].(string)
+	response := readPostVia(t, server.URL, http.MethodGet, "/api/v1/food/posts/"+postID+"/images/0")
+	published := readBody(t, response)
+	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("published image status/type = %d/%q", response.StatusCode, response.Header.Get("Content-Type"))
+	}
+	if bytes.Contains(published, []byte("GPSLatitude")) || bytes.Contains(published, marker) {
+		t.Fatal("published image retained uploader metadata")
+	}
+	decoded, _, err := image.Decode(bytes.NewReader(published))
+	if err != nil {
+		t.Fatalf("sanitized image is not decodable: %v", err)
+	}
+	if decoded.Bounds().Dx() != 1 || decoded.Bounds().Dy() != 2 {
+		t.Fatalf("EXIF orientation was not applied before metadata stripping: %v", decoded.Bounds())
 	}
 }
 

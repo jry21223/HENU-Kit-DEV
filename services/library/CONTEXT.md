@@ -23,6 +23,10 @@ _Avoid_: OSS 公共直链、永久下载地址、下载完成
 活动资料只提供经 Library owner 验证并签发的 OSS 原文件下载；`slides` 派生数据为空且不存在在线预览能力。
 _Avoid_: Slides viewer、转换降级、本地 `/materials/` 下载
 
+**Electronic Textbook**:
+审核 manifest 中角色为“电子版教材”或“电子教材”的 Download-only Material；在 Owner Catalog 中保留独立 `textbook` 类型，Portal 以“电子版教材”板块筛选，仍只提供原文件下载，不暗示学校官方授权或官方版本。
+_Avoid_: 复习讲义、教材重点、在线阅读器、官方教材声明
+
 **Download Start**:
 Library 已持久化一个成功签发 grant 的不可变业务事实；重复成功请求分别计数，失败请求不计数。
 _Avoid_: OSS 请求数、SLS 下载数、唯一下载人数

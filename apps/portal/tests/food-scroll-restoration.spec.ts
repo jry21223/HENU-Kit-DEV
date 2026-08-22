@@ -21,7 +21,7 @@ const POSTS = TIER_TAGS.flatMap((tag, tierIndex) =>
     likes: 100 - row,
     stars: 10,
     tags: [tag],
-    shop: { name: `${tag}-${row + 1} 号店`, lat: 34.79, lng: 114.3 },
+    shop: { name: `${tag}-${row + 1} 号店` },
     time: "07-16",
     hidden: false,
     images: [],

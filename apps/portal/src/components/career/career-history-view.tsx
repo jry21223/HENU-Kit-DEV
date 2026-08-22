@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useReveal } from "@/components/account/use-reveal";
 import {
+  careerDigestStatusLabel,
   careerScanFailedMessage,
   careerScanStageLabel,
   careerSearchStatusLabel,
@@ -167,7 +168,9 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                 </div>
                 <p className="mt-1.5 text-xs leading-5 text-ink/55">
                   {formatCareerSearchTime(search.created_at)}
-                  {search.has_email ? " · 邮件简报已开启" : ""}
+                  {careerDigestStatusLabel(search)
+                    ? ` · ${careerDigestStatusLabel(search)}`
+                    : ""}
                 </p>
                 {search.status === "failed" ? (
                   <p className="mt-1 text-xs leading-5 text-ink/50">
@@ -176,7 +179,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                 ) : null}
               </div>
               <Link
-                href="/career"
+                href={`/career?search=${encodeURIComponent(search.id)}`}
                 className="shrink-0 font-mono text-[11px] tracking-widest text-ink/60 transition-colors hover:text-accent"
               >
                 查看详情 →

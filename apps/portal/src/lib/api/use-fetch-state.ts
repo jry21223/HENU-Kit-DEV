@@ -30,19 +30,26 @@ export function useFetchState<T>(
   const { data, error, retry } = useDeferredFetch(fetcher, deps);
   const [state, setState] = useState<FetchState<T>>({ status: "loading" });
   useEffect(() => {
-    if (error !== undefined) {
-      if (error instanceof PortalUnauthorizedError) {
-        setState({ status: "anonymous" });
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      if (error !== undefined) {
+        if (error instanceof PortalUnauthorizedError) {
+          setState({ status: "anonymous" });
+          return;
+        }
+        setState({ status: "error", message: formatPortalError(error) });
         return;
       }
-      setState({ status: "error", message: formatPortalError(error) });
-      return;
-    }
-    if (data) {
-      setState({ status: "ready", data: data.data });
-      return;
-    }
-    setState({ status: "loading" });
+      if (data) {
+        setState({ status: "ready", data: data.data });
+        return;
+      }
+      setState({ status: "loading" });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [data, error]);
   return { state, setState, retry };
 }

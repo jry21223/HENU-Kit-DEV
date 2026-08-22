@@ -441,11 +441,9 @@ components:
     FoodPostShopWire:
       type: object
       additionalProperties: false
-      required: [name, lat, lng]
+      required: [name]
       properties:
         name: { type: string }
-        lat: { type: number }
-        lng: { type: number }
     FoodPostWire:
       type: object
       additionalProperties: false

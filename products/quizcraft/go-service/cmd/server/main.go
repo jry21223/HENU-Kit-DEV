@@ -17,11 +17,6 @@ var buildReleaseSHA = "development"
 
 func main() {
 	databaseURL := requiredEnv("DATABASE_URL")
-	authSecret := requiredEnv("QUIZCRAFT_AUTH_HMAC_SECRET")
-	address := os.Getenv("QUIZCRAFT_HTTP_ADDR")
-	if address == "" {
-		address = ":8080"
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	pool, err := pgxpool.New(ctx, databaseURL)
@@ -29,6 +24,20 @@ func main() {
 	defer pool.Close()
 	fail(pool.Ping(ctx))
 	fail(quizcraft.RequireQuizcraftV2Target(ctx, pool))
+	if len(os.Args) == 2 && os.Args[1] == "verify-practice" {
+		report, err := quizcraft.VerifyPracticeFlow(ctx, pool)
+		fail(err)
+		fmt.Printf("practice flow verified for bank %s question %s\n", report.BankID, report.QuestionID)
+		return
+	}
+	if len(os.Args) != 1 {
+		fail(fmt.Errorf("unknown QuizCraft command"))
+	}
+	authSecret := requiredEnv("QUIZCRAFT_AUTH_HMAC_SECRET")
+	address := os.Getenv("QUIZCRAFT_HTTP_ADDR")
+	if address == "" {
+		address = ":8080"
+	}
 	summaryKeys := map[string]string{}
 	if keyID := os.Getenv("QUIZCRAFT_SUMMARY_KEY_ID"); keyID != "" {
 		summaryKeys[keyID] = os.Getenv("QUIZCRAFT_SUMMARY_CLIENT_SECRET")

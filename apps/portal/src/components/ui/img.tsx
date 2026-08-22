@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * 统一图片组件：加载失败/无 src 时回退图纸风编号图块（与地图降级同思路）。
+ * 统一图片组件：加载失败/无 src 时回退图纸风编号图块。
  * 不用 next/image：免 remotePatterns 配置，且兼容 dataURL。
  */
 export default function Img({

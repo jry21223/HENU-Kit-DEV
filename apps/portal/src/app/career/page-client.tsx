@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import SectionHeading from "@/components/ui/section-heading";
 import CareerFreeView from "@/components/career/career-free-view";
 import CareerGuestView from "@/components/career/career-guest-view";
@@ -22,6 +23,8 @@ function LoadingBlock() {
 }
 
 export default function CareerPage() {
+  const searchParams = useSearchParams();
+  const requestedSearchID = searchParams.get("search")?.trim() || null;
   const [state, setState] = useState<PageState>({ kind: "loading" });
   const requestVersion = useRef(0);
 
@@ -58,7 +61,11 @@ export default function CareerPage() {
       {state.kind === "lifetime-no-profile" ? <CareerNoProfileView /> : null}
 
       {state.kind === "lifetime-ready" ? (
-        <CareerReadyView profile={state.profile} searches={state.searches} />
+        <CareerReadyView
+          profile={state.profile}
+          searches={state.searches}
+          requestedSearchID={requestedSearchID}
+        />
       ) : null}
 
       {state.kind === "error" ? (

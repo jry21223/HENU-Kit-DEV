@@ -66,6 +66,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
     get:
       tags: [Career]
@@ -97,6 +98,7 @@ paths:
                         properties:
                           searches:
                             type: array
+                            maxItems: 50
                             items: { $ref: "#/components/schemas/CareerSearch" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -406,6 +408,10 @@ components:
           format: uuid
         has_email:
           type: boolean
+        digest_status:
+          type: string
+          description: Durable Platform Core enqueue state; sent means accepted into the mail queue, not delivered to the mailbox.
+          enum: [sending, retry, sent, skipped]
         error_code:
           type: string
         error_message:
@@ -413,6 +419,41 @@ components:
         created_at:
           type: string
           format: date-time
+        result:
+          $ref: "#/components/schemas/CareerSearchResult"
+    CareerSearchResult:
+      type: object
+      required: [source_count, job_count, matched_count, summary, jobs]
+      properties:
+        source_count: { type: integer, minimum: 0 }
+        job_count: { type: integer, minimum: 0 }
+        matched_count: { type: integer, minimum: 0 }
+        summary: { type: string }
+        jobs:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/CareerJob"
+    CareerJob:
+      type: object
+      required: [source_key, company, title, location, url, match_score, match_reasons]
+      properties:
+        source_key: { type: string }
+        company: { type: string }
+        title: { type: string }
+        location: { type: string }
+        job_type: { type: string }
+        description: { type: string }
+        requirements:
+          type: array
+          items: { type: string }
+        url: { type: string, format: uri }
+        published_at: { type: string, format: date-time }
+        fetched_at: { type: string, format: date-time }
+        match_score: { type: integer, minimum: 0, maximum: 100 }
+        match_reasons:
+          type: array
+          items: { type: string }
     CareerResumeExtraction:
       type: object
       required: [id, status, user_id, file_name, created_at]
@@ -433,8 +474,7 @@ components:
         error_message:
           type: string
         extracted:
-          type: object
-          nullable: true
+          type: [object, "null"]
           properties:
             target_roles:
               type: string

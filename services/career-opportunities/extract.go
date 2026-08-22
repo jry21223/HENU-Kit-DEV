@@ -3,11 +3,14 @@ package career
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -54,19 +57,19 @@ var (
 // turns a plain-text resume into a fixed profile, proving the whole
 // upload → extract → prefill path before any real AI provider is configured.
 func NewMockExtractor() ExtractFunc {
-	return func(_ context.Context, fileName string, content []byte) (ExtractedProfile, error) {
-		if len(content) == 0 {
-			return ExtractedProfile{}, ErrExtractionFailed
+	return func(ctx context.Context, fileName string, content []byte) (ExtractedProfile, error) {
+		text, err := resumeDocumentText(ctx, fileName, content)
+		if err != nil {
+			return ExtractedProfile{}, err
 		}
 		year := 2027
-		_ = fileName
 		return ExtractedProfile{
 			TargetRoles:    "后端开发、数据分析",
 			TechStack:      "go、postgres、vue",
 			Locations:      "郑州、北京",
 			JobType:        "daily_intern",
 			GraduationYear: &year,
-			ResumeText:     truncateProfileText(string(content), profileResumeTextLimit),
+			ResumeText:     truncateProfileText(text, profileResumeTextLimit),
 		}, nil
 	}
 }
@@ -103,22 +106,30 @@ func NewOpenAICompatibleExtractor(cfg ExtractConfig) (ExtractFunc, error) {
 	if baseURL == "" || strings.TrimSpace(cfg.APIKey) == "" || strings.TrimSpace(cfg.Model) == "" {
 		return nil, ErrAIUnconfigured
 	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, fmt.Errorf("%w: provider URL is invalid", ErrAIUnconfigured)
+	}
 	client := cfg.HTTPClient
 	if client == nil {
 		client = &http.Client{Timeout: 60 * time.Second}
 	}
+	clientCopy := *client
+	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	endpoint := baseURL + "/chat/completions"
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	model := strings.TrimSpace(cfg.Model)
-	return func(ctx context.Context, _ string, content []byte) (ExtractedProfile, error) {
-		if len(content) == 0 {
-			return ExtractedProfile{}, ErrExtractionFailed
+	return func(ctx context.Context, fileName string, content []byte) (ExtractedProfile, error) {
+		userContent, err := resumeProviderContent(ctx, fileName, content)
+		if err != nil {
+			return ExtractedProfile{}, err
 		}
 		requestBody, err := json.Marshal(map[string]any{
 			"model": model,
-			"messages": []map[string]string{
+			"messages": []map[string]any{
 				{"role": "system", "content": extractorPrompt},
-				{"role": "user", "content": "请提取这份简历：" + truncateProfileText(string(content), 20000)},
+				{"role": "user", "content": userContent},
 			},
 			"temperature": 0.1,
 		})
@@ -131,7 +142,7 @@ func NewOpenAICompatibleExtractor(cfg ExtractConfig) (ExtractFunc, error) {
 		}
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Authorization", "Bearer "+apiKey)
-		response, err := client.Do(request)
+		response, err := clientCopy.Do(request)
 		if err != nil {
 			return ExtractedProfile{}, fmt.Errorf("%w: provider call failed", ErrExtractionFailed)
 		}
@@ -157,6 +168,32 @@ func NewOpenAICompatibleExtractor(cfg ExtractConfig) (ExtractFunc, error) {
 	}, nil
 }
 
+func resumeProviderContent(ctx context.Context, fileName string, content []byte) (any, error) {
+	if strings.EqualFold(filepath.Ext(strings.TrimSpace(fileName)), ".pdf") {
+		images, err := pdfResumeImages(ctx, content)
+		if err != nil {
+			return nil, err
+		}
+		parts := make([]map[string]any, 0, len(images)+1)
+		parts = append(parts, map[string]any{"type": "text", "text": "请从这些简历 PDF 页面中提取求职画像。"})
+		for _, image := range images {
+			parts = append(parts, map[string]any{
+				"type": "image_url",
+				"image_url": map[string]string{
+					"url":    "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(image),
+					"detail": "high",
+				},
+			})
+		}
+		return parts, nil
+	}
+	text, err := resumeDocumentText(ctx, fileName, content)
+	if err != nil {
+		return nil, err
+	}
+	return "请提取这份简历：" + text, nil
+}
+
 // normalizeExtracted parses the model's JSON answer (which may be wrapped in
 // markdown fences) and clamps every field to the profile limits. Any deviation
 // from the contract fails the extraction rather than storing garbage.
@@ -166,9 +203,40 @@ func normalizeExtracted(content string) (ExtractedProfile, error) {
 	trimmed = strings.TrimPrefix(trimmed, "```")
 	trimmed = strings.TrimSuffix(trimmed, "```")
 	trimmed = strings.TrimSpace(trimmed)
-	var extracted ExtractedProfile
-	if err := json.Unmarshal([]byte(trimmed), &extracted); err != nil {
+	var modelResult struct {
+		TargetRoles    json.RawMessage `json:"target_roles"`
+		TechStack      json.RawMessage `json:"tech_stack"`
+		Locations      json.RawMessage `json:"locations"`
+		JobType        json.RawMessage `json:"job_type"`
+		GraduationYear *int            `json:"graduation_year"`
+		ResumeText     json.RawMessage `json:"resume_text"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &modelResult); err != nil {
 		return ExtractedProfile{}, fmt.Errorf("%w: model output is not JSON", ErrExtractionFailed)
+	}
+	targetRoles, err := normalizeModelString(modelResult.TargetRoles)
+	if err != nil {
+		return ExtractedProfile{}, fmt.Errorf("%w: model output has invalid target_roles", ErrExtractionFailed)
+	}
+	techStack, err := normalizeModelString(modelResult.TechStack)
+	if err != nil {
+		return ExtractedProfile{}, fmt.Errorf("%w: model output has invalid tech_stack", ErrExtractionFailed)
+	}
+	locations, err := normalizeModelString(modelResult.Locations)
+	if err != nil {
+		return ExtractedProfile{}, fmt.Errorf("%w: model output has invalid locations", ErrExtractionFailed)
+	}
+	jobType, err := normalizeModelString(modelResult.JobType)
+	if err != nil {
+		return ExtractedProfile{}, fmt.Errorf("%w: model output has invalid job_type", ErrExtractionFailed)
+	}
+	resumeText, err := normalizeModelString(modelResult.ResumeText)
+	if err != nil {
+		return ExtractedProfile{}, fmt.Errorf("%w: model output has invalid resume_text", ErrExtractionFailed)
+	}
+	extracted := ExtractedProfile{
+		TargetRoles: targetRoles, TechStack: techStack, Locations: locations,
+		JobType: jobType, GraduationYear: modelResult.GraduationYear, ResumeText: resumeText,
 	}
 	switch extracted.JobType {
 	case "", "daily_intern", "summer_intern", "campus_recruit":
@@ -183,6 +251,30 @@ func normalizeExtracted(content string) (ExtractedProfile, error) {
 	extracted.Locations = truncateProfileText(extracted.Locations, profileLocationsLimit)
 	extracted.ResumeText = truncateProfileText(extracted.ResumeText, profileResumeTextLimit)
 	return extracted, nil
+}
+
+// Some OpenAI-compatible multimodal servers return a list for keyword fields
+// even when the prompt requests a comma-separated string. Accept only strings,
+// string lists, null, or an omitted field; every other shape fails closed.
+func normalizeModelString(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return "", nil
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return value, nil
+	}
+	var values []string
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return "", err
+	}
+	clean := make([]string, 0, len(values))
+	for _, item := range values {
+		if item = strings.TrimSpace(item); item != "" {
+			clean = append(clean, item)
+		}
+	}
+	return strings.Join(clean, "、"), nil
 }
 
 // truncateProfileText clamps a field to its byte limit while keeping the text

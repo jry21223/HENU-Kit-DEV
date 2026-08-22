@@ -6,7 +6,7 @@
 
 // ---------------------------------------------------------------- 类型
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides";
+export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides" | "textbook";
 
 export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }> = {
   note: { name: "学长笔记", code: "NOTE" },
@@ -15,6 +15,7 @@ export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }
   path: { name: "学习路径", code: "PATH" },
   lab: { name: "实验报告", code: "LAB" },
   slides: { name: "课件幻灯片", code: "SLIDES" },
+  textbook: { name: "电子版教材", code: "TEXTBOOK" },
 };
 
 /** 遗留类型占位；OSS-only 资料永远不填充在线幻灯片。 */

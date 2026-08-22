@@ -198,7 +198,7 @@ export interface LibraryCoursesResponse {
   request_id: string;
 }
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides";
+export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides" | "textbook";
 
 /** 转换后的 PPT 单页 */
 export interface Slide {
@@ -270,8 +270,6 @@ export interface PostBlock {
 
 export interface Shop {
   name: string;
-  lat: number;
-  lng: number;
 }
 
 export type CampusKey = "minglun" | "jinming" | "longzihu";
@@ -561,15 +559,41 @@ export type CareerSearchStage = "crawling" | "matching" | "rendering";
 /** 求职岗位类型；空串 = 未选择。 */
 export type CareerJobType = "" | "daily_intern" | "summer_intern" | "campus_recruit";
 
+/** One normalized, source-attributed opportunity returned by a completed scan. */
+export interface CareerJob {
+  source_key: string;
+  company: string;
+  title: string;
+  location: string;
+  job_type?: string;
+  description?: string;
+  requirements?: string[];
+  url: string;
+  published_at?: string;
+  fetched_at?: string;
+  match_score: number;
+  match_reasons: string[];
+}
+
+export interface CareerSearchResult {
+  source_count: number;
+  job_count: number;
+  matched_count: number;
+  summary: string;
+  jobs: CareerJob[];
+}
+
 export interface CareerSearch {
   id: string;
   status: CareerSearchStatus;
   stage?: CareerSearchStage;
   user_id: string;
   has_email: boolean;
+  digest_status?: "sending" | "retry" | "sent" | "skipped";
   error_code?: string;
   error_message?: string;
   created_at: string;
+  result?: CareerSearchResult;
 }
 
 /**
@@ -621,7 +645,7 @@ export interface CareerProfileResponse {
 export type CareerExtractionStatus = "queued" | "running" | "completed" | "failed";
 
 /**
- * 简历提取任务。文件字节解析后即弃，只保留提取出的文字字段；
+ * 简历提取任务。文件字节在任务完成或失败后删除，只保留提取字段；
  * completed 时 extracted 为可回填表单的画像草稿。
  */
 export interface CareerResumeExtraction {

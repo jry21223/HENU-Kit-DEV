@@ -44,6 +44,12 @@ type Config struct {
 	// ExtractRateLimit bounds how many resume extractions one actor may start
 	// per rolling hour. Zero uses the default of 5.
 	ExtractRateLimit int
+	// SearchRateLimit bounds new Work Radar tasks per actor per UTC hour. Exact
+	// idempotent replays bypass the limiter. Zero uses the default of 10.
+	SearchRateLimit int
+	// SearchActiveLimit bounds queued/running tasks per actor. Zero uses the
+	// default of one so a browser cannot fan out crawler and mail work.
+	SearchActiveLimit int
 	// DigestSender is the #397 enqueue boundary: the worker posts one
 	// Opportunity Digest per completed search through this seam. Nil disables
 	// digest mail entirely (production-safe off state).
@@ -54,16 +60,18 @@ type Config struct {
 }
 
 type service struct {
-	database         *pgxpool.Pool
-	redis            redis.UniversalClient
-	clientID         string
-	keys             map[string]string
-	work             WorkFunc
-	extract          ExtractFunc
-	extractRateLimit int
-	now              func() time.Time
-	digestSender     DigestSender
-	digestResultURL  string
+	database          *pgxpool.Pool
+	redis             redis.UniversalClient
+	clientID          string
+	keys              map[string]string
+	work              WorkFunc
+	extract           ExtractFunc
+	extractRateLimit  int
+	searchRateLimit   int
+	searchActiveLimit int
+	now               func() time.Time
+	digestSender      DigestSender
+	digestResultURL   string
 }
 
 type actor struct{ userID string }
@@ -93,10 +101,18 @@ func New(config Config) (*Service, error) {
 	if rateLimit <= 0 {
 		rateLimit = defaultExtractRateLimit
 	}
+	searchRateLimit := config.SearchRateLimit
+	if searchRateLimit <= 0 {
+		searchRateLimit = 10
+	}
+	searchActiveLimit := config.SearchActiveLimit
+	if searchActiveLimit <= 0 {
+		searchActiveLimit = 1
+	}
 	if config.DigestResultURL != "" && !validDigestResultURL(config.DigestResultURL) {
 		return nil, errors.New("career digest result URL must be an http(s) URL")
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, extract: config.Extract, extractRateLimit: rateLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, extract: config.Extract, extractRateLimit: rateLimit, searchRateLimit: searchRateLimit, searchActiveLimit: searchActiveLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {

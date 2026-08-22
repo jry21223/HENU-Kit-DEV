@@ -281,16 +281,10 @@ components:
 
     Shop:
       type: object
-      required: [name, lat, lng]
+      required: [name]
       properties:
         name:
           type: string
-        lat:
-          type: number
-          format: double
-        lng:
-          type: number
-          format: double
 
     FoodPost:
       type: object

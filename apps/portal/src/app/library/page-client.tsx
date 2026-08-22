@@ -104,6 +104,13 @@ export default function LibraryHomePage() {
         m.subject.includes(query.trim()))
   );
   const hasActiveFilter = query.trim() !== "" || type !== "all" || price !== "all" || subject !== "all";
+  const hasElectronicTextbooks = materials.some((material) => material.type === "textbook");
+  const emptyLabel =
+    materials.length === 0 && !hasActiveFilter
+      ? "资料库当前暂无公开资料"
+      : type === "textbook" && !hasElectronicTextbooks
+        ? "电子版教材暂未收录；通过公开资料审核后会在此展示"
+        : "无匹配资料";
 
   return (
     <main>
@@ -188,7 +195,7 @@ export default function LibraryHomePage() {
           ) : loadState === "error" ? (
             <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
           ) : items.length === 0 ? (
-            <EmptyBlock label={materials.length === 0 && !hasActiveFilter ? "资料库当前暂无公开资料" : "无匹配资料"} />
+            <EmptyBlock label={emptyLabel} />
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {items.map((m) => (

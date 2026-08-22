@@ -22,8 +22,8 @@ func TestLibraryCatalogUsesExactOwnerSnapshotAndMapsBrowserSafeFields(t *testing
 			"data": map[string]any{
 				"release_id": "0123456789abcdef0123456789abcdef01234567-0123456789abcdef",
 				"materials": []map[string]any{{
-					"id": "11111111-1111-4111-8111-111111111111", "type": "note", "subject": "高等数学",
-					"title": "极限复习笔记", "role": "学生编辑部", "file_name": "极限复习笔记.pdf",
+					"id": "11111111-1111-4111-8111-111111111111", "type": "textbook", "subject": "高等数学",
+					"title": "高等数学电子版教材", "role": "电子版教材", "file_name": "高等数学电子版教材.pdf",
 					"file_size": 4096, "downloads": 12, "download_available": true,
 				}},
 				"material_count": 1, "download_starts": 99,
@@ -57,7 +57,7 @@ func TestLibraryCatalogUsesExactOwnerSnapshotAndMapsBrowserSafeFields(t *testing
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Materials) != 1 || body.Materials[0].ID != "11111111-1111-4111-8111-111111111111" || body.Materials[0].Author != "资料库收录" || body.Materials[0].Downloads != 12 || !body.Materials[0].DownloadAvailable || body.Materials[0].FileSize != 4096 {
+	if len(body.Materials) != 1 || body.Materials[0].ID != "11111111-1111-4111-8111-111111111111" || body.Materials[0].Type != "textbook" || body.Materials[0].Author != "资料库收录" || body.Materials[0].Downloads != 12 || !body.Materials[0].DownloadAvailable || body.Materials[0].FileSize != 4096 {
 		t.Fatalf("browser materials = %#v", body.Materials)
 	}
 	if body.Statistics.MaterialCount != 1 || body.Statistics.DownloadStarts != 99 || body.Statistics.ReleaseID == "" || !strings.HasPrefix(body.RequestID, "req_") || body.RequestID != response.Header().Get("X-Request-Id") {

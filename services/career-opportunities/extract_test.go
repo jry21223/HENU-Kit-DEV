@@ -2,6 +2,7 @@ package career
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,9 @@ func TestNewOpenAICompatibleExtractorRejectsEmptyConfig(t *testing.T) {
 	}
 	if _, err := NewOpenAICompatibleExtractor(ExtractConfig{BaseURL: "https://ai.example", APIKey: "key"}); !errors.Is(err, ErrAIUnconfigured) {
 		t.Fatalf("config without model error = %v, want ErrAIUnconfigured", err)
+	}
+	if _, err := NewOpenAICompatibleExtractor(ExtractConfig{BaseURL: "not-a-url", APIKey: "key", Model: "model"}); !errors.Is(err, ErrAIUnconfigured) {
+		t.Fatalf("invalid URL error = %v, want ErrAIUnconfigured", err)
 	}
 }
 
@@ -41,7 +45,7 @@ func TestOpenAICompatibleExtractorParsesProviderResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := extract(context.Background(), "resume.pdf", []byte("简历内容"))
+	result, err := extract(context.Background(), "resume.txt", []byte("简历内容"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +57,58 @@ func TestOpenAICompatibleExtractorParsesProviderResponse(t *testing.T) {
 	}
 	if result.ResumeText != "校内项目经历" {
 		t.Fatalf("extracted resume_text = %q", result.ResumeText)
+	}
+}
+
+func TestOpenAICompatibleExtractorSendsPDFPagesAndReadableDOCXText(t *testing.T) {
+	var received any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		for _, message := range body.Messages {
+			if message.Role == "user" {
+				received = message.Content
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"target_roles\":\"后端开发\"}"}}]}`))
+	}))
+	defer upstream.Close()
+	extract, err := NewOpenAICompatibleExtractor(ExtractConfig{BaseURL: upstream.URL, APIKey: "test-key", Model: "test-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	received = nil
+	if _, err := extract(context.Background(), "resume.docx", testDOCX(t, "Backend Developer Go PostgreSQL")); err != nil {
+		t.Fatal(err)
+	}
+	docx, ok := received.(string)
+	if !ok || !strings.Contains(docx, "Backend Developer Go PostgreSQL") || strings.Contains(docx, "PK") {
+		t.Fatalf("provider received non-text DOCX content: %#v", received)
+	}
+
+	received = nil
+	if _, err := extract(context.Background(), "resume.pdf", testPDF("Backend Developer Go PostgreSQL")); err != nil {
+		t.Fatal(err)
+	}
+	parts, ok := received.([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("provider PDF content parts = %#v", received)
+	}
+	imagePart, ok := parts[1].(map[string]any)
+	if !ok || imagePart["type"] != "image_url" {
+		t.Fatalf("provider PDF image part = %#v", parts[1])
+	}
+	imageURL, ok := imagePart["image_url"].(map[string]any)
+	if !ok || !strings.HasPrefix(imageURL["url"].(string), "data:image/jpeg;base64,") {
+		t.Fatalf("provider PDF image URL = %#v", imagePart["image_url"])
 	}
 }
 
@@ -77,6 +133,23 @@ func TestOpenAICompatibleExtractorAcceptsMarkdownFencedJSON(t *testing.T) {
 	}
 }
 
+func TestNormalizeExtractedAcceptsBoundedKeywordListsAndNullJobType(t *testing.T) {
+	result, err := normalizeExtracted(`{
+		"target_roles":["Go 后端开发"],
+		"tech_stack":["Go","PostgreSQL"],
+		"locations":["郑州"],
+		"job_type":null,
+		"graduation_year":null,
+		"resume_text":"校内项目经历"
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TargetRoles != "Go 后端开发" || result.TechStack != "Go、PostgreSQL" || result.Locations != "郑州" || result.JobType != "" {
+		t.Fatalf("normalized multimodal response = %+v", result)
+	}
+}
+
 func TestOpenAICompatibleExtractorTruncatesToProfileLimits(t *testing.T) {
 	longRoles := strings.Repeat("岗", profileTargetRolesLimit+200)
 	longText := strings.Repeat("经", profileResumeTextLimit+500)
@@ -92,7 +165,7 @@ func TestOpenAICompatibleExtractorTruncatesToProfileLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := extract(context.Background(), "resume.pdf", []byte("简历"))
+	result, err := extract(context.Background(), "resume.txt", []byte("简历"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +202,7 @@ func TestOpenAICompatibleExtractorRejectsInvalidModelOutput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := extract(context.Background(), "resume.pdf", []byte("简历")); !errors.Is(err, ErrExtractionFailed) {
+			if _, err := extract(context.Background(), "resume.txt", []byte("简历")); !errors.Is(err, ErrExtractionFailed) {
 				t.Fatalf("extract error = %v, want ErrExtractionFailed", err)
 			}
 		})
@@ -147,8 +220,30 @@ func TestOpenAICompatibleExtractorSurfacesProviderFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := extract(context.Background(), "resume.pdf", []byte("简历")); !errors.Is(err, ErrExtractionFailed) {
+	if _, err := extract(context.Background(), "resume.txt", []byte("简历")); !errors.Is(err, ErrExtractionFailed) {
 		t.Fatalf("extract error = %v, want ErrExtractionFailed", err)
+	}
+}
+
+func TestOpenAICompatibleExtractorDoesNotForwardCredentialsAcrossRedirects(t *testing.T) {
+	targetHit := false
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		targetHit = true
+	}))
+	defer target.Close()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	defer upstream.Close()
+	extract, err := NewOpenAICompatibleExtractor(ExtractConfig{BaseURL: upstream.URL, APIKey: "secret-key", Model: "test-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extract(context.Background(), "resume.txt", []byte("简历")); !errors.Is(err, ErrExtractionFailed) {
+		t.Fatalf("redirect error = %v, want ErrExtractionFailed", err)
+	}
+	if targetHit {
+		t.Fatal("provider redirect was followed with a credential-bearing request")
 	}
 }
 

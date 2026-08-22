@@ -6,11 +6,17 @@ import { useReveal } from "@/components/account/use-reveal";
 import CareerScanStatusPanel from "@/components/career/career-scan-status-panel";
 import { formatPortalError } from "@/lib/api/client";
 import type { CareerJobType, CareerProfile, CareerSearch } from "@/lib/api/types";
-import { careerSearchStatusLabel, formatCareerSearchTime } from "@/lib/career/career-scan-state";
+import {
+  careerDigestStatusLabel,
+  careerSearchStatusLabel,
+  formatCareerSearchTime,
+} from "@/lib/career/career-scan-state";
 import {
   careerLifetimeRequiredMessage,
+  careerSearchCreateErrorMessage,
   isCareerLifetimeRequiredError,
   requestCareerSearch,
+  requestCareerSearchStatus,
 } from "@/lib/career/gateway";
 import { useCareerSearchPolling } from "@/lib/career/use-career-search-polling";
 
@@ -23,6 +29,7 @@ const JOB_TYPE_LABELS: Record<CareerJobType, string> = {
 
 type ScanState =
   | { kind: "idle" }
+  | { kind: "restoring" }
   | { kind: "starting" }
   | { kind: "error"; message: string };
 
@@ -30,27 +37,68 @@ type ScanState =
 export default function CareerReadyView({
   profile,
   searches,
+  requestedSearchID,
 }: {
   profile: CareerProfile;
   searches: CareerSearch[];
+  requestedSearchID: string | null;
 }) {
   useReveal();
-  const [scan, setScan] = useState<ScanState>({ kind: "idle" });
+  const [scan, setScan] = useState<ScanState>(
+    requestedSearchID || searches[0] ? { kind: "restoring" } : { kind: "idle" }
+  );
   // 幂等键：创建成功即消费置空；失败保留供重试复用，网关只会创建一次任务。
   const idempotencyKey = useRef<string | null>(null);
+  const restoreVersion = useRef(0);
   const { state: pollState, isPolling, start: startPolling } = useCareerSearchPolling();
 
   const latest = searches[0] ?? null;
+  // A historical deep link drives the result panel, but must not relabel that
+  // older task as the account's latest scan in the sidebar.
+  const displayedLatest = requestedSearchID ? latest : pollState?.search ?? latest;
 
-  // 刷新 / 重开恢复：本地无进行中任务时，取最近一条搜索恢复状态跟踪。
-  // runner 的 start 幂等：终态直接落展示、进行中恢复轮询，重复调用不会叠加循环。
+  // 邮件/历史深链必须读取 actor-scoped 的指定任务；普通刷新则恢复最近一条。
+  // completed 列表只带有界摘要，因此仍通过单条状态接口读取完整岗位。
   useEffect(() => {
-    if (latest) startPolling(latest);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+    const version = ++restoreVersion.current;
+    const restore = async () => {
+      await Promise.resolve();
+      if (cancelled || version !== restoreVersion.current) return;
+      const selected = requestedSearchID ? null : latest;
+      if (!requestedSearchID && !selected) {
+        if (!cancelled && version === restoreVersion.current) setScan({ kind: "idle" });
+        return;
+      }
+      setScan({ kind: "restoring" });
+      try {
+        if (requestedSearchID || selected?.status === "completed") {
+          const response = await requestCareerSearchStatus(requestedSearchID ?? selected!.id);
+          if (!cancelled && version === restoreVersion.current) {
+            startPolling(response.search);
+            setScan({ kind: "idle" });
+          }
+          return;
+        }
+        if (!cancelled && selected && version === restoreVersion.current) {
+          startPolling(selected);
+          setScan({ kind: "idle" });
+        }
+      } catch (error) {
+        if (!cancelled && version === restoreVersion.current) {
+          setScan({ kind: "error", message: formatPortalError(error) });
+        }
+      }
+    };
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, [latest, requestedSearchID, startPolling]);
 
   const startScan = useCallback(async () => {
-    if (scan.kind === "starting" || isPolling) return;
+    if (scan.kind === "starting" || scan.kind === "restoring" || isPolling) return;
+    restoreVersion.current += 1;
     setScan({ kind: "starting" });
     if (!idempotencyKey.current) {
       idempotencyKey.current = `career:scan-${crypto.randomUUID()}`;
@@ -78,7 +126,7 @@ export default function CareerReadyView({
         kind: "error",
         message: isCareerLifetimeRequiredError(error)
           ? careerLifetimeRequiredMessage()
-          : formatPortalError(error),
+          : careerSearchCreateErrorMessage(error),
       });
     }
   }, [profile, scan.kind, isPolling, startPolling]);
@@ -120,11 +168,13 @@ export default function CareerReadyView({
           <div data-enter className="mt-8 flex flex-wrap items-center gap-4">
             <button
               type="button"
-              disabled={scan.kind === "starting" || isPolling}
+              disabled={scan.kind === "starting" || scan.kind === "restoring" || isPolling}
               onClick={() => void startScan()}
               className="inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
             >
-              {scan.kind === "starting"
+              {scan.kind === "restoring"
+                ? "正在恢复任务…"
+                : scan.kind === "starting"
                 ? "正在创建任务…"
                 : isPolling
                   ? "扫描进行中…"
@@ -167,19 +217,21 @@ export default function CareerReadyView({
                 全部历史 →
               </Link>
             </div>
-            {latest ? (
+            {displayedLatest ? (
               <div className="mt-4 border-t border-line pt-4">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-mono text-[11px] tracking-wider text-ink/70">
                     最近一次
                   </span>
                   <span className="border border-ink/30 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/60">
-                    {careerSearchStatusLabel(latest.status)}
+                    {careerSearchStatusLabel(displayedLatest.status)}
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-5 text-ink/55">
-                  {formatCareerSearchTime(latest.created_at)}
-                  {latest.has_email ? " · 邮件简报已开启" : ""}
+                  {formatCareerSearchTime(displayedLatest.created_at)}
+                  {careerDigestStatusLabel(displayedLatest)
+                    ? ` · ${careerDigestStatusLabel(displayedLatest)}`
+                    : ""}
                 </p>
               </div>
             ) : (

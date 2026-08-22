@@ -54,7 +54,7 @@ export function extractionFailedMessage(errorCode?: string): string {
     case "FILE_TOO_LARGE":
       return "简历文件超过 10 MB 上限，请压缩后重试";
     case "EXTRACT_FAILED":
-      return "简历识别失败，请重试或手动填写画像";
+      return "简历识别失败，请确认 PDF 不超过 10 页，必要时压缩或删页后重试；也可手动填写画像";
     default:
       return "简历识别未完成，请稍后重试";
   }

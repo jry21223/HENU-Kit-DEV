@@ -22,8 +22,6 @@ const BASE_POST: FoodPost = {
   tags: ["夜市", "夯"],
   shop: {
     name: "鼓楼夜市",
-    lat: 34.7972,
-    lng: 114.3073,
   },
   time: "2026-07-16",
   hidden: false,
@@ -36,7 +34,8 @@ describe("buildFoodVenueDetail", () => {
 
     expect(detail.tier?.label).toBe("夯");
     expect(detail.location).toBe("鼓楼夜市");
-    expect(detail.coordinates).toBe("34.7972, 114.3073");
+    expect(detail).not.toHaveProperty("coordinates");
+    expect(detail).not.toHaveProperty("mapUrl");
     expect(detail.priceReference).toBe("人均 ¥25–50");
     expect(detail.hoursReference).toBeNull();
     expect(detail.source).toEqual({
@@ -52,9 +51,6 @@ describe("buildFoodVenueDetail", () => {
       "https://example.com/cover.jpg",
       "https://example.com/environment.jpg",
     ]);
-    expect(detail.mapUrl).toContain(
-      encodeURIComponent(BASE_POST.shop.name)
-    );
   });
 
   it("does not reinterpret an arbitrary editorial list as recommended dishes", () => {
@@ -77,6 +73,7 @@ describe("buildFoodVenueDetail", () => {
     const detail = buildFoodVenueDetail({
       ...BASE_POST,
       blocks: [
+        { type: "p", text: "营业时间参考：11:00–21:00" },
         { type: "h2", text: "点什么" },
         { type: "img", src: "https://example.com/menu.jpg" },
         {
@@ -90,5 +87,27 @@ describe("buildFoodVenueDetail", () => {
       { name: "招牌烩面", note: "汤底浓郁" },
       { name: "糖醋里脊", note: "酸甜口" },
     ]);
+    expect(detail.hoursReference).toBe("11:00–21:00");
+  });
+
+  it("round-trips an explicit submitted price reference without inventing a currency format", () => {
+    const detail = buildFoodVenueDetail({
+      ...BASE_POST,
+      blocks: [{ type: "p", text: "价格参考：18元" }],
+    });
+
+    expect(detail.priceReference).toBe("18元");
+  });
+
+  it("does not expose zero coordinates and formats owner timestamps for China", () => {
+    const detail = buildFoodVenueDetail({
+      ...BASE_POST,
+      shop: { name: "待补位置的店" },
+      time: "2026-08-18T00:30:41Z",
+    });
+
+    expect(detail).not.toHaveProperty("coordinates");
+    expect(detail).not.toHaveProperty("mapUrl");
+    expect(detail.source.publishedAt).toBe("2026-08-18 08:30");
   });
 });

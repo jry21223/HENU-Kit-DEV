@@ -9,7 +9,6 @@
 - Mock data layer and deterministic SSR rendering (mulberry32 seeded PRNG).
 - GSAP animation system with prefers-reduced-motion respect.
 - Three.js 3D hero scenes (homepage and practice bank hero).
-- Leaflet map integration for food post locations.
 
 ## Does not own
 
@@ -52,7 +51,7 @@ zero.
 
 ## Tech stack
 
-Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigger/Observer. Three.js via @react-three/fiber. Leaflet + react-leaflet. No external state library. No charting library (hand-written SVG charts).
+Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigger/Observer. Three.js via @react-three/fiber. No external state library. No charting library (hand-written SVG charts).
 
 ## Key terms
 

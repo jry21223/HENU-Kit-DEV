@@ -15,7 +15,7 @@ const POST = {
   likes: 0,
   stars: 0,
   tags: ["夯"],
-  shop: { name: "西门小馆", lat: 0, lng: 0 },
+  shop: { name: "西门小馆" },
   time: "2030-01-01T00:00:00Z",
   hidden: false,
   images: [],

@@ -46,7 +46,6 @@ export interface RankableFoodPost {
   id: string;
   campus: string;
   tags: string[];
-  likes: number;
   hidden: boolean;
 }
 
@@ -91,8 +90,8 @@ export function groupFoodPostsByTier<T extends RankableFoodPost>(
 
   return FOOD_TIERS.map((tier) => ({
     tier,
-    posts: (postsByTier.get(tier.key) ?? []).sort(
-      (left, right) => right.likes - left.likes || left.id.localeCompare(right.id)
-    ),
+    // Food currently owns no like fact. Preserve the owner response order
+    // (newest first) instead of manufacturing popularity from zeroes.
+    posts: postsByTier.get(tier.key) ?? [],
   }));
 }

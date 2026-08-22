@@ -28,6 +28,13 @@ export function isCareerScanTerminal(search: CareerSearch): boolean {
   return search.status === "completed" || search.status === "failed";
 }
 
+export function needsCareerDigestFollowup(search: CareerSearch): boolean {
+  return (
+    search.status === "completed" &&
+    (search.digest_status === "sending" || search.digest_status === "retry")
+  );
+}
+
 const STATUS_LABELS: Record<CareerSearch["status"], string> = {
   queued: "排队中",
   running: "扫描中",
@@ -37,6 +44,25 @@ const STATUS_LABELS: Record<CareerSearch["status"], string> = {
 
 export function careerSearchStatusLabel(status: CareerSearch["status"]): string {
   return STATUS_LABELS[status];
+}
+
+/** Browser copy for the durable digest-enqueue ledger. "sent" means
+ * Platform Core accepted the mail into its queue; it never claims inbox
+ * delivery. */
+export function careerDigestStatusLabel(search: CareerSearch): string | null {
+  switch (search.digest_status) {
+    case "sent":
+      return "邮件简报已进入发送队列";
+    case "retry":
+      return "邮件简报发送暂时失败，系统正在重试";
+    case "sending":
+      return "正在将邮件简报加入发送队列";
+    case "skipped":
+      return "未启用邮件简报";
+    default:
+      if (search.has_email) return "邮件简报已进入发送队列";
+      return search.status === "completed" ? "历史任务无邮件状态" : null;
+  }
 }
 
 const STAGE_LABELS: Partial<Record<CareerSearchStage, string>> = {
@@ -95,6 +121,7 @@ export function createCareerScanRunner(
   const intervalMs = options.intervalMs ?? CAREER_POLL_INTERVAL_MS;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let stopped = true;
+  let generation = 0;
   let lastSearch: CareerSearch | null = null;
   let state: CareerScanPollState | null = null;
 
@@ -110,32 +137,40 @@ export function createCareerScanRunner(
     options.onState(next);
   }
 
-  function scheduleNext() {
-    if (stopped) return;
+  function scheduleNext(expectedGeneration = generation) {
+    if (stopped || expectedGeneration !== generation) return;
     timer = setTimeout(() => {
       timer = null;
-      void tick();
+      void tick(expectedGeneration);
     }, intervalMs);
   }
 
-  async function tick() {
-    if (stopped || !lastSearch) return;
+  async function tick(expectedGeneration: number) {
+    if (stopped || expectedGeneration !== generation || !lastSearch) return;
+    const searchID = lastSearch.id;
     let search: CareerSearch;
     try {
-      search = await options.fetchStatus(lastSearch.id);
+      search = await options.fetchStatus(searchID);
     } catch {
+      if (stopped || expectedGeneration !== generation) return;
       // 瞬态失败：保留最近状态继续轮询，并透出一条可读提示。
       if (!stopped) {
-        emit({ kind: "active", search: lastSearch, pollError: "状态读取失败，正在自动重试" });
+        if (lastSearch.status !== "completed") {
+          emit({ kind: "active", search: lastSearch, pollError: "状态读取失败，正在自动重试" });
+        }
       }
-      scheduleNext();
+      scheduleNext(expectedGeneration);
       return;
     }
-    if (stopped) return;
+    if (stopped || expectedGeneration !== generation) return;
     lastSearch = search;
     if (search.status === "completed") {
-      stop();
       emit({ kind: "completed", search });
+      if (needsCareerDigestFollowup(search)) {
+        scheduleNext(expectedGeneration);
+      } else {
+        stop();
+      }
       return;
     }
     if (search.status === "failed") {
@@ -144,11 +179,12 @@ export function createCareerScanRunner(
       return;
     }
     emit({ kind: "active", search, pollError: null });
-    scheduleNext();
+    scheduleNext(expectedGeneration);
   }
 
   function stop() {
     stopped = true;
+    generation += 1;
     clearTimer();
   }
 
@@ -156,11 +192,16 @@ export function createCareerScanRunner(
     start(search) {
       // 无论是否已在轮询都先复位：保证同时只有一条循环。
       clearTimer();
+      generation += 1;
       stopped = false;
       lastSearch = search;
       if (search.status === "completed") {
-        stop();
         emit({ kind: "completed", search });
+        if (needsCareerDigestFollowup(search)) {
+          scheduleNext(generation);
+        } else {
+          stop();
+        }
         return;
       }
       if (search.status === "failed") {
@@ -169,7 +210,7 @@ export function createCareerScanRunner(
         return;
       }
       emit({ kind: "active", search, pollError: null });
-      scheduleNext();
+      scheduleNext(generation);
     },
     stop,
     getState() {
