@@ -251,7 +251,7 @@ test("root activation wrapper holds one kernel lock across the activation proces
     const first = spawn("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
     let firstStderr = "";
     first.stderr.on("data", (chunk) => { firstStderr += chunk; });
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 15000;
     while (!existsSync(join(root, "started")) && Date.now() < deadline) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
     }

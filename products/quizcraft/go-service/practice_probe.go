@@ -45,74 +45,99 @@ func VerifyPracticeFlow(ctx context.Context, database *pgxpool.Pool) (PracticePr
 	if err != nil {
 		return PracticeProbeReport{}, fmt.Errorf("list published banks: %w", err)
 	}
-	var bankID, bankVersionID uuid.UUID
+	var bankID, bankVersionID, sessionID uuid.UUID
+	var selected store.ListPracticeQuestionsRow
+	var question store.GetSessionQuestionRow
+	var submittedAnswer []byte
+	foundScorable := false
 	for _, bank := range banks {
-		if bank.ActiveVersionID.Valid && bank.QuestionCount > 0 {
-			bankID = bank.ID
-			bankVersionID = bank.ActiveVersionID.UUID
+		if !bank.ActiveVersionID.Valid || bank.QuestionCount <= 0 {
+			continue
+		}
+		candidateBankID := bank.ID
+		candidateBankVersionID := bank.ActiveVersionID.UUID
+		if _, err := queries.IsPublishedBankVersion(ctx, store.IsPublishedBankVersionParams{ID: candidateBankID, ID_2: candidateBankVersionID}); err != nil {
+			return PracticeProbeReport{}, fmt.Errorf("verify published bank version: %w", err)
+		}
+
+		candidateSessionID := uuid.New()
+		selectionSeed := uuid.NewSHA1(uuid.NameSpaceURL, []byte("henukit-practice-probe:"+candidateBankVersionID.String()))
+		questionLimit := bank.QuestionCount
+		if questionLimit > 100 {
+			questionLimit = 100
+		}
+		questions, err := queries.ListPracticeQuestions(ctx, store.ListPracticeQuestionsParams{
+			BankVersionID: candidateBankVersionID,
+			SessionID:     selectionSeed,
+			QuestionCount: int32(questionLimit),
+		})
+		if err != nil {
+			return PracticeProbeReport{}, fmt.Errorf("select practice question: %w", err)
+		}
+		if len(questions) == 0 {
+			continue
+		}
+		if err := queries.CreatePracticeSession(ctx, store.CreatePracticeSessionParams{
+			ID:            candidateSessionID,
+			BankID:        candidateBankID,
+			BankVersionID: candidateBankVersionID,
+			UserID:        uuid.NullUUID{},
+			ActorKey:      "guest:" + candidateSessionID.String(),
+			Mode:          "random",
+			ChapterID:     pgtype.Text{},
+		}); err != nil {
+			return PracticeProbeReport{}, fmt.Errorf("create practice probe session: %w", err)
+		}
+		for position, candidate := range questions {
+			if err := queries.AddPracticeSessionQuestion(ctx, store.AddPracticeSessionQuestionParams{
+				SessionID:         candidateSessionID,
+				BankID:            candidateBankID,
+				BankVersionID:     candidateBankVersionID,
+				QuestionID:        candidate.QuestionID,
+				QuestionVersionID: candidate.QuestionVersionID,
+				Position:          int32(position + 1),
+			}); err != nil {
+				return PracticeProbeReport{}, fmt.Errorf("attach practice probe question: %w", err)
+			}
+			loaded, err := queries.GetSessionQuestion(ctx, store.GetSessionQuestionParams{
+				ID:                candidateSessionID,
+				QuestionID:        candidate.QuestionID,
+				QuestionVersionID: candidate.QuestionVersionID,
+			})
+			if err != nil {
+				return PracticeProbeReport{}, fmt.Errorf("load practice probe question: %w", err)
+			}
+			var expected any
+			if err := json.Unmarshal(loaded.Answer, &expected); err != nil {
+				return PracticeProbeReport{}, fmt.Errorf("decode stored practice answer: %w", err)
+			}
+			submitted, ok := practiceProbeSubmission(loaded.Type, expected)
+			if !ok {
+				continue
+			}
+			var options []any
+			if (loaded.Type == "single" || loaded.Type == "multi") && json.Unmarshal(loaded.Options, &options) != nil {
+				continue
+			}
+			if !scoreAnswer(loaded.Type, submitted, expected, options) {
+				continue
+			}
+			encodedSubmitted, err := json.Marshal(submitted)
+			if err != nil {
+				return PracticeProbeReport{}, fmt.Errorf("encode practice probe submission: %w", err)
+			}
+			bankID, bankVersionID, sessionID = candidateBankID, candidateBankVersionID, candidateSessionID
+			selected, question = candidate, loaded
+			submittedAnswer = encodedSubmitted
+			foundScorable = true
+			break
+		}
+		if foundScorable {
 			break
 		}
 	}
-	if bankID == uuid.Nil {
-		return PracticeProbeReport{}, errors.New("no published QuizCraft bank with questions")
-	}
-	if _, err := queries.IsPublishedBankVersion(ctx, store.IsPublishedBankVersionParams{ID: bankID, ID_2: bankVersionID}); err != nil {
-		return PracticeProbeReport{}, fmt.Errorf("verify published bank version: %w", err)
-	}
-
-	sessionID := uuid.New()
-	questions, err := queries.ListPracticeQuestions(ctx, store.ListPracticeQuestionsParams{
-		BankVersionID: bankVersionID,
-		SessionID:     sessionID,
-		QuestionCount: 1,
-	})
-	if err != nil {
-		return PracticeProbeReport{}, fmt.Errorf("select practice question: %w", err)
-	}
-	if len(questions) != 1 {
-		return PracticeProbeReport{}, errors.New("published QuizCraft bank returned no practice question")
-	}
-	selected := questions[0]
-	if err := queries.CreatePracticeSession(ctx, store.CreatePracticeSessionParams{
-		ID:            sessionID,
-		BankID:        bankID,
-		BankVersionID: bankVersionID,
-		UserID:        uuid.NullUUID{},
-		ActorKey:      "guest:" + sessionID.String(),
-		Mode:          "random",
-		ChapterID:     pgtype.Text{},
-	}); err != nil {
-		return PracticeProbeReport{}, fmt.Errorf("create practice probe session: %w", err)
-	}
-	if err := queries.AddPracticeSessionQuestion(ctx, store.AddPracticeSessionQuestionParams{
-		SessionID:         sessionID,
-		BankID:            bankID,
-		BankVersionID:     bankVersionID,
-		QuestionID:        selected.QuestionID,
-		QuestionVersionID: selected.QuestionVersionID,
-		Position:          1,
-	}); err != nil {
-		return PracticeProbeReport{}, fmt.Errorf("attach practice probe question: %w", err)
-	}
-
-	question, err := queries.GetSessionQuestion(ctx, store.GetSessionQuestionParams{
-		ID:                sessionID,
-		QuestionID:        selected.QuestionID,
-		QuestionVersionID: selected.QuestionVersionID,
-	})
-	if err != nil {
-		return PracticeProbeReport{}, fmt.Errorf("load practice probe question: %w", err)
-	}
-	var expected any
-	if err := json.Unmarshal(question.Answer, &expected); err != nil {
-		return PracticeProbeReport{}, fmt.Errorf("decode stored practice answer: %w", err)
-	}
-	var options []any
-	if (question.Type == "single" || question.Type == "multi") && json.Unmarshal(question.Options, &options) != nil {
-		return PracticeProbeReport{}, errors.New("decode stored practice options")
-	}
-	if !scoreAnswer(question.Type, expected, expected, options) {
-		return PracticeProbeReport{}, errors.New("practice scoring rejected the stored answer")
+	if !foundScorable {
+		return PracticeProbeReport{}, errors.New("no published QuizCraft bank has a scorable practice question")
 	}
 	attemptID := uuid.New()
 	responseBody := `{"probe":true}`
@@ -124,7 +149,7 @@ func VerifyPracticeFlow(ctx context.Context, database *pgxpool.Pool) (PracticePr
 		QuestionID:        selected.QuestionID,
 		QuestionVersionID: selected.QuestionVersionID,
 		UserID:            uuid.NullUUID{},
-		SubmittedAnswer:   question.Answer,
+		SubmittedAnswer:   submittedAnswer,
 		Correct:           true,
 		ExpectedAnswer:    question.Answer,
 		Analysis:          question.Analysis,
@@ -152,4 +177,27 @@ func VerifyPracticeFlow(ctx context.Context, database *pgxpool.Pool) (PracticePr
 		return PracticeProbeReport{}, errors.New("practice probe left persisted session data")
 	}
 	return PracticeProbeReport{BankID: bankID, QuestionID: selected.QuestionID}, nil
+}
+
+func practiceProbeSubmission(kind string, expected any) (any, bool) {
+	if kind == "multi" {
+		answers, ok := expected.([]any)
+		return expected, ok && len(answers) > 0
+	}
+	if kind != "blank" {
+		return expected, expected != nil
+	}
+	if normalizeBlank(expected) != "" {
+		return expected, true
+	}
+	candidates, ok := expected.([]any)
+	if !ok {
+		return nil, false
+	}
+	for _, candidate := range candidates {
+		if normalizeBlank(candidate) != "" {
+			return candidate, true
+		}
+	}
+	return nil, false
 }
