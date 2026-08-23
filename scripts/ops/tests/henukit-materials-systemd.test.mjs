@@ -26,6 +26,11 @@ test("materials unit templates keep the receiver unprivileged and confine the pr
   assert.match(runner, /^ExecStart=\/usr\/local\/bin\/henukit-deploy-webhook materials-run$/m);
   assert.doesNotMatch(runner, /^StateDirectory=/m, "root runner must not take ownership away from the receiver");
   assert.match(runner, /^NoNewPrivileges=yes$/m);
+  assert.match(
+    runner,
+    /^RestrictSUIDSGID=no$/m,
+    "the root runner must retain the tested ability to drop to henukit-deploy during preparation",
+  );
   assert.match(runner, /^ProtectSystem=strict$/m);
   assert.match(runner, /^ReadWritePaths=\/var\/lib\/henukit-materials-webhook \/opt\/henukit-materials$/m);
   assert.doesNotMatch(receiver, /(?:henukit-materials-seal|docker|psql|\/opt\/henukit-materials|HENUKIT_MATERIALS_DATABASE_URL|HENUKIT_MATERIALS_PUBLIC_ROOT)/i);

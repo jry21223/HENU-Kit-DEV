@@ -60,6 +60,10 @@ OSS publish 和 Library activation。C0 仍按 authenticated SHA 独立拉取并
    存在旧 `.attempt.*`，先保持 path/runner 停用，证明没有 running event、进程或打开文件，
    再只以 `henukit-deploy` 身份删除已核对的 direct child。不得删除 candidate root、queue、
    processed/failed、sealed `.audit`、`ACTIVE_RELEASE`、journal、fence 或当前 public release。
+8. `henukit-materials-runner.service` 必须保留 `NoNewPrivileges=yes`，但不能同时设置
+   `RestrictSUIDSGID=yes`。该 runner 以 root 进入固定 orchestrator，再有意通过 `runuser`
+   降权执行 prepare；生产 systemd 在两项组合时会以 `EPERM` 阻断这次 UID 转换，使流程在
+   Git、OSS 与数据库操作之前失败。receiver 仍保留自己的完整非特权沙箱。
 
 ## 激活、故障恢复与维护围栏
 
@@ -79,6 +83,17 @@ OSS publish 和 Library activation。C0 仍按 authenticated SHA 独立拉取并
 identity 幂等收敛。历史 `database_running` journal 不会恢复已退役 Study importer，必须保持
 围栏并人工核对；历史 `database_committed` 只允许完成 marker。不要手工删除 fence、journal 或修改
 `current`，否则会丢失恢复依据。
+
+若 runner 在 prepare 开始前因 unit/sandbox 故障退出，latest-arrival Store 会把原事件及错误
+保留到 `failed/`，不会把它伪装成成功。修复并部署 unit 后，保持 path 停用，确认
+queue/running 为空、HENU-Final `main` 仍是该 exact SHA，随后只在 GitHub 仓库 Webhooks 的
+原 push delivery 上执行 **Redeliver**。GitHub 重投会保留原 `X-GitHub-Delivery` 并重新携带
+有效 HMAC；failed 记录不参与 receiver dedupe，因此同一真实事件可重新入队且原失败审计仍
+保留。不得运行 generic `retry`、复制/编辑 queue JSON、删除 failed marker、伪造 webhook，
+也不得用空提交代替真实重投。重投到达后、重新启用 path 前，必须确认 receiver 返回
+`queued=true`、`duplicate=false`，queue latest 仍是该 exact delivery GUID 与 SHA，并再次确认
+HENU-Final `main` 仍是同一 SHA；任一项不一致都保持 path 停用并人工核对。启用后继续核对
+runner 日志中的 delivery 与 SHA。
 
 激活前必须验证 sealed receipt 的 `slides.status` 为 `disabled`，派生目录为空且 canonical
 digest 等于空列表；任一派生预览资产、converter 参数或旧 `--slides-dir` 参数都必须失败关闭。
