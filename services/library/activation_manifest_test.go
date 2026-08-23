@@ -1,6 +1,7 @@
 package library
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -220,4 +221,46 @@ func TestReviewedManifestAcceptsCanonicalProvenanceFields(t *testing.T) {
 	if len(manifest.Subjects) != 1 || len(manifest.Subjects[0].Assets) != 1 {
 		t.Fatalf("decoded manifest shape = %#v", manifest)
 	}
+}
+
+func TestReviewedManifestAcceptsDocumentedAndExistingYearShapes(t *testing.T) {
+	for _, year := range []string{`"2026"`, `2026`, `null`} {
+		t.Run(year, func(t *testing.T) {
+			var manifest reviewedManifest
+			if err := decodeSingleJSON(reviewedManifestWithYear(year), &manifest); err != nil {
+				t.Fatalf("reviewed manifest year %s was rejected: %v", year, err)
+			}
+		})
+	}
+}
+
+func TestReviewedManifestRejectsUnsupportedYearShapes(t *testing.T) {
+	for _, year := range []string{`true`, `{}`, `[]`, `2026.5`, `2e3`} {
+		t.Run(year, func(t *testing.T) {
+			var manifest reviewedManifest
+			if err := decodeSingleJSON(reviewedManifestWithYear(year), &manifest); err == nil {
+				t.Fatalf("unsupported reviewed manifest year %s was accepted", year)
+			}
+		})
+	}
+}
+
+func reviewedManifestWithYear(year string) []byte {
+	return []byte(fmt.Sprintf(`{
+  "version": 1,
+  "generatedAt": "2026-08-23T00:00:00Z",
+  "subjects": [{
+    "name": "高等数学",
+    "note": "受审资料",
+    "assets": [{
+      "subject": "高等数学",
+      "role": "复习讲义",
+      "title": "讲义.pdf",
+      "publicPath": "高等数学/复习讲义/讲义.pdf",
+      "bytes": 1,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "year": %s
+    }]
+  }]
+}`, year))
 }

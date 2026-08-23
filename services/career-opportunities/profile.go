@@ -2,6 +2,7 @@ package career
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -55,6 +56,7 @@ func (h *service) updateProfile(w http.ResponseWriter, r *http.Request) {
 	if _, ok := decode(w, r, &input); !ok {
 		return
 	}
+	input.TargetRoles = strings.TrimSpace(input.TargetRoles)
 	if !validProfileInput(input) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_PROFILE", "career profile is invalid")
 		return
@@ -72,6 +74,9 @@ func (h *service) updateProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func validProfileInput(input profileInput) bool {
+	if strings.TrimSpace(input.TargetRoles) == "" {
+		return false
+	}
 	switch input.JobType {
 	case "", "daily_intern", "summer_intern", "campus_recruit":
 	default:

@@ -48,6 +48,25 @@ export default function CareerPage() {
     };
   }, [requestState]);
 
+  useEffect(() => {
+    let refreshTimer: number | null = null;
+    const scheduleRefresh = () => {
+      if (document.visibilityState !== "visible" || refreshTimer !== null) return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        const version = ++requestVersion.current;
+        requestState(version);
+      }, 50);
+    };
+    window.addEventListener("focus", scheduleRefresh);
+    document.addEventListener("visibilitychange", scheduleRefresh);
+    return () => {
+      window.removeEventListener("focus", scheduleRefresh);
+      document.removeEventListener("visibilitychange", scheduleRefresh);
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+    };
+  }, [requestState]);
+
   return (
     <main className="mx-auto max-w-7xl px-5 py-16 md:px-10">
       <SectionHeading index="05" en="WORK RADAR" title="求职雷达" />

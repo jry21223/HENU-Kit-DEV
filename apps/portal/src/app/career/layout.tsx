@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function CareerLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-svh bg-paper text-ink">
+    <div data-career-layout className="min-h-svh bg-blueprint bg-paper text-ink">
       <CareerNav />
       {children}
     </div>

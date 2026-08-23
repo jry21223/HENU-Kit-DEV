@@ -82,6 +82,10 @@ let loaded = false;
 export async function initCareerGateway(): Promise<void> {
   if (loaded) return;
 
+  await refreshCareerGateway();
+}
+
+async function refreshCareerGateway(): Promise<void> {
   if (!hasGateway) {
     if (mockAllowed) {
       loaded = true;
@@ -138,7 +142,10 @@ export interface CareerDataResult {
  * 失败时 mock 允许则返回空占位，否则返回 formatPortalError 文案。
  */
 export async function loadCareerData(): Promise<CareerDataResult> {
-  await initCareerGateway();
+  // Career profile data is user-scoped and mutable. Re-read the no-store API
+  // on every page entry so a profile saved in the account console (or another
+  // device) cannot be hidden behind the client bootstrap's earlier snapshot.
+  await refreshCareerGateway();
 
   const profile = getCareerProfileData();
   const searches = getCareerSearches();
@@ -224,5 +231,9 @@ export async function requestCareerProfileUpdate(
       request_id: "mock-career-profile",
     };
   }
-  return updateCareerProfile(profile);
+  const response = await updateCareerProfile(profile);
+  profileCache = response.profile;
+  loaded = true;
+  lastError = null;
+  return response;
 }
