@@ -29,6 +29,13 @@ root runner 不接受 payload 指定命令、路径或数据库：它核对 root
 Library owner activate。不要运行退休的
 `sync-henukit-materials.sh` 或 `henukit-materials-sync.sh`，也不要建立第二套 webhook/service。
 
+准备阶段的 detached checkout 与 reviewed-asset mirror 只是临时校验字节，不是审计或恢复依据。
+非特权 prepare wrapper 在成功和失败路径都会删除本次 exact direct-child
+`.attempt.<10 位字母数字>`，确认删除后才向 root runner 返回 locator；清理失败必须阻断 seal、
+OSS publish 和 Library activation。C0 仍按 authenticated SHA 独立拉取并校验源仓库，sealed
+`.audit` 只保留 locator 与 release/receipt 的相关性。因此 runner 空闲时
+`/var/lib/henukit-materials-webhook/candidates` 应为空。
+
 ## 启用前
 
 1. 只使用 `docs/operations/henukit-artifact-deployment.md` 的正式流程部署签名 runtime；生产侧
@@ -48,6 +55,11 @@ Library owner activate。不要运行退休的
    release-prefixed 和 legacy URL）固定返回 no-store `404`，不得映射或回退到本地文件。
 6. 先保持 `henukit-materials-webhook.path` disabled；完成 Library schema 核验、备份和回滚演练后
    才 `systemctl enable --now henukit-materials-webhook.path`。
+7. 按 manifest 中非待复核资料的 `bytes` 总和核对磁盘峰值；prepare 与 seal 都会独立拉取并
+   校验 exact SHA，且激活前必须同时保留上一 sealed/public release。若 idle candidate root
+   存在旧 `.attempt.*`，先保持 path/runner 停用，证明没有 running event、进程或打开文件，
+   再只以 `henukit-deploy` 身份删除已核对的 direct child。不得删除 candidate root、queue、
+   processed/failed、sealed `.audit`、`ACTIVE_RELEASE`、journal、fence 或当前 public release。
 
 ## 激活、故障恢复与维护围栏
 
