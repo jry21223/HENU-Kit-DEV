@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-const MODULE_ROUTES = ["/campus", "/food", "/library", "/practice"] as const;
+const MODULE_ROUTES = ["/campus", "/career", "/food", "/library", "/practice"] as const;
 const VIEWPORTS = [360, 390, 430, 768] as const;
 
 async function expectNoPageOverflow(page: Page) {

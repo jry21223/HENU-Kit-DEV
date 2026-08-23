@@ -21,7 +21,7 @@ export default function CareerNav() {
               ← henukit
             </Link>
             <span className="font-display text-base font-bold tracking-tight">
-              WORK<span className="text-accent">®</span>RADAR
+              WORK RADAR<span className="text-accent">®</span>
             </span>
           </div>
           <div className="md:hidden">

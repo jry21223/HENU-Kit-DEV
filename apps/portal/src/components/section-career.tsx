@@ -4,7 +4,13 @@ import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import WorkRadar from "@/components/career/work-radar";
 
-const FEATURES = ["扫描大厂招聘官网", "按求职画像筛选匹配岗位", "完成后邮件提醒"];
+// 首页文案只承诺已授权来源能做到的事：来源由服务端 allowlist 控制
+// （首发只有美团官方校招接口），邮件只发到已验证的账户邮箱。
+const FEATURES = [
+  "扫描受控的官方招聘来源",
+  "按求职画像筛选匹配岗位",
+  "完成后向已验证的账户邮箱发送结果简报",
+];
 
 export default function SectionCareer() {
   return (
@@ -25,22 +31,16 @@ export default function SectionCareer() {
             ))}
           </ul>
           <MagneticButton href="/career" className="mt-8">
-            查看交互预览
+            进入求职雷达
           </MagneticButton>
           <p className="mt-5 font-mono text-[10px] tracking-[0.18em] text-ink/40">
-            INTERACTION PREVIEW · LIFETIME VIP BENEFIT
+            RADAR SCHEMATIC · LIFETIME VIP BENEFIT
           </p>
         </div>
 
         <div className="md:pl-4">
-          <WorkRadar
-            compact
-            status="running"
-            sourcesCompleted={7}
-            sourcesTotal={16}
-            jobsFound={34}
-            matched={6}
-          />
+          {/* 装饰用示意表盘：不接任何真实计数，读数区不渲染。 */}
+          <WorkRadar compact schematic />
         </div>
       </div>
     </section>

@@ -319,6 +319,98 @@ test("/career keeps free members off the scan entry and points at ¥9.9 membersh
   await expect(page.getByRole("button", { name: /开始扫描/ })).toHaveCount(0);
 });
 
+const completedSearch = {
+  id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  status: "completed",
+  user_id: sessionUserID,
+  has_email: true,
+  digest_status: "sent",
+  created_at: "2026-08-20T09:30:00Z",
+  result: {
+    source_count: 1,
+    job_count: 24,
+    matched_count: 3,
+    summary: "本次扫描覆盖 1 个受控官方来源，命中 3 个达到阈值的岗位。",
+    jobs: [] as unknown[],
+  },
+};
+
+async function mockLifetimeCareer(
+  page: Page,
+  searches: Array<Record<string, unknown>> = []
+) {
+  await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches/*", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ search: searches[0], request_id: "req_search" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches, request_id: "req_searches" }),
+    });
+  });
+}
+
+// 页头曾经重复：页面渲染一次 SectionHeading（首页的 05 编号），每个状态视图
+// 又渲染一次自己的 R-0x 眉标 + 标题，且整页没有 h1。锁死「每页正好一个 h1」。
+test("career pages carry exactly one h1 and their own document title", async ({ page }) => {
+  await mockLifetimeCareer(page, [completedSearch]);
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-state="lifetime-ready"]')).toBeVisible();
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator("h1")).toHaveText("求职画像已就绪");
+  await expect(page).toHaveTitle("求职雷达 | HENU Kit");
+
+  await page.goto("/career/history", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-history-state="ready"]')).toBeVisible();
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator("h1")).toHaveText("扫描历史");
+  await expect(page).toHaveTitle("扫描历史 — henukit 求职雷达");
+});
+
+// 表盘只反映服务端确认的状态与推荐数：completed 时点亮 matched_count 个目标，
+// 进行中不按进度估算点亮任何一个，装饰示意图完全不渲染读数。
+test("the work radar dial reflects only server-confirmed scan facts", async ({ page }) => {
+  await mockLifetimeCareer(page, [completedSearch]);
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
+
+  const dial = page.locator('svg[aria-label="求职雷达状态：已完成"]');
+  await expect(dial).toBeVisible();
+  // result.matched_count === 3 → 三个目标点亮，其余保持未命中。
+  await expect(dial.locator("[data-radar-blip]")).toHaveCount(3);
+  await expect(dial.locator("[data-radar-ping]")).toHaveCount(3);
+});
+
+test("the marketing radar is labelled a schematic and claims no counts", async ({ page }) => {
+  await page.route("**/api/v1/session", async (route) => {
+    await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-state="anonymous"]')).toBeVisible();
+  await expect(page.locator('svg[aria-label="求职雷达示意图"]')).toBeVisible();
+  await expect(page.getByText("SCHEMATIC")).toBeVisible();
+  // 读数区（SOURCES / JOBS FOUND / MATCHED）不得出现在示意表盘上。
+  await expect(page.getByText("JOBS FOUND")).toHaveCount(0);
+});
+
 test("/career renders the ready view for a lifetime member with a complete profile", async ({ page }) => {
   await mockSession(page);
   await page.route("**/api/v1/account/membership", async (route) => {
