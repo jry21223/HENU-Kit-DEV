@@ -245,7 +245,7 @@ func loadCareerAIProvider() (careerAIProvider, error) {
 func validateSuificationTransport(baseURL string, allowInsecureHTTP bool) error {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("Career suification LLM URL is invalid")
+		return errors.New("career suification LLM URL is invalid")
 	}
 	host := parsed.Hostname()
 	loopback := strings.EqualFold(host, "localhost")
@@ -259,7 +259,7 @@ func validateSuificationTransport(baseURL string, allowInsecureHTTP bool) error 
 	if parsed.Scheme == "https" || (parsed.Scheme == "http" && loopback) || approvedException {
 		return nil
 	}
-	return errors.New("Career suification LLM must use HTTPS, loopback, or the exact approved HTTP endpoint")
+	return errors.New("career suification LLM must use HTTPS, loopback, or the exact approved HTTP endpoint")
 }
 
 func validateProductionAIConfig(baseURL, apiKey, model string, allowInsecureHTTP bool) error {
