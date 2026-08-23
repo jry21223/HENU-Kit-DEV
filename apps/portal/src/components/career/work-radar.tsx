@@ -173,6 +173,10 @@ export default function WorkRadar({
               delay: offset,
               repeat: -1,
               repeatDelay: Math.max(cycle - PING_SECONDS, 0),
+              // fromTo 默认 immediateRender，会在 delay 走完前就把 from 值贴上去，
+              // 于是所有目标一进场就集体亮起、直到各自的命中时刻才开始动。关掉它，
+              // 命中前保持 SVG 上写死的 opacity=0 / 墨色。
+              immediateRender: false,
             }
           );
 
@@ -189,6 +193,7 @@ export default function WorkRadar({
               delay: offset,
               repeat: -1,
               repeatDelay: Math.max(cycle - flash, 0),
+              immediateRender: false,
             }
           );
         });
