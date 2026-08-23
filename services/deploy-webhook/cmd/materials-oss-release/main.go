@@ -13,6 +13,35 @@ import (
 	"henukit.dev/deploy-webhook/internal/materialsoss"
 )
 
+// releaseAttestation is the fixed, bounded stdout contract consumed by the
+// privileged orchestrator. The complete per-object inventory remains only in
+// the root-owned release-commit.json audit record.
+type releaseAttestation struct {
+	Version             int    `json:"version"`
+	State               string `json:"state"`
+	ReleaseID           string `json:"release_id"`
+	ReceiptSHA256       string `json:"receipt_sha256"`
+	ManifestSHA256      string `json:"manifest_sha256"`
+	InventorySHA256     string `json:"inventory_sha256"`
+	TreeSHA256          string `json:"tree_sha256"`
+	AssetCount          int    `json:"asset_count"`
+	ReleaseCommitSHA256 string `json:"release_commit_sha256"`
+}
+
+func newReleaseAttestation(result materialsoss.ReleaseResult) releaseAttestation {
+	return releaseAttestation{
+		Version:             result.Version,
+		State:               result.State,
+		ReleaseID:           result.ReleaseID,
+		ReceiptSHA256:       result.ReceiptSHA256,
+		ManifestSHA256:      result.ManifestSHA256,
+		InventorySHA256:     result.InventorySHA256,
+		TreeSHA256:          result.TreeSHA256,
+		AssetCount:          result.AssetCount,
+		ReleaseCommitSHA256: result.ReleaseCommitSHA256,
+	}
+}
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "materials-oss-release:", err)
@@ -45,5 +74,5 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(result)
+	return json.NewEncoder(os.Stdout).Encode(newReleaseAttestation(result))
 }

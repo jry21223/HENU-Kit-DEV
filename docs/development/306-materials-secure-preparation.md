@@ -157,8 +157,12 @@ actions, rollback, Console or Library ownership, and Git-topology ordering.
 - The root runner validates repository/ref against root-owned configuration and
   validates the accepted full SHA from the authenticated queue event, runs A01
   as `henukit-deploy`, accepts only its post-cleanup attempt token, performs C0
-  sealing as root, and activates only the returned release ID plus receipt
-  digest. Candidate bytes are not a seal, retry, rollback, or audit input.
+  sealing as root, commits the complete private OSS release through the fixed
+  publisher, validates its bounded stdout attestation against the seal identity,
+  and activates only the same returned release ID plus receipt digest. Candidate
+  bytes are not a seal, retry, rollback, or audit input. The stdout attestation
+  omits the object list; the complete per-object inventory remains only in the
+  root-owned `release-commit.json` audit record.
 - Activation holds the fixed lock, creates `.maintenance`, writes the durable
   journal, durably installs the release, switches the internal recovery pointer,
   imports immutable release-prefixed catalog keys transactionally, writes
