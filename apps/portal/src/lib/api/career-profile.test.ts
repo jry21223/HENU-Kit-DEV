@@ -270,3 +270,42 @@ describe("getCareerResumeExtraction", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("createCareerResumeSuification", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
+    vi.stubEnv("NODE_ENV", "test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("posts only the current Resume Text and returns a transient draft", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        draft: { resume_text: "主导校园资料检索能力从 0 到 1 建设" },
+        request_id: "req_career_suify",
+      })
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { createCareerResumeSuification } = await import("./client");
+    const response = await createCareerResumeSuification(
+      "负责校园资料检索网站开发",
+      "idem_suify_client"
+    );
+
+    expect(response.draft.resume_text).toBe("主导校园资料检索能力从 0 到 1 建设");
+    const [path, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/api/v1/career/profile/suifications");
+    expect(init.method).toBe("POST");
+    expect(init.cache).toBe("no-store");
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("idem_suify_client");
+    expect(JSON.parse(String(init.body))).toEqual({
+      resume_text: "负责校园资料检索网站开发",
+    });
+  });
+});

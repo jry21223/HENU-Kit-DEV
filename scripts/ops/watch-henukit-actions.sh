@@ -224,7 +224,7 @@ environment_value() {
 verify_production_data_boundary() {
   local portal_api_mode portal_allow_mock easypay_enabled easypay_pid easypay_key
   local easypay_base_url easypay_notify_url easypay_return_url
-  local career_sources career_ai_base career_ai_key career_ai_model career_ai_insecure career_digest_secret
+  local career_sources career_ai_base career_ai_key career_ai_model career_ai_insecure career_suify_ai_insecure career_digest_secret
   local career_digest_client career_digest_key normalized_secret normalized_ai
   portal_api_mode="$(environment_value PORTAL_API_MODE)"
   portal_allow_mock="$(environment_value NEXT_PUBLIC_PORTAL_ALLOW_MOCK)"
@@ -250,17 +250,22 @@ verify_production_data_boundary() {
   career_ai_key="$(environment_value CAREER_AI_API_KEY)"
   career_ai_model="$(environment_value CAREER_AI_MODEL)"
   career_ai_insecure="$(environment_value CAREER_ALLOW_INSECURE_AI_HTTP)"
+  career_suify_ai_insecure="$(environment_value CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP)"
   career_digest_client="$(environment_value PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID)"
   career_digest_key="$(environment_value PLATFORM_CORE_CAREER_DIGEST_KEY_ID)"
   career_digest_secret="$(environment_value PLATFORM_CORE_CAREER_DIGEST_SECRET)"
   [[ "$career_sources" == "official.meituan" ]] || die "CAREER_SOURCE_ALLOWLIST must enable only official.meituan"
   if [[ "$career_ai_base" == "http://125.46.96.207:30000/v1" ]]; then
     [[ "$career_ai_insecure" == "1" ]] || die "the approved plaintext Career LLM requires CAREER_ALLOW_INSECURE_AI_HTTP=1"
+    [[ -z "$career_suify_ai_insecure" || "$career_suify_ai_insecure" == "0" || "$career_suify_ai_insecure" == "1" ]] ||
+      die "CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP must be 0 or 1"
   else
     [[ "$career_ai_base" == https://* || "$career_ai_base" == http://127.0.0.1* || "$career_ai_base" == http://localhost* ]] ||
       die "CAREER_AI_BASE_URL must use HTTPS, loopback, or the exact approved HTTP endpoint"
     [[ -z "$career_ai_insecure" || "$career_ai_insecure" == "0" ]] ||
       die "CAREER_ALLOW_INSECURE_AI_HTTP=1 is valid only for the exact approved HTTP endpoint"
+    [[ -z "$career_suify_ai_insecure" || "$career_suify_ai_insecure" == "0" ]] ||
+      die "CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=1 is valid only for the exact approved HTTP endpoint"
   fi
   [[ ${#career_ai_key} -ge 16 && "$career_ai_key" != *[[:space:]]* && -n "$career_ai_model" ]] ||
     die "Career extraction LLM credentials are missing or invalid"

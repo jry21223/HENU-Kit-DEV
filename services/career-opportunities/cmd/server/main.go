@@ -48,6 +48,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	suifier, err := buildSuifier()
+	if err != nil {
+		log.Fatal(err)
+	}
 	if strings.TrimSpace(os.Getenv("CAREER_REQUIRE_AI")) == "1" {
 		probeContext, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
@@ -59,7 +63,9 @@ func main() {
 		Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret},
 		Work:              work,
 		Extract:           extractor,
+		Suify:             suifier,
 		ExtractRateLimit:  intEnv("CAREER_EXTRACT_RATE_LIMIT", 5),
+		SuifyRateLimit:    intEnv("CAREER_SUIFY_RATE_LIMIT", 5),
 		SearchRateLimit:   intEnv("CAREER_SEARCH_RATE_LIMIT", 10),
 		SearchActiveLimit: intEnv("CAREER_SEARCH_ACTIVE_LIMIT", 1),
 		DigestSender:      digestSender(),
@@ -79,7 +85,7 @@ func main() {
 	if address == "" {
 		address = ":8097"
 	}
-	server := &http.Server{Addr: address, Handler: service, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: address, Handler: service, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 70 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -134,45 +140,126 @@ func buildWork() (career.WorkFunc, error) {
 // (production-safe off state): uploads are rejected with a clear error instead
 // of pretending to work.
 func buildExtractor() (career.ExtractFunc, error) {
-	required := strings.TrimSpace(os.Getenv("CAREER_REQUIRE_AI"))
-	if required != "" && required != "0" && required != "1" {
-		return nil, errors.New("CAREER_REQUIRE_AI must be 0 or 1")
+	provider, err := loadCareerAIProvider()
+	if err != nil {
+		return nil, err
 	}
-	allowInsecureHTTP := strings.TrimSpace(os.Getenv("CAREER_ALLOW_INSECURE_AI_HTTP"))
-	if allowInsecureHTTP != "" && allowInsecureHTTP != "0" && allowInsecureHTTP != "1" {
-		return nil, errors.New("CAREER_ALLOW_INSECURE_AI_HTTP must be 0 or 1")
-	}
-	mode := strings.TrimSpace(os.Getenv("CAREER_AI_MODE"))
-	if mode == "mock" {
-		if required == "1" {
+	if provider.mode == "mock" {
+		if provider.required {
 			return nil, errors.New("production Career cannot use the mock extraction LLM")
 		}
 		return career.NewMockExtractor(), nil
 	}
-	if mode != "" {
-		return nil, fmt.Errorf("unsupported CAREER_AI_MODE %q", mode)
-	}
-	baseURL := strings.TrimSpace(os.Getenv("CAREER_AI_BASE_URL"))
-	apiKey := os.Getenv("CAREER_AI_API_KEY")
-	model := os.Getenv("CAREER_AI_MODEL")
-	if baseURL == "" && strings.TrimSpace(apiKey) == "" && strings.TrimSpace(model) == "" {
-		if required == "1" {
+	if !provider.configured {
+		if provider.required {
 			return nil, errors.New("production Career extraction LLM is not configured")
 		}
 		return nil, nil
 	}
-	if required == "1" {
-		if err := validateProductionAIConfig(baseURL, apiKey, model, allowInsecureHTTP == "1"); err != nil {
-			return nil, err
-		}
-	}
 	extractor, err := career.NewOpenAICompatibleExtractor(career.ExtractConfig{
-		BaseURL: baseURL, APIKey: apiKey, Model: model,
+		BaseURL: provider.baseURL, APIKey: provider.apiKey, Model: provider.model,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("career AI extractor configuration is invalid: %w", err)
 	}
 	return extractor, nil
+}
+
+// buildSuifier wires the entertainment rewrite to the same operator-owned
+// Career LLM as resume extraction. It never accepts browser-selected provider
+// configuration and remains disabled when the shared provider is absent.
+func buildSuifier() (career.SuifyFunc, error) {
+	provider, err := loadCareerAIProvider()
+	if err != nil {
+		return nil, err
+	}
+	allowInsecureSuify := strings.TrimSpace(os.Getenv("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP"))
+	if allowInsecureSuify != "" && allowInsecureSuify != "0" && allowInsecureSuify != "1" {
+		return nil, errors.New("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP must be 0 or 1")
+	}
+	if provider.mode == "mock" {
+		if provider.required {
+			return nil, errors.New("production Career cannot use the mock suification LLM")
+		}
+		return career.NewMockSuifier(), nil
+	}
+	if !provider.configured {
+		return nil, nil
+	}
+	if err := validateSuificationTransport(provider.baseURL, allowInsecureSuify == "1"); err != nil {
+		return nil, err
+	}
+	if strings.TrimRight(provider.baseURL, "/") == approvedInsecureAIURL && allowInsecureSuify != "1" {
+		// Extraction may keep using the existing operator-approved exception,
+		// while Suification stays safely unavailable until its separate data
+		// disclosure decision is explicitly enabled.
+		return nil, nil
+	}
+	suifier, err := career.NewOpenAICompatibleSuifier(career.SuifyConfig{
+		BaseURL: provider.baseURL, APIKey: provider.apiKey, Model: provider.model,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("career AI suifier configuration is invalid: %w", err)
+	}
+	return suifier, nil
+}
+
+type careerAIProvider struct {
+	required   bool
+	configured bool
+	mode       string
+	baseURL    string
+	apiKey     string
+	model      string
+}
+
+func loadCareerAIProvider() (careerAIProvider, error) {
+	required := strings.TrimSpace(os.Getenv("CAREER_REQUIRE_AI"))
+	if required != "" && required != "0" && required != "1" {
+		return careerAIProvider{}, errors.New("CAREER_REQUIRE_AI must be 0 or 1")
+	}
+	allowInsecureHTTP := strings.TrimSpace(os.Getenv("CAREER_ALLOW_INSECURE_AI_HTTP"))
+	if allowInsecureHTTP != "" && allowInsecureHTTP != "0" && allowInsecureHTTP != "1" {
+		return careerAIProvider{}, errors.New("CAREER_ALLOW_INSECURE_AI_HTTP must be 0 or 1")
+	}
+	provider := careerAIProvider{
+		required: required == "1",
+		mode:     strings.TrimSpace(os.Getenv("CAREER_AI_MODE")),
+		baseURL:  strings.TrimSpace(os.Getenv("CAREER_AI_BASE_URL")),
+		apiKey:   os.Getenv("CAREER_AI_API_KEY"),
+		model:    os.Getenv("CAREER_AI_MODEL"),
+	}
+	if provider.mode != "" && provider.mode != "mock" {
+		return careerAIProvider{}, fmt.Errorf("unsupported CAREER_AI_MODE %q", provider.mode)
+	}
+	provider.configured = provider.baseURL != "" || strings.TrimSpace(provider.apiKey) != "" || strings.TrimSpace(provider.model) != ""
+	if provider.mode == "mock" || !provider.configured || !provider.required {
+		return provider, nil
+	}
+	if err := validateProductionAIConfig(provider.baseURL, provider.apiKey, provider.model, allowInsecureHTTP == "1"); err != nil {
+		return careerAIProvider{}, err
+	}
+	return provider, nil
+}
+
+func validateSuificationTransport(baseURL string, allowInsecureHTTP bool) error {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("Career suification LLM URL is invalid")
+	}
+	host := parsed.Hostname()
+	loopback := strings.EqualFold(host, "localhost")
+	if address := net.ParseIP(host); address != nil {
+		loopback = address.IsLoopback()
+	}
+	approvedException := strings.TrimRight(parsed.String(), "/") == approvedInsecureAIURL
+	if allowInsecureHTTP && !approvedException {
+		return errors.New("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=1 is valid only for the exact approved HTTP endpoint")
+	}
+	if parsed.Scheme == "https" || (parsed.Scheme == "http" && loopback) || approvedException {
+		return nil
+	}
+	return errors.New("Career suification LLM must use HTTPS, loopback, or the exact approved HTTP endpoint")
 }
 
 func validateProductionAIConfig(baseURL, apiKey, model string, allowInsecureHTTP bool) error {

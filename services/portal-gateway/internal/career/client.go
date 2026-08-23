@@ -31,6 +31,7 @@ const (
 	// 10 MiB file plus multipart framing, so this route alone gets a larger
 	// cap; every other Career route keeps the small JSON cap.
 	ExtractionsPath      = "/api/v1/career/profile/extractions"
+	SuificationsPath     = "/api/v1/career/profile/suifications"
 	maxRequestBodyBytes  = 128 << 10 // career profile snapshots stay small
 	maxResponseBodyBytes = 1 << 20   // up to 150 bounded display-only job rows
 	maxExtractBodyBytes  = (10 << 20) + (1 << 20)
@@ -166,6 +167,26 @@ func (c *Client) UpdateProfile(ctx context.Context, actorUserID, requestID strin
 	return unwrapEnvelope(body)
 }
 
+// CreateSuification forwards one transient Resume Text rewrite command. The
+// Career owner returns a draft only; neither the Gateway nor Career persists it.
+func (c *Client) CreateSuification(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	if c == nil || c.httpClient == nil {
+		return nil, ErrUnconfigured
+	}
+	if strings.TrimSpace(actorUserID) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > maxRequestBodyBytes {
+		return nil, ErrBadRequest
+	}
+	longClient := *c.httpClient
+	longClient.Timeout = 65 * time.Second
+	body, _, _, err := c.callWithClient(&longClient, ctx, http.MethodPost, SuificationsPath, actorUserID, requestID, raw, "application/json", func(request *http.Request) {
+		request.Header.Set("Idempotency-Key", idempotencyKey)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return unwrapEnvelope(body)
+}
+
 func (c *Client) read(ctx context.Context, requestPath, actorUserID, requestID string) (json.RawMessage, error) {
 	body, _, _, err := c.call(ctx, http.MethodGet, requestPath, actorUserID, requestID, nil, "", nil)
 	if err != nil {
@@ -178,6 +199,10 @@ func (c *Client) call(ctx context.Context, method, requestPath, actorUserID, req
 	if c == nil || c.httpClient == nil {
 		return nil, 0, nil, ErrUnconfigured
 	}
+	return c.callWithClient(c.httpClient, ctx, method, requestPath, actorUserID, requestID, raw, contentType, setHeaders)
+}
+
+func (c *Client) callWithClient(httpClient *http.Client, ctx context.Context, method, requestPath, actorUserID, requestID string, raw []byte, contentType string, setHeaders func(*http.Request)) ([]byte, int, http.Header, error) {
 	if strings.TrimSpace(requestID) == "" {
 		return nil, 0, nil, ErrUnavailable
 	}
@@ -200,7 +225,7 @@ func (c *Client) call(ctx context.Context, method, requestPath, actorUserID, req
 		return nil, 0, nil, fmt.Errorf("sign Career request: %w", ErrUnavailable)
 	}
 
-	response, err := c.httpClient.Do(request)
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("call Career service: %w", ErrUnavailable)
 	}

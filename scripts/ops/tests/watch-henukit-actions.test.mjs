@@ -130,6 +130,7 @@ function fixture({
   careerAIBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1",
   careerAIKey = "sk-live-fixture-credential-32bytes",
   careerAllowInsecureAIHTTP = false,
+  careerSuifyAllowInsecureAIHTTP = false,
   careerDigestSecret = "fixture-career-digest-random-credential-48bytes",
   runConclusion = "success",
   runStatus = "completed",
@@ -167,7 +168,7 @@ function fixture({
   chmodSync(token, 0o600);
   writeFileSync(
     envFile,
-    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nCAREER_SOURCE_ALLOWLIST=official.meituan\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
+    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nCAREER_SOURCE_ALLOWLIST=official.meituan\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nCAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=${careerSuifyAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
   );
   writeFileSync(rollbackEnvFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(log, "");
@@ -1287,6 +1288,22 @@ test("one-shot accepts only the explicitly approved plaintext Career extraction 
   const wrongHostResult = spawnSync(script, ["--once"], { encoding: "utf8", env: wrongHost.env });
   assert.notEqual(wrongHostResult.status, 0);
   assert.doesNotMatch(readFileSync(wrongHost.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot accepts the Suification plaintext exception only for the exact approved Career LLM", () => {
+  const approved = fixture({
+    careerAIBaseURL: "http://125.46.96.207:30000/v1",
+    careerAllowInsecureAIHTTP: true,
+    careerSuifyAllowInsecureAIHTTP: true,
+  });
+  const approvedResult = spawnSync(script, ["--once"], { encoding: "utf8", env: approved.env });
+  assert.equal(approvedResult.status, 0, approvedResult.stderr);
+
+  const httpsWithException = fixture({ careerSuifyAllowInsecureAIHTTP: true });
+  const httpsResult = spawnSync(script, ["--once"], { encoding: "utf8", env: httpsWithException.env });
+  assert.notEqual(httpsResult.status, 0);
+  assert.match(httpsResult.stderr, /CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=1 is valid only/i);
+  assert.doesNotMatch(readFileSync(httpsWithException.log, "utf8"), /pg_dump|docker load|^deploy /m);
 });
 
 test("one-shot refuses Career LLM and digest placeholder credentials", () => {
