@@ -23,7 +23,7 @@ func TestActivatePublicReleaseVerifiesCompleteManifestAndPublishesOneCatalog(t *
 	bundle := activationBundle(t, []manifestAsset{
 		{Subject: "离散数学", Role: "复习讲义", Title: "离散数学复习提纲.pdf", PublicPath: "materials/discrete/outline.pdf", Body: "outline"},
 		{Subject: "高等数学", Role: "课件PPT", Title: "高等数学极限课件.pptx", PublicPath: "materials/calculus/limits.pptx", Body: "slides"},
-		{Subject: "高等数学", Role: "待复核-答案", Title: "未审核答案.pdf", PublicPath: "materials/calculus/unreviewed.pdf", Body: "not-published"},
+		{Subject: "高等数学", Role: "待复核资料", Title: "未审核答案.pdf", PublicPath: "materials/calculus/unreviewed.pdf", Body: "not-published"},
 	}, store)
 
 	result, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now)
@@ -62,15 +62,15 @@ func TestActivatePublicReleaseVerifiesCompleteManifestAndPublishesOneCatalog(t *
 func TestActivatePublicReleaseFailureLeavesPreviousCatalogActive(t *testing.T) {
 	pool := activationPool(t)
 	firstStore := &activationStore{objects: map[string]library.DownloadObjectState{}}
-	first := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "讲义", Title: "旧资料.pdf", PublicPath: "old.pdf", Body: "old"}}, firstStore)
+	first := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "复习讲义", Title: "旧资料.pdf", PublicPath: "old.pdf", Body: "old"}}, firstStore)
 	if _, err := library.ActivatePublicRelease(context.Background(), pool, firstStore, first, time.Now); err != nil {
 		t.Fatal(err)
 	}
 
 	badStore := &activationStore{objects: map[string]library.DownloadObjectState{}}
 	bad := activationBundle(t, []manifestAsset{
-		{Subject: "数学", Role: "讲义", Title: "新资料.pdf", PublicPath: "new.pdf", Body: "new"},
-		{Subject: "英语", Role: "真题", Title: "真题.pdf", PublicPath: "exam.pdf", Body: "exam"},
+		{Subject: "数学", Role: "复习讲义", Title: "新资料.pdf", PublicPath: "new.pdf", Body: "new"},
+		{Subject: "英语", Role: "往年真题", Title: "真题.pdf", PublicPath: "exam.pdf", Body: "exam"},
 	}, badStore)
 	for key, state := range badStore.objects {
 		state.Bytes++
@@ -94,8 +94,8 @@ func TestActivatePublicReleaseAcceptsDuplicateContentAtDistinctReviewedPaths(t *
 	pool := activationPool(t)
 	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
 	bundle := activationBundle(t, []manifestAsset{
-		{Subject: "数学", Role: "讲义", Title: "讲义一.pdf", PublicPath: "one.pdf", Body: "same-content"},
-		{Subject: "数学", Role: "讲义", Title: "讲义二.pdf", PublicPath: "two.pdf", Body: "same-content"},
+		{Subject: "数学", Role: "复习讲义", Title: "讲义一.pdf", PublicPath: "one.pdf", Body: "same-content"},
+		{Subject: "数学", Role: "复习讲义", Title: "讲义二.pdf", PublicPath: "two.pdf", Body: "same-content"},
 	}, store)
 	result, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now)
 	if err != nil {
@@ -109,7 +109,7 @@ func TestActivatePublicReleaseAcceptsDuplicateContentAtDistinctReviewedPaths(t *
 func TestActivatePublicReleaseAllowsAnExplicitEmptyReviewedCatalog(t *testing.T) {
 	pool := activationPool(t)
 	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
-	bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "待复核-讲义", Title: "未审核.pdf", PublicPath: "pending.pdf", Body: "pending"}}, store)
+	bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "待复核资料", Title: "未审核.pdf", PublicPath: "pending.pdf", Body: "pending"}}, store)
 	result, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestActivatePublicReleaseEnforcesTheBoundedCompleteCatalogSize(t *testing.T
 	makeAssets := func(count int) []manifestAsset {
 		assets := make([]manifestAsset, 0, count)
 		for index := range count {
-			assets = append(assets, manifestAsset{Subject: "数学", Role: "讲义", Title: fmt.Sprintf("资料%03d.pdf", index), PublicPath: fmt.Sprintf("bounded/%03d.pdf", index), Body: "shared"})
+			assets = append(assets, manifestAsset{Subject: "数学", Role: "复习讲义", Title: fmt.Sprintf("资料%03d.pdf", index), PublicPath: fmt.Sprintf("bounded/%03d.pdf", index), Body: "shared"})
 		}
 		return assets
 	}
@@ -156,7 +156,7 @@ func TestActivatePublicReleaseRejectsObjectKeyBeyondDatabaseLimitBeforeOSSOrTran
 		strings.Repeat("c", 210),
 		strings.Repeat("d", 210),
 	}, "/")
-	bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "讲义", Title: "长路径资料", PublicPath: longPath, Body: "safe"}}, store)
+	bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "复习讲义", Title: "长路径资料", PublicPath: longPath, Body: "safe"}}, store)
 
 	if _, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now); err == nil {
 		t.Fatal("activation accepted an object key beyond the database limit")
@@ -210,7 +210,7 @@ func TestActivatePublicReleaseRejectsMalformedMetadataWithoutTouchingOSSOrCatalo
 		t.Run(tc.name, func(t *testing.T) {
 			pool := activationPool(t)
 			store := &activationStore{objects: map[string]library.DownloadObjectState{}}
-			bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "讲义", Title: "安全标题.pdf", PublicPath: "safe.pdf", Body: "safe"}}, store)
+			bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "复习讲义", Title: "安全标题.pdf", PublicPath: "safe.pdf", Body: "safe"}}, store)
 			tc.mutate(&bundle)
 			if _, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now); err == nil {
 				t.Fatal("malformed activation bundle was accepted")
@@ -230,21 +230,6 @@ func TestActivatePublicReleaseRejectsProvenanceViolationsBeforeOSSOrCatalog(t *t
 		{name: "contains personal info", mutate: func(asset *manifestAsset) {
 			asset.ContainsPersonalInfo = true
 		}},
-		{name: "unreviewed reviewStatus", mutate: func(asset *manifestAsset) {
-			asset.ReviewStatus = "needs_review"
-		}},
-		{name: "pending maintainer review", mutate: func(asset *manifestAsset) {
-			asset.ReviewStatus = "待维护者复核"
-		}},
-		{name: "unknown reviewStatus", mutate: func(asset *manifestAsset) {
-			asset.ReviewStatus = "totally-made-up"
-		}},
-		{name: "disallowed licenseStatus", mutate: func(asset *manifestAsset) {
-			asset.LicenseStatus = "贡献者自有学习笔记，提交后可按仓库公开资料协议共享。"
-		}},
-		{name: "unknown licenseStatus", mutate: func(asset *manifestAsset) {
-			asset.LicenseStatus = "made-up-license"
-		}},
 		{name: "teacher_shared_exception not whitelisted", mutate: func(asset *manifestAsset) {
 			asset.LicenseStatus = "teacher_shared_exception"
 		}},
@@ -258,7 +243,7 @@ func TestActivatePublicReleaseRejectsProvenanceViolationsBeforeOSSOrCatalog(t *t
 		t.Run(tc.name, func(t *testing.T) {
 			pool := activationPool(t)
 			store := &activationStore{objects: map[string]library.DownloadObjectState{}}
-			asset := manifestAsset{Subject: "数学", Role: "讲义", Title: "安全标题.pdf", PublicPath: "safe.pdf", Body: "safe",
+			asset := manifestAsset{Subject: "数学", Role: "复习讲义", Title: "安全标题.pdf", PublicPath: "safe.pdf", Body: "safe",
 				ReviewStatus: "basic-reviewed", LicenseStatus: "learning-reference"}
 			tc.mutate(&asset)
 			bundle := activationBundle(t, []manifestAsset{asset}, store)
@@ -285,8 +270,10 @@ func TestActivatePublicReleaseAcceptsCanonicalProvenanceAndApprovedTeacherExcept
 	approvedPath := "思想道德与法治/复习讲义/思想道德与法治_复习讲义_2025年冬最新考试重点.pdf"
 	approvedSHA := "bfda62a15cfefb53c1413a244a4ff9f95e11a9fc959032f4ebff83adc1b8530c"
 	bundle := activationBundle(t, []manifestAsset{
-		{Subject: "数学", Role: "讲义", Title: "讲义.pdf", PublicPath: "note.pdf", Body: "note",
-			ReviewStatus: "verified", LicenseStatus: "public_review_only", Uncertainty: "format_lossy"},
+		{Subject: "数学", Role: "复习讲义", Title: "讲义.pdf", PublicPath: "note.pdf", Body: "note",
+			ReviewStatus: "needs_review", LicenseStatus: "贡献者自有学习笔记，提交后可按仓库公开资料协议共享。", Uncertainty: "format_lossy"},
+		{Subject: "Java", Role: "笔记总结", Title: "Java笔记.md", PublicPath: "java-note.md", Body: "note",
+			ReviewStatus: "待维护者复核"},
 		{Subject: "思想道德与法治", Role: "复习讲义", Title: "白名单讲义.pdf", PublicPath: approvedPath, Body: "approved",
 			ReviewStatus: "basic-reviewed", LicenseStatus: "teacher_shared_exception",
 			SHA256Override: approvedSHA, BytesOverride: "12345"},
@@ -295,15 +282,15 @@ func TestActivatePublicReleaseAcceptsCanonicalProvenanceAndApprovedTeacherExcept
 	if err != nil {
 		t.Fatalf("canonical provenance activation failed: %v", err)
 	}
-	if result.MaterialCount != 2 {
-		t.Fatalf("material count=%d, want 2", result.MaterialCount)
+	if result.MaterialCount != 3 {
+		t.Fatalf("material count=%d, want 3", result.MaterialCount)
 	}
 }
 
 func TestActivatePublicReleaseDerivesSafeFileNameFromReviewedPath(t *testing.T) {
 	pool := activationPool(t)
 	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
-	bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "讲义", Title: "标题不是文件名", PublicPath: "nested/safe.pdf", Body: "safe"}}, store)
+	bundle := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "复习讲义", Title: "标题不是文件名", PublicPath: "nested/safe.pdf", Body: "safe"}}, store)
 	if _, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now); err != nil {
 		t.Fatal(err)
 	}
@@ -322,6 +309,7 @@ func TestActivatePublicReleaseStoresElectronicTextbookType(t *testing.T) {
 	bundle := activationBundle(t, []manifestAsset{{
 		Subject: "高等数学", Role: "电子版教材", Title: "高等数学电子版教材.pdf",
 		PublicPath: "高等数学/电子版教材/高等数学电子版教材.pdf", Body: "textbook",
+		ReviewStatus: "verified", LicenseStatus: "authorized-redistribution", SourceNote: "已确认允许公开再分发。",
 	}}, store)
 	if _, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now); err != nil {
 		t.Fatal(err)
@@ -342,7 +330,7 @@ func TestActivatePublicReleaseIsIdempotentConcurrentAndSupportsAuditedRollback(t
 		t.Fatal(err)
 	}
 	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
-	first := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "讲义", Title: "版本一.pdf", PublicPath: "v1.pdf", Body: "v1"}}, store)
+	first := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "复习讲义", Title: "版本一.pdf", PublicPath: "v1.pdf", Body: "v1"}}, store)
 
 	const workers = 8
 	results := make(chan library.PublicReleaseActivationResult, workers)
@@ -378,7 +366,7 @@ func TestActivatePublicReleaseIsIdempotentConcurrentAndSupportsAuditedRollback(t
 	assertActiveRelease(t, pool, first.ReleaseID, 1)
 
 	secondStore := &activationStore{objects: map[string]library.DownloadObjectState{}}
-	second := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "讲义", Title: "版本二.pdf", PublicPath: "v2.pdf", Body: "v2"}}, secondStore)
+	second := activationBundle(t, []manifestAsset{{Subject: "数学", Role: "复习讲义", Title: "版本二.pdf", PublicPath: "v2.pdf", Body: "v2"}}, secondStore)
 	if _, err := library.ActivatePublicRelease(context.Background(), pool, secondStore, second, time.Now); err != nil {
 		t.Fatal(err)
 	}
@@ -401,6 +389,104 @@ func TestActivatePublicReleaseIsIdempotentConcurrentAndSupportsAuditedRollback(t
 	}
 }
 
+func TestCanonicalTypeUpgradeReplaysAndRollsBackAnImmutableLegacyRelease(t *testing.T) {
+	pool := activationPool(t)
+	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
+	nonce := strconv.FormatInt(time.Now().UnixNano(), 10)
+	legacy := activationBundle(t, []manifestAsset{{
+		Subject: "数学", Role: "复习讲义", Title: "旧版讲义.pdf", PublicPath: "legacy-note-" + nonce + ".pdf", Body: "legacy-" + nonce,
+	}}, store)
+	if _, err := library.ActivatePublicRelease(context.Background(), pool, store, legacy, time.Now); err != nil {
+		t.Fatal(err)
+	}
+
+	type catalogMaterial struct {
+		MaterialID      string `json:"material_id"`
+		Subject         string `json:"subject"`
+		Role            string `json:"role"`
+		MaterialType    string `json:"material_type"`
+		Title           string `json:"title"`
+		FileName        string `json:"file_name"`
+		PublicPath      string `json:"public_path"`
+		ObjectKey       string `json:"object_key"`
+		ObjectVersionID string `json:"object_version_id"`
+		SHA256          string `json:"sha256"`
+		ByteSize        int64  `json:"byte_size"`
+	}
+	var material catalogMaterial
+	if err := pool.QueryRow(context.Background(), `
+		SELECT material_id::text,subject,role,material_type,title,file_name,public_path,
+		       object_key,object_version_id,sha256,byte_size
+		FROM library_public_material_snapshots WHERE release_id=$1`, legacy.ReleaseID).Scan(
+		&material.MaterialID, &material.Subject, &material.Role, &material.MaterialType,
+		&material.Title, &material.FileName, &material.PublicPath, &material.ObjectKey,
+		&material.ObjectVersionID, &material.SHA256, &material.ByteSize,
+	); err != nil {
+		t.Fatal(err)
+	}
+	material.MaterialType = "note" // pre-000005 mapping for 复习讲义
+	catalogJSON, err := json.Marshal([]catalogMaterial{material})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogHash := sha256.Sum256(catalogJSON)
+	legacyCatalogSHA := hex.EncodeToString(catalogHash[:])
+	var receiptSHA, commitSHA, manifestSHA, indexSHA, slidesSHA string
+	if err := pool.QueryRow(context.Background(), `
+		SELECT receipt_sha256,oss_commit_sha256,manifest_sha256,index_sha256,slides_sha256
+		FROM library_public_releases WHERE release_id=$1`, legacy.ReleaseID).Scan(
+		&receiptSHA, &commitSHA, &manifestSHA, &indexSHA, &slidesSHA,
+	); err != nil {
+		t.Fatal(err)
+	}
+	activationHash := sha256.Sum256([]byte(strings.Join([]string{
+		legacy.ReleaseID, receiptSHA, commitSHA, manifestSHA, legacyCatalogSHA, indexSHA, slidesSHA,
+	}, "\n")))
+	legacyActivationDigest := hex.EncodeToString(activationHash[:])
+	if _, err := pool.Exec(context.Background(), `UPDATE library_public_material_snapshots SET material_type='note' WHERE release_id=$1`, legacy.ReleaseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(), `UPDATE library_public_releases SET catalog_sha256=$2,activation_digest=$3 WHERE release_id=$1`, legacy.ReleaseID, legacyCatalogSHA, legacyActivationDigest); err != nil {
+		t.Fatal(err)
+	}
+
+	replay, err := library.ActivatePublicRelease(context.Background(), pool, store, legacy, time.Now)
+	if err != nil {
+		t.Fatalf("legacy release replay failed after canonical type upgrade: %v", err)
+	}
+	if !replay.Replayed {
+		t.Fatalf("legacy replay result = %#v", replay)
+	}
+
+	secondStore := &activationStore{objects: map[string]library.DownloadObjectState{}}
+	second := activationBundle(t, []manifestAsset{{
+		Subject: "数学", Role: "复习讲义", Title: "新版讲义.pdf", PublicPath: "canonical-handout-" + nonce + ".pdf", Body: "current-" + nonce,
+	}}, secondStore)
+	if _, err := library.ActivatePublicRelease(context.Background(), pool, secondStore, second, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	rollback, err := library.ActivatePublicRelease(context.Background(), pool, store, legacy, time.Now)
+	if err != nil {
+		t.Fatalf("legacy release rollback failed after canonical type upgrade: %v", err)
+	}
+	if rollback.Replayed || rollback.PreviousReleaseID != second.ReleaseID {
+		t.Fatalf("legacy rollback result = %#v", rollback)
+	}
+	var releaseDigest string
+	if err := pool.QueryRow(context.Background(), `SELECT activation_digest FROM library_public_releases WHERE release_id=$1`, legacy.ReleaseID).Scan(&releaseDigest); err != nil {
+		t.Fatal(err)
+	}
+	var matchingEvents int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*) FROM library_public_release_activation_events
+		WHERE release_id=$1 AND activation_digest=$2`, legacy.ReleaseID, legacyActivationDigest).Scan(&matchingEvents); err != nil {
+		t.Fatal(err)
+	}
+	if releaseDigest != legacyActivationDigest || matchingEvents != 1 {
+		t.Fatalf("legacy audit identity release=%s matching_events=%d want=%s/1", releaseDigest, matchingEvents, legacyActivationDigest)
+	}
+}
+
 func TestPublicCatalogReturnsOneReleaseSnapshotWithStableAggregates(t *testing.T) {
 	store := &activationStore{objects: map[string]library.DownloadObjectState{}}
 	server, pool := newLibraryDownloadServer(t, store)
@@ -410,7 +496,7 @@ func TestPublicCatalogReturnsOneReleaseSnapshotWithStableAggregates(t *testing.T
 	downloadsBefore := totalLedgerCount(t, pool)
 	bundle := activationBundle(t, []manifestAsset{
 		{Subject: "数学", Role: "复习讲义", Title: "讲义.pdf", PublicPath: "note.pdf", Body: "note"},
-		{Subject: "数学", Role: "真题", Title: "真题.pdf", PublicPath: "exam.pdf", Body: "exam"},
+		{Subject: "数学", Role: "往年真题", Title: "真题.pdf", PublicPath: "exam.pdf", Body: "exam"},
 	}, store)
 	if _, err := library.ActivatePublicRelease(context.Background(), pool, store, bundle, time.Now); err != nil {
 		t.Fatal(err)
@@ -510,6 +596,7 @@ type manifestAsset struct {
 	Subject, Role, Title, PublicPath, Body   string
 	ContainsPersonalInfo                     bool
 	LicenseStatus, ReviewStatus, Uncertainty string
+	SourceType, SourceNote                   string
 	SHA256Override, BytesOverride            string
 }
 
@@ -582,6 +669,7 @@ func activationBundle(t *testing.T, assets []manifestAsset, store *activationSto
 			"bytes": asset.bytesValue(), "sha256": sha,
 			"containsPersonalInfo": asset.ContainsPersonalInfo, "licenseStatus": asset.LicenseStatus,
 			"reviewStatus": asset.ReviewStatus, "uncertainty": asset.Uncertainty,
+			"sourceType": asset.SourceType, "sourceNote": asset.SourceNote,
 		})
 	}
 	for _, subject := range order {

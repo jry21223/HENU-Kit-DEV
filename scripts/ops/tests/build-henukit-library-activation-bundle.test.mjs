@@ -73,6 +73,21 @@ test("mismatched or incomplete OSS identity fails without an activation package"
   assert.equal(result.stdout, "");
 });
 
+test("unsafe OSS VersionId fails before an activation package is written", () => {
+  for (const versionID of ["null", " version-1", "version-1 ", "version\n1", "v".repeat(1025)]) {
+    const f = fixture();
+    const commitPath = join(f.audit, "release-commit.json");
+    const commit = JSON.parse(readFileSync(commitPath, "utf8"));
+    commit.assets[0].object_version_id = versionID;
+    chmodSync(commitPath, 0o600);
+    writeFileSync(commitPath, JSON.stringify(commit), { mode: 0o400 });
+    chmodSync(commitPath, 0o400);
+    const { result, output } = run(f);
+    assert.notEqual(result.status, 0, `accepted ${JSON.stringify(versionID)}`);
+    assert.equal(existsSync(output), false);
+  }
+});
+
 test("derived release drift fails without an activation package", () => {
   const f = fixture();
   const slide = join(f.installed, "slides", "软件工程", "1.svg");

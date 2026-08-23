@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createExtractionRunner,
+  extractionCreateFailedMessage,
   extractionFailedMessage,
   extractionStatusLabel,
   isExtractionActive,
   isExtractionTerminal,
 } from "./career-extraction-state";
+import {
+  PortalApiError,
+  PortalHttpError,
+  PortalNetworkError,
+} from "../api/client";
 import type { CareerResumeExtraction } from "../api/types";
 
 function extraction(
@@ -49,6 +55,42 @@ describe("extraction status helpers", () => {
     expect(extractionFailedMessage("EXTRACT_FAILED")).toContain("不超过 10 页");
     expect(extractionFailedMessage("EXTRACT_FAILED")).toContain("压缩或删页");
     expect(extractionFailedMessage("UNKNOWN_WEIRD")).toContain("稍后重试");
+  });
+
+  it("explains upload-stage network, parse, and HTTP failures with safe request ids", () => {
+    const network = extractionCreateFailedMessage(
+      new PortalNetworkError(
+        "/api/v1/career/profile/extractions",
+        new TypeError("connection reset"),
+        "req_career_upload_0123456789abcdef0123456789abcdef"
+      )
+    );
+    expect(network).toContain("无法确认是否已提交");
+    expect(network).toContain("等待一分钟");
+    expect(network).toContain("req_career_upload_0123456789abcdef0123456789abcdef");
+    expect(network).not.toContain("connection reset");
+
+    const parse = extractionCreateFailedMessage(
+      new PortalApiError("invalid provider HTML", {
+        code: "PORTAL_PARSE_ERROR",
+        requestId: "req_career_parse_failure",
+      })
+    );
+    expect(parse).toContain("响应异常");
+    expect(parse).toContain("req_career_parse_failure");
+    expect(parse).not.toContain("provider HTML");
+
+    const tooLarge = extractionCreateFailedMessage(
+      new PortalHttpError(
+        "/api/v1/career/profile/extractions",
+        413,
+        "nginx rejected body",
+        "req_career_too_large"
+      )
+    );
+    expect(tooLarge).toContain("10 MB");
+    expect(tooLarge).toContain("req_career_too_large");
+    expect(tooLarge).not.toContain("nginx");
   });
 });
 

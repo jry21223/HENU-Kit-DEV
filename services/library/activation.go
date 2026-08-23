@@ -26,9 +26,47 @@ import (
 var publicMaterialNamespace = uuid.MustParse("5a1ed44f-2c16-5fe9-aac5-d52e44c61531")
 
 var (
-	releaseIDPattern = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
-	digestPattern    = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	releaseIDPattern                 = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
+	digestPattern                    = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	unsafeDownloadFileNamePattern    = regexp.MustCompile(`[,:?*<>|"\\/]`)
+	temporaryDownloadFileNamePattern = regexp.MustCompile(`(?i)(副本|final_final|未命名|新建文件|^~\$|\.tmp$|\.crdownload$|\.download$)`)
 )
+
+// manifestRoleContract is the local, fail-closed projection of
+// HENU-Final-Review's canonical material roles. It is intentionally exact:
+// roles describe content semantics, so neither filenames nor substrings may
+// invent a new public catalog type.
+type manifestRoleContract struct {
+	CanonicalRole string
+	MaterialType  string
+	Publishable   bool
+}
+
+var canonicalManifestRoles = map[string]manifestRoleContract{
+	"复习讲义":  {CanonicalRole: "复习讲义", MaterialType: "handout", Publishable: true},
+	"往年真题":  {CanonicalRole: "往年真题", MaterialType: "exam", Publishable: true},
+	"课件":    {CanonicalRole: "课件", MaterialType: "slides", Publishable: true},
+	"题库练习":  {CanonicalRole: "题库练习", MaterialType: "exercise", Publishable: true},
+	"答案解析":  {CanonicalRole: "答案解析", MaterialType: "answer", Publishable: true},
+	"笔记总结":  {CanonicalRole: "笔记总结", MaterialType: "note", Publishable: true},
+	"电子版教材": {CanonicalRole: "电子版教材", MaterialType: "textbook", Publishable: true},
+	"待复核资料": {CanonicalRole: "待复核资料", Publishable: false},
+}
+
+var legacyManifestRoleAliases = map[string]string{
+	"课件PPT":    "课件",
+	"课件资料":     "课件",
+	"课件资料包":    "课件",
+	"待复核课件PPT": "待复核资料",
+}
+
+func resolveManifestRole(role string) (manifestRoleContract, bool) {
+	if canonical, ok := legacyManifestRoleAliases[role]; ok {
+		role = canonical
+	}
+	contract, ok := canonicalManifestRoles[role]
+	return contract, ok
+}
 
 // Publication provenance policy. HENU Kit activation is an independent
 // fail-closed publication boundary: it does not trust the upstream
@@ -39,30 +77,18 @@ var (
 //
 // A manifest asset that reaches activation must satisfy every rule:
 //   - containsPersonalInfo must not be true.
-//   - reviewStatus, when present, must be a canonical publishable state.
-//   - licenseStatus, when present, must be a canonical allowlisted value,
-//     except teacher_shared_exception which is further restricted to the
-//     approved historical whitelist below (path + SHA-256, matching the
-//     upstream APPROVED_CONTACT_EXCEPTIONS map).
+//   - reviewStatus and licenseStatus are advisory for general materials,
+//     matching the upstream validator. teacher_shared_exception remains
+//     restricted to the approved historical whitelist below (path + SHA-256).
+//   - electronic textbooks require exact reviewed redistribution evidence.
 //   - uncertainty, when present, must not be a review-only state: the source
 //     policy requires those assets to live under a 待复核 role, which Library
 //     never activates.
 //
-// Absent (empty) provenance fields are tolerated for backward compatibility:
-// HENU-Final-Review treats them as "建议字段…逐步补充" and the sealed
-// production manifest predates the metadata backfill. The boundary rejects
-// disallowed VALUES, never silently accepts them.
+// HENU-Final-Review treats general provenance fields as recommended metadata
+// that is being backfilled gradually. Library must not invent a stricter
+// generic allowlist after the exact upstream SHA has already been accepted.
 var (
-	publishableReviewStatuses = map[string]bool{
-		"verified":         true,
-		"basic-reviewed":   true,
-		"community_review": true,
-	}
-	publishableLicenseStatuses = map[string]bool{
-		"learning-reference": true,
-		"public_review_only": true,
-		"public-review-only": true,
-	}
 	reviewOnlyUncertainties = map[string]bool{
 		"source_uncertain":          true,
 		"year_uncertain":            true,
@@ -86,17 +112,23 @@ func provenanceViolation(asset manifestAsset) string {
 	if asset.ContainsPersonalInfo {
 		return "containsPersonalInfo=true"
 	}
-	if asset.ReviewStatus != "" && !publishableReviewStatuses[asset.ReviewStatus] {
-		return "reviewStatus " + strconv.Quote(asset.ReviewStatus) + " is not publishable"
+	roleContract, roleKnown := resolveManifestRole(asset.Role)
+	isTextbook := roleKnown && roleContract.CanonicalRole == "电子版教材"
+	if isTextbook {
+		if asset.ReviewStatus != "verified" {
+			return "electronic textbook reviewStatus must be verified"
+		}
+		if asset.LicenseStatus != "authorized-redistribution" {
+			return "electronic textbook licenseStatus must be authorized-redistribution"
+		}
+		if !safeText(asset.SourceNote, 4000) {
+			return "electronic textbook sourceNote is required"
+		}
 	}
-	if asset.LicenseStatus != "" {
-		if asset.LicenseStatus == "teacher_shared_exception" {
-			approved, ok := approvedTeacherSharedExceptions[asset.PublicPath]
-			if !ok || approved != asset.SHA256 {
-				return "teacher_shared_exception is restricted to the approved historical files"
-			}
-		} else if !publishableLicenseStatuses[asset.LicenseStatus] {
-			return "licenseStatus " + strconv.Quote(asset.LicenseStatus) + " is not publishable"
+	if !isTextbook && asset.LicenseStatus == "teacher_shared_exception" {
+		approved, ok := approvedTeacherSharedExceptions[asset.PublicPath]
+		if !ok || approved != asset.SHA256 {
+			return "teacher_shared_exception is restricted to the approved historical files"
 		}
 	}
 	if asset.Uncertainty != "" && reviewOnlyUncertainties[asset.Uncertainty] {
@@ -229,6 +261,9 @@ type preparedActivation struct {
 	slidesSHA256     string
 	activationDigest string
 	materials        []activatedMaterial
+	legacyCatalogSHA string
+	legacyActivation string
+	legacyMaterials  []activatedMaterial
 }
 
 // ActivatePublicRelease validates one complete reviewed manifest against exact
@@ -285,14 +320,14 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 	commitDigest := hex.EncodeToString(commitHash[:])
 	committedObjects := make(map[string]ossReleaseCommitAsset, len(commit.Assets))
 	for _, asset := range commit.Assets {
-		if _, duplicate := committedObjects[asset.PublicPath]; duplicate || !safePublicPath(asset.PublicPath) || !digestPattern.MatchString(asset.SHA256) || asset.Bytes < 0 || strings.TrimSpace(asset.ObjectVersionID) == "" {
+		if _, duplicate := committedObjects[asset.PublicPath]; duplicate || !safePublicPath(asset.PublicPath) || !digestPattern.MatchString(asset.SHA256) || asset.Bytes < 0 || !safeObjectVersionID(asset.ObjectVersionID) || !validOSSObjectKey(asset.ObjectKey) {
 			return preparedActivation{}, errors.New("OSS release commit object inventory is invalid")
 		}
 		committedObjects[asset.PublicPath] = asset
 	}
 	objects := make(map[string]PublicReleaseObject, len(bundle.Objects))
 	for _, object := range bundle.Objects {
-		if _, duplicate := objects[object.PublicPath]; duplicate || !safePublicPath(object.PublicPath) || strings.TrimSpace(object.ObjectVersionID) == "" || len(object.ObjectVersionID) > 1024 {
+		if _, duplicate := objects[object.PublicPath]; duplicate || !safePublicPath(object.PublicPath) || !safeObjectVersionID(object.ObjectVersionID) || !validOSSObjectKey(object.ObjectKey) {
 			return preparedActivation{}, errors.New("public release object inventory is invalid")
 		}
 		committed, ok := committedObjects[object.PublicPath]
@@ -302,13 +337,18 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 		objects[object.PublicPath] = object
 	}
 	materials := make([]activatedMaterial, 0, len(objects))
+	legacyMaterials := make([]activatedMaterial, 0, len(objects))
 	seenPaths := map[string]bool{}
 	for _, subject := range manifest.Subjects {
 		if !safeText(subject.Name, 160) || (subject.Note != "" && !safeText(subject.Note, 4000)) || subject.Assets == nil {
 			return preparedActivation{}, errors.New("reviewed manifest subject is invalid")
 		}
 		for _, asset := range subject.Assets {
-			if strings.HasPrefix(asset.Role, "待复核") {
+			roleContract, roleOK := resolveManifestRole(asset.Role)
+			if !roleOK {
+				return preparedActivation{}, fmt.Errorf("reviewed manifest role is unsupported: %s", asset.Role)
+			}
+			if !roleContract.Publishable {
 				continue
 			}
 			if violation := provenanceViolation(asset); violation != "" {
@@ -319,7 +359,7 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 			}
 			title := strings.TrimSuffix(asset.Title, path.Ext(asset.Title))
 			fileName := path.Base(asset.PublicPath)
-			if !safeText(title, 200) || !safeText(fileName, 255) {
+			if !safeText(title, 200) || !safeDownloadFileName(fileName) {
 				return preparedActivation{}, fmt.Errorf("reviewed manifest presentation metadata is invalid: %s", asset.PublicPath)
 			}
 			seenPaths[asset.PublicPath] = true
@@ -332,15 +372,20 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 				return preparedActivation{}, fmt.Errorf("OSS release commit object evidence is invalid: %s", asset.PublicPath)
 			}
 			expectedKey := "releases/" + bundle.ReleaseID + "/receipts/" + receiptDigest + "/objects/" + asset.SHA256 + "/" + asset.PublicPath
-			if utf8.RuneCountInString(expectedKey) > 1024 || object.ObjectKey != expectedKey {
+			if !validOSSObjectKey(expectedKey) || object.ObjectKey != expectedKey {
 				return preparedActivation{}, fmt.Errorf("public release object identity is invalid: %s", asset.PublicPath)
 			}
-			materials = append(materials, activatedMaterial{
+			material := activatedMaterial{
 				MaterialID: uuid.NewSHA1(publicMaterialNamespace, []byte(asset.PublicPath)), Subject: subject.Name,
-				Role: asset.Role, MaterialType: manifestMaterialType(asset.Role), Title: title,
+				Role: roleContract.CanonicalRole, MaterialType: roleContract.MaterialType, Title: title,
 				FileName: fileName, PublicPath: asset.PublicPath, ObjectKey: object.ObjectKey, ObjectVersionID: object.ObjectVersionID,
 				SHA256: asset.SHA256, ByteSize: asset.Bytes,
-			})
+			}
+			materials = append(materials, material)
+			legacyMaterial := material
+			legacyMaterial.Role = asset.Role
+			legacyMaterial.MaterialType = legacyManifestMaterialType(asset.Role)
+			legacyMaterials = append(legacyMaterials, legacyMaterial)
 			delete(objects, asset.PublicPath)
 		}
 	}
@@ -351,6 +396,7 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 		return preparedActivation{}, errors.New("public release owner catalog exceeds its bounded size")
 	}
 	sort.Slice(materials, func(i, j int) bool { return materials[i].PublicPath < materials[j].PublicPath })
+	sort.Slice(legacyMaterials, func(i, j int) bool { return legacyMaterials[i].PublicPath < legacyMaterials[j].PublicPath })
 	catalogJSON, err := json.Marshal(materials)
 	if err != nil {
 		return preparedActivation{}, err
@@ -358,10 +404,18 @@ func preparePublicReleaseActivation(bundle PublicReleaseActivation) (preparedAct
 	catalogHash := sha256.Sum256(catalogJSON)
 	catalogDigest := hex.EncodeToString(catalogHash[:])
 	activationHash := sha256.Sum256([]byte(strings.Join([]string{bundle.ReleaseID, receiptDigest, commitDigest, manifestDigest, catalogDigest, bundle.Derived.IndexSHA256, bundle.Derived.SlidesSHA256}, "\n")))
+	legacyCatalogJSON, err := json.Marshal(legacyMaterials)
+	if err != nil {
+		return preparedActivation{}, err
+	}
+	legacyCatalogHash := sha256.Sum256(legacyCatalogJSON)
+	legacyCatalogDigest := hex.EncodeToString(legacyCatalogHash[:])
+	legacyActivationHash := sha256.Sum256([]byte(strings.Join([]string{bundle.ReleaseID, receiptDigest, commitDigest, manifestDigest, legacyCatalogDigest, bundle.Derived.IndexSHA256, bundle.Derived.SlidesSHA256}, "\n")))
 	return preparedActivation{
 		releaseID: bundle.ReleaseID, receiptSHA256: receiptDigest, ossCommitSHA256: commitDigest, manifestSHA256: manifestDigest,
 		catalogSHA256: catalogDigest, indexSHA256: bundle.Derived.IndexSHA256, slidesSHA256: bundle.Derived.SlidesSHA256,
 		activationDigest: hex.EncodeToString(activationHash[:]), materials: materials,
+		legacyCatalogSHA: legacyCatalogDigest, legacyActivation: hex.EncodeToString(legacyActivationHash[:]), legacyMaterials: legacyMaterials,
 	}, nil
 }
 
@@ -380,7 +434,7 @@ func commitPublicReleaseActivation(ctx context.Context, database *pgxpool.Pool, 
 		return PublicReleaseActivationResult{}, err
 	}
 	if currentRelease == prepared.releaseID {
-		match, err := persistedReleaseMatches(ctx, tx, prepared)
+		matched, match, err := persistedReleaseMatch(ctx, tx, prepared)
 		if err != nil {
 			return PublicReleaseActivationResult{}, err
 		}
@@ -390,20 +444,21 @@ func commitPublicReleaseActivation(ctx context.Context, database *pgxpool.Pool, 
 		if err := tx.Commit(ctx); err != nil {
 			return PublicReleaseActivationResult{}, err
 		}
-		return PublicReleaseActivationResult{ReleaseID: prepared.releaseID, MaterialCount: len(prepared.materials), Replayed: true}, nil
+		return PublicReleaseActivationResult{ReleaseID: prepared.releaseID, MaterialCount: len(matched.materials), Replayed: true}, nil
 	}
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM library_public_releases WHERE release_id=$1)`, prepared.releaseID).Scan(&exists); err != nil {
 		return PublicReleaseActivationResult{}, err
 	}
 	if exists {
-		match, err := persistedReleaseMatches(ctx, tx, prepared)
+		matched, match, err := persistedReleaseMatch(ctx, tx, prepared)
 		if err != nil || !match {
 			if err != nil {
 				return PublicReleaseActivationResult{}, err
 			}
 			return PublicReleaseActivationResult{}, errors.New("retained release identity conflicts with the activation bundle")
 		}
+		prepared = matched
 	} else {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO library_public_releases
@@ -483,6 +538,19 @@ func persistedReleaseMatches(ctx context.Context, tx pgx.Tx, prepared preparedAc
 	return true, nil
 }
 
+func persistedReleaseMatch(ctx context.Context, tx pgx.Tx, prepared preparedActivation) (preparedActivation, bool, error) {
+	match, err := persistedReleaseMatches(ctx, tx, prepared)
+	if err != nil || match || prepared.legacyCatalogSHA == prepared.catalogSHA256 {
+		return prepared, match, err
+	}
+	legacy := prepared
+	legacy.catalogSHA256 = prepared.legacyCatalogSHA
+	legacy.activationDigest = prepared.legacyActivation
+	legacy.materials = prepared.legacyMaterials
+	match, err = persistedReleaseMatches(ctx, tx, legacy)
+	return legacy, match, err
+}
+
 func decodeSingleJSON(value []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(value))
 	decoder.DisallowUnknownFields()
@@ -508,7 +576,7 @@ func safeText(value string, max int) bool {
 }
 
 func safePublicPath(value string) bool {
-	if value == "" || len(value) > 1024 || strings.Contains(value, `\`) || strings.HasPrefix(value, "/") {
+	if value == "" || len(value) > 1023 || !utf8.ValidString(value) || strings.Contains(value, `\`) || strings.HasPrefix(value, "/") {
 		return false
 	}
 	for _, segment := range strings.Split(value, "/") {
@@ -519,7 +587,41 @@ func safePublicPath(value string) bool {
 	return true
 }
 
-func manifestMaterialType(role string) string {
+func validOSSObjectKey(value string) bool {
+	if value == "" || len(value) > 1023 || !utf8.ValidString(value) || strings.HasPrefix(value, "/") || strings.HasPrefix(value, `\`) {
+		return false
+	}
+	for _, char := range value {
+		if unicode.IsControl(char) {
+			return false
+		}
+	}
+	return true
+}
+
+func safeObjectVersionID(value string) bool {
+	if value == "" || value == "null" || len(value) > 1024 || !utf8.ValidString(value) || strings.TrimSpace(value) != value {
+		return false
+	}
+	for _, char := range value {
+		if unicode.IsControl(char) {
+			return false
+		}
+	}
+	return true
+}
+
+func safeDownloadFileName(value string) bool {
+	if !safeText(value, 255) || value == "." || value == ".." || strings.HasPrefix(value, ".") || unsafeDownloadFileNamePattern.MatchString(value) || temporaryDownloadFileNamePattern.MatchString(value) {
+		return false
+	}
+	return true
+}
+
+// legacyManifestMaterialType reproduces the pre-000005 projection only for
+// exact identity checks of already-retained releases. New releases always use
+// resolveManifestRole's canonical seven-type contract.
+func legacyManifestMaterialType(role string) string {
 	switch {
 	case strings.Contains(role, "电子版教材") || strings.Contains(role, "电子教材"):
 		return "textbook"

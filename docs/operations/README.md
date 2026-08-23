@@ -5,6 +5,7 @@
 - [`deployment.md`](./deployment.md)：旧 Study 部署形态与上线检查。
 - [`henukit-artifact-deployment.md`](./henukit-artifact-deployment.md)：HENU Kit GitHub 固定 SHA 成品部署、迁移与旧运行时清退。
 - [`notice-food-production-onboarding.md`](./notice-food-production-onboarding.md)：Notice / Food 服务生产编排接入、配置、发布、回滚与验证。
+- [`food-legacy-image-migration.md`](./food-legacy-image-migration.md)：旧 Portal 美食图片经 Food owner 净化后迁移、备份、验收与冲突回滚。
 - [`github-webhook-deploy.md`](./github-webhook-deploy.md)：Monorepo GitHub Webhook 自动同步、精确 SHA 发布、Systemd/Nginx、批准与回滚 Runbook。
 - [`PRODUCTION_RELEASE_CHECKLIST.md`](./PRODUCTION_RELEASE_CHECKLIST.md)：整套服务生产发布唯一 Go/No-Go 汇总入口。
 - [`CURRENT_PRODUCTION_STATE.md`](./CURRENT_PRODUCTION_STATE.md)：**生产现状记录**——按证据记录当前实际运行状态与数据依赖，与检查表配套使用。

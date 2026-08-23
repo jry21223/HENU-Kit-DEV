@@ -73,9 +73,42 @@ function parseJSON(bytes, label) {
 }
 
 function validatePath(value) {
-  if (typeof value !== "string" || !value || value.includes("\\") || value.includes("\0") || posix.isAbsolute(value)) fail("public path is unsafe");
+  if (typeof value !== "string" || !value || Buffer.byteLength(value, "utf8") > 1023 || value.includes("\\") || value.includes("\0") || posix.isAbsolute(value) || /[\u0000-\u001f\u007f]/u.test(value)) fail("public path is unsafe");
   const parts = value.split("/");
-  if (parts.some((part) => !part || part === "." || part === ".." || part.startsWith("."))) fail("public path is unsafe");
+  if (parts.some((part) => !part || Buffer.byteLength(part, "utf8") > 255 || part === "." || part === ".." || part.startsWith("."))) fail("public path is unsafe");
+  const fileName = parts.at(-1);
+  if (!safeFileName(fileName)) fail("public path filename is unsafe");
+}
+
+function safeFileName(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && Buffer.byteLength(value, "utf8") <= 255
+    && value.trim() === value
+    && value !== "."
+    && value !== ".."
+    && !value.startsWith(".")
+    && !/[,:?*<>|"\\/]/u.test(value)
+    && !/(副本|final_final|未命名|新建文件|^~\$|\.tmp$|\.crdownload$|\.download$)/iu.test(value)
+    && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function safeVersionID(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value !== "null"
+    && Buffer.byteLength(value, "utf8") <= 1024
+    && value.trim() === value
+    && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function validObjectKey(value) {
+  return typeof value === "string"
+    && Buffer.byteLength(value, "utf8") >= 1
+    && Buffer.byteLength(value, "utf8") <= 1023
+    && !value.startsWith("/")
+    && !value.startsWith("\\")
+    && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
 function validateCommit(commit, options, receiptBytes) {
@@ -99,14 +132,15 @@ function validateCommit(commit, options, receiptBytes) {
   const seenPaths = new Set();
   return commit.assets.map((asset) => {
     validatePath(asset?.public_path);
+    const expectedKey = `releases/${options.releaseID}/receipts/${options.receiptSHA256}/objects/${asset?.sha256}/${asset?.public_path}`;
     if (
       seenPaths.has(asset.public_path) ||
       !HASH_PATTERN.test(asset.sha256 || "") ||
       !Number.isSafeInteger(asset.bytes) ||
       asset.bytes < 0 ||
-      typeof asset.object_version_id !== "string" ||
-      !asset.object_version_id ||
-      asset.object_key !== `releases/${options.releaseID}/receipts/${options.receiptSHA256}/objects/${asset.sha256}/${asset.public_path}`
+      !safeVersionID(asset.object_version_id) ||
+      !validObjectKey(expectedKey) ||
+      asset.object_key !== expectedKey
     ) fail("OSS release commit contains an invalid or duplicate object binding");
     seenPaths.add(asset.public_path);
     return { public_path: asset.public_path, object_key: asset.object_key, object_version_id: asset.object_version_id };

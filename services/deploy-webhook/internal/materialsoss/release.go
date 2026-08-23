@@ -144,7 +144,10 @@ func PublishRelease(ctx context.Context, cfg Config, req ReleaseRequest, store O
 }
 
 func publishCompleteAsset(ctx context.Context, cfg Config, req ReleaseRequest, item validatedReleaseAsset, store ObjectStore) (ReleaseAsset, error) {
-	key := strings.Join([]string{cfg.Prefix, req.ReleaseID, "receipts", req.ReceiptSHA256, "objects", item.SHA256, item.PublicPath}, "/")
+	key := objectKey(cfg.Prefix, req.ReleaseID, req.ReceiptSHA256, item.SHA256, item.PublicPath)
+	if !validObjectKey(key) {
+		return ReleaseAsset{}, errors.New("derived OSS Object key is invalid")
+	}
 	receiptPath, err := releaseObjectReceiptPath(cfg.AuditRoot, req.ReleaseID, item.PublicPath)
 	if err != nil {
 		return ReleaseAsset{}, err
@@ -152,7 +155,7 @@ func publishCompleteAsset(ctx context.Context, cfg Config, req ReleaseRequest, i
 	var prior *releaseObjectReceipt
 	if data, readErr := readExistingRegular(receiptPath); readErr == nil {
 		var decoded releaseObjectReceipt
-		if decodeErr := decodeExact(data, &decoded); decodeErr != nil || decoded.Version != 1 || decoded.State != "published_not_activated" || decoded.ReleaseID != req.ReleaseID || decoded.ReceiptSHA256 != req.ReceiptSHA256 || decoded.PublicPath != item.PublicPath || decoded.SHA256 != item.SHA256 || decoded.Bytes != item.Bytes || decoded.ObjectKey != key || decoded.ObjectVersionID == "" {
+		if decodeErr := decodeExact(data, &decoded); decodeErr != nil || decoded.Version != 1 || decoded.State != "published_not_activated" || decoded.ReleaseID != req.ReleaseID || decoded.ReceiptSHA256 != req.ReceiptSHA256 || decoded.PublicPath != item.PublicPath || decoded.SHA256 != item.SHA256 || decoded.Bytes != item.Bytes || decoded.ObjectKey != key || !safeVersionID(decoded.ObjectVersionID) {
 			return ReleaseAsset{}, errors.New("existing complete-release object receipt conflicts with this publication")
 		}
 		prior = &decoded
@@ -186,7 +189,7 @@ func publishCompleteAsset(ctx context.Context, cfg Config, req ReleaseRequest, i
 		if verifyErr != nil || closeErr != nil {
 			return ReleaseAsset{}, verificationError("put_digest", key, "unknown", errors.New("publish-time asset stream does not match the sealed inventory"))
 		}
-		if versionID == "" {
+		if !safeVersionID(versionID) {
 			return ReleaseAsset{}, verificationError("put_response", key, "missing", errors.New("OSS did not return an immutable object version"))
 		}
 		pinnedVersion = versionID
@@ -198,7 +201,7 @@ func publishCompleteAsset(ctx context.Context, cfg Config, req ReleaseRequest, i
 			return ReleaseAsset{}, verificationError("head_after_put", key, pinnedVersion, errors.New("uploaded version was not found"))
 		}
 	}
-	if state.VersionID == "" || (pinnedVersion != "" && state.VersionID != pinnedVersion) || state.Bytes != item.Bytes || state.Encryption != "AES256" || (state.SHA256 != "" && state.SHA256 != item.SHA256) {
+	if !safeVersionID(state.VersionID) || (pinnedVersion != "" && state.VersionID != pinnedVersion) || state.Bytes != item.Bytes || state.Encryption != "AES256" || state.SHA256 != item.SHA256 {
 		return ReleaseAsset{}, verificationError("head_metadata", key, pinnedVersion, errors.New("object metadata or immutable version does not match the sealed asset"))
 	}
 	body, err := store.Get(ctx, key, state.VersionID)
@@ -305,6 +308,10 @@ func validateCompleteRelease(cfg Config, req ReleaseRequest) ([]validatedRelease
 	}
 	validated := make([]validatedReleaseAsset, 0, len(inv.Assets))
 	for _, item := range inv.Assets {
+		key := objectKey(cfg.Prefix, req.ReleaseID, req.ReceiptSHA256, item.SHA256, item.PublicPath)
+		if !validObjectKey(key) {
+			return nil, receipt{}, errors.New("derived OSS Object key is invalid")
+		}
 		assetFile, openErr := openCompleteReleaseAsset(cfg.SealedRoot, req.ReleaseID, item)
 		if openErr != nil {
 			return nil, receipt{}, openErr
@@ -424,6 +431,9 @@ func validateCompleteManifest(data []byte, inventoryAssets []asset) error {
 			}
 			paths[item.PublicPath] = true
 			if !strings.HasPrefix(item.Role, "待复核") {
+				if invalidTextbookAuthorization(item.Role, item.ReviewStatus, item.LicenseStatus, item.SourceNote) {
+					return errors.New("electronic textbook lacks verified redistribution authorization")
+				}
 				approved[item.PublicPath] = asset{PublicPath: item.PublicPath, Bytes: item.Bytes, SHA256: item.SHA256}
 			}
 		}

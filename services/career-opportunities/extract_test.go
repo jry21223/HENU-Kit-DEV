@@ -112,6 +112,55 @@ func TestOpenAICompatibleExtractorSendsPDFPagesAndReadableDOCXText(t *testing.T)
 	}
 }
 
+func TestOpenAICompatibleExtractorUsesDashScopePDFImageURLShape(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		for _, message := range body.Messages {
+			if message.Role != "user" {
+				continue
+			}
+			parts, ok := message.Content.([]any)
+			if !ok {
+				http.Error(w, "user content must be multipart", http.StatusBadRequest)
+				return
+			}
+			for _, value := range parts {
+				part, ok := value.(map[string]any)
+				if !ok || part["type"] != "image_url" {
+					continue
+				}
+				imageURL, ok := part["image_url"].(map[string]any)
+				if !ok || len(imageURL) != 1 || imageURL["url"] == nil {
+					http.Error(w, "image_url accepts only url", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"target_roles\":\"后端开发\"}"}}]}`))
+	}))
+	defer upstream.Close()
+
+	extract, err := NewOpenAICompatibleExtractor(ExtractConfig{
+		BaseURL: upstream.URL, APIKey: "test-key", Model: "test-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extract(context.Background(), "候选人简历.pdf", testPDF("Backend Developer Go PostgreSQL")); err != nil {
+		t.Fatalf("DashScope-compatible PDF extraction failed: %v", err)
+	}
+}
+
 func TestOpenAICompatibleExtractorAcceptsMarkdownFencedJSON(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -211,7 +260,9 @@ func TestOpenAICompatibleExtractorRejectsInvalidModelOutput(t *testing.T) {
 
 func TestOpenAICompatibleExtractorSurfacesProviderFailure(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"code":"rate_limit_exceeded","message":"sensitive provider detail"}}`))
 	}))
 	defer upstream.Close()
 	extract, err := NewOpenAICompatibleExtractor(ExtractConfig{
@@ -222,6 +273,8 @@ func TestOpenAICompatibleExtractorSurfacesProviderFailure(t *testing.T) {
 	}
 	if _, err := extract(context.Background(), "resume.txt", []byte("简历")); !errors.Is(err, ErrExtractionFailed) {
 		t.Fatalf("extract error = %v, want ErrExtractionFailed", err)
+	} else if !strings.Contains(err.Error(), "rate_limit_exceeded") || strings.Contains(err.Error(), "sensitive provider detail") {
+		t.Fatalf("provider error kept unsafe or unusable detail: %v", err)
 	}
 }
 

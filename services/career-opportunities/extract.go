@@ -51,6 +51,9 @@ var (
 	// ErrExtractionFailed marks an extraction that ran but produced no usable
 	// profile. The underlying cause is logged, never surfaced to the browser.
 	ErrExtractionFailed = errors.New("career resume extraction failed")
+	// errExtractionProviderFailed keeps a provider transport/protocol category
+	// in server logs while preserving the existing browser-safe failure code.
+	errExtractionProviderFailed = fmt.Errorf("%w: extraction provider failed", ErrExtractionFailed)
 )
 
 // NewMockExtractor returns the deterministic test/development extractor: it
@@ -144,15 +147,19 @@ func NewOpenAICompatibleExtractor(cfg ExtractConfig) (ExtractFunc, error) {
 		request.Header.Set("Authorization", "Bearer "+apiKey)
 		response, err := clientCopy.Do(request)
 		if err != nil {
-			return ExtractedProfile{}, fmt.Errorf("%w: provider call failed", ErrExtractionFailed)
+			return ExtractedProfile{}, fmt.Errorf("%w: provider call failed", errExtractionProviderFailed)
 		}
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusOK {
-			return ExtractedProfile{}, fmt.Errorf("%w: provider returned %d", ErrExtractionFailed, response.StatusCode)
+			providerCode := readProviderErrorCode(response.Body)
+			if providerCode != "" {
+				return ExtractedProfile{}, fmt.Errorf("%w: provider returned %d (%s)", errExtractionProviderFailed, response.StatusCode, providerCode)
+			}
+			return ExtractedProfile{}, fmt.Errorf("%w: provider returned %d", errExtractionProviderFailed, response.StatusCode)
 		}
 		raw, err := io.ReadAll(io.LimitReader(response.Body, 128<<10))
 		if err != nil {
-			return ExtractedProfile{}, fmt.Errorf("%w: provider response unreadable", ErrExtractionFailed)
+			return ExtractedProfile{}, fmt.Errorf("%w: provider response unreadable", errExtractionProviderFailed)
 		}
 		var envelope struct {
 			Choices []struct {
@@ -162,10 +169,40 @@ func NewOpenAICompatibleExtractor(cfg ExtractConfig) (ExtractFunc, error) {
 			} `json:"choices"`
 		}
 		if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Choices) == 0 {
-			return ExtractedProfile{}, fmt.Errorf("%w: provider response is invalid", ErrExtractionFailed)
+			return ExtractedProfile{}, fmt.Errorf("%w: provider response is invalid", errExtractionProviderFailed)
 		}
 		return normalizeExtracted(envelope.Choices[0].Message.Content)
 	}, nil
+}
+
+// readProviderErrorCode keeps provider diagnostics useful without copying a
+// provider message (which can echo prompt or resume content) into logs. Only a
+// short machine code made from conservative characters is accepted.
+func readProviderErrorCode(body io.Reader) string {
+	raw, err := io.ReadAll(io.LimitReader(body, 16<<10))
+	if err != nil {
+		return ""
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil {
+		return ""
+	}
+	code := strings.TrimSpace(envelope.Error.Code)
+	if code == "" || len(code) > 80 {
+		return ""
+	}
+	for _, char := range code {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '_' || char == '-' || char == '.' {
+			continue
+		}
+		return ""
+	}
+	return code
 }
 
 func resumeProviderContent(ctx context.Context, fileName string, content []byte) (any, error) {
@@ -180,8 +217,7 @@ func resumeProviderContent(ctx context.Context, fileName string, content []byte)
 			parts = append(parts, map[string]any{
 				"type": "image_url",
 				"image_url": map[string]string{
-					"url":    "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(image),
-					"detail": "high",
+					"url": "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(image),
 				},
 			})
 		}

@@ -32,6 +32,8 @@ jobs:
           run_contract_tests() {
             node --test \
               scripts/ops/tests/deploy-henukit-workflow.test.mjs \
+              scripts/ops/tests/import-legacy-portal-food-images.test.mjs \
+              scripts/ops/tests/retired-henukit-materials-sync.test.mjs \
               scripts/ops/tests/deploy-henukit-artifact.test.mjs \
               scripts/ops/tests/account-portfolio-workflow.test.mjs \
               scripts/ops/tests/check-account-production-boundary.test.mjs \

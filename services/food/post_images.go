@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -33,6 +34,56 @@ type decodedPostImage struct {
 	ContentType string
 	Bytes       []byte
 	SHA256      string
+}
+
+// SanitizedPostImage is the only container representation accepted for
+// persistent/public Food images. Bytes have been decoded, EXIF orientation
+// applied, and re-encoded without EXIF/XMP/text metadata.
+type SanitizedPostImage struct {
+	ContentType string
+	Bytes       []byte
+	SHA256      string
+	Width       int
+	Height      int
+}
+
+// SanitizePostImage applies the same image boundary used by normal Food post
+// creation. Operations migrations call this function through the dedicated
+// food-sanitize-post-image binary instead of copying legacy container bytes.
+func SanitizePostImage(contentType string, raw []byte) (SanitizedPostImage, error) {
+	if contentType != "image/jpeg" && contentType != "image/png" && contentType != "image/webp" {
+		return SanitizedPostImage{}, errors.New("image content type is invalid")
+	}
+	if len(raw) == 0 || len(raw) > maxPostImageBytes {
+		return SanitizedPostImage{}, errors.New("image bytes are invalid")
+	}
+	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	expectedFormat := map[string]string{"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp"}[contentType]
+	if err != nil || format != expectedFormat {
+		return SanitizedPostImage{}, errors.New("image format is invalid")
+	}
+	if _, valid := addPostImagePixels(config.Width, config.Height, 0); !valid {
+		return SanitizedPostImage{}, errors.New("image dimensions are invalid")
+	}
+	decoded, decodedFormat, err := image.Decode(bytes.NewReader(raw))
+	if err != nil || decodedFormat != expectedFormat {
+		return SanitizedPostImage{}, errors.New("image cannot be decoded")
+	}
+	if decodedFormat == "jpeg" {
+		decoded = applyImageOrientation(decoded, jpegEXIFOrientation(raw))
+	}
+	cleanContentType, clean, err := encodeSanitizedPostImage(decoded, decodedFormat)
+	if err != nil || len(clean) == 0 || len(clean) > maxStoredImageBytes {
+		return SanitizedPostImage{}, errors.New("image cannot be sanitized")
+	}
+	sum := sha256.Sum256(clean)
+	return SanitizedPostImage{
+		ContentType: cleanContentType,
+		Bytes:       clean,
+		SHA256:      hex.EncodeToString(sum[:]),
+		Width:       decoded.Bounds().Dx(),
+		Height:      decoded.Bounds().Dy(),
+	}, nil
 }
 
 func decodePostImages(w http.ResponseWriter, r *http.Request, inputs []postImageInput) ([]decodedPostImage, bool) {
@@ -71,23 +122,12 @@ func decodePostImages(w http.ResponseWriter, r *http.Request, inputs []postImage
 			writeError(w, r, http.StatusBadRequest, "INVALID_POST", "Food post image format or dimensions are invalid")
 			return nil, false
 		}
-		decoded, decodedFormat, err := image.Decode(bytes.NewReader(raw))
-		if err != nil || decodedFormat != expectedFormat {
-			writeError(w, r, http.StatusBadRequest, "INVALID_POST", "Food post image cannot be decoded")
-			return nil, false
-		}
-		// Never publish the uploader's original container bytes. Re-encoding the
-		// decoded pixels strips EXIF/XMP/text chunks, including embedded GPS.
-		if decodedFormat == "jpeg" {
-			decoded = applyImageOrientation(decoded, jpegEXIFOrientation(raw))
-		}
-		contentType, clean, err := encodeSanitizedPostImage(decoded, decodedFormat)
-		if err != nil || len(clean) == 0 || len(clean) > maxStoredImageBytes {
+		sanitized, err := SanitizePostImage(item.ContentType, raw)
+		if err != nil {
 			writeError(w, r, http.StatusBadRequest, "INVALID_POST", "Food post image cannot be sanitized")
 			return nil, false
 		}
-		sum := sha256.Sum256(clean)
-		images = append(images, decodedPostImage{ContentType: contentType, Bytes: clean, SHA256: hex.EncodeToString(sum[:])})
+		images = append(images, decodedPostImage{ContentType: sanitized.ContentType, Bytes: sanitized.Bytes, SHA256: sanitized.SHA256})
 	}
 	return images, true
 }

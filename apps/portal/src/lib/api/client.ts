@@ -95,10 +95,11 @@ export class PortalConfigError extends PortalApiError {
 }
 
 export class PortalNetworkError extends PortalApiError {
-  constructor(path: string, cause?: unknown) {
+  constructor(path: string, cause?: unknown, requestId?: string) {
     super(`Network error calling ${path}`, {
       code: "PORTAL_NETWORK_ERROR",
       path,
+      requestId,
       cause,
     });
     this.name = "PortalNetworkError";
@@ -180,6 +181,7 @@ function baseUrlOrEmpty(): string {
 async function parseErrorBody(
   res: Response
 ): Promise<{ message: string; requestId?: string; errorCode?: string }> {
+  const headerRequestId = res.headers.get("X-Request-Id")?.trim() || undefined;
   try {
     const body = (await res.json()) as ErrorEnvelope;
     // Gateway errors are a flat string; Career upstream errors are forwarded
@@ -191,11 +193,11 @@ async function parseErrorBody(
       typeof raw === "string" ? raw : (raw?.message ?? res.statusText) || `HTTP ${res.status}`;
     return {
       message,
-      requestId: body.request_id,
+      requestId: body.request_id || headerRequestId,
       errorCode,
     };
   } catch {
-    return { message: res.statusText || `HTTP ${res.status}` };
+    return { message: res.statusText || `HTTP ${res.status}`, requestId: headerRequestId };
   }
 }
 
@@ -220,6 +222,7 @@ async function apiFetch<T>(
 
   const base = baseUrlOrEmpty();
   const url = `${base}${path}`;
+  const clientRequestId = new Headers(init?.headers).get("X-Request-Id")?.trim() || undefined;
 
   let res: Response;
   try {
@@ -232,7 +235,7 @@ async function apiFetch<T>(
       },
     });
   } catch (e) {
-    throw new PortalNetworkError(path, e);
+    throw new PortalNetworkError(path, e, clientRequestId);
   }
 
   if (res.status === 401) {
@@ -258,6 +261,7 @@ async function apiFetch<T>(
     throw new PortalApiError(`Invalid JSON from ${path}`, {
       code: "PORTAL_PARSE_ERROR",
       path,
+      requestId: res.headers.get("X-Request-Id")?.trim() || clientRequestId,
       cause: e,
     });
   }
@@ -834,12 +838,14 @@ export async function createCareerResumeExtraction(
 ): Promise<CareerResumeExtractionResponse> {
   const form = new FormData();
   form.append("file", file);
+  const requestId = `req_career_upload_${crypto.randomUUID().replaceAll("-", "")}`;
   return apiFetchRequired<CareerResumeExtractionResponse>(
     "/api/v1/career/profile/extractions",
     {
       method: "POST",
       cache: "no-store",
       credentials: "include",
+      headers: { "X-Request-Id": requestId },
       body: form,
     }
   );

@@ -9,6 +9,8 @@ const workflow = readFileSync(join(repositoryRoot, ".github", "workflows", "depl
 const sealLinuxTest = readFileSync(join(repositoryRoot, "scripts", "ops", "tests", "henukit-materials-seal-linux.test.mjs"), "utf8");
 const server = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "cmd", "server", "main.go"), "utf8");
 const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install.sh"), "utf8");
+const runtimeInstaller = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install-materials-runtime.sh"), "utf8");
+const runtimePackager = readFileSync(join(repositoryRoot, "scripts", "ops", "package-henukit-runtime.sh"), "utf8");
 const orchestrator = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "henukit-materials-orchestrate"), "utf8");
 const materialsUnits = [
   "henukit-materials-runner.service",
@@ -29,6 +31,8 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
     "scripts/ops/prepare-henukit-materials.mjs",
     "scripts/ops/seal-henukit-materials.mjs",
     "scripts/ops/activate-henukit-materials.mjs",
+    "scripts/ops/sync-henukit-materials.sh",
+    "scripts/ops/henukit-materials-sync.sh",
     "scripts/ops/build-henukit-library-activation-bundle.mjs",
     "services/library/db/legacy-study-migrations/000001_materials_oss_release.up.sql",
     "scripts/ops/import-henukit-materials.mjs",
@@ -45,6 +49,7 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
     "scripts/ops/tests/import-henukit-materials.test.mjs",
     "scripts/ops/tests/henukit-materials-nginx.test.mjs",
     "scripts/ops/tests/henukit-materials-orchestrate.test.mjs",
+    "scripts/ops/tests/retired-henukit-materials-sync.test.mjs",
     "scripts/ops/tests/henukit-materials-publish-oss-wrapper.test.mjs",
     "scripts/ops/tests/henukit-materials-publish-release-oss-wrapper.test.mjs",
     "docs/adr/0023-materials-latest-arrival-queue.md",
@@ -81,6 +86,7 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   );
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-nginx\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-orchestrate\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/retired-henukit-materials-sync\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-publish-oss-wrapper\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-publish-release-oss-wrapper\.test\.mjs/);
   assert.match(workflow, /services\/deploy-webhook\/deploy\/henukit-materials-publish-oss/);
@@ -107,14 +113,15 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   assert.match(goFunction("runMaterials"), /state\.NewMaterialsLatestArrivalPrivilegedConsumer\(/);
   assert.match(sealLinuxTest, /process\.env\.CI === "true" && !dockerAvailable/);
   assert.match(sealLinuxTest, /Docker is required to verify root-owned materials sealing in CI/);
-  assert.match(installer, /henukit-materials-publish-release-oss/);
-  assert.match(installer, /materials-oss-release/);
-  assert.match(installer, /materials-oss\.env/);
+  assert.match(runtimeInstaller, /henukit-materials-publish-release-oss/);
+  assert.match(runtimeInstaller, /materials-oss-release/);
+  assert.match(runtimePackager, /materials-oss-release/);
   assert.match(
     installer,
     /--enable-materials-sync is retired; deploy the signed runtime artifact with deploy-henukit-artifact\.sh/,
   );
   assert.doesNotMatch(installer, /materials-oss-canary/);
+  assert.doesNotMatch(installer, /if \(\( enable_materials_sync \)\)|go build.*materials/);
   assert.doesNotMatch(orchestrator, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
   assert.doesNotMatch(materialsUnits, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
 });

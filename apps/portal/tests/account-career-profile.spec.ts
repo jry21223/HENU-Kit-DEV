@@ -99,7 +99,8 @@ test("save button never double-submits while a save is pending", async ({ page }
 
   await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-career-profile-state="ready"]')).toBeVisible();
-  const saveButton = page.getByRole("button", { name: "保存画像" });
+  const saveButton = page.locator('button[type="submit"]');
+  await expect(saveButton).toHaveAccessibleName("保存画像");
   await saveButton.click();
   await expect(saveButton).toBeDisabled();
   await saveButton.click({ force: true });

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MATERIAL_TYPES } from "@/lib/library/mock";
+import { MATERIAL_TYPES } from "@/lib/library/material-types";
 import SlidesViewer from "@/components/library/slides-viewer";
 import { LibraryLoading, LibraryNotFound, LibraryUnavailable } from "@/components/library/material-states";
 import { useMaterialDetail } from "@/lib/library/use-material-detail";

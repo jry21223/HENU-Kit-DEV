@@ -1,4 +1,4 @@
-// Code generated from library.yaml (SHA256 378587cd375e4a00056f219799fd4fc408ee3d9070c7b44f4e17a0fe2f542afc); DO NOT EDIT.
+// Code generated from library.yaml (SHA256 66f254f3dffae0b0254d7969c3433cad8519d91bbf6461c781795aacb37dba58); DO NOT EDIT.
 package contract
 
 const (

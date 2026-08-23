@@ -112,11 +112,6 @@ require_regular "$config_path" "configuration" "$config_owner" "600"
 
 sealed_root=""
 public_root=""
-importer=""
-psql=""
-pg_service_file=""
-pg_service=""
-legacy_inventory=""
 oss_audit_root=""
 activation_staging_root=""
 library_database_url=""
@@ -132,11 +127,6 @@ while IFS= read -r line || [ -n "$line" ]; do
   case "$key" in
     HENUKIT_MATERIALS_SEALED_ROOT) [ -z "$sealed_root" ] || fail "configuration contains a duplicate key"; sealed_root="$value" ;;
     HENUKIT_MATERIALS_PUBLIC_ROOT) [ -z "$public_root" ] || fail "configuration contains a duplicate key"; public_root="$value" ;;
-    HENUKIT_MATERIALS_IMPORTER) [ -z "$importer" ] || fail "configuration contains a duplicate key"; importer="$value" ;;
-    HENUKIT_MATERIALS_PSQL) [ -z "$psql" ] || fail "configuration contains a duplicate key"; psql="$value" ;;
-    HENUKIT_MATERIALS_PG_SERVICE_FILE) [ -z "$pg_service_file" ] || fail "configuration contains a duplicate key"; pg_service_file="$value" ;;
-    HENUKIT_MATERIALS_PG_SERVICE) [ -z "$pg_service" ] || fail "configuration contains a duplicate key"; pg_service="$value" ;;
-    HENUKIT_MATERIALS_LEGACY_INVENTORY) [ -z "$legacy_inventory" ] || fail "configuration contains a duplicate key"; legacy_inventory="$value" ;;
     HENUKIT_MATERIALS_OSS_AUDIT_ROOT) [ -z "$oss_audit_root" ] || fail "configuration contains a duplicate key"; oss_audit_root="$value" ;;
     HENUKIT_MATERIALS_ACTIVATION_STAGING_ROOT) [ -z "$activation_staging_root" ] || fail "configuration contains a duplicate key"; activation_staging_root="$value" ;;
     LIBRARY_DATABASE_URL) [ -z "$library_database_url" ] || fail "configuration contains a duplicate key"; library_database_url="$value" ;;
@@ -145,27 +135,19 @@ while IFS= read -r line || [ -n "$line" ]; do
   esac
 done < "$config_path"
 
-for value in "$sealed_root" "$public_root" "$importer" "$psql" "$pg_service_file" "$pg_service" "$legacy_inventory" "$oss_audit_root" "$activation_staging_root" "$library_database_url" "$library_oss_ram_role"; do
+for value in "$sealed_root" "$public_root" "$oss_audit_root" "$activation_staging_root" "$library_database_url" "$library_oss_ram_role"; do
   [ -n "$value" ] || fail "configuration is incomplete"
 done
-for path in "$sealed_root" "$public_root" "$importer" "$psql" "$pg_service_file" "$legacy_inventory" "$oss_audit_root" "$activation_staging_root"; do
+for path in "$sealed_root" "$public_root" "$oss_audit_root" "$activation_staging_root"; do
   case "$path" in
     /*) [ "$path" != "/" ] || fail "configuration path is invalid" ;;
     *) fail "configuration path is invalid" ;;
   esac
 done
-case "$pg_service" in
-  *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-]*|"") fail "PostgreSQL service name is invalid" ;;
-esac
-
 require_directory "$sealed_root" "sealed root"
 require_directory "$public_root" "public root"
 require_directory "$oss_audit_root" "OSS audit root"
 require_directory "$activation_staging_root" "activation staging root"
-require_regular "$importer" "fixed importer" "$config_owner"
-require_regular "$psql" "fixed psql" "$config_owner"
-require_regular "$pg_service_file" "PostgreSQL service file" "$config_owner" "600"
-require_regular "$legacy_inventory" "reviewed legacy inventory" "$config_owner" "600"
 require_regular "$activate_script" "fixed activation command" "$config_owner" "600"
 require_regular "$bundle_builder" "fixed activation bundle builder" "$config_owner" "600"
 require_regular "$library_activator" "fixed Library activation command" "$config_owner"
@@ -184,8 +166,6 @@ done
 exec "$flock_bin" -n "$lock_path" "$env_bin" -i \
   HOME=/root \
   PATH=/usr/bin:/bin \
-  PGSERVICEFILE="$pg_service_file" \
-  PGSERVICE="$pg_service" \
   LIBRARY_DATABASE_URL="$library_database_url" \
   LIBRARY_OSS_ECS_RAM_ROLE="$library_oss_ram_role" \
   "$node_bin" "$activate_script" \
@@ -193,9 +173,6 @@ exec "$flock_bin" -n "$lock_path" "$env_bin" -i \
   --receipt-sha256 "$receipt_sha256" \
   --sealed-root "$sealed_root" \
   --public-root "$public_root" \
-  --importer "$importer" \
-  --psql "$psql" \
-  --legacy-inventory "$legacy_inventory" \
   --oss-audit-root "$oss_audit_root" \
   --activation-staging-root "$activation_staging_root" \
   --bundle-builder "$bundle_builder" \

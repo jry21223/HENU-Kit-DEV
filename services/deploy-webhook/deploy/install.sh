@@ -16,7 +16,6 @@ listen_addr="127.0.0.1:10087"
 clone_url=""
 enable_command_hook=0
 enable_study_hook=0
-enable_materials_sync=0
 
 usage() {
   cat <<'USAGE'
@@ -42,16 +41,14 @@ while (( "$#" )); do
     --clone-url) clone_url="${2:?}"; shift 2 ;;
     --enable-command-hook) enable_command_hook=1; shift ;;
     --enable-study-hook) enable_study_hook=1; shift ;;
-    --enable-materials-sync) enable_materials_sync=1; shift ;;
+    --enable-materials-sync)
+      echo "--enable-materials-sync is retired; deploy the signed runtime artifact with deploy-henukit-artifact.sh" >&2
+      exit 64
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 64 ;;
   esac
 done
-
-if (( enable_materials_sync )); then
-  echo "--enable-materials-sync is retired; deploy the signed runtime artifact with deploy-henukit-artifact.sh" >&2
-  exit 64
-fi
 
 [[ "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "invalid repository" >&2; exit 64; }
 [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "invalid branch" >&2; exit 64; }
@@ -163,118 +160,9 @@ systemctl daemon-reload
 systemctl enable --now henukit-deploy-webhook.service
 systemctl disable --now henukit-deploy-webhook.path >/dev/null 2>&1 || true
 
-if (( enable_materials_sync )); then
-  for command in node psql; do
-    command -v "$command" >/dev/null || { echo "missing required materials command: $command" >&2; exit 69; }
-  done
-  # Materials webhook receiver remains unprivileged. The queue runner is a
-  # confined root service whose binary can invoke only this fixed chain.
-  repo_root="$(cd -- "$source_dir/../.." && pwd)"
-  install -d -o root -g root -m 0700 /opt/henukit-materials
-  install -d -o root -g root -m 0700 /opt/henukit-materials/sealed
-  install -d -o root -g root -m 0700 /opt/henukit-materials/oss-audit
-  install -d -o root -g root -m 0700 /opt/henukit-materials/activation-staging
-  install -d -o root -g root -m 0755 /opt/henukit-materials/public
-  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-orchestrate" /usr/local/libexec/henukit/henukit-materials-orchestrate
-  install -o root -g root -m 0755 "$source_dir/deploy/henukit-materials-prepare" /usr/local/libexec/henukit/henukit-materials-prepare
-  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-seal" /usr/local/libexec/henukit/henukit-materials-seal
-  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-activate" /usr/local/libexec/henukit/henukit-materials-activate
-  install -o root -g root -m 0700 "$source_dir/deploy/henukit-materials-publish-release-oss" /usr/local/libexec/henukit/henukit-materials-publish-release-oss
-  install -o root -g root -m 0644 "$repo_root/scripts/ops/prepare-henukit-materials.mjs" /usr/local/libexec/henukit/prepare-henukit-materials.mjs
-  install -o root -g root -m 0600 "$repo_root/scripts/ops/seal-henukit-materials.mjs" /usr/local/libexec/henukit/seal-henukit-materials.mjs
-  install -o root -g root -m 0600 "$repo_root/scripts/ops/activate-henukit-materials.mjs" /usr/local/libexec/henukit/activate-henukit-materials.mjs
-  install -o root -g root -m 0600 "$repo_root/scripts/ops/build-henukit-library-activation-bundle.mjs" /usr/local/libexec/henukit/build-henukit-library-activation-bundle.mjs
-  install -o root -g root -m 0755 "$repo_root/scripts/ops/import-henukit-materials.mjs" /usr/local/libexec/henukit/import-henukit-materials.mjs
-  materials_release_binary="$(mktemp)"
-  library_activation_binary="$(mktemp)"
-  trap 'rm -f "$temp_binary" "$materials_release_binary" "$library_activation_binary"' EXIT
-  (
-    cd "$source_dir"
-    CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$materials_release_binary" ./cmd/materials-oss-release
-  )
-  install -o root -g root -m 0700 "$materials_release_binary" /usr/local/libexec/henukit/materials-oss-release
-  rm -f "$materials_release_binary"
-  (
-    cd "$repo_root/services/library"
-    CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$library_activation_binary" ./cmd/activate-public-release
-  )
-  install -o root -g root -m 0700 "$library_activation_binary" /usr/local/libexec/henukit/library-activate-public-release
-  rm -f "$library_activation_binary"
-
-  if [[ ! -f /etc/henukit-deploy/materials-webhook.env ]]; then
-    install -o root -g henukit-deploy -m 0640 "$source_dir/deploy/materials.env.example" /etc/henukit-deploy/materials-webhook.env
-  fi
-  if [[ ! -f /etc/henukit-deploy/materials-seal.env ]]; then
-    cat > /etc/henukit-deploy/materials-seal.env <<'MATERIALS_SEAL_ENV'
-HENUKIT_MATERIALS_SEALED_ROOT=/opt/henukit-materials/sealed
-HENUKIT_MATERIALS_SOURCE_REPOSITORY=https://github.com/jry21223/HENU-Final-Review.git
-HENUKIT_MATERIALS_SOURCE_REF=refs/heads/main
-MATERIALS_SEAL_ENV
-  fi
-  chown root:root /etc/henukit-deploy/materials-seal.env
-  chmod 0600 /etc/henukit-deploy/materials-seal.env
-  if [[ ! -f /etc/henukit-deploy/materials-oss.env ]]; then
-    install -o root -g root -m 0600 "$source_dir/deploy/materials-oss.env.example" /etc/henukit-deploy/materials-oss.env
-  fi
-  chown root:root /etc/henukit-deploy/materials-oss.env
-  chmod 0600 /etc/henukit-deploy/materials-oss.env
-  if [[ ! -f /etc/henukit-deploy/materials-activate.env ]]; then
-    cat > /etc/henukit-deploy/materials-activate.env <<'MATERIALS_ACTIVATE_ENV'
-HENUKIT_MATERIALS_SEALED_ROOT=/opt/henukit-materials/sealed
-HENUKIT_MATERIALS_PUBLIC_ROOT=/opt/henukit-materials/public
-HENUKIT_MATERIALS_IMPORTER=/usr/local/libexec/henukit/import-henukit-materials.mjs
-HENUKIT_MATERIALS_PSQL=/usr/bin/psql
-HENUKIT_MATERIALS_PG_SERVICE_FILE=/etc/henukit-deploy/materials-postgresql.conf
-HENUKIT_MATERIALS_PG_SERVICE=henukit-materials
-HENUKIT_MATERIALS_LEGACY_INVENTORY=/etc/henukit-deploy/materials-legacy-inventory.json
-HENUKIT_MATERIALS_OSS_AUDIT_ROOT=/opt/henukit-materials/oss-audit
-HENUKIT_MATERIALS_ACTIVATION_STAGING_ROOT=/opt/henukit-materials/activation-staging
-LIBRARY_DATABASE_URL=postgres://configure-before-enable.invalid/library
-LIBRARY_OSS_ECS_RAM_ROLE=configure-before-enable
-MATERIALS_ACTIVATE_ENV
-  fi
-  chown root:root /etc/henukit-deploy/materials-activate.env
-  chmod 0600 /etc/henukit-deploy/materials-activate.env
-  if [[ ! -f /etc/henukit-deploy/materials-postgresql.conf ]]; then
-    cat > /etc/henukit-deploy/materials-postgresql.conf <<'MATERIALS_POSTGRESQL'
-[henukit-materials]
-host=configure-before-enable.invalid
-dbname=study
-user=henukit
-password=configure-before-enable
-sslmode=require
-MATERIALS_POSTGRESQL
-  fi
-  chown root:root /etc/henukit-deploy/materials-postgresql.conf
-  chmod 0600 /etc/henukit-deploy/materials-postgresql.conf
-  if [[ ! -f /etc/henukit-deploy/materials-legacy-inventory.json ]]; then
-    printf '%s\n' '{"version":1,"storage_keys":[]}' > /etc/henukit-deploy/materials-legacy-inventory.json
-  fi
-  chown root:root /etc/henukit-deploy/materials-legacy-inventory.json
-  chmod 0600 /etc/henukit-deploy/materials-legacy-inventory.json
-  if [[ ! -f /etc/henukit-deploy/materials-webhook-secret ]]; then
-    openssl rand -hex 32 > /etc/henukit-deploy/materials-webhook-secret
-  fi
-  chown root:root /etc/henukit-deploy/materials-webhook-secret
-  chmod 0400 /etc/henukit-deploy/materials-webhook-secret
-
-  install -o root -g root -m 0644 "$source_dir/deploy/systemd/henukit-materials-webhook.service" /etc/systemd/system/henukit-materials-webhook.service
-  install -o root -g root -m 0644 "$source_dir/deploy/systemd/henukit-materials-webhook.path" /etc/systemd/system/henukit-materials-webhook.path
-  install -o root -g root -m 0644 "$source_dir/deploy/systemd/henukit-materials-runner.service" /etc/systemd/system/henukit-materials-runner.service
-  systemctl daemon-reload
-  # 与主接收器同规则:先只启用接收器,验证 Nginx/GitHub webhook 后再启用队列。
-  systemctl enable --now henukit-materials-webhook.service
-  systemctl disable --now henukit-materials-webhook.path >/dev/null 2>&1 || true
-fi
-
 fingerprint="$(sha256sum /etc/henukit-deploy/webhook-secret | awk '{print $1}')"
 echo
 printf 'Webhook receiver installed. Secret SHA-256 fingerprint: %s\n' "$fingerprint"
-if (( enable_materials_sync )); then
-  materials_fingerprint="$(sha256sum /etc/henukit-deploy/materials-webhook-secret | awk '{print $1}')"
-  echo
-  printf 'Materials sync webhook installed. Secret SHA-256 fingerprint: %s\n' "$materials_fingerprint"
-fi
 echo "Read-only Deploy Key (add it to the repository, without write access):"
 cat "$ssh_dir/id_ed25519.pub"
 echo

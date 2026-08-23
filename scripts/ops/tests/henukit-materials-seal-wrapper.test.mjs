@@ -193,7 +193,7 @@ test("sealed-release template stays root-only and cannot become a B01 runner tar
   const program = readFileSync(programPath, "utf8");
   const receiver = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "systemd", "henukit-materials-webhook.service"), "utf8");
   const runner = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "systemd", "henukit-materials-runner.service"), "utf8");
-  const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install.sh"), "utf8");
+  const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install-materials-runtime.sh"), "utf8");
 
   assert.notEqual(statSync(templatePath).mode & 0o111, 0, "the root-only template remains executable when intentionally installed later");
   assert.match(template, /^readonly config_path="\/etc\/henukit-deploy\/materials-seal\.env"$/m);
@@ -219,5 +219,5 @@ test("sealed-release template stays root-only and cannot become a B01 runner tar
   assert.match(program, /fsyncOutputDirectories\(provisional\)/);
   assert.doesNotMatch(receiver, /henukit-materials-seal/);
   assert.doesNotMatch(runner, /henukit-materials-seal/);
-  assert.match(installer, /henukit-materials-seal/);
+  assert.match(installer, /libexec\/henukit-materials-seal\|\/usr\/local\/libexec\/henukit\/henukit-materials-seal\|0700/);
 });

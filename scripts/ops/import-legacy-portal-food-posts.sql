@@ -13,6 +13,9 @@
 --
 -- Run against the food database:
 --   psql -U henukit -d food -v ON_ERROR_STOP=1 -f import-legacy-portal-food-posts.sql
+-- Then migrate the five production-proven legacy photos with the separately
+-- fail-closed import-legacy-portal-food-images.mjs tool. It verifies that
+-- these deterministic post IDs exist before it writes any image row.
 
 INSERT INTO food_posts (
   id, venue_name, campus, tier, review_text, price_reference,

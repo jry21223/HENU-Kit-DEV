@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { MATERIAL_TYPES } from "@/lib/library/mock";
+import { MATERIAL_TYPES } from "@/lib/library/material-types";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 import { LibraryLoading, LibraryNotFound, LibraryUnavailable } from "@/components/library/material-states";

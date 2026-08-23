@@ -2,11 +2,37 @@ package food
 
 import (
 	"bytes"
+	"encoding/binary"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"testing"
 )
+
+func jpegWithOrientationAndGPSMarker(t *testing.T, source image.Image, orientation uint16) []byte {
+	t.Helper()
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	tiff := make([]byte, 8+2+12+4)
+	copy(tiff[:2], "II")
+	binary.LittleEndian.PutUint16(tiff[2:4], 42)
+	binary.LittleEndian.PutUint32(tiff[4:8], 8)
+	binary.LittleEndian.PutUint16(tiff[8:10], 1)
+	binary.LittleEndian.PutUint16(tiff[10:12], 0x0112)
+	binary.LittleEndian.PutUint16(tiff[12:14], 3)
+	binary.LittleEndian.PutUint32(tiff[14:18], 1)
+	binary.LittleEndian.PutUint16(tiff[18:20], orientation)
+	payload := append(append([]byte("Exif\x00\x00"), tiff...), []byte("GPSSECRET")...)
+	segment := make([]byte, 4+len(payload))
+	segment[0], segment[1] = 0xff, 0xe1
+	binary.BigEndian.PutUint16(segment[2:4], uint16(len(payload)+2))
+	copy(segment[4:], payload)
+	original := encoded.Bytes()
+	return append(append(append([]byte{}, original[:2]...), segment...), original[2:]...)
+}
 
 func TestApplyImageOrientation(t *testing.T) {
 	source := image.NewNRGBA(image.Rect(0, 0, 2, 3))
@@ -62,6 +88,33 @@ func TestEncodeSanitizedPostImagePreservesTransparentWebPAsPNG(t *testing.T) {
 	_, _, _, alpha := actual.At(0, 0).RGBA()
 	if alpha>>8 != 80 {
 		t.Fatalf("alpha = %d, want 80", alpha>>8)
+	}
+}
+
+func TestSanitizePostImageAppliesOrientationAndStripsEXIFGPS(t *testing.T) {
+	source := image.NewNRGBA(image.Rect(0, 0, 2, 3))
+	for y := 0; y < 3; y++ {
+		for x := 0; x < 2; x++ {
+			source.SetNRGBA(x, y, color.NRGBA{R: uint8(20 + x*50 + y*10), A: 255})
+		}
+	}
+	original := jpegWithOrientationAndGPSMarker(t, source, 6)
+	if !bytes.Contains(original, []byte("Exif")) || !bytes.Contains(original, []byte("GPSSECRET")) {
+		t.Fatal("test fixture does not contain EXIF/GPS marker")
+	}
+	sanitized, err := SanitizePostImage("image/jpeg", original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sanitized.ContentType != "image/jpeg" || sanitized.Width != 3 || sanitized.Height != 2 {
+		t.Fatalf("sanitized image = %s %dx%d", sanitized.ContentType, sanitized.Width, sanitized.Height)
+	}
+	if bytes.Contains(sanitized.Bytes, []byte("Exif")) || bytes.Contains(sanitized.Bytes, []byte("GPSSECRET")) {
+		t.Fatal("sanitized image retained EXIF/GPS metadata")
+	}
+	decoded, err := jpeg.Decode(bytes.NewReader(sanitized.Bytes))
+	if err != nil || decoded.Bounds().Dx() != 3 || decoded.Bounds().Dy() != 2 {
+		t.Fatalf("sanitized JPEG is not the oriented 3x2 image: %v", err)
 	}
 }
 

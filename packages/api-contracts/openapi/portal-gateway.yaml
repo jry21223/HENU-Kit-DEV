@@ -1406,7 +1406,7 @@ components:
       required: [id, type, subject, title, author, intro, toc, pages, price, previewPages, downloads, downloadAvailable, fileSize]
       properties:
         id: { type: string, format: uuid }
-        type: { type: string, enum: [note, exam, mock, path, lab, slides, textbook] }
+        type: { type: string, enum: [handout, exam, slides, exercise, answer, note, textbook] }
         subject: { type: string, minLength: 1, maxLength: 255 }
         title: { type: string, minLength: 1, maxLength: 255 }
         author:

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { MATERIAL_TYPES, Material } from "@/lib/library/mock";
+import type { Material } from "@/lib/library/mock";
+import { MATERIAL_TYPES } from "@/lib/library/material-types";
 
 /** 资料卡：封面块（图纸网格 + 类型代号 + 价格/免费签）+ 元信息行 */
 export default function MaterialCard({ material }: { material: Material }) {
