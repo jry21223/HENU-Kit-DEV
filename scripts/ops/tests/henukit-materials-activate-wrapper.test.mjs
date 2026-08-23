@@ -208,9 +208,17 @@ test("root activation wrapper holds one kernel lock across the activation proces
     writeFileSync(join(root, "build-henukit-library-activation-bundle.mjs"), "// fixed bundle builder\n", { mode: 0o600 });
     chmodSync(join(root, "build-henukit-library-activation-bundle.mjs"), 0o600);
     executable(join(root, "library-activate-public-release"), "#!/bin/sh\nexit 0\n");
+    const ownerProbe = spawnSync("docker", [
+      "run", "--rm", "-v", `${root}:/fixture`, "node:22-alpine",
+      "stat", "-c", "%u", "/fixture/materials-activate.env",
+    ], { encoding: "utf8" });
+    assert.equal(ownerProbe.status, 0, ownerProbe.stderr);
+    const fixtureOwner = ownerProbe.stdout.trim();
+    assert.match(fixtureOwner, /^\d+$/);
     let wrapper = readFileSync(templatePath, "utf8")
       .replace('readonly config_path="/etc/henukit-deploy/materials-activate.env"', 'readonly config_path="/fixture/materials-activate.env"')
-      .replace('readonly lock_path="/run/henukit-materials-activate.lock"', 'readonly lock_path="/fixture/activation.lock"');
+      .replace('readonly lock_path="/run/henukit-materials-activate.lock"', 'readonly lock_path="/fixture/activation.lock"')
+      .replace('readonly config_owner="0"', `readonly config_owner="${fixtureOwner}"`);
     writeFileSync(join(root, "henukit-materials-activate"), wrapper, { mode: 0o700 });
     chmodSync(join(root, "henukit-materials-activate"), 0o700);
 
