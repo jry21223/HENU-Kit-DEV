@@ -4,6 +4,7 @@ umask 077
 
 readonly config_path="/etc/henukit-deploy/materials-webhook.env"
 readonly config_owner="0"
+readonly rm_bin="/usr/bin/rm"
 runtime_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly runtime_dir
 readonly prepare_script="$runtime_dir/prepare-henukit-materials.mjs"
@@ -114,6 +115,38 @@ readonly candidate_root="${candidate_root%/}"
 mkdir -p -- "$candidate_root"
 chmod 0700 "$candidate_root"
 [[ ! -L "$candidate_root" && -d "$candidate_root" ]] || fail "candidate root must be a real directory"
+[[ ! -L "$rm_bin" && -f "$rm_bin" && -x "$rm_bin" ]] ||
+  fail "fixed candidate cleanup command is unavailable; keep the materials runner disabled and reinstall the signed runtime before retrying"
+attempt_dir=""
+preparation_succeeded=0
+release_attempt() {
+  local attempt_name attempt_owner
+  attempt_name="${attempt_dir##*/}"
+  [[ "${attempt_dir%/*}" == "$candidate_root" && "$attempt_name" =~ ^\.attempt\.[A-Za-z0-9]{10}$ ]] || return 1
+  [[ ! -L "$attempt_dir" && -d "$attempt_dir" ]] || return 1
+  if attempt_owner="$(stat -c '%u' -- "$attempt_dir" 2>/dev/null)"; then
+    :
+  else
+    attempt_owner="$(stat -f '%u' -- "$attempt_dir")"
+  fi
+  [[ "$attempt_owner" == "$(id -u)" ]] || return 1
+  "$rm_bin" -rf --one-file-system -- "$attempt_dir"
+  [[ ! -e "$attempt_dir" && ! -L "$attempt_dir" ]]
+}
+cleanup_failed() {
+  printf '%s\n' \
+    "henukit-materials-prepare: candidate cleanup failed; keep the materials runner disabled and inspect the configured candidate root using the production runbook" >&2
+  exit 74
+}
+cleanup() {
+  local status=$?
+  trap - EXIT
+  if [[ "$preparation_succeeded" -eq 0 && -n "$attempt_dir" ]]; then
+    release_attempt || cleanup_failed
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
 attempt_dir="$(mktemp -d "$candidate_root/.attempt.XXXXXXXXXX")"
 readonly candidate_dir="$attempt_dir/candidate"
 
@@ -135,4 +168,7 @@ done
   --ref "$event_ref" \
   --sha "$accepted_sha" \
   --candidate-dir "$candidate_dir"
-printf 'attempt_locator=%s\n' "${attempt_dir##*/}"
+attempt_locator="${attempt_dir##*/}"
+release_attempt || cleanup_failed
+preparation_succeeded=1
+printf 'attempt_locator=%s\n' "$attempt_locator"

@@ -26,6 +26,11 @@ Acceptance criteria:
 - [ ] `课件PPT` remains an original downloadable asset; preparation has no converter or Slides output path.
 - [ ] The CLI rejects a candidate at or below every protected served root, including through a symbolic link.
 - [ ] A failed checkout or validation leaves the existing served tree and Study catalog untouched and creates no ready marker.
+- [ ] The unprivileged wrapper treats the candidate checkout and reviewed-asset
+  mirror as attempt-scoped temporary bytes. It removes the exact direct-child
+  `.attempt.<token>` on both success and failure, verifies removal, and emits
+  `attempt_locator` only after successful cleanup. Cleanup failure returns no
+  locator and therefore cannot reach seal, OSS publication, or activation.
 - [ ] Tests use only temporary local Git repositories and local fixture files; they never contact the material source repository or production.
 
 Dependencies: none for local preparation.
@@ -151,8 +156,9 @@ actions, rollback, Console or Library ownership, and Git-topology ordering.
   only supported materials delivery path. Retired sync scripts are forbidden.
 - The root runner validates repository/ref against root-owned configuration and
   validates the accepted full SHA from the authenticated queue event, runs A01
-  as `henukit-deploy`, performs C0 sealing as root, and activates only the
-  returned release ID plus receipt digest.
+  as `henukit-deploy`, accepts only its post-cleanup attempt token, performs C0
+  sealing as root, and activates only the returned release ID plus receipt
+  digest. Candidate bytes are not a seal, retry, rollback, or audit input.
 - Activation holds the fixed lock, creates `.maintenance`, writes the durable
   journal, durably installs the release, switches the internal recovery pointer,
   imports immutable release-prefixed catalog keys transactionally, writes
