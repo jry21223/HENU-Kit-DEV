@@ -192,8 +192,17 @@ const dockerAvailable = spawnSync(
 ).status === 0;
 const integration = dockerAvailable ? test : test.skip;
 
+function dockerTimeout(args) {
+  return args[0] === "run" ? 120_000 : 10_000;
+}
+
+test("Docker fixture startup permits a bounded first image pull while later calls stay fail-fast", () => {
+  assert.equal(dockerTimeout(["run", "--rm", "postgres:17-alpine"]), 120_000);
+  assert.equal(dockerTimeout(["exec", "fixture", "psql"]), 10_000);
+});
+
 function docker(args, { allowFailure = false, input } = {}) {
-  const result = spawnSync("docker", args, { encoding: "utf8", input, timeout: 10_000 });
+  const result = spawnSync("docker", args, { encoding: "utf8", input, timeout: dockerTimeout(args) });
   if (!allowFailure) assert.equal(result.status, 0, result.stderr);
   return result;
 }
