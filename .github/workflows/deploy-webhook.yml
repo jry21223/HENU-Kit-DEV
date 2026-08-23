@@ -177,6 +177,41 @@ jobs:
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
           systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
+      - name: Verify materials runner can drop preparation privileges
+        run: |
+          set -euo pipefail
+          id -u henukit-deploy >/dev/null 2>&1 || \
+            sudo useradd --system --no-create-home --shell /usr/sbin/nologin henukit-deploy
+          sudo install -d -o root -g root -m 0700 \
+            /var/lib/henukit-materials-webhook /opt/henukit-materials
+
+          unit=henukit-materials-runner-capability-test.service
+          unit_path="/run/systemd/system/$unit"
+          dropin_dir="$unit_path.d"
+          cleanup() {
+            sudo systemctl stop "$unit" >/dev/null 2>&1 || true
+            sudo rm -f "$dropin_dir/override.conf" "$unit_path"
+            sudo rmdir "$dropin_dir" >/dev/null 2>&1 || true
+            sudo systemctl daemon-reload
+          }
+          trap cleanup EXIT
+
+          sudo install -o root -g root -m 0644 \
+            services/deploy-webhook/deploy/systemd/henukit-materials-runner.service \
+            "$unit_path"
+          sudo install -d -o root -g root -m 0755 "$dropin_dir"
+          printf '%s\n' \
+            '[Service]' \
+            'EnvironmentFile=' \
+            'ExecStart=' \
+            'ExecStart=/usr/sbin/runuser -u henukit-deploy -- /usr/bin/id -u' | \
+            sudo tee "$dropin_dir/override.conf" >/dev/null
+          sudo systemctl daemon-reload
+          sudo systemctl start "$unit"
+
+          expected_uid="$(id -u henukit-deploy)"
+          test "$(sudo systemctl show "$unit" --property=Result --value)" = success
+          sudo journalctl --unit "$unit" --output=cat --no-pager | grep -qx "$expected_uid"
       - name: Validate the complete materials release boundary
         run: |
           # Pre-pull the node image used by the activate-wrapper tests so the

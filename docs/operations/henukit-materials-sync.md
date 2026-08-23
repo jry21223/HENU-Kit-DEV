@@ -60,10 +60,15 @@ OSS publish 和 Library activation。C0 仍按 authenticated SHA 独立拉取并
    存在旧 `.attempt.*`，先保持 path/runner 停用，证明没有 running event、进程或打开文件，
    再只以 `henukit-deploy` 身份删除已核对的 direct child。不得删除 candidate root、queue、
    processed/failed、sealed `.audit`、`ACTIVE_RELEASE`、journal、fence 或当前 public release。
-8. `henukit-materials-runner.service` 必须保留 `NoNewPrivileges=yes`，但不能同时设置
-   `RestrictSUIDSGID=yes`。该 runner 以 root 进入固定 orchestrator，再有意通过 `runuser`
-   降权执行 prepare；生产 systemd 在两项组合时会以 `EPERM` 阻断这次 UID 转换，使流程在
-   Git、OSS 与数据库操作之前失败。receiver 仍保留自己的完整非特权沙箱。
+8. `henukit-materials-runner.service` 必须保留 `NoNewPrivileges=yes`、`PrivateDevices=yes` 和
+   `RestrictSUIDSGID=yes`，同时不能声明 `User=root`。system service 未声明 `User` 时本就默认
+   以 root 启动；生产 systemd 在显式 `User=root` 与 `PrivateDevices` 的 seccomp hardening 组合
+   下会在 `ExecStart` 前从 effective/permitted capability 中移除 `CAP_SETUID`，而
+   `NoNewPrivileges` 会正确阻止后续 `exec` 重新取得该 capability。固定 orchestrator 因此无法
+   通过 `runuser` 单向降权执行 prepare，并在 Git、OSS 与数据库操作之前以 `EPERM` 失败。
+   `Group=root` 也按默认身份省略，但它不是该 capability drop 的必要条件。CI 必须安装真实 unit
+   并执行一次 root 到 `henukit-deploy` 的 UID 转换，不能只静态检查 unit 文本。receiver 仍保留
+   自己的完整非特权沙箱。
 
 ## 激活、故障恢复与维护围栏
 
