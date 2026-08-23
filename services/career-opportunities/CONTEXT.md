@@ -16,6 +16,18 @@ _Avoid_: Free trial, member inventory, complete market
 A user's structured directions, skills, locations, job type, availability, and matching keywords. It is not a resume file or a Platform Core identity profile.
 _Avoid_: Resume, account profile, prompt
 
+**Resume Text**:
+The user-reviewed narrative of project, competition, and internship experience inside a Career Profile. It may be entered directly or produced by Resume Extraction, but it is not the uploaded resume file.
+_Avoid_: Original resume, stored resume file, verified experience
+
+**Resume Extraction**:
+A temporary processing job that turns a user-uploaded resume into a Career Profile draft. Uploaded file bytes are discarded after processing; the draft remains editable and is not saved until the user confirms it.
+_Avoid_: Saved resume, automatic profile update, permanent upload
+
+**Suification Draft**:
+An entertainment-only rewrite of the current Resume Text. It may intensify wording without inventing facts and remains temporary until the user applies it to the editable Career Profile.
+_Avoid_: Resume optimization, verified resume, automatic save
+
 **Opportunity Match**:
 A versioned, explainable comparison between one Career Profile and one Job Opportunity. It is guidance, not an eligibility decision or employment prediction.
 _Avoid_: AI recommendation, hiring score, acceptance probability

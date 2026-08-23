@@ -73,6 +73,117 @@ test("account profile page renders the career profile and saves the full replace
   await expect(page.getByText("求职画像已保存，将用于下一次求职雷达匹配。")).toBeVisible();
 });
 
+test("resume suification previews without overwriting and applies only after confirmation", async ({ page }) => {
+  await mockSession(page);
+  let profilePutCount = 0;
+  let suifyCount = 0;
+  await page.route("**/api/v1/career/profile", async (route) => {
+    if (route.request().method() === "PUT") profilePutCount += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile_get" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile/suifications", async (route) => {
+    suifyCount += 1;
+    expect(route.request().headers()["idempotency-key"]).toMatch(/^career:suify-/);
+    expect(await route.request().postDataJSON()).toEqual({ resume_text: "校内项目经历" });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        draft: { resume_text: "校内项目经历（重点表达版）" },
+        request_id: "req_career_suify",
+      }),
+    });
+  });
+
+  await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
+  const original = page.getByLabel("经历摘要（≤4000 字）");
+  await expect(original).toHaveValue("校内项目经历");
+
+  await page.getByRole("button", { name: "酥化" }).click();
+  const preview = page.locator('[data-account-career-suification="preview"]');
+  await expect(preview).toBeVisible();
+  await expect(preview.getByLabel("酥化预览")).toHaveValue("校内项目经历（重点表达版）");
+  await expect(original).toHaveValue("校内项目经历");
+  expect(profilePutCount).toBe(0);
+
+  await preview.getByRole("button", { name: "撤销" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(original).toHaveValue("校内项目经历");
+
+  await page.getByRole("button", { name: "酥化" }).click();
+  await expect(preview).toBeVisible();
+  await preview.getByRole("button", { name: "应用" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(original).toHaveValue("校内项目经历（重点表达版）");
+  expect(suifyCount).toBe(2);
+  expect(profilePutCount).toBe(0);
+
+  await page.getByRole("button", { name: "恢复原文" }).click();
+  await expect(original).toHaveValue("校内项目经历");
+  await expect(page.getByRole("button", { name: "恢复原文" })).toHaveCount(0);
+});
+
+test("a newly extracted resume invalidates an older in-flight Suification", async ({ page }) => {
+  await mockSession(page);
+  let releaseSuification!: () => void;
+  const suificationReleased = new Promise<void>((resolve) => {
+    releaseSuification = resolve;
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile_get" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile/suifications", async (route) => {
+    await suificationReleased;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        draft: { resume_text: "旧内容的迟到酥化结果" },
+        request_id: "req_suify_old",
+      }),
+    });
+  });
+  await page.route("**/api/v1/career/profile/extractions", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        extraction: {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "completed",
+          user_id: sessionUserID,
+          file_name: "new-resume.txt",
+          extracted: { resume_text: "新识别经历" },
+          created_at: "2026-08-24T00:00:00Z",
+        },
+        request_id: "req_extract_new",
+      }),
+    });
+  });
+
+  await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
+  const resumeText = page.getByLabel("经历摘要（≤4000 字）");
+  await page.getByRole("button", { name: "酥化" }).click();
+  await expect(page.getByRole("button", { name: "酥化中" })).toHaveText("酥化中…");
+  await expect(page.getByRole("button", { name: "酥化中" })).toHaveAttribute("aria-busy", "true");
+
+  await page.locator("#career-resume-upload").setInputFiles({
+    name: "new-resume.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("new resume"),
+  });
+  await page.getByRole("button", { name: "上传并识别" }).click();
+  await expect(page.locator('[data-account-career-extraction="done"]')).toBeVisible();
+  await expect(resumeText).toHaveValue("新识别经历");
+
+  releaseSuification();
+  await expect(page.locator('[data-account-career-suification="preview"]')).toHaveCount(0);
+  await expect(resumeText).toHaveValue("新识别经历");
+});
+
 test("save button never double-submits while a save is pending", async ({ page }) => {
   await mockSession(page);
   let putCount = 0;

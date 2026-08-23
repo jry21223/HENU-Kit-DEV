@@ -664,3 +664,11 @@ export interface CareerResumeExtractionResponse {
   extraction: CareerResumeExtraction;
   request_id: string;
 }
+
+/** A transient entertainment rewrite; it is not a stored Career Profile. */
+export interface CareerResumeSuificationResponse {
+  draft: {
+    resume_text: string;
+  };
+  request_id: string;
+}

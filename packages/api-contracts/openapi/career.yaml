@@ -210,6 +210,52 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/career/profile/suifications:
+    post:
+      tags: [Career]
+      operationId: createCareerResumeSuification
+      summary: Create a transient entertainment rewrite of the current Resume Text
+      description: >-
+        Sends only the supplied Resume Text through the operator-configured Career
+        LLM and returns a temporary draft. The service does not update or persist
+        the actor's Career Profile; the browser decides whether to discard or apply
+        the draft to its editable form.
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CareerResumeSuificationInput" }
+      responses:
+        "200":
+          description: The transient suification draft
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [draft]
+                        properties:
+                          draft: { $ref: "#/components/schemas/CareerResumeSuificationDraft" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/v1/career/profile/extractions:
     post:
       tags: [Career]
@@ -335,7 +381,12 @@ components:
     IdempotencyKey:
       in: header
       name: Idempotency-Key
-      schema: { type: string }
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+        pattern: '^[A-Za-z0-9._:-]{8,200}$'
   responses:
     BadRequest:
       description: Bad request
@@ -491,6 +542,23 @@ components:
         created_at:
           type: string
           format: date-time
+    CareerResumeSuificationInput:
+      type: object
+      additionalProperties: false
+      required: [resume_text]
+      properties:
+        resume_text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+    CareerResumeSuificationDraft:
+      type: object
+      required: [resume_text]
+      properties:
+        resume_text:
+          type: string
+          minLength: 1
+          maxLength: 4000
     CareerProfile:
       type: object
       required: [user_id, updated_at]

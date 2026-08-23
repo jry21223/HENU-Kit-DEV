@@ -145,6 +145,16 @@ func sendMultipart(t *testing.T, baseURL, actorID, path, fileName string, conten
 
 func sendSigned(t *testing.T, baseURL, actorID, method, path string, body []byte, contentType, idempotencyKey string) *http.Response {
 	t.Helper()
+	request := newSignedRequest(t, baseURL, actorID, method, path, body, contentType, idempotencyKey)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func newSignedRequest(t *testing.T, baseURL, actorID, method, path string, body []byte, contentType, idempotencyKey string) *http.Request {
+	t.Helper()
 	request, err := http.NewRequest(method, baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -171,11 +181,7 @@ func sendSigned(t *testing.T, baseURL, actorID, method, path string, body []byte
 	request.Header.Set("X-Nonce", nonce)
 	request.Header.Set("X-Signature", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 	request.SetBasicAuth(careerClientID, careerSecret)
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return response
+	return request
 }
 
 func readBody(t *testing.T, response *http.Response) []byte {

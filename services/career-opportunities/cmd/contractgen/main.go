@@ -27,14 +27,15 @@ func main() {
 		}
 	}
 	required := map[string]string{
-		"HealthRoute":           "getCareerHealth",
-		"CreateSearchRoute":     "createCareerSearch",
-		"ListSearchesRoute":     "listCareerSearches",
-		"SearchRoute":           "getCareerSearch",
-		"ProfileRoute":          "getCareerProfile",
-		"UpdateProfileRoute":    "updateCareerProfile",
-		"CreateExtractionRoute": "createCareerResumeExtraction",
-		"ExtractionRoute":       "getCareerResumeExtraction",
+		"HealthRoute":            "getCareerHealth",
+		"CreateSearchRoute":      "createCareerSearch",
+		"ListSearchesRoute":      "listCareerSearches",
+		"SearchRoute":            "getCareerSearch",
+		"ProfileRoute":           "getCareerProfile",
+		"UpdateProfileRoute":     "updateCareerProfile",
+		"CreateSuificationRoute": "createCareerResumeSuification",
+		"CreateExtractionRoute":  "createCareerResumeExtraction",
+		"ExtractionRoute":        "getCareerResumeExtraction",
 	}
 	for _, operationID := range required {
 		if routes[operationID] == "" {
@@ -51,11 +52,12 @@ const (
 	ListSearchesRoute = %q
 	SearchRoute = %q
 	ProfileRoute = %q
-	UpdateProfileRoute = %q
-	CreateExtractionRoute = %q
+		UpdateProfileRoute = %q
+		CreateSuificationRoute = %q
+		CreateExtractionRoute = %q
 	ExtractionRoute = %q
 )
-`, digest, routes["getCareerHealth"], routes["createCareerSearch"], routes["listCareerSearches"], routes["getCareerSearch"], routes["getCareerProfile"], routes["updateCareerProfile"], routes["createCareerResumeExtraction"], routes["getCareerResumeExtraction"])
+	`, digest, routes["getCareerHealth"], routes["createCareerSearch"], routes["listCareerSearches"], routes["getCareerSearch"], routes["getCareerProfile"], routes["updateCareerProfile"], routes["createCareerResumeSuification"], routes["createCareerResumeExtraction"], routes["getCareerResumeExtraction"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/contract", 0o755))

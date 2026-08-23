@@ -116,6 +116,63 @@ func TestBuildExtractorDoesNotBroadenTheHTTPException(t *testing.T) {
 	}
 }
 
+func TestBuildSuifierUsesTheConfiguredCareerLLM(t *testing.T) {
+	t.Setenv("CAREER_REQUIRE_AI", "1")
+	t.Setenv("CAREER_AI_MODE", "")
+	t.Setenv("CAREER_AI_BASE_URL", "https://llm.provider.internal/v1")
+	t.Setenv("CAREER_AI_API_KEY", "sk-production-secret")
+	t.Setenv("CAREER_AI_MODEL", "qwen-production")
+	t.Setenv("CAREER_ALLOW_INSECURE_AI_HTTP", "0")
+	suifier, err := buildSuifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if suifier == nil {
+		t.Fatal("configured production Career LLM returned a nil suifier")
+	}
+}
+
+func TestBuildSuifierRequiresItsOwnPlaintextDisclosureGate(t *testing.T) {
+	t.Setenv("CAREER_REQUIRE_AI", "1")
+	t.Setenv("CAREER_AI_MODE", "")
+	t.Setenv("CAREER_AI_BASE_URL", approvedInsecureAIURL)
+	t.Setenv("CAREER_AI_API_KEY", "sk-production-secret")
+	t.Setenv("CAREER_AI_MODEL", "qwen-production")
+	t.Setenv("CAREER_ALLOW_INSECURE_AI_HTTP", "1")
+	t.Setenv("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP", "0")
+
+	suifier, err := buildSuifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if suifier != nil {
+		t.Fatal("plaintext Suification was enabled without its separate disclosure gate")
+	}
+
+	t.Setenv("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP", "1")
+	suifier, err = buildSuifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if suifier == nil {
+		t.Fatal("explicitly approved plaintext Suification returned a nil suifier")
+	}
+}
+
+func TestBuildSuifierDoesNotBroadenThePlaintextException(t *testing.T) {
+	t.Setenv("CAREER_REQUIRE_AI", "1")
+	t.Setenv("CAREER_AI_MODE", "")
+	t.Setenv("CAREER_AI_BASE_URL", "https://llm.provider.internal/v1")
+	t.Setenv("CAREER_AI_API_KEY", "sk-production-secret")
+	t.Setenv("CAREER_AI_MODEL", "qwen-production")
+	t.Setenv("CAREER_ALLOW_INSECURE_AI_HTTP", "0")
+	t.Setenv("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP", "1")
+
+	if _, err := buildSuifier(); err == nil {
+		t.Fatal("Suification plaintext exception was accepted for an HTTPS provider")
+	}
+}
+
 func TestProbeExtractorRequiresARealStructuredResponse(t *testing.T) {
 	good := func(_ context.Context, fileName string, content []byte) (career.ExtractedProfile, error) {
 		if fileName != "startup-probe.pdf" || !strings.HasPrefix(string(content), "%PDF-") {
