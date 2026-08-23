@@ -105,6 +105,8 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   assert.match(workflow, /sh -n services\/deploy-webhook\/deploy\/henukit-materials-seal/);
   assert.match(workflow, /sh -n services\/deploy-webhook\/deploy\/henukit-materials-activate/);
   assert.match(workflow, /bash -n services\/deploy-webhook\/deploy\/henukit-materials-orchestrate/);
+  assert.match(orchestrator, /readonly publish_release_wrapper="\/usr\/local\/libexec\/henukit\/henukit-materials-publish-release-oss"/);
+  assert.match(orchestrator, /"\$publish_release_wrapper" --release-id "\$release_id" --receipt-sha256 "\$receipt_sha256"/);
   assert.match(workflow, /docker compose -f docker-compose\.henukit\.yml config --quiet/);
   assert.match(workflow, /nginx:1\.27-alpine nginx -t/);
   assert.match(

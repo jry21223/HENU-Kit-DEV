@@ -12,6 +12,7 @@ readonly config_owner="0"
 readonly runtime_owner="0"
 readonly prepare_wrapper="/usr/local/libexec/henukit/henukit-materials-prepare"
 readonly seal_wrapper="/usr/local/libexec/henukit/henukit-materials-seal"
+readonly publish_release_wrapper="/usr/local/libexec/henukit/henukit-materials-publish-release-oss"
 readonly activate_wrapper="/usr/local/libexec/henukit/henukit-materials-activate"
 readonly runuser_bin="/usr/sbin/runuser"
 
@@ -42,7 +43,8 @@ require_root_config() {
 }
 
 require_fixed_command() {
-  [[ ! -L "$1" && -f "$1" && -x "$1" ]] || fail "$2 is unavailable"
+  local unavailable_message="${3:-$2 is unavailable}"
+  [[ ! -L "$1" && -f "$1" && -x "$1" ]] || fail "$unavailable_message"
 }
 
 [[ "$(/usr/bin/id -u)" == "$runtime_owner" ]] || fail "must run as root"
@@ -61,6 +63,7 @@ require_root_config "$webhook_config" "webhook configuration"
 require_root_config "$seal_config" "sealing configuration"
 require_fixed_command "$prepare_wrapper" "fixed preparation wrapper"
 require_fixed_command "$seal_wrapper" "fixed sealing wrapper"
+require_fixed_command "$publish_release_wrapper" "fixed complete OSS release publisher" "fixed complete OSS release publisher is unavailable; keep the materials runner disabled and reinstall the signed materials runtime before retrying the same delivery"
 require_fixed_command "$activate_wrapper" "fixed activation wrapper"
 require_fixed_command "$runuser_bin" "fixed runuser command"
 
@@ -116,4 +119,15 @@ fi
 readonly release_id="${BASH_REMATCH[2]}"
 readonly receipt_sha256="${BASH_REMATCH[3]}"
 
+if ! publish_output="$("$publish_release_wrapper" --release-id "$release_id" --receipt-sha256 "$receipt_sha256")"; then
+  fail "complete OSS publication failed; keep the materials runner disabled and follow the production runbook before retrying the same sealed release"
+fi
+publish_line="${publish_output##*$'\n'}"
+readonly publish_result_pattern='^\{"version":1,"state":"release_committed_not_activated","release_id":"([a-f0-9]{40}-[a-f0-9]{16})","receipt_sha256":"([a-f0-9]{64})","manifest_sha256":"([a-f0-9]{64})","inventory_sha256":"([a-f0-9]{64})","tree_sha256":"([a-f0-9]{64})","asset_count":(0|[1-9][0-9]{0,2}),"release_commit_sha256":"([a-f0-9]{64})"\}$'
+if [[ ! "$publish_line" =~ $publish_result_pattern ]] ||
+   [[ "${BASH_REMATCH[1]:-}" != "$release_id" ]] ||
+   [[ "${BASH_REMATCH[2]:-}" != "$receipt_sha256" ]] ||
+   (( 10#${BASH_REMATCH[6]:-501} > 500 )); then
+  fail "complete OSS publication did not return a valid release commit attestation; keep the materials runner disabled and follow the production runbook before retrying the same sealed release"
+fi
 exec "$activate_wrapper" --release-id "$release_id" --receipt-sha256 "$receipt_sha256"

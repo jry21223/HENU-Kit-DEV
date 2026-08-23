@@ -21,7 +21,14 @@ function executable(path, body) {
   chmodSync(path, 0o700);
 }
 
-function createFixture() {
+function createFixture({
+  publishExit = 0,
+  publishedReleaseID = releaseID,
+  publishedReceiptSHA = receiptSHA,
+  publishedAssetCount = 1,
+  malformedPublishOutput = false,
+  nonCanonicalAssetCount = false,
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), "henukit-materials-orchestrate-"));
   const state = join(root, "state");
   const sealed = join(root, "sealed");
@@ -48,10 +55,26 @@ function createFixture() {
   const calls = join(root, "calls");
   const prepare = join(root, "henukit-materials-prepare");
   const seal = join(root, "henukit-materials-seal");
+  const publishRelease = join(root, "henukit-materials-publish-release-oss");
   const activate = join(root, "henukit-materials-activate");
   const runuser = join(root, "runuser");
+  let publishAttestation = malformedPublishOutput ? "not-json" : JSON.stringify({
+    version: 1,
+    state: "release_committed_not_activated",
+    release_id: publishedReleaseID,
+    receipt_sha256: publishedReceiptSHA,
+    manifest_sha256: "d".repeat(64),
+    inventory_sha256: "e".repeat(64),
+    tree_sha256: "f".repeat(64),
+    asset_count: publishedAssetCount,
+    release_commit_sha256: "1".repeat(64),
+  });
+  if (nonCanonicalAssetCount) {
+    publishAttestation = publishAttestation.replace('"asset_count":1', '"asset_count":050');
+  }
   executable(prepare, `#!/bin/sh\nprintf 'prepare %s\\n' "$*" >> ${shellLiteral(calls)}\nprintf '{"reviewed_assets":1}\\nattempt_locator=.attempt.Ab1Cd2Ef3G\\n'\n`);
   executable(seal, `#!/bin/sh\nprintf 'seal %s\\n' "$*" >> ${shellLiteral(calls)}\nprintf '{"attempt_locator":".attempt.Ab1Cd2Ef3G","release_id":"${releaseID}","receipt_sha256":"${receiptSHA}"}\\n'\n`);
+  executable(publishRelease, `#!/bin/sh\nprintf 'publish-release %s\\n' "$*" >> ${shellLiteral(calls)}\nprintf '%s\\n' ${shellLiteral(publishAttestation)}\nexit ${publishExit}\n`);
   executable(activate, `#!/bin/sh\nprintf 'activate %s\\n' "$*" >> ${shellLiteral(calls)}\n`);
   executable(runuser, "#!/bin/sh\nshift 3\nexec \"$@\"\n");
 
@@ -62,11 +85,12 @@ function createFixture() {
   template = template.replace('readonly runtime_owner="0"', `readonly runtime_owner="${process.getuid()}"`);
   template = template.replace('readonly prepare_wrapper="/usr/local/libexec/henukit/henukit-materials-prepare"', `readonly prepare_wrapper=${shellLiteral(prepare)}`);
   template = template.replace('readonly seal_wrapper="/usr/local/libexec/henukit/henukit-materials-seal"', `readonly seal_wrapper=${shellLiteral(seal)}`);
+  template = template.replace('readonly publish_release_wrapper="/usr/local/libexec/henukit/henukit-materials-publish-release-oss"', `readonly publish_release_wrapper=${shellLiteral(publishRelease)}`);
   template = template.replace('readonly activate_wrapper="/usr/local/libexec/henukit/henukit-materials-activate"', `readonly activate_wrapper=${shellLiteral(activate)}`);
   template = template.replace('readonly runuser_bin="/usr/sbin/runuser"', `readonly runuser_bin=${shellLiteral(runuser)}`);
   const wrapper = join(root, "henukit-materials-orchestrate");
   executable(wrapper, template);
-  return { root, wrapper, calls };
+  return { root, wrapper, calls, publishRelease };
 }
 
 function invoke(fixture, sha = acceptedSHA) {
@@ -81,7 +105,7 @@ function invoke(fixture, sha = acceptedSHA) {
   });
 }
 
-test("root materials orchestration binds one accepted event through prepare, seal, and activate", () => {
+test("root materials orchestration binds one accepted event through prepare, seal, complete OSS publish, and activate", () => {
   const fixture = createFixture();
   try {
     const result = invoke(fixture);
@@ -89,6 +113,7 @@ test("root materials orchestration binds one accepted event through prepare, sea
     assert.equal(readFileSync(fixture.calls, "utf8"), [
       `prepare --sha ${acceptedSHA} --delivery delivery-1 --repository jry21223/HENU-Final-Review --ref refs/heads/main`,
       `seal --attempt .attempt.Ab1Cd2Ef3G --sha ${acceptedSHA}`,
+      `publish-release --release-id ${releaseID} --receipt-sha256 ${receiptSHA}`,
       `activate --release-id ${releaseID} --receipt-sha256 ${receiptSHA}`,
       "",
     ].join("\n"));
@@ -109,13 +134,116 @@ test("root materials orchestration accepts only a valid SHA from the verified ev
   }
 });
 
+test("root materials orchestration refuses to start when the fixed complete OSS publisher is unavailable", () => {
+  const fixture = createFixture();
+  try {
+    rmSync(fixture.publishRelease);
+    const result = invoke(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /keep the materials runner disabled and reinstall the signed materials runtime/);
+    assert.throws(() => readFileSync(fixture.calls, "utf8"), /ENOENT/);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("root materials orchestration never activates a release without a complete OSS commit", () => {
+  const fixture = createFixture({ publishExit: 1 });
+  try {
+    const result = invoke(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /keep the materials runner disabled and follow the production runbook/);
+    assert.equal(readFileSync(fixture.calls, "utf8"), [
+      `prepare --sha ${acceptedSHA} --delivery delivery-1 --repository jry21223/HENU-Final-Review --ref refs/heads/main`,
+      `seal --attempt .attempt.Ab1Cd2Ef3G --sha ${acceptedSHA}`,
+      `publish-release --release-id ${releaseID} --receipt-sha256 ${receiptSHA}`,
+      "",
+    ].join("\n"));
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("root materials orchestration rejects a non-canonical JSON asset count", () => {
+  const fixture = createFixture({ nonCanonicalAssetCount: true });
+  try {
+    const result = invoke(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /keep the materials runner disabled and follow the production runbook/);
+    assert.doesNotMatch(readFileSync(fixture.calls, "utf8"), /^activate /m);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("root materials orchestration rejects a complete OSS attestation for another sealed identity", () => {
+  const fixture = createFixture({ publishedReleaseID: `${"2".repeat(40)}-${"3".repeat(16)}` });
+  try {
+    const result = invoke(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /keep the materials runner disabled and follow the production runbook/);
+    assert.doesNotMatch(readFileSync(fixture.calls, "utf8"), /^activate /m);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("root materials orchestration rejects a complete OSS attestation for another sealed receipt", () => {
+  const fixture = createFixture({ publishedReceiptSHA: "2".repeat(64) });
+  try {
+    const result = invoke(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /keep the materials runner disabled and follow the production runbook/);
+    assert.doesNotMatch(readFileSync(fixture.calls, "utf8"), /^activate /m);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("root materials orchestration rejects malformed complete OSS attestation output", () => {
+  const fixture = createFixture({ malformedPublishOutput: true });
+  try {
+    const result = invoke(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /keep the materials runner disabled and follow the production runbook/);
+    assert.doesNotMatch(readFileSync(fixture.calls, "utf8"), /^activate /m);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("root materials orchestration accepts the maximum Library-sized complete OSS attestation", () => {
+  const fixture = createFixture({ publishedAssetCount: 500 });
+  try {
+    const result = invoke(fixture);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(fixture.calls, "utf8"), /^activate /m);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("root materials orchestration rejects a complete OSS attestation above the Library cap", () => {
+  const fixture = createFixture({ publishedAssetCount: 501 });
+  try {
+    const result = invoke(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /keep the materials runner disabled and follow the production runbook/);
+    assert.doesNotMatch(readFileSync(fixture.calls, "utf8"), /^activate /m);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("signed materials runtime installer carries only the fixed orchestration chain", () => {
   const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install-materials-runtime.sh"), "utf8");
   for (const required of [
     "henukit-materials-orchestrate",
     "henukit-materials-prepare",
     "henukit-materials-seal",
+    "henukit-materials-publish-release-oss",
     "henukit-materials-activate",
+    "materials-oss-release",
     "prepare-henukit-materials.mjs",
     "seal-henukit-materials.mjs",
     "activate-henukit-materials.mjs",

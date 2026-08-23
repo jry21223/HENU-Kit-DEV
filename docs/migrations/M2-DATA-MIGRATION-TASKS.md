@@ -19,7 +19,7 @@
 | F3 | library 库 6 张表就位：`library_public_releases`、`library_public_material_snapshots`、`library_public_release_activation_events`、`library_download_start_events`、`library_adapter_operations`、`library_adapter_audit_events`（迁移 000001–000003） | services/library/db/migrations |
 | F4 | portal-api 直读 study 库：`internal/library/db.go`（StudyDB，3 条硬编码 SQL）+ `internal/httpapi/router.go` 接线（L35-47、L118-119、L173-260）；live 模式 `STUDY_DATABASE_URL` 缺失即启动失败 | 代码 + db/connect.go |
 | F5 | services/library 兼容层 adapter 经 HTTP 代理 10 条 legacy admin 写路由（course/material 增改删、submission 通过/驳回、correction 处理/驳回）+ 5 条 workspace 读路径；`STUDY_LEGACY_API_URL` 缺失 → fail-closed 启动失败（ADR-0020）；生产实测该 URL=`http://127.0.0.1:1`（死端口，服务能起但适配断链） | services/library/adapter.go、cmd/server/main.go、CURRENT_PRODUCTION_STATE §4 |
-| F6 | 资料 OSS 管线：`prepare → seal → activate`（activate 经 `build-henukit-library-activation-bundle.mjs` + `services/library/cmd/activate-public-release` 写 **library 库**快照/激活表）；`import-henukit-materials.mjs` 生成 SQL 写 **study 库**（courses/materials/schools/colleges/majors） | scripts/ops/*.mjs、scripts/ops/henukit-materials-sync.sh、docs/development/306-materials-secure-preparation.md |
+| F6 | 资料 OSS 管线：`prepare → seal → complete OSS publish → activate`（publish 原子落 complete release commit；activate 经 `build-henukit-library-activation-bundle.mjs` + `services/library/cmd/activate-public-release` 写 **library 库**快照/激活表）；`import-henukit-materials.mjs` 生成 SQL 写 **study 库**（courses/materials/schools/colleges/majors） | scripts/ops/*.mjs、scripts/ops/henukit-materials-sync.sh、docs/development/306-materials-secure-preparation.md |
 | F7 | account_portfolio 库 17 张表（migrations 000001–000008 枚举；生产文档口径 18，T4-0 校正）：accounts/points/memberships/point_ledger/membership_orders/notifications/tickets/ticket_messages/service_nonces/ticket_events/command_idempotency/membership_events/payment_order_intents/payment_facts/payment_audits/point_adjustment_audits/membership_order_refunds | services/account-portfolio/db/migrations |
 | F8 | `account_portfolio_memberships.plan` 仅 `('free','lifetime')`，**无 expires_at 列**；membership_events from_plan/to_plan 仅 free↔lifetime；membership_orders.plan 仅 `'lifetime'`、amount_cents 固定 990。**普通档（有时效）无承接结构** —— T4 必须先扩展 | 000001/000003/000004 迁移 |
 | F9 | study 侧会员：`memberships`（user_id, plan_code, status, source, expires_at）+ `membership_plans`（code/name/price_fen/points_cost/duration_days/benefits/status）；plan 排序 `tier1→1、tier2→2`；来源 `manual_admin` / `points_redeem` | services/api/internal/platform/model/models.go:460-478、internal/member/handler.go |
@@ -178,11 +178,11 @@
 - **验收标准**：本地全链路（sync-henukit-materials.sh → convert slides → import）落 library 库；`materials` 计数对账 715 口径一致；study 库无新写入。
 - **风险/回滚**：改环境变量名需同步 `henukit-local-deploy.md` / 部署文档；保留兼容读取旧变量名一版。
 
-### T2-2 prepare/seal/activate 链核验（0.5 天）
+### T2-2 prepare/seal/complete-publish/activate 链核验（0.5 天）
 
-- **目标**：确认 prepare/seal 无 DB 写入（纯文件/校验）；activate 链已写 library 库、无需改动或仅补字段。
-- **涉及文件**：`scripts/ops/prepare-henukit-materials.mjs`（核验无 DB 段）、`seal-henukit-materials.mjs`（同上）、`activate-henukit-materials.mjs`（`--importer` 目标已随 T2-0 切换；`--library-activator` → `build-henukit-library-activation-bundle.mjs` + `services/library/cmd/activate-public-release`，验证写 `library_public_*` 四表路径正确）。
-- **验收标准**：一次完整 activate dry-run 通过；激活后 `library_public_releases` 恰好一条 active；snapshots 行数与 manifest 一致；**study 库无任何 DML**。
+- **目标**：确认 prepare/seal/complete publisher 无 DB 写入（纯文件/校验与 OSS 提交）；publisher 只有在全部对象固定版本核验完成后才落 root-owned complete commit；activate 链已写 library 库、无需改动或仅补字段。
+- **涉及文件**：`scripts/ops/prepare-henukit-materials.mjs`（核验无 DB 段）、`seal-henukit-materials.mjs`（同上）、`services/deploy-webhook/cmd/materials-oss-release` 与 `internal/materialsoss`（核验逐对象版本收据、完整 commit、失败/重放边界，且无 DB 写入）、`activate-henukit-materials.mjs`（`--importer` 目标已随 T2-0 切换；`--library-activator` → `build-henukit-library-activation-bundle.mjs` + `services/library/cmd/activate-public-release`，验证写 `library_public_*` 四表路径正确）。
+- **验收标准**：一次完整 publish + activate dry-run 通过；缺失/不完整 OSS commit 时 activation 不启动；激活后 `library_public_releases` 恰好一条 active；snapshots 行数与 manifest 一致；**study 库无任何 DML**。
 - **风险/回滚**：activate 已具备原子切换 + 回滚（激活上一受审 release），无新增风险。
 
 ### T2-3 回归 + 文档（0.5 天）

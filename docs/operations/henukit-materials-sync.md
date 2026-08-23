@@ -104,6 +104,13 @@ runner 日志中的 delivery 与 SHA。
 digest 等于空列表；任一派生预览资产、converter 参数或旧 `--slides-dir` 参数都必须失败关闭。
 这不是“转换失败后降级”，而是明确不提供在线预览的发布契约。
 
+固定 orchestrator 的成功顺序必须是 prepare → seal → complete OSS release publish → activate。
+complete publisher 只有在所有声明对象均已 Put、按固定版本重新读取并核对 bytes/SHA-256 后，才会
+原子写入 `oss-audit/<release-id>/release-commit.json`；activate 必须以该 commit 构建 Library
+bundle。publisher stdout 只返回固定长度的 commit attestation，不返回完整 assets；逐对象版本清单
+只保存在 root-owned `release-commit.json`。publisher 缺失、退出失败或 commit 不存在时必须停在
+public pointer、maintenance fence 和 Library transaction 之前，不得把 seal 成功误当成可激活。
+
 Catalog 的 `object_key` 带不可变 release/receipt/SHA 前缀并绑定精确 OSS VersionId，因此浏览器
 的一天缓存不会把旧文件伪装成新 catalog 内容。Library 数据库 URL 和 OSS RAM role 只从
 root-owned activation 配置传给固定 Library activator；不得出现在调用参数或日志中。
