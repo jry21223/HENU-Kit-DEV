@@ -1,7 +1,7 @@
 /**
- * Portal Gateway / Portal API types.
- * Aligns with packages/api-contracts/openapi/portal-gateway.yaml
- * and portal-api.yaml (materials, posts, schools, campus).
+ * Portal Gateway types plus frozen Portal API compatibility types for posts,
+ * schools, and campus. Library Material follows the active Library/Portal
+ * Gateway contracts; Portal API's legacy Study projection is not its source.
  */
 
 export type {
@@ -198,7 +198,7 @@ export interface LibraryCoursesResponse {
   request_id: string;
 }
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides" | "textbook";
+export type MaterialType = "handout" | "exam" | "slides" | "exercise" | "answer" | "note" | "textbook";
 
 /** 转换后的 PPT 单页 */
 export interface Slide {

@@ -41,6 +41,7 @@
 35. [`0036-portal-practice-read-path-owner-go-core.md`](./0036-portal-practice-read-path-owner-go-core.md) — Portal `/practice` 读路径收敛为 Gateway 精确路由 → QuizCraft Go core 契约读，portal-api 直读降级并移除（amends 0013/0018）。
 36. [`0037-library-legacy-adapter-removed.md`](./0037-library-legacy-adapter-removed.md) — Library 移除 Study Legacy API 适配层与 fail-closed 启动依赖，命令路由诚实 503，数据迁移（T1）后恢复自有目录数据（supersedes 0020）。
 37. [`0038-ranking-reuses-platform-identity.md`](./0038-ranking-reuses-platform-identity.md) — 排行身份复用平台 users.display_name：废除 Ranking Profile 机制，Gateway 经 platform-core display-names 批量接口实时解析，无显示名/游客渲染「游客x」稳定编号，system_avatar 哈希派生，对外永不出现 user_id（amends 0036）。
+38. [`0039-library-canonical-material-types-and-owner-only-activation.md`](./0039-library-canonical-material-types-and-owner-only-activation.md) — 对齐公开资料 canonical 类型、教材授权、OSS 证据与 Library-only 激活边界。
 
 ## 使用规则
 

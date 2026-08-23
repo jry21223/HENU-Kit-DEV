@@ -109,8 +109,8 @@ test("root materials orchestration accepts only a valid SHA from the verified ev
   }
 });
 
-test("materials installer replaces retired sync scripts with the fixed orchestration chain", () => {
-  const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install.sh"), "utf8");
+test("signed materials runtime installer carries only the fixed orchestration chain", () => {
+  const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install-materials-runtime.sh"), "utf8");
   for (const required of [
     "henukit-materials-orchestrate",
     "henukit-materials-prepare",
@@ -119,13 +119,31 @@ test("materials installer replaces retired sync scripts with the fixed orchestra
     "prepare-henukit-materials.mjs",
     "seal-henukit-materials.mjs",
     "activate-henukit-materials.mjs",
-    "materials-seal.env",
     "materials-activate.env",
   ]) assert.match(installer, new RegExp(required.replaceAll(".", "\\.")), required);
   assert.doesNotMatch(installer, /python3-pptx|import pptx|command -v (?:soffice|libreoffice)/);
   assert.doesNotMatch(installer, /install .*convert-henukit-slides\.py/);
   assert.doesNotMatch(installer, /HENUKIT_MATERIALS_CONVERTER=/);
   assert.doesNotMatch(installer, /scripts\/ops\/(?:sync-henukit-materials\.sh|henukit-materials-sync\.sh)/);
-  assert.match(installer, /if \(\( enable_materials_sync \)\); then\n  for command in node psql;/);
+  assert.doesNotMatch(installer, /go build|enable_materials_sync/);
   assert.match(installer, /systemctl disable --now henukit-materials-webhook\.path/);
+});
+
+test("materials runtime installer rejects duplicate values for each retired configuration key", () => {
+  const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install-materials-runtime.sh"), "utf8");
+  assert.match(installer, /for retired_key in "\$\{retired_keys\[@\]\}"/);
+  assert.match(installer, /retired_key_occurrences.*-le 1/);
+  assert.doesNotMatch(installer, /retired_key_count.*-le 6/);
+});
+
+test("materials runtime installer recoverably retires the old Study importer and credentials", () => {
+  const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install-materials-runtime.sh"), "utf8");
+  for (const retiredPath of [
+    "/usr/local/libexec/henukit/import-henukit-materials.mjs",
+    "/etc/henukit-deploy/materials-postgresql.conf",
+    "/etc/henukit-deploy/materials-legacy-inventory.json",
+  ]) assert.match(installer, new RegExp(retiredPath.replaceAll(".", "\\.")));
+  assert.match(installer, /retired_dir="\/opt\/henukit-materials\/retired\/\$release_sha"/);
+  assert.match(installer, /mv -T "\$source" "\$retired_target"/);
+  assert.doesNotMatch(installer, /pg_dump|pg_restore|migrations\/study/);
 });

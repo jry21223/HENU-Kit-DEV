@@ -5,11 +5,8 @@ import {
   fetchLibraryMaterials,
 } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
-import {
-  MATERIAL_TYPES,
-  MaterialType,
-  type Material,
-} from "@/lib/library/mock";
+import type { Material } from "@/lib/library/mock";
+import { MATERIAL_TYPES, type MaterialType } from "@/lib/library/material-types";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
@@ -145,7 +142,7 @@ export default function LibraryHomePage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索：真题 / 高数 / 实验报告"
+            placeholder="搜索：真题 / 高数 / 课件"
             className="w-56 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
           />
           <span aria-hidden className="hidden h-4 w-px bg-ink/20 sm:block" />

@@ -195,7 +195,7 @@ function libraryActivationOptions(fixture) {
 }
 
 function activationEnvironment(fixture) {
-  return { ...process.env, PGSERVICEFILE: fixture.pgServiceFile, PGSERVICE: "materials", LIBRARY_DATABASE_URL: "postgres://fixed.invalid/library", LIBRARY_OSS_ECS_RAM_ROLE: "henukit-library-activation" };
+  return { ...process.env, LIBRARY_DATABASE_URL: "postgres://fixed.invalid/library", LIBRARY_OSS_ECS_RAM_ROLE: "henukit-library-activation" };
 }
 
 function activationArgs(fixture, releaseID = fixture.releaseID, receiptSHA256 = fixture.receiptSha256) {
@@ -205,9 +205,6 @@ function activationArgs(fixture, releaseID = fixture.releaseID, receiptSHA256 = 
     "--receipt-sha256", receiptSHA256,
     "--sealed-root", fixture.sealedRoot,
     "--public-root", fixture.publicRoot,
-    "--importer", importScript,
-    "--psql", fixture.psql,
-    "--legacy-inventory", fixture.legacyInventory,
     ...libraryActivationOptions(fixture),
     "--activation-owner", String(process.getuid()),
   ];
@@ -216,30 +213,11 @@ function activationArgs(fixture, releaseID = fixture.releaseID, receiptSHA256 = 
 test("activates one sealed release without generating an online preview", () => {
   const fixture = createFixture();
 
-  execFileSync(
-    process.execPath,
-    [
-      activateScript,
-      "--release-id",
-      fixture.releaseID,
-      "--receipt-sha256",
-      fixture.receiptSha256,
-      "--sealed-root",
-      fixture.sealedRoot,
-      "--public-root",
-      fixture.publicRoot,
-      "--importer",
-      importScript,
-      "--psql",
-      fixture.psql,
-      "--legacy-inventory",
-      fixture.legacyInventory,
-      ...libraryActivationOptions(fixture),
-      "--activation-owner",
-      String(process.getuid()),
-    ],
-    { cwd: repoRoot, encoding: "utf8", env: activationEnvironment(fixture) },
-  );
+  execFileSync(process.execPath, activationArgs(fixture), {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: activationEnvironment(fixture),
+  });
 
   const current = resolve(fixture.publicRoot, readlinkSync(join(fixture.publicRoot, "current")));
   assert.equal(current, join(fixture.publicRoot, "releases", fixture.releaseID, "public"));
@@ -248,13 +226,7 @@ test("activates one sealed release without generating an online preview", () => 
     JSON.parse(readFileSync(join(fixture.publicRoot, "releases", fixture.releaseID, "derived-inventory.json"), "utf8")),
     { version: 1, release_id: fixture.releaseID, assets: [] },
   );
-  assert.match(readFileSync(fixture.psqlLog, "utf8"), /BEGIN;[\s\S]*COMMIT;/);
-  assert.doesNotMatch(readFileSync(fixture.psqlArgsLog, "utf8"), /postgres:\/\//);
-  assert.equal(readFileSync(fixture.psqlDatabaseLog, "utf8"), `${fixture.pgServiceFile}|materials`);
-  assert.match(
-    readFileSync(fixture.psqlLog, "utf8"),
-    new RegExp(`releases/${fixture.releaseID}/软件工程/复习讲义\\.pdf`),
-  );
+  assert.equal(existsSync(fixture.psqlLog), false, "retired Study importer ran during Library activation");
   assert.equal(readFileSync(join(fixture.publicRoot, "ACTIVE_RELEASE"), "utf8"), `${fixture.releaseID}\n`);
   assert.equal(readFileSync(join(fixture.previousRelease, "old.pdf"), "utf8"), "previous material\n");
   assert.throws(() => readFileSync(join(fixture.publicRoot, ".maintenance")), /ENOENT/);
@@ -272,7 +244,7 @@ test("activates the first complete release when no prior active marker exists", 
   assert.equal(readFileSync(join(fixture.publicRoot, "ACTIVE_RELEASE"), "utf8"), `${fixture.releaseID}\n`);
   assert.equal(existsSync(join(fixture.publicRoot, ".maintenance")), false);
   assert.equal(existsSync(join(fixture.publicRoot, "activation-journal.json")), false);
-  assert.match(readFileSync(fixture.psqlLog, "utf8"), /BEGIN;[\s\S]*COMMIT;/);
+  assert.equal(existsSync(fixture.psqlLog), false);
 });
 
 test("rollback is a forward activation of a retained complete OSS and derived release", () => {
@@ -366,53 +338,35 @@ for (const scenario of [
   });
 }
 
-test("keeps an uncertain database failure fenced and recovers the same release on retry", () => {
-  const fixture = createFixture({ psqlExit: 29 });
-  const args = [
-    activateScript,
-    "--release-id", fixture.releaseID,
-    "--receipt-sha256", fixture.receiptSha256,
-    "--sealed-root", fixture.sealedRoot,
-    "--public-root", fixture.publicRoot,
-    "--importer", importScript,
-    "--psql", fixture.psql,
-    "--legacy-inventory", fixture.legacyInventory,
-    ...libraryActivationOptions(fixture),
-    "--activation-owner", String(process.getuid()),
-  ];
+test("keeps a historical uncertain Study journal fenced instead of resuming the retired importer", () => {
+  const fixture = createFixture({ libraryExit: 37 });
+  const args = activationArgs(fixture);
   const execOptions = { cwd: repoRoot, encoding: "utf8", env: activationEnvironment(fixture) };
 
   assert.throws(() => execFileSync(process.execPath, args, { ...execOptions, stdio: "pipe" }));
+  const journalPath = join(fixture.publicRoot, "activation-journal.json");
+  const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+  chmodSync(journalPath, 0o600);
+  writeFileSync(journalPath, `${JSON.stringify({ ...journal, phase: "database_running" }, null, 2)}\n`);
+  chmodSync(journalPath, 0o400);
+
+  assert.throws(
+    () => execFileSync(process.execPath, args, { ...execOptions, stdio: "pipe" }),
+    /retired Study catalog activation has an uncertain historical outcome/,
+  );
   assert.equal(existsSync(join(fixture.publicRoot, ".maintenance")), true);
-  assert.equal(existsSync(join(fixture.publicRoot, "activation-journal.json")), true);
+  assert.equal(JSON.parse(readFileSync(journalPath, "utf8")).phase, "database_running");
   assert.equal(
     resolve(fixture.publicRoot, readlinkSync(join(fixture.publicRoot, "current"))),
     join(fixture.publicRoot, "releases", fixture.releaseID, "public"),
   );
   assert.equal(readFileSync(join(fixture.publicRoot, "ACTIVE_RELEASE"), "utf8"), `${fixture.previousReleaseID}\n`);
-
-  writeExecutable(fixture.psql, `#!/bin/sh\nset -eu\ncat > ${JSON.stringify(fixture.psqlLog)}\n`);
-  execFileSync(process.execPath, args, execOptions);
-
-  assert.equal(readFileSync(join(fixture.publicRoot, "ACTIVE_RELEASE"), "utf8"), `${fixture.releaseID}\n`);
-  assert.equal(existsSync(join(fixture.publicRoot, ".maintenance")), false);
-  assert.equal(existsSync(join(fixture.publicRoot, "activation-journal.json")), false);
+  assert.equal(existsSync(fixture.psqlLog), false);
 });
 
 test("Library commit-then-exit remains fenced and same-release replay recovers without phase regression", () => {
   const fixture = createFixture({ libraryExit: 37 });
-  const args = [
-    activateScript,
-    "--release-id", fixture.releaseID,
-    "--receipt-sha256", fixture.receiptSha256,
-    "--sealed-root", fixture.sealedRoot,
-    "--public-root", fixture.publicRoot,
-    "--importer", importScript,
-    "--psql", fixture.psql,
-    "--legacy-inventory", fixture.legacyInventory,
-    ...libraryActivationOptions(fixture),
-    "--activation-owner", String(process.getuid()),
-  ];
+  const args = activationArgs(fixture);
   assert.throws(() => execFileSync(process.execPath, args, { cwd: repoRoot, encoding: "utf8", stdio: "pipe", env: activationEnvironment(fixture) }));
   assert.equal(JSON.parse(readFileSync(fixture.libraryLog, "utf8")).release, fixture.releaseID);
   assert.equal(resolve(fixture.publicRoot, readlinkSync(join(fixture.publicRoot, "current"))), join(fixture.publicRoot, "releases", fixture.releaseID, "public"));
@@ -432,20 +386,9 @@ test("Library commit-then-exit remains fenced and same-release replay recovers w
   assert.equal(existsSync(journalPath), false);
 });
 
-test("finishes a durable database-committed journal without running the catalog transaction again", () => {
-  const fixture = createFixture({ psqlExit: 31 });
-  const args = [
-    activateScript,
-    "--release-id", fixture.releaseID,
-    "--receipt-sha256", fixture.receiptSha256,
-    "--sealed-root", fixture.sealedRoot,
-    "--public-root", fixture.publicRoot,
-    "--importer", importScript,
-    "--psql", fixture.psql,
-    "--legacy-inventory", fixture.legacyInventory,
-    ...libraryActivationOptions(fixture),
-    "--activation-owner", String(process.getuid()),
-  ];
+test("finishes a historical database-committed journal without restoring the retired importer", () => {
+  const fixture = createFixture({ libraryExit: 37 });
+  const args = activationArgs(fixture);
   const execOptions = { cwd: repoRoot, encoding: "utf8", env: activationEnvironment(fixture) };
   assert.throws(() => execFileSync(process.execPath, args, { ...execOptions, stdio: "pipe" }));
   const journalPath = join(fixture.publicRoot, "activation-journal.json");
@@ -454,12 +397,14 @@ test("finishes a durable database-committed journal without running the catalog 
   writeFileSync(journalPath, `${JSON.stringify({ ...journal, phase: "database_committed" }, null, 2)}\n`);
   chmodSync(journalPath, 0o400);
   writeExecutable(fixture.psql, "#!/bin/sh\nexit 47\n");
+  writeExecutable(fixture.libraryActivator, "#!/bin/sh\nexit 48\n");
 
   execFileSync(process.execPath, args, execOptions);
 
   assert.equal(readFileSync(join(fixture.publicRoot, "ACTIVE_RELEASE"), "utf8"), `${fixture.releaseID}\n`);
   assert.equal(existsSync(join(fixture.publicRoot, ".maintenance")), false);
   assert.equal(existsSync(journalPath), false);
+  assert.equal(existsSync(fixture.psqlLog), false);
 });
 
 test("rejects a pre-seeded release symlink without fencing or changing the active release", () => {
@@ -467,18 +412,12 @@ test("rejects a pre-seeded release symlink without fencing or changing the activ
   const installed = join(fixture.publicRoot, "releases", fixture.releaseID);
   symlinkSync(join(fixture.sealedRoot, fixture.releaseID), installed);
 
-  assert.throws(() => execFileSync(process.execPath, [
-    activateScript,
-    "--release-id", fixture.releaseID,
-    "--receipt-sha256", fixture.receiptSha256,
-    "--sealed-root", fixture.sealedRoot,
-    "--public-root", fixture.publicRoot,
-    "--importer", importScript,
-    "--psql", fixture.psql,
-    "--legacy-inventory", fixture.legacyInventory,
-    ...libraryActivationOptions(fixture),
-    "--activation-owner", String(process.getuid()),
-  ], { cwd: repoRoot, encoding: "utf8", stdio: "pipe", env: activationEnvironment(fixture) }));
+  assert.throws(() => execFileSync(process.execPath, activationArgs(fixture), {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: "pipe",
+    env: activationEnvironment(fixture),
+  }));
 
   assert.equal(existsSync(join(fixture.publicRoot, ".maintenance")), false);
   assert.equal(

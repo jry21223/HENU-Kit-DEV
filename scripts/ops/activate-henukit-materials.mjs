@@ -46,16 +46,13 @@ function parseOptions(argv) {
     ["--receipt-sha256", "receiptSha256"],
     ["--sealed-root", "sealedRoot"],
     ["--public-root", "publicRoot"],
-    ["--importer", "importer"],
-    ["--psql", "psql"],
-    ["--legacy-inventory", "legacyInventory"],
     ["--activation-owner", "activationOwner"],
     ["--oss-audit-root", "ossAuditRoot"],
     ["--activation-staging-root", "activationStagingRoot"],
     ["--bundle-builder", "bundleBuilder"],
     ["--library-activator", "libraryActivator"],
   ]);
-  if (argv.length !== names.size * 2) fail("expected exactly twelve fixed activation options");
+  if (argv.length !== names.size * 2) fail("expected exactly nine fixed activation options");
   const options = {};
   for (let index = 0; index < argv.length; index += 2) {
     const name = names.get(argv[index]);
@@ -69,19 +66,13 @@ function parseOptions(argv) {
 }
 
 function validateOptions(options) {
-  options.pgServiceFile = process.env.PGSERVICEFILE || "";
-  options.pgService = process.env.PGSERVICE || "";
   if (!RELEASE_PATTERN.test(options.releaseID || "")) fail("release ID is invalid");
   if (!HASH_PATTERN.test(options.receiptSha256 || "")) fail("receipt SHA-256 is invalid");
-  for (const key of ["sealedRoot", "publicRoot", "importer", "psql", "legacyInventory", "ossAuditRoot", "activationStagingRoot", "bundleBuilder", "libraryActivator"]) {
+  for (const key of ["sealedRoot", "publicRoot", "ossAuditRoot", "activationStagingRoot", "bundleBuilder", "libraryActivator"]) {
     if (!isAbsolute(options[key] || "") || resolve(options[key]) === sep || options[key].includes("\0")) {
       fail(`${key} must be a non-root absolute path`);
     }
   }
-  if (!isAbsolute(options.pgServiceFile) || resolve(options.pgServiceFile) === sep || options.pgServiceFile.includes("\0")) {
-    fail("PostgreSQL service file is invalid");
-  }
-  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(options.pgService)) fail("PostgreSQL service name is invalid");
   if (!/^(?:0|[1-9][0-9]*)$/.test(options.activationOwner || "")) fail("activation owner is invalid");
   options.activationOwner = Number(options.activationOwner);
   if (typeof process.getuid !== "function" || process.getuid() !== options.activationOwner) {
@@ -478,20 +469,12 @@ function main() {
   assertDirectory(options.publicRoot, "public root", options.activationOwner);
   assertDirectory(options.ossAuditRoot, "OSS audit root", options.activationOwner);
   assertDirectory(options.activationStagingRoot, "activation staging root", options.activationOwner);
-  for (const [path, label] of [[options.importer, "importer"], [options.psql, "psql"], [options.bundleBuilder, "bundle builder"], [options.libraryActivator, "Library activator"]]) {
+  for (const [path, label] of [[options.bundleBuilder, "bundle builder"], [options.libraryActivator, "Library activator"]]) {
     const metadata = lstatSync(path);
     if (metadata.isSymbolicLink() || !metadata.isFile()) fail(`${label} must be a regular file`);
     if (metadata.uid !== options.activationOwner && metadata.uid !== 0) fail(`${label} has an unexpected owner`);
     if ((metadata.mode & 0o022) !== 0) fail(`${label} must not be writable by group or other`);
   }
-  const serviceMetadata = lstatSync(options.pgServiceFile);
-  if (serviceMetadata.isSymbolicLink() || !serviceMetadata.isFile()) fail("PostgreSQL service file must be a regular file");
-  if (serviceMetadata.uid !== options.activationOwner && serviceMetadata.uid !== 0) fail("PostgreSQL service file has an unexpected owner");
-  if ((serviceMetadata.mode & 0o077) !== 0) fail("PostgreSQL service file must be private");
-  const legacyMetadata = lstatSync(options.legacyInventory);
-  if (legacyMetadata.isSymbolicLink() || !legacyMetadata.isFile()) fail("legacy inventory must be a regular file");
-  if (legacyMetadata.uid !== options.activationOwner && legacyMetadata.uid !== 0) fail("legacy inventory has an unexpected owner");
-  if ((legacyMetadata.mode & 0o077) !== 0 || legacyMetadata.size > MAX_METADATA_BYTES) fail("legacy inventory must be private and bounded");
   const sealed = verifySealedRelease(options);
   const releasesRoot = join(options.publicRoot, "releases");
   mkdirSync(releasesRoot, { recursive: true, mode: 0o755 });
@@ -586,22 +569,8 @@ function main() {
       phase = "library_committed";
       writeJournal(options.publicRoot, { ...state, phase });
     }
-    if (phase !== "database_committed") {
-      replaceCurrent(options.publicRoot, join(finalRelease, "public"));
-      const sql = run(process.execPath, [
-        options.importer,
-        "--manifest", join(finalRelease, "manifest.json"),
-        "--release-id", options.releaseID,
-        "--legacy-inventory", options.legacyInventory,
-      ]);
-      phase = "database_running";
-      writeJournal(options.publicRoot, { ...state, phase });
-      run(options.psql, ["-v", "ON_ERROR_STOP=1", "-f", "-"], {
-        input: sql,
-        env: { ...process.env, PGSERVICEFILE: options.pgServiceFile, PGSERVICE: options.pgService },
-      });
-      phase = "database_committed";
-      writeJournal(options.publicRoot, { ...state, phase });
+    if (phase === "database_running") {
+      fail("retired Study catalog activation has an uncertain historical outcome; keep the maintenance fence and reconcile the recorded release before retrying");
     }
     replaceCurrent(options.publicRoot, join(finalRelease, "public"));
     atomicWrite(join(options.publicRoot, "ACTIVE_RELEASE"), `${options.releaseID}\n`, 0o444);

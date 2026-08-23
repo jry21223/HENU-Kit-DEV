@@ -82,17 +82,16 @@ legacy deployment path. It is not the Monorepo release source of truth. Keep it
 running only until the new receiver and QuizCraft hook have been installed and
 verified on the server; remove it in a separate rollback-aware change.
 
-## Materials candidate queue template
+## Materials exact-SHA owner activation
 
-`materials-serve` and `materials-run` are a source-only B01 boundary for
-[jry21223/HENU-Final-Review](https://github.com/jry21223/HENU-Final-Review).
-They use a materials-only latest-arrival queue: one preparation may run while
-only the most recently accepted delivery waits. The fixed consumer invokes the
-unprivileged candidate-preparation command with its source, ref, and candidate
-root bound by operator configuration.
+The only supported materials path is the signed release runtime installed by
+`deploy-henukit-artifact.sh`. An authenticated HENU-Final-Review push supplies
+one exact SHA to the latest-arrival queue; the fixed runner then performs
+prepare → seal → complete private OSS publication → atomic Library owner
+activation. It never restores the Study importer or direct `/materials/**`
+serving; the local public tree remains maintenance and rollback evidence only.
 
-This is not an installation or activation path. Do not use the legacy
-`install.sh --enable-materials-sync` path, which installs the retired root sync
-driver. B01 neither enables a host service nor changes an Nginx-served tree or
-the Study catalog. See
+`install.sh --enable-materials-sync` is an inert compatibility flag that exits
+with code 64. Production must not build or install materials tools from a source
+checkout. See
 [`../../docs/operations/henukit-materials-sync.md`](../../docs/operations/henukit-materials-sync.md).

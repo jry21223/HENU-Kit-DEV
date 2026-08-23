@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime"
-	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -1340,7 +1338,7 @@ func (h *Handler) updateCareerProfile(w http.ResponseWriter, r *http.Request) {
 // validation, so the Gateway only enforces the upload-sized body cap.
 func (h *Handler) createCareerExtraction(w http.ResponseWriter, r *http.Request) {
 	h.careerExtractionUpload(w, r, func(ctx context.Context, actorUserID, requestID string, raw []byte) (json.RawMessage, error) {
-		return h.career.CreateExtraction(ctx, actorUserID, requestID, careerUploadFileName(raw, r.Header.Get("Content-Type")), raw)
+		return h.career.CreateExtraction(ctx, actorUserID, requestID, raw, r.Header.Get("Content-Type"))
 	})
 }
 
@@ -1466,28 +1464,6 @@ func (h *Handler) careerExtractionUpload(w http.ResponseWriter, r *http.Request,
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
-}
-
-// careerUploadFileName reads the original file name from the raw multipart
-// body, touching only the part headers (never the file bytes). An absent or
-// unparseable name yields an empty string and Career rejects the upload with
-// INVALID_FILE.
-func careerUploadFileName(raw []byte, contentType string) string {
-	_, params, err := mime.ParseMediaType(contentType)
-	if err != nil || params["boundary"] == "" {
-		return ""
-	}
-	reader := multipart.NewReader(bytes.NewReader(raw), params["boundary"])
-	for {
-		part, err := reader.NextPart()
-		if err != nil {
-			return ""
-		}
-		if part.FormName() == "file" {
-			return part.FileName()
-		}
-		_ = part.Close()
-	}
 }
 
 // requireLifetime checks the current Account Portfolio membership for the

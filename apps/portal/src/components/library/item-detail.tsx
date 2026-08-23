@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  MATERIAL_TYPES,
-  type Material,
-} from "@/lib/library/mock";
+import type { Material } from "@/lib/library/mock";
+import { MATERIAL_TYPES } from "@/lib/library/material-types";
 import { getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";

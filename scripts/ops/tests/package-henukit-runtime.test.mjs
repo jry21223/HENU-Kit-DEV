@@ -28,7 +28,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   const docker = join(binDirectory, "docker");
   writeFileSync(
     docker,
-    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then printf 'services:\\n  portal:\\n    image: henukit-portal:test\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nwhile [[ $# -gt 0 ]]; do if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; break; fi; shift; done\n[[ -n \"$output\" ]]\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\n",
+    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then printf 'services:\\n  portal:\\n    image: henukit-portal:test\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nhost_output=\nwhile [[ $# -gt 0 ]]; do\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/host-out\" ]]; then host_output=\"${2%:/host-out}\"; fi\n  shift\ndone\n[[ -n \"$output\" && -n \"$host_output\" ]]\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\nprintf '#!/bin/sh\\nexit 0\\n' > \"$host_output/food-sanitize-post-image\"\nchmod 0755 \"$host_output/food-sanitize-post-image\"\n",
     { mode: 0o755 },
   );
   chmodSync(docker, 0o755);
@@ -50,6 +50,8 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./bin/rotate-henukit-release-signers.sh",
     "./bin/henukit-release-images.sh",
     "./bin/verify-henukit-local-release.sh",
+    "./bin/food-sanitize-post-image",
+    "./bin/import-legacy-portal-food-images.mjs",
     "./docker-compose.henukit.release.yml",
     "./release-gates/account-production-boundary.env",
     "./materials-runtime/install.sh",
@@ -60,15 +62,13 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./materials-runtime/bin/library-activate-public-release",
     "./materials-runtime/libexec/henukit-materials-activate",
     "./materials-runtime/libexec/activate-henukit-materials.mjs",
-    "./materials-runtime/libexec/import-henukit-materials.mjs",
-    "./materials-runtime/migrations/study/000001_materials_oss_release.up.sql",
     "./materials-runtime/systemd/henukit-materials-webhook.service",
     "./materials-runtime/systemd/henukit-materials-webhook.path",
     "./materials-runtime/systemd/henukit-materials-runner.service",
   ]) {
     assert.match(files, new RegExp(`^${file.replaceAll(".", "\\.").replaceAll("/", "\\/")}$`, "m"));
   }
-  assert.doesNotMatch(files, /convert-henukit-slides/);
+  assert.doesNotMatch(files, /convert-henukit-slides|import-henukit-materials|migrations\/study/);
   const materialsChecksums = execFileSync(
     "tar",
     ["-xOzf", runtimeArchive, "./materials-runtime/SHA256SUMS"],
@@ -78,7 +78,6 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "bin/henukit-deploy-webhook",
     "bin/materials-oss-release",
     "install.sh",
-    "migrations/study/000001_materials_oss_release.up.sql",
   ]) {
     assert.match(materialsChecksums, new RegExp(`^[0-9a-f]{64}  ${path.replaceAll(".", "\\.")}$`, "m"));
   }
@@ -87,21 +86,9 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     ["-xOzf", runtimeArchive, "./materials-runtime/install.sh"],
     { encoding: "utf8" },
   );
-  assert.match(
-    materialsInstaller,
-    /SHOW server_version_num/,
-    "Study backup must discover the PostgreSQL server major version",
-  );
-  assert.match(
-    materialsInstaller,
-    /postgres:\$\{server_major\}-alpine/,
-    "Study backup must select a matching PostgreSQL client image",
-  );
-  assert.doesNotMatch(
-    materialsInstaller,
-    /PGSERVICEFILE="\$pg_service_file" pg_dump/,
-    "Study backup must not use the potentially older host pg_dump",
-  );
+  assert.match(materialsInstaller, /retire_root_file "\/usr\/local\/libexec\/henukit\/import-henukit-materials\.mjs" "Study importer"/);
+  assert.match(materialsInstaller, /retire_root_file "\/etc\/henukit-deploy\/materials-postgresql\.conf" "Study PostgreSQL credential" "600"/);
+  assert.doesNotMatch(materialsInstaller, /pg_dump|pg_restore|migrations\/study/);
   assert.equal(
     execFileSync("tar", ["-xOzf", runtimeArchive, "./RELEASE_SHA"], { encoding: "utf8" }).trim(),
     releaseSha,

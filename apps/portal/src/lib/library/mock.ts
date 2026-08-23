@@ -6,17 +6,10 @@
 
 // ---------------------------------------------------------------- 类型
 
-export type MaterialType = "note" | "exam" | "mock" | "path" | "lab" | "slides" | "textbook";
+import type { MaterialType } from "./material-types";
 
-export const MATERIAL_TYPES: Record<MaterialType, { name: string; code: string }> = {
-  note: { name: "学长笔记", code: "NOTE" },
-  exam: { name: "往年试卷", code: "EXAM" },
-  mock: { name: "模拟卷", code: "MOCK" },
-  path: { name: "学习路径", code: "PATH" },
-  lab: { name: "实验报告", code: "LAB" },
-  slides: { name: "课件幻灯片", code: "SLIDES" },
-  textbook: { name: "电子版教材", code: "TEXTBOOK" },
-};
+export { MATERIAL_TYPES } from "./material-types";
+export type { MaterialType } from "./material-types";
 
 /** 遗留类型占位；OSS-only 资料永远不填充在线幻灯片。 */
 export interface Slide {
@@ -51,7 +44,7 @@ export interface Material {
 const MATERIALS: Material[] = [
   // ---- 免费 ----
   {
-    id: "free-limit-note", type: "note", subject: "高等数学A",
+    id: "free-limit-note", type: "handout", subject: "高等数学A",
     title: "极限与连续 · 学霸笔记", author: "21 级-李学长",
     intro: "期末 92 分学长的一轮复习笔记：两个重要极限、等价无穷小替换表、连续与间断点判定的全部套路，附 12 道易错例题。",
     toc: ["极限的定义与运算法则", "两个重要极限", "等价无穷小替换表", "连续性判定", "间断点分类", "易错例题 12 则"],
@@ -75,7 +68,7 @@ const MATERIALS: Material[] = [
     price: 0, previewPages: 0, rating: 4.6, downloads: 1588, favs: 302, downloadAvailable: false,
   },
   {
-    id: "free-cet4-path", type: "path", subject: "大学英语",
+    id: "free-cet4-path", type: "note", subject: "大学英语",
     title: "四级 30 天备考路径", author: "20 级-陈学姐",
     intro: "四级 612 分学姐的 30 天冲刺日程表：每天 2 小时的单词/听力/阅读/写译分配，含各题型提分技巧与资料清单。",
     toc: ["第 1-10 天：单词+听力筑基", "第 11-20 天：阅读专项", "第 21-26 天：写译模板", "第 27-30 天：整卷模考", "资料清单"],
@@ -83,7 +76,7 @@ const MATERIALS: Material[] = [
     price: 0, previewPages: 0, rating: 4.7, downloads: 1921, favs: 445, downloadAvailable: false,
   },
   {
-    id: "free-phy-pendulum", type: "lab", subject: "大学物理",
+    id: "free-phy-pendulum", type: "note", subject: "大学物理",
     title: "力学实验报告：单摆测重力加速度", author: "23 级-周同学",
     intro: "得分 95 的实验报告模板：实验原理、数据表格、不确定度计算完整过程，附教师批注过的易扣分点。",
     toc: ["实验目的", "实验原理", "数据记录", "数据处理", "误差分析", "易扣分点"],
@@ -99,7 +92,7 @@ const MATERIALS: Material[] = [
     price: 0, previewPages: 0, rating: 4.8, downloads: 1754, favs: 398, downloadAvailable: false,
   },
   {
-    id: "free-math-mid-mock", type: "mock", subject: "高等数学A",
+    id: "free-math-mid-mock", type: "exercise", subject: "高等数学A",
     title: "期中模拟卷（一）", author: "数学学习小组",
     intro: "按近三年期中真题风格命制：极限 30%、导数与微分 40%、微分中值定理 30%，附评分标准。",
     toc: ["一、填空题", "二、计算题", "三、证明题", "评分标准"],
@@ -107,7 +100,7 @@ const MATERIALS: Material[] = [
     price: 0, previewPages: 0, rating: 4.4, downloads: 1245, favs: 211, downloadAvailable: false,
   },
   {
-    id: "free-ds-path", type: "path", subject: "数据结构",
+    id: "free-ds-path", type: "note", subject: "数据结构",
     title: "数据结构：从入门到期末", author: "21 级-李学长",
     intro: "12 周学习路线：每周章节+刷题量+自测点，配套本库真题，适合期初收藏期末救命。",
     toc: ["第 1-2 周 线性表", "第 3-4 周 栈与队列", "第 5-7 周 树", "第 8-9 周 图", "第 10-11 周 查找与排序", "第 12 周 总复习"],
@@ -142,7 +135,7 @@ const MATERIALS: Material[] = [
     pageCount: 6, price: 45, previewPages: 0, rating: 4.7, downloads: 1654, favs: 431, downloadAvailable: false,
   },
   {
-    id: "paid-phy-em-labs", type: "lab", subject: "大学物理",
+    id: "paid-phy-em-labs", type: "note", subject: "大学物理",
     title: "电磁学实验报告合集（4 篇）", author: "23 级-周同学",
     intro: "霍尔效应、示波器使用、螺线管磁场测定、RLC 稳态四篇 90+ 报告，数据表格与不确定度计算齐全。",
     toc: ["霍尔效应测磁场", "示波器的使用", "螺线管磁场分布", "RLC 稳态特性"],
@@ -150,7 +143,7 @@ const MATERIALS: Material[] = [
     pageCount: 5, price: 50, previewPages: 0, rating: 4.6, downloads: 987, favs: 203, downloadAvailable: false,
   },
   {
-    id: "paid-math-5mocks", type: "mock", subject: "高等数学A",
+    id: "paid-math-5mocks", type: "exercise", subject: "高等数学A",
     title: "期末冲刺模拟卷（五套）", author: "数学学习小组",
     intro: "五套全真模拟：覆盖极限、微分、积分、级数全部题型，每套附答案与难度标注，适合考前两周每天一套。",
     toc: ["卷一（基础）", "卷二（基础+）", "卷三（中等）", "卷四（中等+）", "卷五（拔高）", "答案速查"],
@@ -158,7 +151,7 @@ const MATERIALS: Material[] = [
     pageCount: 6, price: 70, previewPages: 0, rating: 4.8, downloads: 2210, favs: 687, downloadAvailable: false,
   },
   {
-    id: "paid-la-sprint", type: "path", subject: "线性代数",
+    id: "paid-la-sprint", type: "note", subject: "线性代数",
     title: "线代一周速成路线", author: "22 级-赵同学",
     intro: "给只剩 7 天的人：每天一章 + 对应真题，舍小保大——行列式与矩阵计算必须全对，证明题背 4 个模板。",
     toc: ["D1 行列式", "D2 矩阵", "D3 向量组", "D4 方程组", "D5 特征值", "D6 二次型", "D7 模考"],
@@ -174,7 +167,7 @@ const MATERIALS: Material[] = [
     pageCount: 5, price: 40, previewPages: 0, rating: 4.6, downloads: 1517, favs: 354, downloadAvailable: false,
   },
   {
-    id: "paid-ds-lab", type: "lab", subject: "数据结构",
+    id: "paid-ds-lab", type: "note", subject: "数据结构",
     title: "上机实验报告：链表与栈", author: "21 级-吴学长",
     intro: "数据结构前两次上机的满分报告：单链表基本操作集 + 顺序栈与表达式求值，代码、测试用例、复杂度分析齐全。",
     toc: ["实验一 单链表", "代码与注释", "实验二 顺序栈", "表达式求值", "测试与结论"],

@@ -173,6 +173,47 @@ describe("createCareerResumeExtraction", () => {
       errorCode: "EXTRACT_RATE_LIMITED",
     });
   });
+
+  it("keeps a client request id when the upload network fails before a response", async () => {
+    const fetch = vi.fn().mockRejectedValue(new TypeError("connection reset"));
+    vi.stubGlobal("fetch", fetch);
+
+    const { createCareerResumeExtraction } = await import("./client");
+    const file = new File(["%PDF-1.4"], "候选人简历.pdf", {
+      type: "application/pdf",
+    });
+    await expect(createCareerResumeExtraction(file)).rejects.toMatchObject({
+      code: "PORTAL_NETWORK_ERROR",
+      requestId: expect.stringMatching(/^req_career_upload_[a-f0-9]{32}$/),
+    });
+
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("X-Request-Id")).toMatch(/^req_career_upload_[a-f0-9]{32}$/);
+    expect(headers.get("Content-Type")).toBeNull();
+    const sent = (init.body as FormData).get("file") as File;
+    expect(sent.name).toBe("候选人简历.pdf");
+    expect(sent.type).toBe("application/pdf");
+  });
+
+  it("keeps the gateway request id when a successful upload response is unreadable", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response("upstream returned HTML", {
+        status: 200,
+        headers: { "X-Request-Id": "req_career_parse_failure" },
+      })
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { createCareerResumeExtraction } = await import("./client");
+    const file = new File(["%PDF-1.4"], "候选人简历.pdf", {
+      type: "application/pdf",
+    });
+    await expect(createCareerResumeExtraction(file)).rejects.toMatchObject({
+      code: "PORTAL_PARSE_ERROR",
+      requestId: "req_career_parse_failure",
+    });
+  });
 });
 
 describe("getCareerResumeExtraction", () => {

@@ -6,22 +6,10 @@ import (
 )
 
 // Contract tests for the fail-closed publication provenance boundary. These
-// pin the canonical values so policy drift in either HENU-Final-Review or HENU
-// Kit is caught at test time. Sources: HENU-Final-Review PUBLICATION_POLICY.md,
-// docs/manifest.md, and scripts/validate-materials.mjs (APPROVED_CONTACT_EXCEPTIONS).
+// pin the enforced safety values so policy drift in either HENU-Final-Review
+// or HENU Kit is caught at test time. Sources: HENU-Final-Review
+// PUBLICATION_POLICY.md, docs/manifest.md, and scripts/validate-materials.mjs.
 func TestPublicationProvenancePolicyCanonicalValues(t *testing.T) {
-	if !publishableReviewStatuses["verified"] || !publishableReviewStatuses["basic-reviewed"] || !publishableReviewStatuses["community_review"] {
-		t.Fatalf("canonical publishable reviewStatuses changed: %#v", publishableReviewStatuses)
-	}
-	if len(publishableReviewStatuses) != 3 {
-		t.Fatalf("publishable reviewStatus allowlist = %#v, want exactly verified/basic-reviewed/community_review", publishableReviewStatuses)
-	}
-	if !publishableLicenseStatuses["learning-reference"] || !publishableLicenseStatuses["public_review_only"] || !publishableLicenseStatuses["public-review-only"] {
-		t.Fatalf("canonical publishable licenseStatuses changed: %#v", publishableLicenseStatuses)
-	}
-	if len(publishableLicenseStatuses) != 3 {
-		t.Fatalf("publishable licenseStatus allowlist = %#v, want exactly learning-reference/public_review_only/public-review-only", publishableLicenseStatuses)
-	}
 	for _, uncertainty := range []string{"source_uncertain", "year_uncertain", "course_uncertain", "public_boundary_uncertain"} {
 		if !reviewOnlyUncertainties[uncertainty] {
 			t.Fatalf("review-only uncertainty %q dropped from the policy", uncertainty)
@@ -35,26 +23,112 @@ func TestPublicationProvenancePolicyCanonicalValues(t *testing.T) {
 	}
 }
 
-func TestManifestMaterialTypePreservesElectronicTextbooksAsTheirOwnSection(t *testing.T) {
-	for _, role := range []string{"电子版教材", "电子教材"} {
-		if got := manifestMaterialType(role); got != "textbook" {
-			t.Fatalf("manifestMaterialType(%q) = %q, want textbook", role, got)
+func TestManifestRoleContractMatchesHENUFinalReviewMain(t *testing.T) {
+	// First-party source: jry21223/HENU-Final-Review main at
+	// fcd9e86b60856188b81868e5c96f26a8720b18db, PUBLICATION_POLICY.md and
+	// docs/manifest.md. Keep this table exact: content roles are not inferred
+	// from substrings or file extensions.
+	want := map[string]manifestRoleContract{
+		"复习讲义":  {CanonicalRole: "复习讲义", MaterialType: "handout", Publishable: true},
+		"往年真题":  {CanonicalRole: "往年真题", MaterialType: "exam", Publishable: true},
+		"课件":    {CanonicalRole: "课件", MaterialType: "slides", Publishable: true},
+		"题库练习":  {CanonicalRole: "题库练习", MaterialType: "exercise", Publishable: true},
+		"答案解析":  {CanonicalRole: "答案解析", MaterialType: "answer", Publishable: true},
+		"笔记总结":  {CanonicalRole: "笔记总结", MaterialType: "note", Publishable: true},
+		"电子版教材": {CanonicalRole: "电子版教材", MaterialType: "textbook", Publishable: true},
+		"待复核资料": {CanonicalRole: "待复核资料", Publishable: false},
+	}
+	if len(canonicalManifestRoles) != len(want) {
+		t.Fatalf("canonical role count = %d, want %d: %#v", len(canonicalManifestRoles), len(want), canonicalManifestRoles)
+	}
+	for role, expected := range want {
+		actual, ok := resolveManifestRole(role)
+		if !ok || actual != expected {
+			t.Fatalf("resolveManifestRole(%q) = %#v/%v, want %#v/true", role, actual, ok, expected)
 		}
 	}
-	if got := manifestMaterialType("教材重点复习讲义"); got != "note" {
-		t.Fatalf("ordinary review notes were misclassified as textbooks: %q", got)
+
+	aliases := map[string]manifestRoleContract{
+		"课件PPT":    want["课件"],
+		"课件资料":     want["课件"],
+		"课件资料包":    want["课件"],
+		"待复核课件PPT": want["待复核资料"],
+	}
+	if len(legacyManifestRoleAliases) != len(aliases) {
+		t.Fatalf("legacy role alias count = %d, want %d: %#v", len(legacyManifestRoleAliases), len(aliases), legacyManifestRoleAliases)
+	}
+	for role, expected := range aliases {
+		actual, ok := resolveManifestRole(role)
+		if !ok || actual != expected {
+			t.Fatalf("resolveManifestRole(%q) = %#v/%v, want %#v/true", role, actual, ok, expected)
+		}
+	}
+
+	for _, unsupported := range []string{"电子教材", "教材重点复习讲义", "讲义", "真题", "待复核-讲义", "mock"} {
+		if actual, ok := resolveManifestRole(unsupported); ok {
+			t.Fatalf("unsupported role %q resolved to %#v", unsupported, actual)
+		}
+	}
+}
+
+func TestOSSIdentityAndDownloadFilenameBoundaries(t *testing.T) {
+	if !validOSSObjectKey(strings.Repeat("a", 1023)) {
+		t.Fatal("a 1023-byte OSS Object key was rejected")
+	}
+	if validOSSObjectKey(strings.Repeat("a", 1024)) {
+		t.Fatal("a 1024-byte OSS Object key was accepted")
+	}
+	if !validOSSObjectKey(strings.Repeat("资", 341)) {
+		t.Fatal("a valid 1023-byte UTF-8 OSS Object key was rejected")
+	}
+	if validOSSObjectKey(strings.Repeat("资", 342)) {
+		t.Fatal("an oversized UTF-8 OSS Object key was accepted by rune count")
+	}
+	for _, key := range []string{"", "/leading.pdf", `\\leading.pdf`, "line\nbreak.pdf"} {
+		if validOSSObjectKey(key) {
+			t.Fatalf("unsafe OSS Object key %q was accepted", key)
+		}
+	}
+
+	if !safeObjectVersionID(strings.Repeat("v", 1024)) {
+		t.Fatal("a bounded OSS VersionId was rejected")
+	}
+	for _, versionID := range []string{"", "null", " version-1", "version-1 ", "version\n1", strings.Repeat("v", 1025)} {
+		if safeObjectVersionID(versionID) {
+			t.Fatalf("unsafe OSS VersionId %q was accepted", versionID)
+		}
+	}
+
+	for _, fileName := range []string{"高等数学_复习讲义_极限.pdf", "数据库系统_教材_概论.pdf"} {
+		if !safeDownloadFileName(fileName) {
+			t.Fatalf("safe download filename %q was rejected", fileName)
+		}
+	}
+	for _, fileName := range []string{"", ".hidden.pdf", "..", "资料,副本.pdf", "资料:答案.pdf", "资料?.pdf", "资料*.pdf", "资料<1>.pdf", `资料\\1.pdf`, "资料/1.pdf", "资料\n1.pdf", strings.Repeat("资", 86) + ".pdf"} {
+		if safeDownloadFileName(fileName) {
+			t.Fatalf("unsafe download filename %q was accepted", fileName)
+		}
 	}
 }
 
 func TestPublicationProvenanceViolation(t *testing.T) {
-	clean := manifestAsset{Subject: "数学", Role: "讲义", Title: "讲义.pdf", PublicPath: "note.pdf", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	clean := manifestAsset{Subject: "数学", Role: "复习讲义", Title: "讲义.pdf", PublicPath: "note.pdf", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		ReviewStatus: "basic-reviewed", LicenseStatus: "learning-reference"}
 	if violation := provenanceViolation(clean); violation != "" {
 		t.Fatalf("clean asset flagged: %s", violation)
 	}
-	missing := manifestAsset{Subject: "数学", Role: "讲义", Title: "讲义.pdf", PublicPath: "note.pdf", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	missing := manifestAsset{Subject: "数学", Role: "复习讲义", Title: "讲义.pdf", PublicPath: "note.pdf", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
 	if violation := provenanceViolation(missing); violation != "" {
 		t.Fatalf("legacy asset without provenance fields flagged: %s", violation)
+	}
+	for _, advisory := range []manifestAsset{
+		{PublicPath: "note.pdf", Role: "笔记总结", ReviewStatus: "待维护者复核"},
+		{PublicPath: "exam.pdf", Role: "往年真题", ReviewStatus: "needs_review"},
+		{PublicPath: "note.pdf", Role: "笔记总结", LicenseStatus: "贡献者自有学习笔记，提交后可按仓库公开资料协议共享。"},
+	} {
+		if violation := provenanceViolation(advisory); violation != "" {
+			t.Fatalf("upstream-publishable advisory metadata was rejected: %s", violation)
+		}
 	}
 	for _, tc := range []struct {
 		name     string
@@ -62,11 +136,6 @@ func TestPublicationProvenanceViolation(t *testing.T) {
 		contains string
 	}{
 		{"personal info", manifestAsset{PublicPath: "p.pdf", ContainsPersonalInfo: true}, "containsPersonalInfo"},
-		{"unreviewed", manifestAsset{PublicPath: "p.pdf", ReviewStatus: "needs_review"}, "reviewStatus"},
-		{"maintainer review", manifestAsset{PublicPath: "p.pdf", ReviewStatus: "待维护者复核"}, "reviewStatus"},
-		{"unknown review", manifestAsset{PublicPath: "p.pdf", ReviewStatus: "made-up"}, "reviewStatus"},
-		{"unknown license", manifestAsset{PublicPath: "p.pdf", LicenseStatus: "made-up"}, "licenseStatus"},
-		{"non-allowlisted license", manifestAsset{PublicPath: "p.pdf", LicenseStatus: "贡献者自有学习笔记，提交后可按仓库公开资料协议共享。"}, "licenseStatus"},
 		{"exception not whitelisted", manifestAsset{PublicPath: "p.pdf", LicenseStatus: "teacher_shared_exception", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "teacher_shared_exception"},
 		{"review-only uncertainty", manifestAsset{PublicPath: "p.pdf", Uncertainty: "source_uncertain"}, "uncertainty"},
 		{"year uncertainty", manifestAsset{PublicPath: "p.pdf", Uncertainty: "year_uncertain"}, "uncertainty"},
@@ -83,6 +152,38 @@ func TestPublicationProvenanceViolation(t *testing.T) {
 		SHA256:        "bfda62a15cfefb53c1413a244a4ff9f95e11a9fc959032f4ebff83adc1b8530c"}
 	if violation := provenanceViolation(approved); violation != "" {
 		t.Fatalf("approved teacher_shared_exception flagged: %s", violation)
+	}
+}
+
+func TestElectronicTextbookRequiresExactRedistributionAuthorization(t *testing.T) {
+	// HENU-Final-Review PR #20 merged at
+	// fcd9e86b60856188b81868e5c96f26a8720b18db with ten textbooks using this
+	// exact verified redistribution contract.
+	pr20 := manifestAsset{
+		Subject: "高等数学A（二）", Role: "电子版教材", Title: "高等数学下册第八版.pdf",
+		PublicPath: "高等数学A（二）/电子版教材/高等数学A（二）_教材_高等数学下册第八版.pdf",
+		SHA256:     strings.Repeat("a", 64), ReviewStatus: "needs_review", LicenseStatus: "public-review-only",
+		SourceType: "other", SourceNote: "公开渠道获取的课程教材电子版。",
+	}
+	if violation := provenanceViolation(pr20); !strings.Contains(violation, "reviewStatus must be verified") {
+		t.Fatalf("PR #20 negative fixture violation = %q", violation)
+	}
+	pr20.ReviewStatus = "verified"
+	if violation := provenanceViolation(pr20); !strings.Contains(violation, "authorized-redistribution") {
+		t.Fatalf("public-review-only was treated as textbook authorization: %q", violation)
+	}
+	pr20.LicenseStatus = "public_review_only"
+	if violation := provenanceViolation(pr20); !strings.Contains(violation, "authorized-redistribution") {
+		t.Fatalf("public_review_only was treated as textbook authorization: %q", violation)
+	}
+	pr20.LicenseStatus = "authorized-redistribution"
+	pr20.SourceNote = ""
+	if violation := provenanceViolation(pr20); !strings.Contains(violation, "sourceNote is required") {
+		t.Fatalf("textbook without source note violation = %q", violation)
+	}
+	pr20.SourceNote = "资料提供者确认允许公开再分发。"
+	if violation := provenanceViolation(pr20); violation != "" {
+		t.Fatalf("authorized textbook was rejected: %q", violation)
 	}
 }
 

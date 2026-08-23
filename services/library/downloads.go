@@ -115,7 +115,7 @@ func (h *service) startPublicDownload(w http.ResponseWriter, r *http.Request) {
 
 func validSnapshotObjectKey(snapshot publicMaterialSnapshot) bool {
 	prefix := "releases/" + snapshot.ReleaseID + "/receipts/" + snapshot.ReceiptSHA256 + "/objects/" + snapshot.SHA256 + "/"
-	if !strings.HasPrefix(snapshot.ObjectKey, prefix) || len(snapshot.ObjectKey) <= len(prefix) {
+	if !releaseIDPattern.MatchString(snapshot.ReleaseID) || !digestPattern.MatchString(snapshot.ReceiptSHA256) || !digestPattern.MatchString(snapshot.SHA256) || !safeObjectVersionID(snapshot.ObjectVersionID) || !validOSSObjectKey(snapshot.ObjectKey) || !strings.HasPrefix(snapshot.ObjectKey, prefix) || len(snapshot.ObjectKey) <= len(prefix) {
 		return false
 	}
 	for _, segment := range strings.Split(snapshot.ObjectKey[len(prefix):], "/") {
@@ -203,13 +203,8 @@ func (h *service) materialDownloadAggregate(w http.ResponseWriter, r *http.Reque
 }
 
 func attachmentDisposition(fileName string) (string, bool) {
-	if fileName == "" || len(fileName) > 255 || strings.TrimSpace(fileName) != fileName || strings.ContainsAny(fileName, `/\`) {
+	if !safeDownloadFileName(fileName) {
 		return "", false
-	}
-	for _, char := range fileName {
-		if unicode.IsControl(char) {
-			return "", false
-		}
 	}
 	return mime.FormatMediaType("attachment", map[string]string{"filename": fileName}), true
 }

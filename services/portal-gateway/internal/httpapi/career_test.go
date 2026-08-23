@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"testing"
 	"time"
@@ -144,10 +147,17 @@ func assertCareerSignature(t *testing.T, request *http.Request, actor string) {
 // careerMultipartRequest builds a browser multipart upload request with the
 // session cookie, mirroring how the Portal form posts a resume.
 func careerMultipartRequest(t *testing.T, handler *Handler, withSession bool, actorUserID, path, fileName string, content []byte) *http.Request {
+	return careerMultipartRequestWithFileType(t, handler, withSession, actorUserID, path, fileName, "application/octet-stream", content)
+}
+
+func careerMultipartRequestWithFileType(t *testing.T, handler *Handler, withSession bool, actorUserID, path, fileName, fileType string, content []byte) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("file", fileName)
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, fileName))
+	header.Set("Content-Type", fileType)
+	part, err := writer.CreatePart(header)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,19 +186,37 @@ func careerMultipartRequest(t *testing.T, handler *Handler, withSession bool, ac
 }
 
 func TestCareerExtractionUploadForwardsMultipart(t *testing.T) {
-	const fileName = "resume.txt"
-	const fileContent = "姓名：测试同学\n目标：后端开发"
+	const fileName = "候选人简历.pdf"
+	const fileContent = "%PDF-1.4 exact browser bytes"
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/career/profile/extractions" {
 			t.Fatalf("unexpected upstream request %s %s", r.Method, r.URL.Path)
 		}
 		assertCareerSignature(t, r, careerSessionUserID)
-		if contentType := r.Header.Get("Content-Type"); !strings.HasPrefix(contentType, "multipart/form-data") {
+		if requestID := r.Header.Get("X-Request-Id"); requestID != "req_career_upload_browser" {
+			t.Fatalf("upstream request id = %q", requestID)
+		}
+		contentType := r.Header.Get("Content-Type")
+		if !strings.HasPrefix(contentType, "multipart/form-data") {
 			t.Fatalf("upstream Content-Type = %q, want multipart/form-data", contentType)
 		}
-		raw, _ := io.ReadAll(r.Body)
-		if !bytes.Contains(raw, []byte(fileContent)) {
-			t.Fatalf("upstream lost the file bytes")
+		_, params, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			t.Fatal(err)
+		}
+		part, err := multipart.NewReader(r.Body, params["boundary"]).NextPart()
+		if err != nil {
+			t.Fatal(err)
+		}
+		forwarded, err := io.ReadAll(part)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if part.FormName() != "file" || part.FileName() != fileName || part.Header.Get("Content-Type") != "application/pdf" {
+			t.Fatalf("upstream file part = form=%q filename=%q content-type=%q", part.FormName(), part.FileName(), part.Header.Get("Content-Type"))
+		}
+		if !bytes.Equal(forwarded, []byte(fileContent)) {
+			t.Fatalf("upstream file bytes were re-wrapped: %q", forwarded)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":{"extraction":{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","status":"queued","user_id":"` + careerSessionUserID + `","file_name":"` + fileName + `","created_at":"2026-08-16T00:00:00Z"}},"request_id":"req_career_extract"}`))
@@ -199,9 +227,14 @@ func TestCareerExtractionUploadForwardsMultipart(t *testing.T) {
 	handler := newCareerHandler(t, upstream.URL, mem.URL)
 
 	response := httptest.NewRecorder()
-	handler.Router().ServeHTTP(response, careerMultipartRequest(t, handler, true, careerSessionUserID, "/api/v1/career/profile/extractions", fileName, []byte(fileContent)))
+	request := careerMultipartRequestWithFileType(t, handler, true, careerSessionUserID, "/api/v1/career/profile/extractions", fileName, "application/pdf", []byte(fileContent))
+	request.Header.Set("X-Request-Id", "req_career_upload_browser")
+	handler.Router().ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("upload status = %d: %s", response.Code, response.Body.String())
+	}
+	if requestID := response.Header().Get("X-Request-Id"); requestID != "req_career_upload_browser" {
+		t.Fatalf("browser response request id = %q", requestID)
 	}
 	var envelope struct {
 		Extraction struct {

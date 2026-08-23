@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
+	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -125,30 +125,20 @@ func ExtractionPath(extractionID string) string {
 	return ExtractionsPath + "/" + url.PathEscape(extractionID)
 }
 
-// CreateExtraction forwards a signed-in actor's resume upload. The multipart
-// body is built here and re-signed byte-for-byte with the service credential,
-// exactly like the JSON commands; the file bytes never touch the Gateway disk.
-func (c *Client) CreateExtraction(ctx context.Context, actorUserID, requestID, fileName string, content []byte) (json.RawMessage, error) {
-	if strings.TrimSpace(actorUserID) == "" || strings.TrimSpace(fileName) == "" || len(content) == 0 || len(content) > maxExtractBodyBytes {
+// CreateExtraction forwards and re-signs the browser's multipart body
+// byte-for-byte. Preserving its boundary and part headers keeps the original
+// file name, media type, and file bytes intact without touching Gateway disk.
+func (c *Client) CreateExtraction(ctx context.Context, actorUserID, requestID string, raw []byte, contentType string) (json.RawMessage, error) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if strings.TrimSpace(actorUserID) == "" || len(raw) == 0 || len(raw) > maxExtractBodyBytes ||
+		err != nil || mediaType != "multipart/form-data" || strings.TrimSpace(params["boundary"]) == "" {
 		return nil, ErrBadRequest
 	}
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("file", fileName)
-	if err != nil {
-		return nil, ErrBadRequest
-	}
-	if _, err := part.Write(content); err != nil {
-		return nil, ErrBadRequest
-	}
-	if err := writer.Close(); err != nil {
-		return nil, ErrBadRequest
-	}
-	raw, _, _, err := c.call(ctx, http.MethodPost, ExtractionsPath, actorUserID, requestID, body.Bytes(), writer.FormDataContentType(), nil)
+	rawResponse, _, _, err := c.call(ctx, http.MethodPost, ExtractionsPath, actorUserID, requestID, raw, contentType, nil)
 	if err != nil {
 		return nil, err
 	}
-	return unwrapEnvelope(raw)
+	return unwrapEnvelope(rawResponse)
 }
 
 // Extraction forwards one extraction's status, binding only the actor user ID.

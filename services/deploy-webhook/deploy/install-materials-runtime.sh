@@ -14,8 +14,8 @@ usage() {
 usage: install-materials-runtime.sh --release-sha <full-git-sha>
 
 Installs only the prebuilt, signed materials runtime carried beside this
-script. It backs up and migrates the legacy Study schema, removes the retired
-converter configuration recoverably, and keeps the materials runner disabled.
+script. It removes the retired converter configuration recoverably and keeps
+the materials runner disabled until the exact-SHA webhook path is approved.
 EOF
 }
 
@@ -45,7 +45,7 @@ release_marker="$payload_dir/../RELEASE_SHA"
 [[ "$(tr -d '[:space:]' < "$release_marker")" == "$release_sha" ]] ||
   die "payload release SHA does not match --release-sha"
 
-for command in awk cp docker find grep install mktemp mv psql sha256sum sort stat systemctl; do
+for command in awk cp find grep install mktemp mv sha256sum sort stat systemctl; do
   command -v "$command" >/dev/null 2>&1 || die "missing required command: $command"
 done
 
@@ -78,8 +78,6 @@ required_files=(
   libexec/seal-henukit-materials.mjs
   libexec/activate-henukit-materials.mjs
   libexec/build-henukit-library-activation-bundle.mjs
-  libexec/import-henukit-materials.mjs
-  migrations/study/000001_materials_oss_release.up.sql
   systemd/henukit-materials-webhook.service
   systemd/henukit-materials-webhook.path
   systemd/henukit-materials-runner.service
@@ -157,59 +155,26 @@ backup_existing_target() {
   require_root_file "$backup" "runtime backup $backup"
 }
 
-pg_service_file="/etc/henukit-deploy/materials-postgresql.conf"
-pg_service="henukit-materials"
-require_root_file "$pg_service_file" "materials PostgreSQL service file" "600"
-server_version_num="$(PGSERVICEFILE="$pg_service_file" psql -Atqc 'SHOW server_version_num' "service=$pg_service")"
-[[ "$server_version_num" =~ ^[0-9]+$ && "$server_version_num" -ge 100000 ]] ||
-  die "Study PostgreSQL server returned an unsupported version"
-server_major="$((server_version_num / 10000))"
-pg_client_image="postgres:${server_major}-alpine"
-docker image inspect "$pg_client_image" >/dev/null 2>&1 ||
-  die "matching PostgreSQL client image is unavailable: $pg_client_image"
-study_backup_dir="/opt/henukit-backups/materials-study"
-study_backup="$study_backup_dir/study-before-$release_sha.dump"
-study_checksum="$study_backup.sha256"
-install -d -o root -g root -m 0700 "$study_backup_dir"
-if [[ -e "$study_backup" || -e "$study_checksum" ]]; then
-  require_root_file "$study_backup" "existing Study backup" "600"
-  require_root_file "$study_checksum" "existing Study backup checksum" "600"
-  (cd "$study_backup_dir" && sha256sum -c "$(basename "$study_checksum")") >/dev/null ||
-    die "existing Study backup checksum is invalid"
-else
-  study_incoming="$(mktemp "$study_backup_dir/.materials-study-${release_sha}.XXXXXX")"
-  incoming_paths+=("$study_incoming")
-  docker run --rm --pull=never --network host \
-    --mount "type=bind,source=$pg_service_file,target=/run/henukit-materials-pgservice.conf,readonly" \
-    --env PGSERVICEFILE=/run/henukit-materials-pgservice.conf \
-    "$pg_client_image" \
-    pg_dump --format=custom "service=$pg_service" > "$study_incoming"
-  [[ -s "$study_incoming" ]] || die "Study backup is empty"
-  chmod 0600 "$study_incoming"
-  mv -T "$study_incoming" "$study_backup"
-  checksum_incoming="$(mktemp "$study_backup_dir/.materials-study-sha-${release_sha}.XXXXXX")"
-  incoming_paths+=("$checksum_incoming")
-  (cd "$study_backup_dir" && sha256sum "$(basename "$study_backup")") > "$checksum_incoming"
-  chmod 0600 "$checksum_incoming"
-  mv -T "$checksum_incoming" "$study_checksum"
-fi
-docker run --rm --pull=never \
-  --mount "type=bind,source=$study_backup,target=/run/study-backup.dump,readonly" \
-  "$pg_client_image" \
-  pg_restore --list /run/study-backup.dump >/dev/null || die "Study backup cannot be enumerated"
-
-for migration in "$payload_dir"/migrations/study/*.up.sql; do
-  [[ -f "$migration" && ! -L "$migration" ]] || die "Study migration set is missing or unsafe"
-  PGSERVICEFILE="$pg_service_file" psql -v ON_ERROR_STOP=1 "service=$pg_service" -f "$migration" >/dev/null
-done
-
 activate_config="/etc/henukit-deploy/materials-activate.env"
 require_root_file "$activate_config" "materials activation configuration" "600"
-converter_key_count="$(grep -c '^HENUKIT_MATERIALS_CONVERTER=' "$activate_config" || true)"
-[[ "$converter_key_count" =~ ^[0-9]+$ && "$converter_key_count" -le 1 ]] ||
-  die "materials activation configuration contains duplicate converter keys"
+retired_key_pattern='^HENUKIT_MATERIALS_(CONVERTER|IMPORTER|PSQL|PG_SERVICE_FILE|PG_SERVICE|LEGACY_INVENTORY)='
+retired_keys=(
+  HENUKIT_MATERIALS_CONVERTER
+  HENUKIT_MATERIALS_IMPORTER
+  HENUKIT_MATERIALS_PSQL
+  HENUKIT_MATERIALS_PG_SERVICE_FILE
+  HENUKIT_MATERIALS_PG_SERVICE
+  HENUKIT_MATERIALS_LEGACY_INVENTORY
+)
+retired_key_count=0
+for retired_key in "${retired_keys[@]}"; do
+  retired_key_occurrences="$(grep -c "^${retired_key}=" "$activate_config" || true)"
+  [[ "$retired_key_occurrences" =~ ^[0-9]+$ && "$retired_key_occurrences" -le 1 ]] ||
+    die "materials activation configuration contains duplicate retired key: $retired_key"
+  retired_key_count="$((retired_key_count + retired_key_occurrences))"
+done
 activate_backup=""
-if [[ "$converter_key_count" -eq 1 ]]; then
+if [[ "$retired_key_count" -gt 0 ]]; then
   config_backup_dir="/etc/henukit-deploy/backups"
   activate_backup="$config_backup_dir/materials-activate.env.pre-oss-only-$release_sha"
   install -d -o root -g root -m 0700 "$config_backup_dir"
@@ -219,23 +184,32 @@ if [[ "$converter_key_count" -eq 1 ]]; then
   require_root_file "$activate_backup" "materials activation configuration backup" "400"
   config_incoming="$(mktemp "/etc/henukit-deploy/.materials-activate-${release_sha}.XXXXXX")"
   incoming_paths+=("$config_incoming")
-  awk '$0 !~ /^HENUKIT_MATERIALS_CONVERTER=/' "$activate_config" > "$config_incoming"
-  [[ "$(grep -c '^HENUKIT_MATERIALS_CONVERTER=' "$config_incoming" || true)" == "0" ]] ||
-    die "retired converter key remains in migrated configuration"
+  awk '$0 !~ /^HENUKIT_MATERIALS_(CONVERTER|IMPORTER|PSQL|PG_SERVICE_FILE|PG_SERVICE|LEGACY_INVENTORY)=/' "$activate_config" > "$config_incoming"
+  [[ "$(grep -Ec "$retired_key_pattern" "$config_incoming" || true)" == "0" ]] ||
+    die "retired materials key remains in migrated configuration"
   chown root:root "$config_incoming"
   chmod 0600 "$config_incoming"
   mv -T "$config_incoming" "$activate_config"
 fi
 
-retired_converter="/usr/local/libexec/henukit/convert-henukit-slides.py"
-if [[ -e "$retired_converter" ]]; then
-  require_root_file "$retired_converter" "retired converter"
-  retired_dir="/opt/henukit-materials/retired/$release_sha"
-  retired_target="$retired_dir/convert-henukit-slides.py"
+retired_dir="/opt/henukit-materials/retired/$release_sha"
+retire_root_file() {
+  local source="$1"
+  local label="$2"
+  local exact_mode="${3:-}"
+  [[ -e "$source" ]] || return 0
+  require_root_file "$source" "$label" "$exact_mode"
+  local retired_target="$retired_dir/$(basename "$source")"
   install -d -o root -g root -m 0700 "$retired_dir"
-  [[ ! -e "$retired_target" ]] || die "retired converter backup already exists while source is still active"
-  mv -T "$retired_converter" "$retired_target"
-fi
+  [[ ! -e "$retired_target" ]] || die "$label backup already exists while source is still active"
+  mv -T "$source" "$retired_target"
+  require_root_file "$retired_target" "retired $label" "$exact_mode"
+}
+
+retire_root_file "/usr/local/libexec/henukit/convert-henukit-slides.py" "converter"
+retire_root_file "/usr/local/libexec/henukit/import-henukit-materials.mjs" "Study importer"
+retire_root_file "/etc/henukit-deploy/materials-postgresql.conf" "Study PostgreSQL credential" "600"
+retire_root_file "/etc/henukit-deploy/materials-legacy-inventory.json" "Study legacy inventory" "600"
 
 install -d -o root -g root -m 0755 /usr/local/bin /usr/local/libexec/henukit /etc/systemd/system
 
@@ -254,7 +228,6 @@ declare -a install_records=(
   "libexec/seal-henukit-materials.mjs|/usr/local/libexec/henukit/seal-henukit-materials.mjs|0600"
   "libexec/activate-henukit-materials.mjs|/usr/local/libexec/henukit/activate-henukit-materials.mjs|0600"
   "libexec/build-henukit-library-activation-bundle.mjs|/usr/local/libexec/henukit/build-henukit-library-activation-bundle.mjs|0600"
-  "libexec/import-henukit-materials.mjs|/usr/local/libexec/henukit/import-henukit-materials.mjs|0755"
   "systemd/henukit-materials-webhook.service|/etc/systemd/system/henukit-materials-webhook.service|0644"
   "systemd/henukit-materials-webhook.path|/etc/systemd/system/henukit-materials-webhook.path|0644"
   "systemd/henukit-materials-runner.service|/etc/systemd/system/henukit-materials-runner.service|0644"
@@ -278,7 +251,6 @@ fi
 ! systemctl is-enabled --quiet henukit-materials-webhook.path || die "materials runner path unexpectedly became enabled"
 
 printf 'release_sha=%s\n' "$release_sha"
-printf 'study_backup=%s\n' "$study_backup"
 printf 'activation_config_backup=%s\n' "${activate_backup:-unchanged-no-legacy-key}"
 printf 'runtime_backup=%s\n' "$runtime_backup_root"
 printf 'materials_receiver=active\nmaterials_runner=inactive\nmaterials_runner_path=disabled\n'

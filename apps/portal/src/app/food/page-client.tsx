@@ -180,12 +180,12 @@ export default function FoodBoardPage() {
                         <li key={post.id} data-enter>
                           <Link
                             href={`/food/post/${post.id}`}
-                            className="group grid grid-cols-[3rem_minmax(0,1fr)] gap-3 border-b border-line py-5 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:items-center md:gap-5"
+                            className="group grid grid-cols-[2rem_5.5rem_minmax(0,1fr)] gap-3 border-b border-line py-5 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:items-center md:gap-5"
                           >
                             <span className="font-mono text-sm text-ink/30">
                               {String(index + 1).padStart(2, "0")}
                             </span>
-                            <div className="hidden h-20 overflow-hidden bg-ink/[0.04] md:block">
+                            <div className="h-16 overflow-hidden bg-ink/[0.04] md:h-20">
                               {post.images?.[0] ? (
                                 <Img
                                   src={post.images[0]}
@@ -210,7 +210,7 @@ export default function FoodBoardPage() {
                                 {CAMPUSES[post.campus].name} · {post.tags.join(" / ")}
                               </span>
                             </span>
-                            <span className="col-start-2 flex items-center gap-4 font-mono text-xs text-ink/50 md:col-start-auto">
+                            <span className="col-start-3 flex items-center gap-4 font-mono text-xs text-ink/50 md:col-start-auto">
                               <span className="transition-transform group-hover:translate-x-1" aria-hidden>
                                 →
                               </span>

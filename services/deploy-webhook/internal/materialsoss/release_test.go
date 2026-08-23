@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,17 +16,23 @@ import (
 )
 
 type releaseFakeStore struct {
-	mu          sync.Mutex
-	objects     map[string][]byte
-	versions    map[string]string
-	puts        int
-	failGetAt   int
-	gets        int
-	bucketHook  func()
-	getOverride func([]byte) io.ReadCloser
+	mu                 sync.Mutex
+	objects            map[string][]byte
+	versions           map[string]string
+	bucketCalls        int
+	puts               int
+	failGetAt          int
+	gets               int
+	bucketHook         func()
+	getOverride        func([]byte) io.ReadCloser
+	putVersionOverride *string
+	headSHAOverride    *string
 }
 
 func (s *releaseFakeStore) BucketState(context.Context) (BucketState, error) {
+	s.mu.Lock()
+	s.bucketCalls++
+	s.mu.Unlock()
 	if s.bucketHook != nil {
 		s.bucketHook()
 	}
@@ -42,7 +49,11 @@ func (s *releaseFakeStore) Head(_ context.Context, key, version string) (ObjectS
 	if version != "" && version != actual {
 		return ObjectState{}, false, nil
 	}
-	return ObjectState{Bytes: int64(len(body)), SHA256: digest(body), Encryption: "AES256", VersionID: actual}, true, nil
+	sha := digest(body)
+	if s.headSHAOverride != nil {
+		sha = *s.headSHAOverride
+	}
+	return ObjectState{Bytes: int64(len(body)), SHA256: sha, Encryption: "AES256", VersionID: actual}, true, nil
 }
 func (s *releaseFakeStore) Put(_ context.Context, key string, body io.Reader, _ int64, _ string) (string, error) {
 	b, err := io.ReadAll(body)
@@ -53,6 +64,9 @@ func (s *releaseFakeStore) Put(_ context.Context, key string, body io.Reader, _ 
 	defer s.mu.Unlock()
 	s.puts++
 	version := "version-" + digest(b)[:16]
+	if s.putVersionOverride != nil {
+		version = *s.putVersionOverride
+	}
 	s.objects[key] = b
 	s.versions[key] = version
 	return version, nil
@@ -75,7 +89,10 @@ func (s *releaseFakeStore) Get(_ context.Context, key, version string) (io.ReadC
 }
 func (s *releaseFakeStore) AnonymousDenied(context.Context, string, string) error { return nil }
 
-type releaseFixtureInput struct{ path, role, body string }
+type releaseFixtureInput struct {
+	path, role, body                        string
+	reviewStatus, licenseStatus, sourceNote string
+}
 
 type oversizedReadCloser struct {
 	prefix         *bytes.Reader
@@ -108,8 +125,8 @@ func (*oversizedReadCloser) Close() error { return nil }
 
 func releaseFixture(t *testing.T) (Config, ReleaseRequest, []asset) {
 	return releaseFixtureWithInputs(t, []releaseFixtureInput{
-		{"软件工程/讲义.pdf", "复习讲义", "first reviewed material\n"},
-		{"高等数学/题库.pdf", "题库", "second reviewed material\n"},
+		{path: "软件工程/讲义.pdf", role: "复习讲义", body: "first reviewed material\n"},
+		{path: "高等数学/题库.pdf", role: "题库", body: "second reviewed material\n"},
 	}, true)
 }
 
@@ -123,7 +140,7 @@ func releaseFixtureWithInputs(t *testing.T, inputs []releaseFixtureInput, includ
 		body := []byte(input.body)
 		a := asset{PublicPath: input.path, Bytes: int64(len(body)), SHA256: digest(body)}
 		assets = append(assets, a)
-		manifestAssets = append(manifestAssets, map[string]any{"role": input.role, "publicPath": input.path, "bytes": len(body), "sha256": a.SHA256})
+		manifestAssets = append(manifestAssets, map[string]any{"role": input.role, "publicPath": input.path, "bytes": len(body), "sha256": a.SHA256, "reviewStatus": input.reviewStatus, "licenseStatus": input.licenseStatus, "sourceNote": input.sourceNote})
 	}
 	if includePending {
 		manifestAssets = append(manifestAssets, map[string]any{"role": "待复核答案", "publicPath": "待复核/答案.pdf", "bytes": 1, "sha256": strings.Repeat("f", 64)})
@@ -186,6 +203,80 @@ func TestPublishReleaseCommitsOnlyAfterEveryReviewedAssetAndReplays(t *testing.T
 	}
 	if again.ReleaseCommitSHA256 != result.ReleaseCommitSHA256 || store.puts != len(assets) {
 		t.Fatalf("replay drifted: %#v puts=%d", again, store.puts)
+	}
+}
+
+func TestPublishReleaseRejectsUnverifiedElectronicTextbookBeforeOSS(t *testing.T) {
+	// Negative form of the textbook contract merged by HENU-Final-Review PR
+	// #20 at fcd9e86b60856188b81868e5c96f26a8720b18db.
+	input := releaseFixtureInput{
+		path: "高等数学A（二）/电子版教材/高等数学A（二）_教材_高等数学下册第八版.pdf",
+		role: "电子版教材", body: "textbook", reviewStatus: "needs_review",
+		licenseStatus: "public-review-only", sourceNote: "公开渠道获取的课程教材电子版。",
+	}
+	cfg, req, _ := releaseFixtureWithInputs(t, []releaseFixtureInput{input}, false)
+	store := &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}}
+	if _, err := PublishRelease(context.Background(), cfg, req, store); err == nil {
+		t.Fatal("unverified electronic textbook was published")
+	}
+	if store.bucketCalls != 0 || store.puts != 0 {
+		t.Fatalf("unverified textbook reached OSS: bucket=%d puts=%d", store.bucketCalls, store.puts)
+	}
+
+	input.reviewStatus = "verified"
+	input.licenseStatus = "authorized-redistribution"
+	input.sourceNote = "资料提供者确认允许公开再分发。"
+	cfg, req, _ = releaseFixtureWithInputs(t, []releaseFixtureInput{input}, false)
+	store = &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}}
+	if _, err := PublishRelease(context.Background(), cfg, req, store); err != nil {
+		t.Fatalf("authorized electronic textbook was rejected: %v", err)
+	}
+}
+
+func TestPublishReleaseRejectsOversizedUTF8ObjectKeyBeforeOSS(t *testing.T) {
+	segment := strings.Repeat("a", 200)
+	publicPath := strings.Join([]string{segment, segment, segment, segment, "资料.pdf"}, "/")
+	cfg, req, _ := releaseFixtureWithInputs(t, []releaseFixtureInput{{path: publicPath, role: "复习讲义", body: "body"}}, false)
+	key := strings.Join([]string{cfg.Prefix, req.ReleaseID, "receipts", req.ReceiptSHA256, "objects", strings.Repeat("a", 64), publicPath}, "/")
+	if len([]byte(key)) <= 1023 {
+		t.Fatalf("test fixture Object key is only %d bytes", len([]byte(key)))
+	}
+	store := &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}}
+	if _, err := PublishRelease(context.Background(), cfg, req, store); err == nil {
+		t.Fatal("release with an OSS Object key beyond 1023 UTF-8 bytes was accepted")
+	}
+	if store.bucketCalls != 0 || store.puts != 0 {
+		t.Fatalf("oversized Object key reached OSS: bucket=%d puts=%d", store.bucketCalls, store.puts)
+	}
+}
+
+func TestPublishReleaseRejectsUnsafeVersionIDs(t *testing.T) {
+	for _, versionID := range []string{"null", " version-1", "version-1 ", "version\n1", strings.Repeat("v", 1025)} {
+		t.Run(strings.ReplaceAll(versionID[:min(len(versionID), 16)], "\n", "newline"), func(t *testing.T) {
+			cfg, req, _ := releaseFixture(t)
+			store := &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}, putVersionOverride: &versionID}
+			if _, err := PublishRelease(context.Background(), cfg, req, store); err == nil {
+				t.Fatalf("unsafe OSS VersionId %q was accepted", versionID)
+			}
+			if _, err := os.Stat(filepath.Join(cfg.AuditRoot, req.ReleaseID, "release-commit.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("unsafe VersionId produced a release commit: %v", err)
+			}
+		})
+	}
+}
+
+func TestPublishReleaseRequiresExactHeadSHA256Metadata(t *testing.T) {
+	for _, metadataSHA := range []string{"", strings.Repeat("f", 64)} {
+		t.Run(fmt.Sprintf("sha-length-%d", len(metadataSHA)), func(t *testing.T) {
+			cfg, req, _ := releaseFixture(t)
+			store := &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}, headSHAOverride: &metadataSHA}
+			if _, err := PublishRelease(context.Background(), cfg, req, store); err == nil {
+				t.Fatalf("HEAD sha256 metadata %q was accepted", metadataSHA)
+			}
+			if _, err := os.Stat(filepath.Join(cfg.AuditRoot, req.ReleaseID, "release-commit.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("invalid HEAD sha256 produced a release commit: %v", err)
+			}
+		})
 	}
 }
 
@@ -270,8 +361,8 @@ func TestPublishReleaseAllowsAnEmptyReviewedReleaseWithoutObjectWrites(t *testin
 
 func TestPublishReleaseTreatsSameBytesAtDifferentPathsAsDistinctObjects(t *testing.T) {
 	inputs := []releaseFixtureInput{
-		{"软件工程/讲义.pdf", "复习讲义", "same bytes\n"},
-		{"高等数学/讲义.pdf", "复习讲义", "same bytes\n"},
+		{path: "软件工程/讲义.pdf", role: "复习讲义", body: "same bytes\n"},
+		{path: "高等数学/讲义.pdf", role: "复习讲义", body: "same bytes\n"},
 	}
 	cfg, req, _ := releaseFixtureWithInputs(t, inputs, false)
 	store := &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}}
@@ -286,7 +377,7 @@ func TestPublishReleaseTreatsSameBytesAtDifferentPathsAsDistinctObjects(t *testi
 
 func TestPublishReleaseReopensAndReverifiesLargeAssetBeforeCommit(t *testing.T) {
 	largeBody := strings.Repeat("a", 8<<20)
-	cfg, req, assets := releaseFixtureWithInputs(t, []releaseFixtureInput{{"软件工程/大讲义.pdf", "复习讲义", largeBody}}, false)
+	cfg, req, assets := releaseFixtureWithInputs(t, []releaseFixtureInput{{path: "软件工程/大讲义.pdf", role: "复习讲义", body: largeBody}}, false)
 	assetPath := filepath.Join(cfg.SealedRoot, req.ReleaseID, "public", filepath.FromSlash(assets[0].PublicPath))
 	store := &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}}
 	store.bucketHook = func() {
@@ -307,7 +398,7 @@ func TestPublishReleaseReopensAndReverifiesLargeAssetBeforeCommit(t *testing.T) 
 }
 
 func TestPublishReleaseReadbackRejectsOversizeAfterOneExtraByte(t *testing.T) {
-	cfg, req, assets := releaseFixtureWithInputs(t, []releaseFixtureInput{{"软件工程/大讲义.pdf", "复习讲义", strings.Repeat("a", 4<<20)}}, false)
+	cfg, req, assets := releaseFixtureWithInputs(t, []releaseFixtureInput{{path: "软件工程/大讲义.pdf", role: "复习讲义", body: strings.Repeat("a", 4<<20)}}, false)
 	store := &releaseFakeStore{objects: map[string][]byte{}, versions: map[string]string{}}
 	var readback *oversizedReadCloser
 	store.getOverride = func(body []byte) io.ReadCloser {

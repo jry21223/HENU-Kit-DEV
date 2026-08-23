@@ -1,4 +1,9 @@
 import type { CareerResumeExtraction, CareerExtractionStatus } from "../api/types";
+import {
+  PortalApiError,
+  PortalHttpError,
+  PortalNetworkError,
+} from "../api/client";
 
 /**
  * 简历上传 → AI 识别的异步状态机（纯逻辑，与 React 无关）。
@@ -58,6 +63,42 @@ export function extractionFailedMessage(errorCode?: string): string {
     default:
       return "简历识别未完成，请稍后重试";
   }
+}
+
+function appendExtractionRequestID(message: string, error: unknown): string {
+  const requestID = error instanceof PortalApiError ? error.requestId?.trim() : undefined;
+  if (!requestID || !/^req_[A-Za-z0-9_-]{1,116}$/.test(requestID)) return message;
+  return `${message}（请求编号：${requestID}）`;
+}
+
+/**
+ * Upload/create failures happen before polling exists, so they need different
+ * guidance from a terminal worker failure. Never echo transport/provider text;
+ * retain only the Gateway request id operators can safely search for.
+ */
+export function extractionCreateFailedMessage(error: unknown): string {
+  let message: string;
+  if (error instanceof PortalHttpError) {
+    if (error.errorCode) {
+      message = extractionFailedMessage(error.errorCode);
+    } else if (error.status === 413) {
+      message = extractionFailedMessage("FILE_TOO_LARGE");
+    } else if (error.status === 429) {
+      message = extractionFailedMessage("EXTRACT_RATE_LIMITED");
+    } else {
+      message = "简历尚未上传成功，服务暂时不可用，请稍后重试";
+    }
+  } else if (error instanceof PortalNetworkError) {
+    message = "上传连接中断，无法确认是否已提交。请等待一分钟后再重试，避免重复创建识别任务";
+  } else if (
+    error instanceof PortalApiError &&
+    (error.code === "PORTAL_PARSE_ERROR" || error.code === "PORTAL_EMPTY_RESPONSE")
+  ) {
+    message = "简历上传响应异常，无法确认任务是否创建。请等待一分钟后再重试";
+  } else {
+    message = "简历尚未上传成功，请检查网络后重试";
+  }
+  return appendExtractionRequestID(message, error);
 }
 
 export interface ExtractionRunner {

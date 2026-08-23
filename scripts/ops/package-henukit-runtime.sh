@@ -86,7 +86,6 @@ install -d \
   "$runtime/release-gates" \
   "$runtime/materials-runtime/bin" \
   "$runtime/materials-runtime/libexec" \
-  "$runtime/materials-runtime/migrations/study" \
   "$runtime/materials-runtime/systemd"
 
 docker compose \
@@ -113,6 +112,7 @@ docker run --rm --platform linux/amd64 \
   --env GOCACHE=/tmp/go-cache --env GOMODCACHE=/tmp/go-mod \
   --volume "$repo_root:/src:ro" \
   --volume "$runtime/materials-runtime/bin:/out" \
+  --volume "$runtime/bin:/host-out" \
   --workdir /src \
   golang:1.26.6-alpine \
   sh -ceu '
@@ -122,8 +122,11 @@ docker run --rm --platform linux/amd64 \
     go build -trimpath -ldflags="-s -w" -o /out/materials-oss-release ./cmd/materials-oss-release
     cd /src/services/library
     go build -trimpath -ldflags="-s -w" -o /out/library-activate-public-release ./cmd/activate-public-release
+    cd /src/services/food
+    go build -trimpath -ldflags="-s -w" -o /host-out/food-sanitize-post-image ./cmd/sanitize-post-image
   '
 chmod 0555 "$runtime/materials-runtime/bin"/*
+chmod 0555 "$runtime/bin/food-sanitize-post-image"
 
 for helper in \
   henukit-materials-orchestrate \
@@ -139,23 +142,19 @@ for helper in \
   prepare-henukit-materials.mjs \
   seal-henukit-materials.mjs \
   activate-henukit-materials.mjs \
-  build-henukit-library-activation-bundle.mjs \
-  import-henukit-materials.mjs; do
+  build-henukit-library-activation-bundle.mjs; do
   install -m 0444 "$repo_root/scripts/ops/$helper" "$runtime/materials-runtime/libexec/$helper"
 done
 install -m 0555 "$repo_root/services/deploy-webhook/deploy/install-materials-runtime.sh" \
   "$runtime/materials-runtime/install.sh"
 install -m 0444 "$repo_root"/services/deploy-webhook/deploy/systemd/henukit-materials-* \
   "$runtime/materials-runtime/systemd/"
-install -m 0444 \
-  "$repo_root/services/library/db/legacy-study-migrations/000001_materials_oss_release.up.sql" \
-  "$runtime/materials-runtime/migrations/study/"
 (
   cd "$runtime/materials-runtime"
   while IFS= read -r -d '' path; do
     sha256sum "$path"
   done < <(
-    { find bin libexec migrations systemd -type f -printf '%p\0'; printf 'install.sh\0'; } |
+    { find bin libexec systemd -type f -print0; printf 'install.sh\0'; } |
       LC_ALL=C sort -z
   ) > SHA256SUMS
   [[ -s SHA256SUMS ]] || die "materials runtime checksum manifest is empty"
@@ -173,6 +172,8 @@ for helper in \
   verify-henukit-local-release.sh; do
   install -m 0555 "$repo_root/scripts/ops/$helper" "$runtime/bin/$helper"
 done
+install -m 0555 "$repo_root/scripts/ops/import-legacy-portal-food-images.mjs" \
+  "$runtime/bin/import-legacy-portal-food-images.mjs"
 
 RELEASE_SHA="$release_sha" node "$repo_root/scripts/ops/check-account-production-boundary.mjs" \
   --report "$runtime/release-gates/account-production-boundary.env"

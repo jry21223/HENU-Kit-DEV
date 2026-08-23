@@ -10,7 +10,6 @@ import {
   formatPortalError,
   getCareerProfile,
   getCareerResumeExtraction,
-  PortalHttpError,
   updateCareerProfile,
 } from "@/lib/api/client";
 import type {
@@ -22,6 +21,7 @@ import type {
 import { isCareerLifetimeRequiredError } from "@/lib/career/gateway";
 import {
   createExtractionRunner,
+  extractionCreateFailedMessage,
   extractionFailedMessage,
   extractionStatusLabel,
 } from "@/lib/career/career-extraction-state";
@@ -241,9 +241,7 @@ export default function CareerProfilePage() {
         setState({ kind: "locked" });
         return;
       }
-      const code =
-        error instanceof PortalHttpError ? error.errorCode : undefined;
-      setUpload({ kind: "error", message: extractionFailedMessage(code) });
+      setUpload({ kind: "error", message: extractionCreateFailedMessage(error) });
     }
   };
 

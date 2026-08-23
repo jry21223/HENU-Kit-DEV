@@ -21,18 +21,19 @@ import {
 } from "@/lib/library/gateway";
 import { ErrorBanner } from "@/components/data-state";
 
-const FEATURES = ["往年试卷持续更新", "支持电子版教材分类", "按课程与专业分类检索"];
+const FEATURES = ["公开资料持续整理", "支持电子版教材分类", "按课程与类型检索"];
 
-type LibraryCard = { id: string; title: string; meta: string; size: string };
+type LibraryCard = { id: string; code: string; title: string; meta: string; size: string };
 
 /** 档案卡按真实资料类型统计；数量为 0 的类型不占位展示。 */
 const CARD_DEFS = [
-  { type: "note", title: "学长笔记", meta: "PDF / 扫描版 / 按课程归档", unit: "份" },
-  { type: "exam", title: "往年试卷", meta: "近五年真题 / 含答案", unit: "套" },
-  { type: "mock", title: "模拟卷", meta: "教研组命制 / 考前自测", unit: "套" },
-  { type: "lab", title: "实验报告", meta: "模板 + 优秀范例", unit: "份" },
-  { type: "path", title: "学习路径", meta: "按专业整理 / 从入门到期末", unit: "条" },
-  { type: "textbook", title: "电子版教材", meta: "按课程归档 / 原文件下载", unit: "本" },
+  { type: "handout", code: "HO", title: "复习讲义", meta: "知识点讲义 / 原文件下载", unit: "份" },
+  { type: "exam", code: "EX", title: "往年真题", meta: "按课程归档 / 原文件下载", unit: "套" },
+  { type: "slides", code: "SL", title: "课件", meta: "真实课程课件 / 原文件下载", unit: "份" },
+  { type: "exercise", code: "PR", title: "题库练习", meta: "练习题与题库 / 原文件下载", unit: "份" },
+  { type: "answer", code: "AN", title: "答案解析", meta: "答案与题解 / 原文件下载", unit: "份" },
+  { type: "note", code: "NO", title: "笔记总结", meta: "公开学习笔记 / 原文件下载", unit: "份" },
+  { type: "textbook", code: "TB", title: "电子版教材", meta: "按课程归档 / 原文件下载", unit: "本" },
 ] as const;
 
 function buildCards(materials: ApiMaterial[], courses: CourseSummary[]): LibraryCard[] {
@@ -41,7 +42,8 @@ function buildCards(materials: ApiMaterial[], courses: CourseSummary[]): Library
     const count = materials.filter((m) => m.type === def.type).length;
     if (count > 0) {
       cards.push({
-        id: def.type.toUpperCase().slice(0, 2),
+        id: def.type,
+        code: def.code,
         title: def.title,
         meta: def.meta,
         size: `${count} ${def.unit}`,
@@ -51,6 +53,7 @@ function buildCards(materials: ApiMaterial[], courses: CourseSummary[]): Library
   if (courses.length > 0) {
     cards.push({
       id: "CU",
+      code: "CU",
       title: "课程归档",
       meta: "按专业整理 / 从入门到期末",
       size: `${courses.length} 门`,
@@ -162,8 +165,8 @@ export default function SectionLibrary() {
           <div>
             <SectionHeading index="01" en="LIBRARY" title="资料库" />
             <p className="mt-5 max-w-md text-sm leading-7 text-ink/70">
-              别再满群求资料。往年试卷、学长笔记、实验报告，
-              按课程归档，开箱即用。
+              复习讲义、往年真题、课程课件和公开学习笔记，
+              按课程与资料类型归档。
             </p>
           </div>
           <div className="md:justify-self-end">
@@ -212,7 +215,7 @@ export default function SectionLibrary() {
                       <TiltCard>
                         <article className="flex h-72 w-56 flex-col justify-between border border-ink/25 bg-paper p-5">
                           <div className="flex items-start justify-between">
-                            <span className="font-mono text-xs text-accent">{card.id}</span>
+                            <span className="font-mono text-xs text-accent">{card.code}</span>
                             <span aria-hidden className="font-mono text-xs text-ink/40">+</span>
                           </div>
                           <div>

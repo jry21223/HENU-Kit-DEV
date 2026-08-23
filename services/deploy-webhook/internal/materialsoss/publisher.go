@@ -15,12 +15,16 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"unicode"
+	"unicode/utf8"
 )
 
 var (
-	releasePattern     = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
-	hashPattern        = regexp.MustCompile(`^[a-f0-9]{64}$`)
-	errPublicationBusy = errors.New("another OSS canary publication is already running")
+	releasePattern           = regexp.MustCompile(`^[a-f0-9]{40}-[a-f0-9]{16}$`)
+	hashPattern              = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	unsafeFileNamePattern    = regexp.MustCompile(`[,:?*<>|"\\/]`)
+	temporaryFileNamePattern = regexp.MustCompile(`(?i)(副本|final_final|未命名|新建文件|^~\$|\.tmp$|\.crdownload$|\.download$)`)
+	errPublicationBusy       = errors.New("another OSS canary publication is already running")
 )
 
 const approvedSourceRepository = "https://github.com/jry21223/HENU-Final-Review.git"
@@ -101,8 +105,9 @@ type inventory struct {
 type manifest struct {
 	Subjects []struct {
 		Assets []struct {
-			Role, PublicPath, SHA256 string
-			Bytes                    int64
+			Role, PublicPath, SHA256                string
+			ReviewStatus, LicenseStatus, SourceNote string
+			Bytes                                   int64
 		} `json:"assets"`
 	} `json:"subjects"`
 }
@@ -191,6 +196,10 @@ func Publish(ctx context.Context, cfg Config, req Request, store ObjectStore) (R
 	if int64(len(assetBytes)) != selected.Bytes || sum(assetBytes) != selected.SHA256 {
 		return Result{}, errors.New("sealed asset does not match its inventory")
 	}
+	key := objectKey(cfg.Prefix, req.ReleaseID, req.ReceiptSHA256, req.AssetSHA256, selected.PublicPath)
+	if !validObjectKey(key) {
+		return Result{}, errors.New("derived OSS Object key is invalid")
+	}
 	// Reserve the locally proven release-to-receipt identity before any remote
 	// write. This is not a success receipt or activation record; it prevents a
 	// different receipt from creating a second orphan under the same release.
@@ -205,7 +214,6 @@ func Publish(ctx context.Context, cfg Config, req Request, store ObjectStore) (R
 	if bucket != (BucketState{Region: "cn-beijing", ACL: "private", StorageClass: "Standard", Redundancy: "ZRS", Versioning: "Enabled", Encryption: "AES256"}) {
 		return Result{}, errors.New("OSS bucket policy does not match the approved private publication boundary")
 	}
-	key := strings.Join([]string{cfg.Prefix, req.ReleaseID, "receipts", req.ReceiptSHA256, "objects", req.AssetSHA256, selected.PublicPath}, "/")
 	prior, priorBytes, err := loadPublicationReceipt(cfg.AuditRoot, req, key, selected.Bytes)
 	if err != nil {
 		return Result{}, err
@@ -226,7 +234,7 @@ func Publish(ctx context.Context, cfg Config, req Request, store ObjectStore) (R
 		if putErr != nil {
 			return Result{}, verificationError("put", key, "unknown", putErr)
 		}
-		if versionID == "" {
+		if !safeVersionID(versionID) {
 			return Result{}, verificationError("put_response", key, "missing", errors.New("OSS did not return an immutable object version"))
 		}
 		pinnedVersion = versionID
@@ -238,14 +246,11 @@ func Publish(ctx context.Context, cfg Config, req Request, store ObjectStore) (R
 			return Result{}, verificationError("head_after_put", key, versionID, errors.New("uploaded version was not found"))
 		}
 	}
-	if pinnedVersion != "" && state.VersionID != pinnedVersion {
+	if !safeVersionID(state.VersionID) || (pinnedVersion != "" && state.VersionID != pinnedVersion) {
 		return Result{}, verificationError("head_version", key, pinnedVersion, errors.New("OSS returned a different object version"))
 	}
-	if state.Bytes != selected.Bytes || state.Encryption != "AES256" || (state.SHA256 != "" && state.SHA256 != selected.SHA256) {
+	if state.Bytes != selected.Bytes || state.Encryption != "AES256" || state.SHA256 != selected.SHA256 {
 		return Result{}, verificationError("head_metadata", key, state.VersionID, errors.New("object metadata does not match the sealed asset"))
-	}
-	if state.VersionID == "" {
-		return Result{}, errors.New("OSS canary object has no immutable version identity")
 	}
 	body, err := store.Get(ctx, key, state.VersionID)
 	if err != nil {
@@ -330,6 +335,9 @@ func validateManifest(data []byte, inventoryAssets []asset, selected asset) erro
 				}
 				continue
 			}
+			if invalidTextbookAuthorization(a.Role, a.ReviewStatus, a.LicenseStatus, a.SourceNote) {
+				return errors.New("electronic textbook lacks verified redistribution authorization")
+			}
 			approved[a.SHA256] = asset{PublicPath: a.PublicPath, Bytes: a.Bytes, SHA256: a.SHA256}
 			if a.SHA256 == selected.SHA256 {
 				selectedApproved = true
@@ -347,17 +355,52 @@ func validateManifest(data []byte, inventoryAssets []asset, selected asset) erro
 	return nil
 }
 
+func invalidTextbookAuthorization(role, reviewStatus, licenseStatus, sourceNote string) bool {
+	return role == "电子版教材" && (reviewStatus != "verified" || licenseStatus != "authorized-redistribution" || strings.TrimSpace(sourceNote) == "")
+}
+
 func safeSegments(path string) ([]string, error) {
-	if path == "" || strings.ContainsAny(path, "\\\x00") || strings.HasPrefix(path, "/") {
+	if path == "" || len(path) > 1023 || !utf8.ValidString(path) || strings.ContainsAny(path, "\\\x00") || strings.HasPrefix(path, "/") {
 		return nil, errors.New("unsafe path")
 	}
 	parts := strings.Split(path, "/")
-	for _, p := range parts {
-		if p == "" || p == "." || p == ".." || strings.HasPrefix(p, ".") {
+	for _, part := range parts {
+		if part == "" || len(part) > 255 || part == "." || part == ".." || strings.HasPrefix(part, ".") || !safeText(part) {
 			return nil, errors.New("unsafe path")
 		}
 	}
+	if !safePublicationFileName(parts[len(parts)-1]) {
+		return nil, errors.New("unsafe path")
+	}
 	return parts, nil
+}
+
+func objectKey(prefix, releaseID, receiptSHA256, assetSHA256, publicPath string) string {
+	return strings.Join([]string{prefix, releaseID, "receipts", receiptSHA256, "objects", assetSHA256, publicPath}, "/")
+}
+
+func validObjectKey(value string) bool {
+	if value == "" || len(value) > 1023 || !utf8.ValidString(value) || strings.HasPrefix(value, "/") || strings.HasPrefix(value, `\`) {
+		return false
+	}
+	return safeText(value)
+}
+
+func safeVersionID(value string) bool {
+	return value != "" && value != "null" && len(value) <= 1024 && utf8.ValidString(value) && strings.TrimSpace(value) == value && safeText(value)
+}
+
+func safeText(value string) bool {
+	for _, char := range value {
+		if unicode.IsControl(char) {
+			return false
+		}
+	}
+	return true
+}
+
+func safePublicationFileName(value string) bool {
+	return value != "" && len(value) <= 255 && strings.TrimSpace(value) == value && value != "." && value != ".." && !strings.HasPrefix(value, ".") && !unsafeFileNamePattern.MatchString(value) && !temporaryFileNamePattern.MatchString(value) && safeText(value)
 }
 func pathsOverlap(left, right string) bool {
 	left = filepath.Clean(left)
@@ -464,7 +507,7 @@ func loadPublicationReceipt(root string, req Request, key string, size int64) (*
 		return nil, nil, errors.New("could not read OSS publication receipt")
 	}
 	var stored storedReceipt
-	if err := decodeExact(b, &stored); err != nil || stored.Version != 1 || stored.State != "published_not_activated" || stored.ReleaseID != req.ReleaseID || stored.ReceiptSHA256 != req.ReceiptSHA256 || stored.AssetSHA256 != req.AssetSHA256 || stored.ObjectKey != key || stored.ObjectVersionID == "" || stored.Bytes != size {
+	if err := decodeExact(b, &stored); err != nil || stored.Version != 1 || stored.State != "published_not_activated" || stored.ReleaseID != req.ReleaseID || stored.ReceiptSHA256 != req.ReceiptSHA256 || stored.AssetSHA256 != req.AssetSHA256 || stored.ObjectKey != key || !safeVersionID(stored.ObjectVersionID) || stored.Bytes != size {
 		return nil, nil, errors.New("existing OSS publication receipt conflicts with this publication")
 	}
 	return &stored, b, nil

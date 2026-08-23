@@ -24,7 +24,7 @@ _Avoid_: OSS 公共直链、永久下载地址、下载完成
 _Avoid_: Slides viewer、转换降级、本地 `/materials/` 下载
 
 **Electronic Textbook**:
-审核 manifest 中角色为“电子版教材”或“电子教材”的 Download-only Material；在 Owner Catalog 中保留独立 `textbook` 类型，Portal 以“电子版教材”板块筛选，仍只提供原文件下载，不暗示学校官方授权或官方版本。
+审核 manifest 中角色精确为“电子版教材”、`reviewStatus=verified`、`licenseStatus=authorized-redistribution` 且来源说明非空的 Download-only Material；在 Owner Catalog 中保留独立 `textbook` 类型，Portal 以“电子版教材”板块筛选，仍只提供原文件下载，不暗示学校官方版本。
 _Avoid_: 复习讲义、教材重点、在线阅读器、官方教材声明
 
 **Download Start**:
@@ -71,21 +71,18 @@ ADR-0029 makes the complete verified owner catalog and its unfiltered aggregate
 read atomic. Its activation command remains unwired to a public HTTP route;
 passing local tests is not production activation evidence.
 ADR-0031 keeps every activated material download-only: activation rejects any
-derived preview asset and imports `materials.slides` as `NULL`.
+derived preview asset, and Library snapshots contain no online-preview field.
 
 Library activation is an **independent fail-closed publication boundary**, not
 merely a consumer of the upstream source-repository validator. The activation
-boundary re-checks publication provenance on every reviewed asset and rejects
-content the upstream validator would have blocked or left unresolved:
-`containsPersonalInfo=true`, a `reviewStatus` outside the canonical publishable
-states (`verified`/`basic-reviewed`/`community_review`), a `licenseStatus`
-outside the allowlist (`learning-reference`/`public_review_only`/
-`public-review-only`, plus `teacher_shared_exception` restricted to the
-approved historical whitelist), or a review-only `uncertainty`
+boundary re-checks the safety rules that upstream actually enforces:
+`containsPersonalInfo=true`, `teacher_shared_exception` outside the approved
+historical path/SHA whitelist, an electronic textbook that lacks exact
+`verified` + `authorized-redistribution` + non-empty source-note evidence, or a
+review-only `uncertainty`
 (`source_uncertain`/`year_uncertain`/`course_uncertain`/
 `public_boundary_uncertain`) on an asset that is not under a 待复核 role.
-Absent provenance fields remain tolerated for legacy sealed releases, but a
-present disallowed value always fails activation before any OSS or catalog
-write. The allowlists are synchronized with HENU-Final-Review's
-PUBLICATION_POLICY.md / docs/manifest.md / validate-materials.mjs and pinned
+General-material `reviewStatus` and `licenseStatus` remain advisory, as defined
+by HENU-Final-Review's current validator; Library does not invent a stricter
+allowlist after accepting the exact upstream SHA. These boundaries are pinned
 by contract tests.

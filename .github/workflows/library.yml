@@ -63,12 +63,15 @@ jobs:
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000002_public_downloads.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000003_public_release_activation.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000004_electronic_textbooks.up.sql
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000005_canonical_material_types.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000001_library_adapter.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000002_public_downloads.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000003_public_release_activation.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000004_electronic_textbooks.up.sql
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000005_canonical_material_types.up.sql
           test "$(psql -h localhost -U library -d library_test -Atc "SELECT to_regclass('public.library_adapter_operations') IS NOT NULL AND to_regclass('public.library_public_material_snapshots') IS NOT NULL AND to_regclass('public.library_download_start_events') IS NOT NULL AND to_regclass('public.library_public_releases') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
           pg_dump -h localhost -U library -d library_test --format=custom --file=/tmp/library-recovery.dump
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000005_canonical_material_types.down.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000004_electronic_textbooks.down.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000003_public_release_activation.down.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000002_public_downloads.down.sql
@@ -77,6 +80,9 @@ jobs:
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000002_public_downloads.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000003_public_release_activation.up.sql
           psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000004_electronic_textbooks.up.sql
+          psql -h localhost -U library -d library_test -v ON_ERROR_STOP=1 -f services/library/db/migrations/000005_canonical_material_types.up.sql
+          constraint_has_canonical_types="$(psql -h localhost -U library -d library_test -Atc "SELECT pg_get_constraintdef(oid) LIKE '%handout%' AND pg_get_constraintdef(oid) LIKE '%exercise%' AND pg_get_constraintdef(oid) LIKE '%answer%' FROM pg_constraint WHERE conname='library_public_material_snapshots_type_check'")"
+          test "$constraint_has_canonical_types" = t
           createdb -h localhost -U library library_recovery
           pg_restore -h localhost -U library -d library_recovery --no-owner /tmp/library-recovery.dump
           test "$(psql -h localhost -U library -d library_recovery -Atc "SELECT to_regclass('public.library_adapter_audit_events') IS NOT NULL AND to_regclass('public.library_download_start_events') IS NOT NULL AND to_regclass('public.library_public_release_activation_events') IS NOT NULL")" = t

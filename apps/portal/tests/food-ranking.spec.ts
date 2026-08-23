@@ -16,7 +16,7 @@ const POSTS = [
     shop: { name: "鼓楼夜市" },
     time: "07-16",
     hidden: false,
-    images: [],
+    images: ["/api/v1/food/posts/hang-1/images/0"],
   },
   {
     id: "top-1",
@@ -94,6 +94,15 @@ for (const viewport of [
         body: JSON.stringify({ posts: POSTS, request_id: "req_food_ranking" }),
       });
     });
+    await page.route("**/api/v1/food/posts/hang-1/images/0", async (route) => {
+      await route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+          "base64"
+        ),
+      });
+    });
 
     await page.goto("/food", { waitUntil: "domcontentloaded" });
 
@@ -107,6 +116,14 @@ for (const viewport of [
       "拉完了",
     ]);
     await expect(page.getByRole("link", { name: "投稿一家好店" })).toBeVisible();
+    const thumbnail = page.locator(
+      'img[src="/api/v1/food/posts/hang-1/images/0"]'
+    );
+    await expect(thumbnail).toBeVisible();
+    await expect(thumbnail).toHaveJSProperty("complete", true);
+    expect(
+      await thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth)
+    ).toBeGreaterThan(0);
 
     const width = await page.evaluate(() => ({
       client: document.documentElement.clientWidth,
