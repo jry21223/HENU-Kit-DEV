@@ -189,14 +189,45 @@ type manifestAsset struct {
 		Authors    []string `json:"authors"`
 		Collectors []string `json:"collectors"`
 	} `json:"attribution"`
-	College              string `json:"college"`
-	ContainsPersonalInfo bool   `json:"containsPersonalInfo"`
-	LicenseStatus        string `json:"licenseStatus"`
-	ReviewStatus         string `json:"reviewStatus"`
-	SourceNote           string `json:"sourceNote"`
-	SourceType           string `json:"sourceType"`
-	Uncertainty          string `json:"uncertainty"`
-	Year                 string `json:"year"`
+	College              string       `json:"college"`
+	ContainsPersonalInfo bool         `json:"containsPersonalInfo"`
+	LicenseStatus        string       `json:"licenseStatus"`
+	ReviewStatus         string       `json:"reviewStatus"`
+	SourceNote           string       `json:"sourceNote"`
+	SourceType           string       `json:"sourceType"`
+	Uncertainty          string       `json:"uncertainty"`
+	Year                 manifestYear `json:"year"`
+}
+
+// manifestYear accepts the documented string shape plus the integer shape
+// already present in the reviewed upstream manifest. The field is provenance
+// metadata only; normalizing it here keeps strict unknown-field decoding while
+// refusing booleans, arrays, objects, and fractional numbers.
+type manifestYear string
+
+func (year *manifestYear) UnmarshalJSON(value []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	switch item := decoded.(type) {
+	case nil:
+		*year = ""
+		return nil
+	case string:
+		*year = manifestYear(item)
+		return nil
+	case json.Number:
+		if _, err := strconv.Atoi(item.String()); err != nil {
+			return errors.New("manifest year number must be an integer")
+		}
+		*year = manifestYear(item.String())
+		return nil
+	default:
+		return errors.New("manifest year must be a string, integer, or null")
+	}
 }
 
 type sealedReceipt struct {

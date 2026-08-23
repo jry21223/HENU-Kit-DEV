@@ -202,10 +202,104 @@ test("/career branches on membership and profile state", async ({ page }) => {
   });
 
   await page.goto("/career", { waitUntil: "domcontentloaded" });
+  const layout = page.locator("[data-career-layout]");
+  await expect(layout).toBeVisible();
+  await expect(layout).not.toHaveCSS("background-image", "none");
   await expect(page.locator('[data-career-state="lifetime-no-profile"]')).toBeVisible();
   const link = page.getByRole("link", { name: "去设置求职画像 →" });
   await expect(link).toHaveAttribute("href", "/account/profile");
   await expect(link).toHaveCSS("min-height", "44px");
+});
+
+test("saving an extracted profile makes client navigation back to radar ready without a hard reload", async ({ page }) => {
+  await mockSession(page);
+  let currentProfile: Record<string, unknown> = {
+    user_id: sessionUserID,
+    updated_at: "2026-08-15T00:00:00Z",
+  };
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    if (route.request().method() === "PUT") {
+      currentProfile = {
+        ...currentProfile,
+        ...(await route.request().postDataJSON()),
+        updated_at: "2026-08-15T00:01:00Z",
+      };
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile: currentProfile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [], request_id: "req_searches" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-state="lifetime-no-profile"]')).toBeVisible();
+  await page.getByRole("link", { name: "去设置求职画像 →" }).click();
+  await expect(page.locator('[data-account-career-profile-state="ready"]')).toBeVisible();
+  await page.getByLabel("目标岗位 / 方向（≤500 字）").fill("后端开发");
+  await page.getByRole("button", { name: "保存画像" }).click();
+  await expect(page.locator('[data-account-career-profile-save="success"]')).toBeVisible();
+
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-state="lifetime-ready"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始扫描 →" })).toBeVisible();
+});
+
+test("an already open radar tab refreshes when it becomes visible after profile saving", async ({ page }) => {
+  await mockSession(page);
+  let currentProfile: Record<string, unknown> = {
+    user_id: sessionUserID,
+    updated_at: "2026-08-15T00:00:00Z",
+  };
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile: currentProfile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [], request_id: "req_searches" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-state="lifetime-no-profile"]')).toBeVisible();
+  currentProfile = {
+    ...currentProfile,
+    target_roles: "后端开发",
+    updated_at: "2026-08-15T00:01:00Z",
+  };
+
+  const otherPage = await page.context().newPage();
+  await otherPage.goto("about:blank");
+  await otherPage.bringToFront();
+  await page.bringToFront();
+  // Chromium's headless bringToFront does not emit a window focus event even
+  // though real tab activation does, so dispatch that browser signal here.
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+
+  await expect(page.locator('[data-career-state="lifetime-ready"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始扫描 →" })).toBeVisible();
+  await otherPage.close();
 });
 
 test("/career keeps free members off the scan entry and points at ¥9.9 membership", async ({ page }) => {

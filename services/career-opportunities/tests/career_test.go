@@ -556,10 +556,15 @@ func TestProfileRoundTripAndActorIsolation(t *testing.T) {
 	defer server.Close()
 	defer pool.Close()
 
-	body := []byte(`{"target_roles":"后端开发","tech_stack":"go,postgres","locations":"郑州","job_type":"daily_intern","graduation_year":2027,"resume_text":"校内项目经历","email_notification_enabled":true}`)
+	body := []byte(`{"target_roles":"  后端开发  ","tech_stack":"go,postgres","locations":"郑州","job_type":"daily_intern","graduation_year":2027,"resume_text":"校内项目经历","email_notification_enabled":true}`)
 	put := send(t, server.URL, actorA, http.MethodPut, "/api/v1/career/profile", body, "")
+	putPayload := readBody(t, put)
 	if put.StatusCode != http.StatusOK {
-		t.Fatalf("put status = %d: %s", put.StatusCode, readBody(t, put))
+		t.Fatalf("put status = %d: %s", put.StatusCode, putPayload)
+	}
+	putProfile := decodeData(t, putPayload)["profile"].(map[string]any)
+	if putProfile["target_roles"] != "后端开发" {
+		t.Fatalf("put target_roles = %q, want trimmed value", putProfile["target_roles"])
 	}
 	got := decodeData(t, readBody(t, send(t, server.URL, actorA, http.MethodGet, "/api/v1/career/profile", nil, "")))
 	profile := got["profile"].(map[string]any)
@@ -583,6 +588,13 @@ func TestProfileRoundTripAndActorIsolation(t *testing.T) {
 	if storedInCareer != 1 {
 		t.Fatalf("profile rows in career = %d, want 1", storedInCareer)
 	}
+	var storedTargetRoles string
+	if err := pool.QueryRow(context.Background(), `SELECT target_roles FROM career_profiles WHERE user_id=$1`, actorA).Scan(&storedTargetRoles); err != nil {
+		t.Fatal(err)
+	}
+	if storedTargetRoles != "后端开发" {
+		t.Fatalf("stored target_roles = %q, want trimmed value", storedTargetRoles)
+	}
 }
 
 func TestProfileRejectsInvalidJobTypeAndYear(t *testing.T) {
@@ -590,9 +602,9 @@ func TestProfileRejectsInvalidJobTypeAndYear(t *testing.T) {
 	defer server.Close()
 
 	cases := []string{
-		`{"job_type":"bogus"}`,
-		`{"graduation_year":1800}`,
-		`{"graduation_year":2999}`,
+		`{"target_roles":"后端开发","job_type":"bogus"}`,
+		`{"target_roles":"后端开发","graduation_year":1800}`,
+		`{"target_roles":"后端开发","graduation_year":2999}`,
 	}
 	for _, body := range cases {
 		response := send(t, server.URL, actorA, http.MethodPut, "/api/v1/career/profile", []byte(body), "")
@@ -965,6 +977,28 @@ func TestCreateSearchRejectsOversizedPayload(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("oversized create wrote %d rows, want 0", count)
+	}
+}
+
+func TestUpdateProfileRejectsBlankTargetRoles(t *testing.T) {
+	server, pool := newCareerServer(t, nil)
+	defer server.Close()
+	defer pool.Close()
+
+	response := send(t, server.URL, actorA, http.MethodPut, "/api/v1/career/profile", []byte(`{"target_roles":"   ","tech_stack":"go"}`), "")
+	payload := readBody(t, response)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("blank target roles profile update = %d, want 400: %s", response.StatusCode, payload)
+	}
+	if code := decodeErrorCode(t, payload); code != "INVALID_PROFILE" {
+		t.Fatalf("blank target roles profile error = %q, want INVALID_PROFILE", code)
+	}
+	var count int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM career_profiles`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("blank target roles profile wrote %d rows, want 0", count)
 	}
 }
 

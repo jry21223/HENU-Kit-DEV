@@ -10,7 +10,6 @@ import {
   formatPortalError,
   getCareerProfile,
   getCareerResumeExtraction,
-  updateCareerProfile,
 } from "@/lib/api/client";
 import type {
   CareerJobType,
@@ -18,7 +17,10 @@ import type {
   CareerProfileInput,
   CareerResumeExtraction,
 } from "@/lib/api/types";
-import { isCareerLifetimeRequiredError } from "@/lib/career/gateway";
+import {
+  isCareerLifetimeRequiredError,
+  requestCareerProfileUpdate,
+} from "@/lib/career/gateway";
 import {
   createExtractionRunner,
   extractionCreateFailedMessage,
@@ -247,6 +249,11 @@ export default function CareerProfilePage() {
 
   const save = async () => {
     if (!form || saving) return;
+    const targetRoles = form.target_roles.trim();
+    if (!targetRoles) {
+      setSaveError("请填写目标岗位 / 方向后再保存画像。");
+      return;
+    }
     const yearError = graduationYearError(yearValue);
     if (yearError) {
       setSaveError(yearError);
@@ -258,9 +265,10 @@ export default function CareerProfilePage() {
     try {
       const input: CareerProfileInput = {
         ...form,
+        target_roles: targetRoles,
         graduation_year: yearValue.trim() === "" ? null : Number(yearValue),
       };
-      const response = await updateCareerProfile(input);
+      const response = await requestCareerProfileUpdate(input);
       setState({ kind: "ready", profile: response.profile });
       applyProfile(response.profile);
       setSaveSuccess(true);
@@ -413,6 +421,7 @@ export default function CareerProfilePage() {
                     id="career-target-roles"
                     value={form.target_roles}
                     onChange={(e) => setField({ target_roles: e.target.value })}
+                    required
                     maxLength={FIELD_LIMITS.target_roles}
                     rows={3}
                     placeholder="例如：后端开发、数据分析、产品运营"

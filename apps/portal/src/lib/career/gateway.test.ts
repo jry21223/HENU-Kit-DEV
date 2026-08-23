@@ -205,4 +205,43 @@ describe("Career gateway", () => {
     expect(result.profile).toBeNull();
     expect(result.error).toBe("求职雷达需要 Lifetime VIP 会员，开通后即可使用");
   });
+
+  it("refreshes a previously empty profile after it is saved", async () => {
+    let currentProfile: Record<string, unknown> = {
+      user_id: ACTOR_USER_ID,
+      updated_at: "2030-01-01T00:00:00Z",
+    };
+    const fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.endsWith("/api/v1/career/profile")) {
+        return new Response(
+          JSON.stringify({ profile: currentProfile, request_id: "req_profile" }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (path.endsWith("/api/v1/career/searches")) {
+        return new Response(
+          JSON.stringify({ searches: [], request_id: "req_searches" }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const { loadCareerData } = await import("./gateway");
+    const initial = await loadCareerData();
+    expect(initial.profile?.target_roles).toBeUndefined();
+
+    currentProfile = {
+      ...currentProfile,
+      target_roles: "后端开发",
+      tech_stack: "Go",
+      updated_at: "2030-01-01T00:01:00Z",
+    };
+    await expect(loadCareerData()).resolves.toMatchObject({
+      profile: { target_roles: "后端开发" },
+    });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
 });
