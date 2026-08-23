@@ -71,6 +71,9 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   assert.match(workflow, /scripts\/ops\/tests\/prepare-henukit-materials\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-prepare-wrapper\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-systemd\.test\.mjs/);
+  assert.match(workflow, /Verify materials runner can drop preparation privileges/);
+  assert.match(workflow, /ExecStart=\/usr\/sbin\/runuser -u henukit-deploy -- \/usr\/bin\/id -u/);
+  assert.match(workflow, /systemctl start "\$unit"/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-seal\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-seal-wrapper\.test\.mjs/);
   assert.match(workflow, /scripts\/ops\/tests\/henukit-materials-seal-linux\.test\.mjs/);

@@ -6,8 +6,11 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=root
-Group=root
+# System services default to root. Keep User= absent: on production systemd,
+# explicitly selecting root together with NoNewPrivileges and PrivateDevices
+# removes CAP_SETUID before ExecStart, so the fixed orchestrator cannot make
+# its intentional one-way drop to henukit-deploy for preparation. Group= is
+# omitted with the otherwise unchanged default root identity.
 EnvironmentFile=/etc/henukit-deploy/materials-webhook.env
 Environment=HOME=/root
 ExecStart=/usr/local/bin/henukit-deploy-webhook materials-run
@@ -25,10 +28,7 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
-# Keep NoNewPrivileges above, but explicitly disable RestrictSUIDSGID:
-# production systemd rejects the intentional root-to-henukit-deploy runuser
-# transition before preparation starts when both restrictions are enabled.
-RestrictSUIDSGID=no
+RestrictSUIDSGID=yes
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native

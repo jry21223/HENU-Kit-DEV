@@ -20,16 +20,20 @@ test("materials unit templates keep the receiver unprivileged and confine the pr
   assert.match(receiver, /^User=henukit-deploy$/m);
   assert.match(receiver, /^Group=henukit-deploy$/m);
   assert.match(receiver, /^ExecStart=\/usr\/local\/bin\/henukit-deploy-webhook materials-serve$/m);
-  assert.match(runner, /^User=root$/m);
-  assert.match(runner, /^Group=root$/m);
+  assert.doesNotMatch(
+    runner,
+    /^User=/m,
+    "the system runner must use the service-manager root default so PrivateDevices and NoNewPrivileges retain CAP_SETUID for the intentional preparation drop",
+  );
+  assert.doesNotMatch(runner, /^Group=/m, "the root-default runner does not need a redundant group directive");
   assert.match(runner, /^Environment=HOME=\/root$/m);
   assert.match(runner, /^ExecStart=\/usr\/local\/bin\/henukit-deploy-webhook materials-run$/m);
   assert.doesNotMatch(runner, /^StateDirectory=/m, "root runner must not take ownership away from the receiver");
   assert.match(runner, /^NoNewPrivileges=yes$/m);
   assert.match(
     runner,
-    /^RestrictSUIDSGID=no$/m,
-    "the root runner must retain the tested ability to drop to henukit-deploy during preparation",
+    /^RestrictSUIDSGID=yes$/m,
+    "the root runner must retain SUID/SGID hardening after the credential-path fix",
   );
   assert.match(runner, /^ProtectSystem=strict$/m);
   assert.match(runner, /^ReadWritePaths=\/var\/lib\/henukit-materials-webhook \/opt\/henukit-materials$/m);
