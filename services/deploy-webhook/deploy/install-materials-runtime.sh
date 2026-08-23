@@ -199,7 +199,8 @@ retire_root_file() {
   local exact_mode="${3:-}"
   [[ -e "$source" ]] || return 0
   require_root_file "$source" "$label" "$exact_mode"
-  local retired_target="$retired_dir/$(basename "$source")"
+  local retired_target
+  retired_target="$retired_dir/$(basename "$source")"
   install -d -o root -g root -m 0700 "$retired_dir"
   [[ ! -e "$retired_target" ]] || die "$label backup already exists while source is still active"
   mv -T "$source" "$retired_target"
