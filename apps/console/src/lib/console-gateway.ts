@@ -637,7 +637,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isUUID(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  // PostgreSQL's uuid type and google/uuid.Parse accept the canonical
+  // 8-4-4-4-12 hexadecimal shape even when deterministic imported values do
+  // not carry RFC version/variant marker bits.
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 function isDateTime(value: unknown): value is string {
