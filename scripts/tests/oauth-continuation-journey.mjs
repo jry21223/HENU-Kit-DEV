@@ -26,11 +26,16 @@ async function expectAccountCenter(page, product) {
     "\\$&"
   );
   await expect(page).toHaveURL(
-    new RegExp(
-      `^${escapedOrigin}/account/login\\?continuation=[A-Za-z0-9_-]+$`
-    )
+    new RegExp(`^${escapedOrigin}/account/login$`)
   );
-  const url = new URL(page.url());
+  const navigationURL = await page.evaluate(() => {
+    const [navigation] = performance.getEntriesByType("navigation");
+    return navigation?.name ?? window.location.href;
+  });
+  const url = new URL(navigationURL);
+  expect(`${url.origin}${url.pathname}`).toBe(
+    `${product.accountCenterOrigin}/account/login`
+  );
   expect([...url.searchParams.keys()]).toEqual(["continuation"]);
   const handle = url.searchParams.get("continuation") ?? "";
   expect(handle).toMatch(/^[A-Za-z0-9_-]{32,}$/);
@@ -78,14 +83,42 @@ async function expectProductSession(page, product) {
   expect(session.body).toMatchObject(product.expectedSession);
 }
 async function expectNoRetiredPublicCopy(page, product) {
-  const { expect } = product;
-  const text = await page.locator("body").innerText();
-  for (const pattern of forbiddenPublicCopy) {
-    expect(text, `visible copy matched ${pattern}`).not.toMatch(pattern);
+  const surfaces = await page.evaluate(() => {
+    const result = [
+      { surface: "document.title", value: document.title },
+      { surface: "body.innerText", value: document.body?.innerText ?? "" },
+    ];
+    const attributes = ["aria-label", "alt", "placeholder", "title"];
+    for (const element of document.querySelectorAll(
+      attributes.map((attribute) => `[${attribute}]`).join(","),
+    )) {
+      for (const attribute of attributes) {
+        if (!element.hasAttribute(attribute)) continue;
+        result.push({
+          surface: `${element.tagName.toLowerCase()}[${attribute}]`,
+          value: element.getAttribute(attribute) ?? "",
+        });
+      }
+    }
+    return result;
+  });
+  assertNoForbiddenPublicCopy(surfaces);
+}
+function assertNoForbiddenPublicCopy(surfaces) {
+  for (const { surface, value } of surfaces) {
+    if (!value) continue;
+    for (const pattern of forbiddenPublicCopy) {
+      if (!pattern.test(value)) continue;
+      throw new Error(`public copy surface ${surface} matched ${pattern}`);
+    }
   }
 }
 async function expectDOMNoSecrets(page, product, secrets) {
-  const currentURL = new URL(page.url());
+  const navigationURL = await page.evaluate(() => {
+    const [navigation] = performance.getEntriesByType("navigation");
+    return navigation?.name ?? window.location.href;
+  });
+  const currentURL = new URL(navigationURL);
   const currentContinuation =
     currentURL.origin === product.accountCenterOrigin &&
     currentURL.pathname === "/account/login" &&
@@ -579,6 +612,7 @@ function defineOAuthContinuationJourney(productConfig, playwright) {
   });
 }
 export {
+  assertNoForbiddenPublicCopy,
   assertPublicRouteNavigation,
   assertSerializedDOMNoSecrets,
   defineOAuthContinuationJourney

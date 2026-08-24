@@ -9,6 +9,12 @@
 const ACCOUNT_AUTH_BASE = "/account-auth";
 const EXPLICIT_FORM_RESPONSE_HEADER = "X-Henukit-Form-Response";
 
+export function accountCenterURLWithoutContinuation(rawURL: string): string {
+  const url = new URL(rawURL);
+  url.searchParams.delete("continuation");
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 export class AccountCenterError extends Error {
   constructor(
     message: string,
@@ -77,6 +83,7 @@ async function bootstrapAccountForm(
       credentials: "include",
       headers: { Accept: "application/json" },
       cache: "no-store",
+      referrerPolicy: "no-referrer",
     });
   } catch (e) {
     throw new AccountCenterError(
@@ -178,6 +185,7 @@ async function postAccountForm(
       },
       body,
       redirect: "manual",
+      referrerPolicy: "no-referrer",
     });
   } catch (e) {
     throw new AccountCenterError(

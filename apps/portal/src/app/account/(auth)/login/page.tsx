@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   AccountCenterError,
+  accountCenterURLWithoutContinuation,
   bootstrapAccountLogin,
   bootstrapAccountRegister,
   buildOAuthContinuationResume,
@@ -80,7 +81,9 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const requestedNext = params.get("next");
-  const continuationHandle = params.get("continuation")?.trim() ?? "";
+  const [continuationHandle] = useState(
+    () => params.get("continuation")?.trim() ?? ""
+  );
   const continuationError = params.get("continuation_error")?.trim() ?? "";
   const continuationRequestID = params.get("request_id")?.trim() ?? "";
 
@@ -104,6 +107,7 @@ function LoginForm() {
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
   const [continuationProduct, setContinuationProduct] = useState("");
+  const [continuationAttempt, setContinuationAttempt] = useState(0);
   const [continuationFailure, setContinuationFailure] = useState<{
     kind: "expired" | "service" | "unsupported";
     requestID?: string;
@@ -133,6 +137,19 @@ function LoginForm() {
   const fullEmail = toHenuEmail(localPart);
   const needCode = tab === "register" || mode === "code";
   const passwordLength = Array.from(pwd).length;
+
+  useEffect(() => {
+    if (!continuationHandle) return;
+    const currentURL = new URL(window.location.href);
+    if (currentURL.searchParams.get("continuation") !== continuationHandle) {
+      return;
+    }
+    window.history.replaceState(
+      window.history.state,
+      "",
+      accountCenterURLWithoutContinuation(currentURL.toString())
+    );
+  }, [continuationHandle]);
 
   useEffect(() => {
     if (continuationHandle || continuationError) return;
@@ -196,7 +213,7 @@ function LoginForm() {
     return () => {
       cancelled = true;
     };
-  }, [continuationHandle, continuationError]);
+  }, [continuationHandle, continuationError, continuationAttempt]);
 
   useEffect(() => {
     if (cd <= 0) return;
@@ -413,7 +430,12 @@ function LoginForm() {
             <Button
               type="button"
               className="mt-7 w-full"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                continuationBootstrap.current = null;
+                setContinuationProduct("");
+                setContinuationFailure(null);
+                setContinuationAttempt((attempt) => attempt + 1);
+              }}
             >
               重新尝试
             </Button>

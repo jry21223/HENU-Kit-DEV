@@ -178,9 +178,27 @@ test("Account Center renders a retryable continuation service failure with reque
   page,
 }) => {
   await page.addInitScript(() => window.localStorage.clear());
+  let bootstrapCalls = 0;
   await page.route(
     "**/account-auth/account/bootstrap?flow=login&continuation=service-handle",
     async (route) => {
+      bootstrapCalls += 1;
+      expect(route.request().headers()["referer"]).toBeUndefined();
+      if (bootstrapCalls > 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: {
+              flow: "login",
+              csrf_token: "csrf-token-with-at-least-thirty-two-characters",
+              continuation: { available: true, product_name: "HENU Kit" },
+            },
+            request_id: "req_browser_continuation_retried",
+          }),
+        });
+        return;
+      }
       await route.fulfill({
         status: 503,
         contentType: "application/json",
@@ -201,8 +219,12 @@ test("Account Center renders a retryable continuation service failure with reque
   await expect(page.getByRole("heading", { name: "登录暂时不可用" })).toBeVisible();
   await expect(page.getByText("暂时无法验证这次登录，请稍后重试。")).toBeVisible();
   await expect(page.getByText("请求编号：req_browser_continuation_service")).toBeVisible();
-  await expect(page.getByRole("button", { name: "重新尝试" })).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/login$/);
   await expect(page.getByText("redis unavailable")).toHaveCount(0);
+  await page.getByRole("button", { name: "重新尝试" }).click();
+  await expect(page.getByText("登录后继续前往 HENU Kit")).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/login$/);
+  expect(bootstrapCalls).toBe(2);
 });
 
 test("Core-side continuation failure offers a fresh safe OAuth start", async ({

@@ -9,6 +9,7 @@ import {
   bootstrapAccountSecurity,
   bootstrapPasswordRecovery,
   buildOAuthContinuationResume,
+  accountCenterURLWithoutContinuation,
   changePassword,
   passwordLogin,
   registerAccount,
@@ -55,6 +56,7 @@ describe("Account Center Bootstrap", () => {
       method: "GET",
       credentials: "include",
       cache: "no-store",
+      referrerPolicy: "no-referrer",
     });
     expect(new Headers(init.headers).get("Accept")).toBe("application/json");
     expect(path).not.toContain("return_to");
@@ -142,6 +144,19 @@ describe("Account Center Bootstrap", () => {
     expect(fetch.mock.calls[0]?.[0]).toBe(
       "/account-auth/account/bootstrap?flow=login&continuation=opaque-continuation-handle%2Fvalue"
     );
+  });
+
+  it("removes only the continuation handle from the visible Account Center URL", () => {
+    expect(
+      accountCenterURLWithoutContinuation(
+        "https://id.henukit.test/account/login?continuation=opaque-handle&next=%2Faccount#login"
+      )
+    ).toBe("/account/login?next=%2Faccount#login");
+    expect(
+      accountCenterURLWithoutContinuation(
+        "https://id.henukit.test/account/login?continuation=opaque-handle"
+      )
+    ).toBe("/account/login");
   });
 
   it("classifies an unavailable OAuth continuation with a safe request id", async () => {
@@ -373,6 +388,7 @@ describe("Account Center form status contract", () => {
     for (const [, init] of fetch.mock.calls as [string, RequestInit][]) {
       expect(new Headers(init.headers).get("Accept")).toBe("application/json");
       expect(new Headers(init.headers).get("X-Henukit-Form-Response")).toBe("status");
+      expect(init.referrerPolicy).toBe("no-referrer");
     }
   });
 

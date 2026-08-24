@@ -2,9 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertNoForbiddenPublicCopy,
   assertPublicRouteNavigation,
   assertSerializedDOMNoSecrets,
 } from "./oauth-continuation-journey.mjs";
+
+test("public copy checks include document and accessible attribute surfaces", () => {
+  assert.throws(
+    () =>
+      assertNoForbiddenPublicCopy([
+        { surface: "document.title", value: "QC-V2 rollout" },
+      ]),
+    /document\.title/,
+  );
+  assert.throws(
+    () =>
+      assertNoForbiddenPublicCopy([
+        { surface: "img[alt]", value: "题库工坊" },
+      ]),
+    /img\[alt\]/,
+  );
+  assert.doesNotThrow(() =>
+    assertNoForbiddenPublicCopy([
+      { surface: "body.innerText", value: "刷题 · 收藏 · 错题 · 统计" },
+      { surface: "input[placeholder]", value: "输入关键词" },
+    ]),
+  );
+});
 
 test("serialized DOM leakage checks include hidden attributes and script data", () => {
   const state = "state_portal_hidden_01";
