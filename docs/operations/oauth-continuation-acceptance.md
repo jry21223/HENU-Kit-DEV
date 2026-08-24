@@ -36,6 +36,25 @@ The gate must prove all of the following:
   category, and duration. Never retain the raw query, continuation, credential,
   code, or callback.
 
+## Account Center transport invariant
+
+The browser is expected to make one initial transport request to
+`/account/login?continuation=...`. The Portal proxy must answer with `303`,
+`Cache-Control: private, no-store, max-age=0`, and
+`Referrer-Policy: no-referrer`; that response must not contain Account Center
+HTML. Its same-origin Location moves the handle into a URL fragment. The
+following document request, all eager fonts and scripts, and every later
+Referer must use the clean `/account/login` URL.
+
+The client reads and removes the fragment before paint, then retains the handle
+only in component state. It deliberately calls the native
+`History.prototype.replaceState`, not Next's patched history instance: the
+patched method can start an RSC request while the old URL is still the document
+referrer. A transient bootstrap retry must reuse the in-memory handle without
+restoring it to either the query or fragment. Any change to this sequence must
+rerun both product journeys and preserve the strict font, script, fetch, form,
+callback, URL, DOM, and Referer assertions.
+
 ## Production acceptance
 
 Use a new private browser context for every production journey. Do not reuse a

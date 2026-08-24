@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 import nextConfig from "../../../next.config";
 import { metadata as accountAuthMetadata } from "../../app/account/(auth)/layout";
+import { proxy } from "../../proxy";
+import {
+  accountCenterContinuationRedirectURL,
+  accountCenterURLWithoutContinuation,
+  continuationHandleFromURL,
+} from "./account-continuation-url";
 
 import {
   bootstrapAccountLogin,
@@ -9,7 +16,6 @@ import {
   bootstrapAccountSecurity,
   bootstrapPasswordRecovery,
   buildOAuthContinuationResume,
-  accountCenterURLWithoutContinuation,
   changePassword,
   passwordLogin,
   registerAccount,
@@ -27,6 +33,27 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+describe("Account Center continuation transport", () => {
+  it("redirects the query handle to an empty, uncached fragment response", async () => {
+    const response = proxy(
+      new NextRequest(
+        "https://id.henukit.test/account/login?continuation=opaque-handle&next=%2Faccount"
+      )
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("Location")).toBe(
+      "https://id.henukit.test/account/login?next=%2Faccount#continuation=opaque-handle"
+    );
+    expect(response.headers.get("Cache-Control")).toBe(
+      "private, no-store, max-age=0"
+    );
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(response.headers.get("Content-Type")).toBeNull();
+    await expect(response.text()).resolves.toBe("");
+  });
+});
 
 describe("Account Center Bootstrap", () => {
   afterEach(() => {
@@ -157,6 +184,26 @@ describe("Account Center Bootstrap", () => {
         "https://id.henukit.test/account/login?continuation=opaque-handle"
       )
     ).toBe("/account/login");
+    expect(
+      accountCenterURLWithoutContinuation(
+        "https://id.henukit.test/account/login?next=%2Faccount#continuation=opaque-handle"
+      )
+    ).toBe("/account/login?next=%2Faccount");
+  });
+
+  it("moves a continuation into a non-HTTP fragment before rendering Account Center", () => {
+    expect(
+      accountCenterContinuationRedirectURL(
+        "https://id.henukit.test/account/login?continuation=opaque-handle&next=%2Faccount"
+      )
+    ).toBe(
+      "https://id.henukit.test/account/login?next=%2Faccount#continuation=opaque-handle"
+    );
+    expect(
+      continuationHandleFromURL(
+        "https://id.henukit.test/account/login#continuation=opaque-handle"
+      )
+    ).toBe("opaque-handle");
   });
 
   it("classifies an unavailable OAuth continuation with a safe request id", async () => {

@@ -58,7 +58,7 @@ test("serialized DOM leakage checks include hidden attributes and script data", 
   );
 });
 
-test("only exact Next route hydration may repeat the current continuation handle", () => {
+test("the continuation handle may not appear in any Next route hydration", () => {
   const handle = "continuation_handle_bound_to_this_browser_01";
   const exactHydration = [
     String.raw`\"c\":[\"\",\"account\",\"login?continuation=${handle}\"],\"q\":\"?continuation=${handle}\"`,
@@ -66,10 +66,9 @@ test("only exact Next route hydration may repeat the current continuation handle
     String.raw`\"serverProvidedParams\":{\"searchParams\":{\"continuation\":\"${handle}\"},\"params\":{},\"promises\":null}`,
   ].join("");
 
-  assert.doesNotThrow(() =>
-    assertSerializedDOMNoSecrets(exactHydration, [handle], {
-      currentContinuation: handle,
-    }),
+  assert.throws(
+    () => assertSerializedDOMNoSecrets(exactHydration, [handle]),
+    /serialized DOM contains an OAuth continuation secret/,
   );
   for (const leak of [
     `<input type="hidden" data-continuation="${handle}">`,
@@ -77,9 +76,7 @@ test("only exact Next route hydration may repeat the current continuation handle
   ]) {
     assert.throws(
       () =>
-        assertSerializedDOMNoSecrets(`${exactHydration}${leak}`, [handle], {
-          currentContinuation: handle,
-        }),
+        assertSerializedDOMNoSecrets(`${exactHydration}${leak}`, [handle]),
       /serialized DOM contains an OAuth continuation secret/,
     );
   }

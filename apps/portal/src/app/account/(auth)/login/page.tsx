@@ -20,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   AccountCenterError,
-  accountCenterURLWithoutContinuation,
   bootstrapAccountLogin,
   bootstrapAccountRegister,
   buildOAuthContinuationResume,
@@ -31,6 +30,10 @@ import {
   requestRegistrationCode,
   verifyLoginCode,
 } from "@/lib/auth/account-center";
+import {
+  accountCenterURLWithoutContinuation,
+  continuationHandleFromURL,
+} from "@/lib/auth/account-continuation-url";
 import { fetchSession, hasGateway } from "@/lib/api/client";
 import {
   isValidHenuLocalPart,
@@ -81,7 +84,7 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const requestedNext = params.get("next");
-  const [continuationHandle] = useState(
+  const [continuationHandle, setContinuationHandle] = useState(
     () => params.get("continuation")?.trim() ?? ""
   );
   const continuationError = params.get("continuation_error")?.trim() ?? "";
@@ -139,20 +142,21 @@ function LoginForm() {
   const passwordLength = Array.from(pwd).length;
 
   useLayoutEffect(() => {
-    if (!continuationHandle) return;
     const currentURL = new URL(window.location.href);
-    if (currentURL.searchParams.get("continuation") !== continuationHandle) {
-      return;
-    }
-    // Next patches the instance method to dispatch a router transition. That
-    // transition can issue an RSC request before the old URL is gone, so use
-    // the browser primitive directly and scrub before child passive effects.
+    const urlHandle = continuationHandleFromURL(currentURL.toString());
+    if (!urlHandle) return;
+    // The server moved the handle into a fragment before returning any HTML,
+    // so it cannot reach HTTP requests or Referer. Remove that fragment using
+    // the browser primitive before paint without dispatching a Next transition.
     History.prototype.replaceState.call(
       window.history,
       window.history.state,
       "",
       accountCenterURLWithoutContinuation(currentURL.toString())
     );
+    if (!continuationHandle) {
+      window.queueMicrotask(() => setContinuationHandle(urlHandle));
+    }
   }, [continuationHandle]);
 
   useEffect(() => {

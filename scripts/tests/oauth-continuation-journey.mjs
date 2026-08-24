@@ -19,7 +19,7 @@ function authorizeURL(product, overrides = {}) {
   });
   return `${product.platformOrigin}/api/v1/oauth/authorize?${query}`;
 }
-async function expectAccountCenter(page, product) {
+async function expectAccountCenter(page, product, transportResponse) {
   const { expect } = product;
   const escapedOrigin = product.accountCenterOrigin.replace(
     /[.*+?^${}()|[\]\\]/g,
@@ -28,17 +28,31 @@ async function expectAccountCenter(page, product) {
   await expect(page).toHaveURL(
     new RegExp(`^${escapedOrigin}/account/login$`)
   );
-  const navigationURL = await page.evaluate(() => {
-    const [navigation] = performance.getEntriesByType("navigation");
-    return navigation?.name ?? window.location.href;
-  });
-  const url = new URL(navigationURL);
+  expect(transportResponse.status()).toBe(303);
+  const transportHeaders = transportResponse.headers();
+  expect(transportHeaders["cache-control"]).toBe(
+    "private, no-store, max-age=0",
+  );
+  expect(transportHeaders["referrer-policy"]).toBe("no-referrer");
+  expect(transportHeaders["content-type"]).toBeUndefined();
+  const url = new URL(transportResponse.url());
   expect(`${url.origin}${url.pathname}`).toBe(
     `${product.accountCenterOrigin}/account/login`
   );
   expect([...url.searchParams.keys()]).toEqual(["continuation"]);
   const handle = url.searchParams.get("continuation") ?? "";
   expect(handle).toMatch(/^[A-Za-z0-9_-]{32,}$/);
+  const location = new URL(
+    transportHeaders.location ?? "",
+    product.accountCenterOrigin,
+  );
+  expect(`${location.origin}${location.pathname}`).toBe(
+    `${product.accountCenterOrigin}/account/login`,
+  );
+  expect([...location.searchParams.keys()]).toEqual([]);
+  const fragment = new URLSearchParams(location.hash.slice(1));
+  expect([...fragment.keys()]).toEqual(["continuation"]);
+  expect(fragment.get("continuation")).toBe(handle);
   await expect(
     page.getByText(`登录后继续前往 ${product.productName}`)
   ).toBeVisible();
@@ -59,8 +73,16 @@ async function expectAccountCenterStructure(page, product) {
 }
 async function startProductContinuation(page, product) {
   await page.addInitScript(() => window.localStorage.clear());
+  const continuationResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.origin === product.accountCenterOrigin &&
+      url.pathname === "/account/login" &&
+      url.searchParams.has("continuation")
+    );
+  });
   await product.start(page);
-  return expectAccountCenter(page, product);
+  return expectAccountCenter(page, product, await continuationResponse);
 }
 async function finishPasswordLogin(page, product) {
   await page.getByRole("button", { name: "密码登录" }).click();
@@ -114,43 +136,10 @@ function assertNoForbiddenPublicCopy(surfaces) {
   }
 }
 async function expectDOMNoSecrets(page, product, secrets) {
-  const navigationURL = await page.evaluate(() => {
-    const [navigation] = performance.getEntriesByType("navigation");
-    return navigation?.name ?? window.location.href;
-  });
-  const currentURL = new URL(navigationURL);
-  const currentContinuation =
-    currentURL.origin === product.accountCenterOrigin &&
-    currentURL.pathname === "/account/login" &&
-    [...currentURL.searchParams.keys()].every((key) => key === "continuation")
-      ? currentURL.searchParams.get("continuation")
-      : null;
   const serializedDOM = await page.content();
-  assertSerializedDOMNoSecrets(serializedDOM, secrets, {
-    currentContinuation,
-  });
+  assertSerializedDOMNoSecrets(serializedDOM, secrets);
 }
-function redactExactContinuationHydration(serializedDOM, handle) {
-  if (!handle) return serializedDOM;
-  const fragments = [
-    String.raw`\"c\":[\"\",\"account\",\"login?continuation=${handle}\"],\"q\":\"?continuation=${handle}\"`,
-    String.raw`\"children\":[\"__PAGE__?{\\\"continuation\\\":\\\"${handle}\\\"}\"`,
-    String.raw`\"serverProvidedParams\":{\"searchParams\":{\"continuation\":\"${handle}\"},\"params\":{},\"promises\":null}`,
-  ];
-  let redacted = serializedDOM;
-  for (const fragment of fragments) {
-    redacted = redacted.replaceAll(
-      fragment,
-      fragment.replaceAll(handle, "[current-continuation]"),
-    );
-  }
-  return redacted;
-}
-function assertSerializedDOMNoSecrets(serializedDOM, secrets, options = {}) {
-  const inspectedDOM = redactExactContinuationHydration(
-    serializedDOM,
-    options.currentContinuation,
-  );
+function assertSerializedDOMNoSecrets(serializedDOM, secrets) {
   for (const [secretIndex, secret] of secrets.filter(Boolean).entries()) {
     const variants = [
       ["raw", secret],
@@ -158,7 +147,7 @@ function assertSerializedDOMNoSecrets(serializedDOM, secrets, options = {}) {
       ["component", encodeURIComponent(secret)],
     ];
     for (const [encoding, variant] of variants) {
-      if (inspectedDOM.includes(variant)) {
+      if (serializedDOM.includes(variant)) {
         throw new Error(
           `serialized DOM contains an OAuth continuation secret (index ${secretIndex}, ${encoding})`,
         );
@@ -299,8 +288,20 @@ async function expectNoBrowserLeakage(page, product, observed, continuationHandl
   return finalSecrets;
 }
 async function directContinuation(page, product, state) {
+  const continuationResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.origin === product.accountCenterOrigin &&
+      url.pathname === "/account/login" &&
+      url.searchParams.has("continuation")
+    );
+  });
   await page.goto(authorizeURL(product, { state }));
-  const continuation = await expectAccountCenter(page, product);
+  const continuation = await expectAccountCenter(
+    page,
+    product,
+    await continuationResponse,
+  );
   await expectDOMNoSecrets(page, product, [
     state,
     challenge,
