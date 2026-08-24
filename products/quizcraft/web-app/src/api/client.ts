@@ -10,8 +10,6 @@ import type {
   Question, 
   PracticeSettings,
   UserStats,
-  FeedbackDashboard,
-  FeedbackBoardItem,
 } from '@/types';
 
 type FeedbackPayload = {
@@ -26,26 +24,6 @@ type FeedbackResponse = {
   ok: boolean;
   feedback_id: number;
   created_at: string;
-};
-
-type WheelResponse = {
-  wheels: Array<{
-    id: number | string;
-    owner_user_id: string;
-    owner_name: string;
-    items: string[];
-    is_public: boolean;
-    updated_at: string;
-  }>;
-};
-
-type WheelSaveResponse = {
-  id: number | string;
-  owner_user_id: string;
-  owner_name: string;
-  items: string[];
-  is_public: boolean;
-  updated_at: string;
 };
 
 type UserStatsResponse = {
@@ -189,25 +167,6 @@ api.interceptors.response.use(
   }
 );
 
-type AdminSessionResponse = {
-  authenticated: boolean;
-  expires_in?: number;
-};
-
-export const adminApi = {
-  getSession: (): Promise<AdminSessionResponse> => {
-    return api.get('/admin/session');
-  },
-  login: (token: string): Promise<AdminSessionResponse> => {
-    return api.post('/admin/session', undefined, {
-      headers: { 'X-Admin-Token': token.trim() },
-    });
-  },
-  logout: (): Promise<AdminSessionResponse> => {
-    return api.delete('/admin/session');
-  },
-};
-
 // 题库 API
 export const bankApi = {
   // 获取题库列表
@@ -216,26 +175,6 @@ export const bankApi = {
       return shadowPracticeApi.listBanks();
     }
     return api.get('/banks');
-  },
-
-  // 保存题库到服务端
-  save: (payload: {
-    name: string;
-    key?: string;
-    color?: string;
-    questions: any[];
-    overwrite?: boolean;
-  }): Promise<{
-    message: string;
-    bank: QuestionBank;
-    file: string;
-  }> => {
-    return api.post('/banks/save', payload);
-  },
-  
-  // 获取题库统计
-  getStats: (bankKey: string): Promise<any> => {
-    return api.get('/stats/global', { params: { bank: bankKey } });
   },
 };
 
@@ -301,63 +240,5 @@ export const userApi = {
 export const feedbackApi = {
   submit: (payload: FeedbackPayload): Promise<FeedbackResponse> => {
     return api.post('/feedback', payload);
-  },
-  getDashboard: (): Promise<FeedbackDashboard> => {
-    return api.get('/feedback/dashboard');
-  },
-  updateStatus: (
-    feedbackId: number,
-    payload: {
-      status: 'pending' | 'resolved' | 'archived';
-      resolution_note?: string;
-    },
-  ): Promise<{ ok: boolean; item: FeedbackBoardItem }> => {
-    return api.patch(`/feedback/${feedbackId}/status`, payload);
-  },
-};
-
-export const wheelApi = {
-  get: (): Promise<WheelResponse> => {
-    return api.get('/wheel');
-  },
-  save: (
-    items: string[],
-    userId: string,
-  ): Promise<WheelSaveResponse> => {
-    return api.post('/wheel', { items, user_id: userId });
-  },
-};
-
-// 解析生成 API
-export const analysisApi = {
-  // 上传文件并解析
-  parseFile: (file: File): Promise<{
-    content: string;
-    questions: any[];
-  }> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    return api.post('/extract/parse', formData);
-  },
-  
-  // 生成解析
-  generateAnalysis: (questions: any[], config: any): Promise<{
-    questions: any[];
-  }> => {
-    return api.post('/extract/analyze', {
-      questions,
-      config,
-    });
-  },
-  
-  // 导出题库
-  exportBank: (questions: any[], name: string): Promise<{
-    download_url: string;
-  }> => {
-    return api.post('/extract/export', {
-      questions,
-      name,
-    });
   },
 };

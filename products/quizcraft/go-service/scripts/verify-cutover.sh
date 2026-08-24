@@ -56,18 +56,11 @@ require_root_executable "$platform_core_verifier"
 require_root_executable "$log_verifier"
 require_root_executable "$restore_verifier"
 require_root_executable "$portal_read_config_writer"
-: "${QUIZCRAFT_OPERATOR_SESSION:?set a dedicated cutover operator session with Workshop read permission}"
-[[ "$QUIZCRAFT_OPERATOR_SESSION" =~ ^[A-Za-z0-9._~-]{32,}$ ]]
-
 cutover_tmp="$(mktemp -d)"
 trap 'rm -rf "$cutover_tmp"' EXIT
 chmod 700 "$cutover_tmp"
 printf 'header = "X-QuizCraft-Cutover-Secret: %s"\n' "$CUTOVER_EVIDENCE_SECRET" > "$cutover_tmp/evidence.curl"
 chmod 600 "$cutover_tmp/evidence.curl"
-if [[ "$EXPECTED_WRITES_ENABLED" == "true" ]]; then
-  printf 'cookie = "__Host-quizcraft_session=%s"\n' "$QUIZCRAFT_OPERATOR_SESSION" > "$cutover_tmp/operator.curl"
-  chmod 600 "$cutover_tmp/operator.curl"
-fi
 write_portal_read_config() {
   local request_uri="$1" output="$2"
   "$portal_read_config_writer" \
@@ -100,13 +93,13 @@ PY
 test "$actual_source_head" = "$EXPECTED_SOURCE_HEAD"
 maintenance_status="$(curl --silent --show-error --max-time 10 -o "$cutover_tmp/maintenance.html" -w '%{http_code}' "$PUBLIC_BASE_URL/")"
 test "$maintenance_status" = 503
-grep -q 'QuizCraft 正在维护' "$cutover_tmp/maintenance.html"
+grep -q '练习服务正在维护' "$cutover_tmp/maintenance.html"
 
 assert_public_maintenance() {
   local method="$1" path="$2" output="$cutover_tmp/public-${3}.html" status
   status="$(curl --silent --show-error --max-time 10 -o "$output" -w '%{http_code}' -X "$method" -H 'Content-Type: application/json' --data '{}' "$PUBLIC_BASE_URL$path")"
   test "$status" = 503
-  grep -q 'QuizCraft 正在维护' "$output"
+  grep -q '练习服务正在维护' "$output"
 }
 
 assert_public_maintenance POST /api/v1/practice/sessions practice
@@ -114,11 +107,11 @@ assert_public_maintenance POST /api/v1/feedback feedback
 assert_public_maintenance PUT /api/v1/banks/maintenance-probe/favorites/maintenance-probe favorite
 
 if [[ "$EXPECTED_WRITES_ENABLED" == "true" ]]; then
-  if ! CUTOVER_VIEWPORT=desktop CUTOVER_E2E_BASE_URL="$CUTOVER_E2E_BASE_URL" CUTOVER_WEB_APP_DIR="$CUTOVER_WEB_APP_DIR" QUIZCRAFT_OPERATOR_SESSION="$QUIZCRAFT_OPERATOR_SESSION" node "$browser_verifier" >"$cutover_tmp/browser-desktop.log" 2>&1; then
+  if ! CUTOVER_VIEWPORT=desktop CUTOVER_E2E_BASE_URL="$CUTOVER_E2E_BASE_URL" CUTOVER_WEB_APP_DIR="$CUTOVER_WEB_APP_DIR" node "$browser_verifier" >"$cutover_tmp/browser-desktop.log" 2>&1; then
     echo "desktop browser cutover verification failed" >&2
     exit 1
   fi
-  if ! CUTOVER_VIEWPORT=mobile_390 CUTOVER_E2E_BASE_URL="$CUTOVER_E2E_BASE_URL" CUTOVER_WEB_APP_DIR="$CUTOVER_WEB_APP_DIR" QUIZCRAFT_OPERATOR_SESSION="$QUIZCRAFT_OPERATOR_SESSION" node "$browser_verifier" >"$cutover_tmp/browser-mobile-390.log" 2>&1; then
+  if ! CUTOVER_VIEWPORT=mobile_390 CUTOVER_E2E_BASE_URL="$CUTOVER_E2E_BASE_URL" CUTOVER_WEB_APP_DIR="$CUTOVER_WEB_APP_DIR" node "$browser_verifier" >"$cutover_tmp/browser-mobile-390.log" 2>&1; then
     echo "390px browser cutover verification failed" >&2
     exit 1
   fi
@@ -235,38 +228,13 @@ json.dump({
 }, sys.stdout)
 PY
   curl --fail --silent --show-error --max-time 10 \
-    --config "$cutover_tmp/operator.curl" \
+    --cookie "$cutover_tmp/cookies" \
     -H 'Content-Type: application/json' \
     -H "Idempotency-Key: cutover-feedback-$EXPECTED_RELEASE_SHA" \
     --data-binary @"$cutover_tmp/feedback-request.json" \
     "$GO_BASE_URL/api/v1/feedback" > "$cutover_tmp/feedback.json"
   python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; assert data["state"] == "succeeded" and data["resource_id"]' "$cutover_tmp/feedback.json"
 
-  read -r bank_id question_id < <(python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; print(data["bank_id"], data["questions"][0]["question_id"])' "$cutover_tmp/session.json")
-  probe_nonce="$(date +%s)-$$"
-  curl --fail --silent --show-error --max-time 10 \
-    --config "$cutover_tmp/operator.curl" \
-    --request PUT \
-    -H "Idempotency-Key: cutover-favorite-add-$probe_nonce" \
-    "$GO_BASE_URL/api/v1/banks/$bank_id/favorites/$question_id" > "$cutover_tmp/favorite-add.json"
-  curl --fail --silent --show-error --max-time 10 \
-    --config "$cutover_tmp/operator.curl" \
-    "$GO_BASE_URL/api/v1/banks/$bank_id/favorites" > "$cutover_tmp/favorites.json"
-  python3 - "$cutover_tmp/favorites.json" "$question_id" <<'PY'
-import json, sys
-items = json.load(open(sys.argv[1]))["data"]
-assert any(item["question_id"] == sys.argv[2] and item["available"] for item in items), items
-PY
-  curl --fail --silent --show-error --max-time 10 \
-    --config "$cutover_tmp/operator.curl" \
-    --request DELETE \
-    -H "Idempotency-Key: cutover-favorite-remove-$probe_nonce" \
-    "$GO_BASE_URL/api/v1/banks/$bank_id/favorites/$question_id" > "$cutover_tmp/favorite-remove.json"
-
-  curl --fail --silent --show-error --max-time 10 \
-    --config "$cutover_tmp/operator.curl" \
-    "$GO_BASE_URL/api/v1/workshop/catalog" > "$cutover_tmp/workshop.json"
-  python3 -c 'import json,sys; data=json.load(open(sys.argv[1]))["data"]; assert data and all(item.get("bank_id") and isinstance(item.get("versions"), list) for item in data)' "$cutover_tmp/workshop.json"
 fi
 
 if [[ "$EXPECTED_WRITES_ENABLED" == "false" ]]; then
@@ -284,4 +252,4 @@ if ! "$log_verifier" >"$cutover_tmp/final-log-audit.log" 2>&1; then
   exit 1
 fi
 
-echo "QuizCraft cutover verification passed for $EXPECTED_RELEASE_SHA (health, evidence, practice, feedback, favorites, ranking, workshop)"
+echo "Practice cutover verification passed for $EXPECTED_RELEASE_SHA (health, evidence, practice, feedback, ranking, retired routes)"

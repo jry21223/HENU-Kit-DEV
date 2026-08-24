@@ -13,7 +13,7 @@
     "lint": "eslint . --ext ts,tsx",
     "test:syntax": "node scripts/check-admin-session.mjs && node scripts/check-answer-submission.mjs && node scripts/check-code-syntax-scope.mjs && node scripts/check-cutover-rollout.mjs && node scripts/check-favorites-no-local-fallback.mjs && node scripts/check-feedback-no-legacy-fallback.mjs && node scripts/check-quiz-auto-advance.mjs && node scripts/check-option-layout.mjs && node scripts/check-quiz-visual-states.mjs",
     "test:browser:practice": "playwright test tests/browser/practice-shadow.spec.ts",
-    "test:browser:practice:production": "VITE_QUIZCRAFT_GO_WRITES=1 VITE_QUIZCRAFT_WORKSHOP=1 VITE_QUIZCRAFT_GO_API_BASE_URL=http://127.0.0.1:18080 VITE_QUIZCRAFT_LOGIN_URL=http://127.0.0.1:18080/auth/login vite build && QUIZCRAFT_E2E_PREVIEW=1 playwright test tests/browser/practice-shadow.spec.ts --grep 'favorites use the generated'",
+    "test:browser:practice:production": "VITE_QUIZCRAFT_GO_WRITES=1 VITE_QUIZCRAFT_GO_API_BASE_URL=http://127.0.0.1:18080 vite build && QUIZCRAFT_E2E_PREVIEW=1 playwright test tests/browser/practice-shadow.spec.ts --grep 'React uses the generated Practice client'",
     "test:browser:legacy-ranking": "QUIZCRAFT_E2E_RANKING_DARK=1 playwright test tests/browser/legacy-ranking.spec.ts"
   },
   "dependencies": {

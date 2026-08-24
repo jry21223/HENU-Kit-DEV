@@ -19,55 +19,6 @@ import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class WorkshopService {
     /**
-     * Start Platform Core OAuth with state and S256 PKCE
-     * @returns void
-     * @throws ApiError
-     */
-    public static startQuizCraftPlatformLogin({
-        returnTo,
-    }: {
-        returnTo?: string,
-    }): CancelablePromise<void> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/auth/login',
-            query: {
-                'return_to': returnTo,
-            },
-            errors: {
-                302: `Redirect to the Platform Core authorization endpoint and set an encrypted short-lived state cookie.`,
-                503: `PostgreSQL or a required service is unavailable`,
-            },
-        });
-    }
-    /**
-     * Exchange a single-use Platform Core code server-side and establish an encrypted HttpOnly session
-     * @returns void
-     * @throws ApiError
-     */
-    public static finishQuizCraftPlatformLogin({
-        code,
-        state,
-    }: {
-        code: string,
-        state: string,
-    }): CancelablePromise<void> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/auth/callback',
-            query: {
-                'code': code,
-                'state': state,
-            },
-            errors: {
-                302: `Secure local QuizCraft session established and redirected to the validated same-origin return path.`,
-                400: `Invalid request`,
-                401: `Missing or invalid actor credentials`,
-                503: `PostgreSQL or a required service is unavailable`,
-            },
-        });
-    }
-    /**
      * Return bounded QuizCraft facts for Console Overview
      * @returns ConsoleSummaryEnvelope QuizCraft summary
      * @throws ApiError

@@ -215,7 +215,7 @@ export default function BankHero({
           </h1>
           <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
             {catalogMode
-              ? "题库目录由 QuizCraft 提供；掌握度只消费服务端确认的作答事实。"
+              ? "题库目录来自练习服务；掌握度根据已确认的作答结果计算。"
               : "按学院、专业、科目逐级定位题单；掌握度只消费服务端确认的作答事实，在数据尚未切换或不可用时保持诚实的空态。"}
           </p>
 

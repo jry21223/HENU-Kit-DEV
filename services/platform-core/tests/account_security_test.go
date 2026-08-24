@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -27,26 +28,17 @@ import (
 func prepareCredentialCode(t *testing.T, ctx context.Context, pool *pgxpool.Pool, server *httptest.Server, client *http.Client, pagePath, codePath string) (string, string) {
 	t.Helper()
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	page, err := client.Get(server.URL + pagePath)
-	if err != nil {
-		t.Fatalf("open credential page: %v", err)
+	flow := "recover"
+	if pagePath == "/account/security" {
+		flow = "security"
 	}
-	body, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrfMatch := csrfValuePattern.FindSubmatch(body)
-	if len(csrfMatch) != 2 {
-		t.Fatalf("credential page omitted CSRF token: %s", body)
-	}
-	csrfToken := string(csrfMatch[1])
-	requested, err := client.PostForm(server.URL+codePath, url.Values{
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, flow)
+	requested := postExplicitCredentialForm(t, client, server.URL+codePath, url.Values{
 		"csrf_token": {csrfToken}, "email": {testStudentEmail},
 	})
-	if err != nil {
-		t.Fatalf("request credential code: %v", err)
-	}
 	requested.Body.Close()
-	if requested.StatusCode != http.StatusOK {
-		t.Fatalf("request credential code = %d, want 200", requested.StatusCode)
+	if requested.StatusCode != http.StatusNoContent {
+		t.Fatalf("request credential code = %d, want 204", requested.StatusCode)
 	}
 	id := uuid.NewString()
 	sender := &captureSender{messageID: "provider_credential_" + id}
@@ -223,8 +215,8 @@ func TestExplicitSecurityJourneyReturnsStatusWithoutHTML(t *testing.T) {
 		t.Fatalf("reuse Core Session after password change: %v", err)
 	}
 	security.Body.Close()
-	if security.StatusCode != http.StatusOK {
-		t.Fatalf("Core Session after password change = %d, want 200", security.StatusCode)
+	if security.StatusCode != http.StatusFound || security.Header.Get("Location") != "/account/login?next=%2Faccount%2Fsecurity" {
+		t.Fatalf("Core Session after password change = %d %q, want Portal account redirect", security.StatusCode, security.Header.Get("Location"))
 	}
 	newPasswordLogin := submitPasswordLogin(t, server, "explicit-security-new-password", testStudentEmail, "changed horse 电池 staple")
 	newPasswordLogin.Body.Close()
@@ -331,8 +323,8 @@ func TestAuthenticatedPasswordChangeRetainsOnlyCurrentCoreSession(t *testing.T) 
 		t.Fatalf("reuse current session after password change: %v", err)
 	}
 	security.Body.Close()
-	if security.StatusCode != http.StatusOK {
-		t.Fatalf("current session after change = %d, want 200", security.StatusCode)
+	if security.StatusCode != http.StatusFound || security.Header.Get("Location") != "/account/login?next=%2Faccount%2Fsecurity" {
+		t.Fatalf("current session after change = %d %q, want Portal account redirect", security.StatusCode, security.Header.Get("Location"))
 	}
 	login = submitPasswordLogin(t, server, "changed-password-login", testStudentEmail, "changed horse 电池 staple")
 	login.Body.Close()
@@ -349,19 +341,10 @@ func TestExplicitPasswordChangeRejectsMissingCoreSessionWithoutRedirect(t *testi
 	client := clientForDevice(server, "expired-core-session")
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
-	page, err := client.Get(server.URL + "/login")
-	if err != nil {
-		t.Fatalf("open login form for CSRF: %v", err)
-	}
-	body, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrf := csrfValuePattern.FindSubmatch(body)
-	if len(csrf) != 2 {
-		t.Fatal("login form omitted CSRF token")
-	}
+	csrf := accountBootstrapCSRF(t, client, server.URL, "login")
 
 	response := postExplicitCredentialForm(t, client, server.URL+"/account/security/password", url.Values{
-		"csrf_token": {string(csrf[1])}, "email": {testStudentEmail}, "code": {"123456"},
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "code": {"123456"},
 		"current_password": {"current password"}, "new_password": {"new password value"},
 	})
 	defer response.Body.Close()
@@ -381,36 +364,30 @@ func TestPasswordFailuresEscalateToCodeLoginAndCodeLoginClearsChallenge(t *testi
 		response := submitPasswordLogin(t, server, "challenge-device", testStudentEmail, "wrong password value")
 		body, _ := io.ReadAll(response.Body)
 		response.Body.Close()
-		if attempt < 5 && !strings.Contains(string(body), "邮箱或密码错误") {
-			t.Fatalf("failure %d did not use generic message: %s", attempt, body)
+		if attempt < 5 && (response.StatusCode != http.StatusUnauthorized || !bytes.Contains(body, []byte(`"code":"AUTHENTICATION_FAILED"`))) {
+			t.Fatalf("failure %d did not use bounded generic response: %d %s", attempt, response.StatusCode, body)
 		}
-		if attempt == 5 && !strings.Contains(string(body), "改用邮箱验证码登录") {
-			t.Fatalf("failure %d did not escalate to code login: %s", attempt, body)
+		if attempt == 5 && (response.StatusCode != http.StatusTooManyRequests || !bytes.Contains(body, []byte(`"code":"EMAIL_CODE_LOGIN_REQUIRED"`))) {
+			t.Fatalf("failure %d did not escalate to code login: %d %s", attempt, response.StatusCode, body)
 		}
 	}
 
 	client := clientForDevice(server, "challenge-device")
-	page, err := client.Get(server.URL + "/login")
-	if err != nil {
-		t.Fatalf("open code login: %v", err)
-	}
-	pageBody, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrf := csrfValuePattern.FindSubmatch(pageBody)
-	requested, err := client.PostForm(server.URL+"/login/code", url.Values{
-		"csrf_token": {string(csrf[1])}, "email": {testStudentEmail},
+	csrf := accountBootstrapCSRF(t, client, server.URL, "login")
+	requested := postExplicitCredentialForm(t, client, server.URL+"/login/code", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail},
 	})
-	if err != nil {
-		t.Fatalf("request challenge code: %v", err)
-	}
 	requested.Body.Close()
+	if requested.StatusCode != http.StatusNoContent {
+		t.Fatalf("request challenge code = %d, want 204", requested.StatusCode)
+	}
 	sender := &captureSender{messageID: "provider_challenge_clear"}
 	worker, _ := mailworker.New(store.New(pool), sender, "worker_challenge_clear", testVerificationEncryptionKey, time.Minute, time.Second)
 	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
 		t.Fatalf("deliver challenge code: outcome=%+v err=%v", outcome, err)
 	}
 	verified, err := client.PostForm(server.URL+"/login/verify", url.Values{
-		"csrf_token": {string(csrf[1])}, "email": {testStudentEmail},
+		"csrf_token": {csrf}, "email": {testStudentEmail},
 		"code": {sender.lastMessage().Code}, "return_to": {"/"},
 	})
 	if err != nil {
@@ -499,30 +476,12 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 	if currentLogin.StatusCode != http.StatusSeeOther {
 		t.Fatalf("create Session for queued change = %d, want 303", currentLogin.StatusCode)
 	}
-	securityPage, err := currentClient.Get(server.URL + "/account/security")
-	if err != nil {
-		t.Fatalf("open queued security page: %v", err)
-	}
-	securityBody, _ := io.ReadAll(securityPage.Body)
-	securityPage.Body.Close()
-	securityCSRF := csrfValuePattern.FindSubmatch(securityBody)
-	if len(securityCSRF) != 2 {
-		t.Fatal("queued security page omitted CSRF token")
-	}
+	securityCSRF := accountBootstrapCSRF(t, currentClient, server.URL, "security")
 	recoveryClient := clientForDevice(server, "serialized-recovery-device")
 	recoveryCSRF, code := prepareCredentialCode(t, ctx, pool, server, recoveryClient, "/recover", "/recover/code")
 	loginClient := clientForDevice(server, "serialized-old-login-device")
 	loginClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	loginPage, err := loginClient.Get(server.URL + "/login")
-	if err != nil {
-		t.Fatalf("open queued login page: %v", err)
-	}
-	loginBody, _ := io.ReadAll(loginPage.Body)
-	loginPage.Body.Close()
-	loginCSRF := csrfValuePattern.FindSubmatch(loginBody)
-	if len(loginCSRF) != 2 {
-		t.Fatal("queued login page omitted CSRF token")
-	}
+	loginCSRF := accountBootstrapCSRF(t, loginClient, server.URL, "login")
 
 	lockTx, err := pool.Begin(ctx)
 	if err != nil {
@@ -555,7 +514,7 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 	changeResult := make(chan httpResult, 1)
 	go func() {
 		response, requestErr := currentClient.PostForm(server.URL+"/account/security/password", url.Values{
-			"csrf_token": {string(securityCSRF[1])}, "email": {testStudentEmail}, "code": {code},
+			"csrf_token": {securityCSRF}, "email": {testStudentEmail}, "code": {code},
 			"current_password": {"correct horse 电池 staple"}, "new_password": {"queued changed password"},
 		})
 		changeResult <- httpResult{response: response, err: requestErr}
@@ -565,7 +524,7 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 	loginResult := make(chan httpResult, 1)
 	go func() {
 		response, requestErr := loginClient.PostForm(server.URL+"/login/password", url.Values{
-			"csrf_token": {string(loginCSRF[1])}, "email": {testStudentEmail},
+			"csrf_token": {loginCSRF}, "email": {testStudentEmail},
 			"password": {"correct horse 电池 staple"}, "return_to": {"/"},
 		})
 		loginResult <- httpResult{response: response, err: requestErr}
@@ -589,8 +548,8 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 	}
 	changedBody, _ := io.ReadAll(changed.response.Body)
 	changed.response.Body.Close()
-	if changed.response.StatusCode != http.StatusOK || !strings.Contains(string(changedBody), "无法更改密码") {
-		t.Fatalf("password change after recovery = %d %s, want generic rejection", changed.response.StatusCode, changedBody)
+	if changed.response.StatusCode != http.StatusBadRequest || !bytes.Contains(changedBody, []byte(`"code":"PASSWORD_CHANGE_FAILED"`)) || bytes.Contains(changedBody, []byte("<html")) {
+		t.Fatalf("password change after recovery = %d %s, want bounded rejection", changed.response.StatusCode, changedBody)
 	}
 	oldLogin := <-loginResult
 	if oldLogin.err != nil {
@@ -598,8 +557,8 @@ func TestConcurrentRecoverySerializesChangeAndOldPasswordLogin(t *testing.T) {
 	}
 	oldLoginBody, _ := io.ReadAll(oldLogin.response.Body)
 	oldLogin.response.Body.Close()
-	if oldLogin.response.StatusCode != http.StatusOK || !strings.Contains(string(oldLoginBody), "邮箱或密码错误") {
-		t.Fatalf("old-password login after recovery = %d %s, want generic rejection", oldLogin.response.StatusCode, oldLoginBody)
+	if oldLogin.response.StatusCode != http.StatusUnauthorized || !bytes.Contains(oldLoginBody, []byte(`"code":"AUTHENTICATION_FAILED"`)) || bytes.Contains(oldLoginBody, []byte("<html")) {
+		t.Fatalf("old-password login after recovery = %d %s, want bounded rejection", oldLogin.response.StatusCode, oldLoginBody)
 	}
 	var activeCore int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE kind='core' AND revoked_at IS NULL`).Scan(&activeCore); err != nil {

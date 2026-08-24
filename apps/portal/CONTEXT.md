@@ -12,7 +12,7 @@
 
 ## Does not own
 
-- QuizCraft question banks, attempts, rankings, or practice logic (owned by QuizCraft product).
+- Question banks, attempts, rankings, or practice logic (owned by the Practice service).
 - Library public-free material eligibility, signed download grants, Download
   Start facts, and aggregates (owned by Library); remaining legacy operational
   facts stay behind the Study compatibility boundary.
@@ -26,11 +26,11 @@
 
 Portal owns the public account page presentation at `/account/login`, `/account/recover`, `/account/security`, and the account overview. These existing pages submit same-origin forms through `/account-auth` to Platform Core; Portal never validates credentials or treats a local response as authenticated. Successful login, registration, and recovery continue through OAuth so Portal Gateway establishes the Portal Session. The account overview reads Account Portfolio only through that Gateway and shows an explicit error instead of session or local mock data when the owner is unavailable. Production mock authentication is prohibited. See ADR-0014 and ADR-0016.
 
-Account pages obtain CSRF and flow state through Platform Core's bounded Account Center Bootstrap response and request explicit status responses for every credential form. Portal does not parse Platform Core HTML or expose backend error detail; Platform Core still decides every credential and Core Session outcome, while legacy direct browser forms remain a compatibility surface during migration.
+Account pages obtain CSRF and flow state through Platform Core's bounded Account Center Bootstrap response and request explicit status responses for every credential form. Portal does not parse Platform Core HTML or expose backend error detail; Platform Core still decides every credential and Core Session outcome. Direct Platform Core account-page requests now return users to the Portal presentation, and no embedded credential page remains.
 
 When a validated Portal or Console OAuth authorize request reaches Platform Core without a Core Session, the Account Center receives only a short-lived opaque continuation handle. It renders the trusted server-provided product name, submits credentials through the same explicit Platform Core contract, and navigates with a same-origin POST to resume that continuation. Its form policy allows only the Portal origin plus the exact production Console origin so the registered Console callback can complete cross-origin; local acceptance may add only a loopback origin. Portal never receives OAuth state, PKCE, callback, Authorization Code, or product Session facts; expired, replayed, tampered, and cross-browser handles render the Portal-owned safe recovery state.
 
-The QuizCraft V2 catalog preparation is explicitly dark by default: without `NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1`, `/practice` does not request or render a V2 catalog. When the browser flag and Gateway's `PORTAL_ENABLE_QUIZCRAFT_CATALOG=1` are both deliberately coordinated, Portal renders only Gateway-provided real bank and immutable bank-version facts, emits both IDs to `/practice/quiz`, and treats loading, empty, and error states honestly. A failed V2 catalog read must not fall back to legacy Practice, cache, or local mock success. The merged default-off Practice session boundary owns the browser `create-session` command; this catalog ticket verifies its real bank/version handoff into that boundary, including a stable idempotency key under React development replay.
+The Practice catalog preparation is explicitly dark by default: without `NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1`, `/practice` does not request or render the service catalog. When the browser flag and Gateway's matching server-side flag are both deliberately coordinated, Portal renders only Gateway-provided real bank and immutable bank-version facts, emits both IDs to `/practice/quiz`, and treats loading, empty, and error states honestly. A failed catalog read must not fall back to legacy Practice, cache, or local mock success. The merged default-off Practice session boundary owns the browser `create-session` command; this catalog ticket verifies its real bank/version handoff into that boundary, including a stable idempotency key under React development replay.
 
 For ADR-0027 public-free downloads, Portal navigates only to the same-origin
 owner façade for the selected material ID. It never constructs `/materials/`

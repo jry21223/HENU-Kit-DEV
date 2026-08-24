@@ -76,7 +76,7 @@ export default function LeaderboardPage() {
         </p>
         <h1 className="mt-3 font-display text-5xl font-bold tracking-tight md:text-6xl">排行榜</h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
-          只统计 QuizCraft 服务端确认的正确作答；重复提交不会重复计分，公开结果不包含邮箱或账户标识。
+          只统计练习服务确认的正确作答；重复提交不会重复计分，公开结果不包含邮箱或账户标识。
         </p>
 
         {enabled && <div className="mt-8 flex gap-2" aria-label="排行榜周期">
@@ -100,7 +100,7 @@ export default function LeaderboardPage() {
 
         <section className="mt-8" data-testid="practice-leaderboard">
           {state.status === "disabled" && (
-            <EmptyBlock label="QuizCraft V2 排行榜将在确认切换后启用" />
+            <EmptyBlock label="排行榜数据暂未开放" />
           )}
           {state.status === "loading" && <LoadingBlock label="正在读取真实排行榜" />}
           {state.status === "error" && (

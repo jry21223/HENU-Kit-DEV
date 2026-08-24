@@ -1,13 +1,12 @@
 package tests
 
 import (
+	"bytes"
 	"context"
-	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -21,9 +20,6 @@ import (
 	"henukit.dev/platform-core/internal/password"
 	"henukit.dev/platform-core/internal/store"
 )
-
-var csrfValuePattern = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
-var returnToValuePattern = regexp.MustCompile(`name="return_to" value="([^"]*)"`)
 
 func TestExplicitAccountRegistrationReturnsStatusWithoutHTML(t *testing.T) {
 	ctx := context.Background()
@@ -80,18 +76,9 @@ func submitPasswordLogin(t *testing.T, server *httptest.Server, deviceID, email,
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	page, err := client.Get(server.URL + "/login")
-	if err != nil {
-		t.Fatalf("open password login page: %v", err)
-	}
-	body, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrfMatch := csrfValuePattern.FindSubmatch(body)
-	if len(csrfMatch) != 2 {
-		t.Fatal("password login page omitted CSRF token")
-	}
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "login")
 	response, err := client.PostForm(server.URL+"/login/password", url.Values{
-		"csrf_token": {string(csrfMatch[1])}, "email": {email},
+		"csrf_token": {csrfToken}, "email": {email},
 		"password": {passwordValue}, "return_to": {"/"},
 	})
 	if err != nil {
@@ -106,24 +93,14 @@ func prepareRegistrationCode(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	page, err := client.Get(server.URL + "/register")
-	if err != nil {
-		t.Fatalf("open registration page: %v", err)
-	}
-	body, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrfMatch := csrfValuePattern.FindSubmatch(body)
-	if len(csrfMatch) != 2 {
-		t.Fatal("registration page omitted CSRF token")
-	}
-	csrfToken := string(csrfMatch[1])
-	requested, err := client.PostForm(server.URL+"/register/code", url.Values{
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "register")
+	requested := postExplicitCredentialForm(t, client, server.URL+"/register/code", url.Values{
 		"csrf_token": {csrfToken}, "email": {testStudentEmail},
 	})
-	if err != nil {
-		t.Fatalf("request registration code: %v", err)
-	}
 	requested.Body.Close()
+	if requested.StatusCode != http.StatusNoContent {
+		t.Fatalf("request registration code = %d, want 204", requested.StatusCode)
+	}
 	sender := &captureSender{messageID: "provider_prepare_" + uuid.NewString()}
 	worker, err := mailworker.New(store.New(pool), sender, "worker_prepare_"+uuid.NewString(), testVerificationEncryptionKey, time.Minute, time.Second)
 	if err != nil {
@@ -142,17 +119,14 @@ func TestAccountCenterRegistrationRejectsWeakPasswordWithoutConsumingCode(t *tes
 	server := newVerificationServer(t, pool, redisClient)
 	client, csrfToken, code := prepareRegistrationCode(t, ctx, pool, server, "weak-password-device")
 
-	response, err := client.PostForm(server.URL+"/register", url.Values{
+	response := postExplicitCredentialForm(t, client, server.URL+"/register", url.Values{
 		"csrf_token": {csrfToken}, "display_name": {"弱密码测试"}, "email": {testStudentEmail},
 		"code": {code}, "password": {"password123"},
 	})
-	if err != nil {
-		t.Fatalf("submit weak password registration: %v", err)
-	}
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "注册失败") {
-		t.Fatalf("weak password registration = %d %s, want rejected form", response.StatusCode, body)
+	if response.StatusCode != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"REGISTRATION_FAILED"`)) || bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("weak password registration = %d %s, want bounded registration error", response.StatusCode, body)
 	}
 
 	var users, credentials, sessions, consumed int
@@ -186,17 +160,14 @@ func TestAccountCenterDuplicateRegistrationDoesNotOverwriteCredential(t *testing
 		t.Fatalf("read original registration: %v", err)
 	}
 	client, csrfToken, code := prepareRegistrationCode(t, ctx, pool, server, "duplicate-registration-device")
-	response, err := client.PostForm(server.URL+"/register", url.Values{
+	response := postExplicitCredentialForm(t, client, server.URL+"/register", url.Values{
 		"csrf_token": {csrfToken}, "display_name": {"覆盖尝试"}, "email": {testStudentEmail},
 		"code": {code}, "password": {"another strong 密码 value"},
 	})
-	if err != nil {
-		t.Fatalf("submit duplicate registration: %v", err)
-	}
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "已注册") {
-		t.Fatalf("duplicate registration = %d %s, want already-registered form", response.StatusCode, body)
+	if response.StatusCode != http.StatusConflict || !bytes.Contains(body, []byte(`"code":"ACCOUNT_ALREADY_REGISTERED"`)) || bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("duplicate registration = %d %s, want bounded already-registered error", response.StatusCode, body)
 	}
 
 	var displayName, verifier string
@@ -240,16 +211,13 @@ func TestAccountCenterRegistrationRollsBackEveryFactWhenCredentialInsertFails(t 
 		`)
 	})
 
-	response, err := client.PostForm(server.URL+"/register", url.Values{
+	response := postExplicitCredentialForm(t, client, server.URL+"/register", url.Values{
 		"csrf_token": {csrfToken}, "display_name": {"事务回滚"}, "email": {testStudentEmail},
 		"code": {code}, "password": {"correct horse 电池 staple"},
 	})
-	if err != nil {
-		t.Fatalf("submit registration with forced failure: %v", err)
-	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("registration with forced failure = %d, want rejected form", response.StatusCode)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("registration with forced failure = %d, want bounded 400", response.StatusCode)
 	}
 
 	var users, identities, credentials, sessions, consumed int
@@ -270,30 +238,10 @@ func TestAccountCenterRegistrationRollsBackEveryFactWhenCredentialInsertFails(t 
 
 func seedRegisteredAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, redisClient *redis.Client, serverURL string, client *http.Client) {
 	t.Helper()
-	previousRedirect := client.CheckRedirect
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-	defer func() {
-		client.CheckRedirect = previousRedirect
-	}()
-	page, err := client.Get(serverURL + "/register")
-	if err != nil {
-		t.Fatalf("open registration seed page: %v", err)
-	}
-	body, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrfMatch := csrfValuePattern.FindSubmatch(body)
-	if len(csrfMatch) != 2 {
-		t.Fatal("registration seed page omitted CSRF token")
-	}
-	csrfToken := string(csrfMatch[1])
-	requested, err := client.PostForm(serverURL+"/register/code", url.Values{
+	csrfToken := accountBootstrapCSRF(t, client, serverURL, "register")
+	requested := postExplicitCredentialForm(t, client, serverURL+"/register/code", url.Values{
 		"csrf_token": {csrfToken}, "email": {testStudentEmail},
 	})
-	if err != nil {
-		t.Fatalf("request registration seed code: %v", err)
-	}
 	requested.Body.Close()
 	id := uuid.NewString()
 	sender := &captureSender{messageID: "provider_seed_" + id}
@@ -304,16 +252,13 @@ func seedRegisteredAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
 		t.Fatalf("deliver registration seed code: outcome=%+v err=%v", outcome, err)
 	}
-	registered, err := client.PostForm(serverURL+"/register", url.Values{
+	registered := postExplicitCredentialForm(t, client, serverURL+"/register", url.Values{
 		"csrf_token": {csrfToken}, "display_name": {"测试用户"}, "email": {testStudentEmail},
 		"code": {sender.lastMessage().Code}, "password": {"correct horse 电池 staple"},
 	})
-	if err != nil {
-		t.Fatalf("submit registration seed: %v", err)
-	}
 	registered.Body.Close()
-	if registered.StatusCode != http.StatusSeeOther {
-		t.Fatalf("registration seed = %d, want 303", registered.StatusCode)
+	if registered.StatusCode != http.StatusNoContent {
+		t.Fatalf("registration seed = %d, want 204", registered.StatusCode)
 	}
 	if _, err := pool.Exec(ctx, `
 		ALTER TABLE mail_outbox_audit_events DISABLE TRIGGER mail_outbox_audit_events_immutable;
@@ -337,31 +282,15 @@ func TestAccountCenterRegistrationAtomicallyCreatesCredentialAndSession(t *testi
 		return http.ErrUseLastResponse
 	}
 
-	page, err := client.Get(server.URL + "/register")
-	if err != nil {
-		t.Fatalf("open registration page: %v", err)
-	}
-	pageBody, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	if page.StatusCode != http.StatusOK {
-		t.Fatalf("registration page = %d %s, want 200", page.StatusCode, pageBody)
-	}
-	csrfMatch := csrfValuePattern.FindSubmatch(pageBody)
-	if len(csrfMatch) != 2 {
-		t.Fatalf("registration page omitted CSRF token: %s", pageBody)
-	}
-	csrfToken := string(csrfMatch[1])
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "register")
 
-	requested, err := client.PostForm(server.URL+"/register/code", url.Values{
+	requested := postExplicitCredentialForm(t, client, server.URL+"/register/code", url.Values{
 		"csrf_token": {csrfToken},
 		"email":      {testStudentEmail},
 	})
-	if err != nil {
-		t.Fatalf("request registration code: %v", err)
-	}
 	requested.Body.Close()
-	if requested.StatusCode != http.StatusOK {
-		t.Fatalf("request registration code = %d, want 200", requested.StatusCode)
+	if requested.StatusCode != http.StatusNoContent {
+		t.Fatalf("request registration code = %d, want 204", requested.StatusCode)
 	}
 	sender := &captureSender{messageID: "provider_registration_001"}
 	worker, err := mailworker.New(store.New(pool), sender, "worker_registration", testVerificationEncryptionKey, time.Minute, time.Second)
@@ -390,10 +319,9 @@ func TestAccountCenterRegistrationAtomicallyCreatesCredentialAndSession(t *testi
 	if err != nil {
 		t.Fatalf("open account home after registration: %v", err)
 	}
-	accountBody, _ := io.ReadAll(account.Body)
 	account.Body.Close()
-	if account.StatusCode != http.StatusOK || !strings.Contains(string(accountBody), "账号安全") {
-		t.Fatalf("account security after registration = %d %s, want authenticated page", account.StatusCode, accountBody)
+	if account.StatusCode != http.StatusFound || account.Header.Get("Location") != "/account/login?next=%2Faccount%2Fsecurity" {
+		t.Fatalf("account security after registration = %d %q, want Portal-owned account redirect", account.StatusCode, account.Header.Get("Location"))
 	}
 
 	var users, identities, credentials, sessions, consumed int
@@ -435,23 +363,10 @@ func TestRegistrationPreservesOnlyValidatedOAuthReturnTarget(t *testing.T) {
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 	returnTo := "/api/v1/oauth/authorize?response_type=code&client_id=portal-gateway&redirect_uri=https%3A%2F%2Fsuperhuazai.me%2Fapi%2Fv1%2Fauth%2Fcallback&state=state-value&code_challenge=challenge-value&code_challenge_method=S256"
 
-	page, err := client.Get(server.URL + "/register?return_to=" + url.QueryEscape(returnTo))
-	if err != nil {
-		t.Fatalf("open OAuth registration page: %v", err)
-	}
-	pageBody, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrf := csrfValuePattern.FindSubmatch(pageBody)
-	preserved := returnToValuePattern.FindSubmatch(pageBody)
-	if len(csrf) != 2 || len(preserved) != 2 || html.UnescapeString(string(preserved[1])) != returnTo {
-		t.Fatalf("OAuth registration form did not preserve validated return target: %s", pageBody)
-	}
-	requested, err := client.PostForm(server.URL+"/register/code", url.Values{
-		"csrf_token": {string(csrf[1])}, "email": {testStudentEmail}, "return_to": {returnTo},
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "register")
+	requested := postExplicitCredentialForm(t, client, server.URL+"/register/code", url.Values{
+		"csrf_token": {csrfToken}, "email": {testStudentEmail}, "return_to": {returnTo},
 	})
-	if err != nil {
-		t.Fatalf("request OAuth registration code: %v", err)
-	}
 	requested.Body.Close()
 	sender := &captureSender{messageID: "provider_oauth_registration"}
 	worker, err := mailworker.New(store.New(pool), sender, "worker_oauth_registration", testVerificationEncryptionKey, time.Minute, time.Second)
@@ -462,7 +377,7 @@ func TestRegistrationPreservesOnlyValidatedOAuthReturnTarget(t *testing.T) {
 		t.Fatalf("deliver OAuth registration code: outcome=%+v err=%v", outcome, err)
 	}
 	registered, err := client.PostForm(server.URL+"/register", url.Values{
-		"csrf_token": {string(csrf[1])}, "display_name": {"OAuth 新生"}, "email": {testStudentEmail},
+		"csrf_token": {csrfToken}, "display_name": {"OAuth 新生"}, "email": {testStudentEmail},
 		"code": {sender.lastMessage().Code}, "password": {"oauth registration password"}, "return_to": {returnTo},
 	})
 	if err != nil {
@@ -473,47 +388,44 @@ func TestRegistrationPreservesOnlyValidatedOAuthReturnTarget(t *testing.T) {
 		t.Fatalf("OAuth registration = %d %q, want 303 to validated authorize target", registered.StatusCode, registered.Header.Get("Location"))
 	}
 
-	unsafe, err := server.Client().Get(server.URL + "/register?return_to=" + url.QueryEscape("https://evil.example/steal"))
+	unsafe, err := client.Get(server.URL + "/register?return_to=" + url.QueryEscape("https://evil.example/steal"))
 	if err != nil {
 		t.Fatalf("open registration with external return target: %v", err)
 	}
-	unsafeBody, _ := io.ReadAll(unsafe.Body)
 	unsafe.Body.Close()
-	unsafeReturn := returnToValuePattern.FindSubmatch(unsafeBody)
-	if len(unsafeReturn) != 2 || html.UnescapeString(string(unsafeReturn[1])) != "/account/security" {
-		t.Fatalf("external registration return target was not rejected: %s", unsafeBody)
+	if unsafe.StatusCode != http.StatusFound || unsafe.Header.Get("Location") != "/account/login" || strings.Contains(unsafe.Header.Get("Location"), "evil.example") {
+		t.Fatalf("external registration return target = %d %q, want bounded Portal redirect", unsafe.StatusCode, unsafe.Header.Get("Location"))
 	}
 }
 
-func TestAccountCenterPublicPrefixKeepsFormsAndAuthRedirectsOnProxyRoute(t *testing.T) {
+func TestLegacyPublicPrefixCannotRestoreCredentialPages(t *testing.T) {
 	t.Setenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX", "/account-auth")
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
 	resetIdentityTables(t, ctx, pool, redisClient)
 	server := newVerificationServer(t, pool, redisClient)
 
-	for _, path := range []string{"/register", "/recover"} {
-		response, err := server.Client().Get(server.URL + path)
+	client := server.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	for path, target := range map[string]string{"/register": "/account/login", "/recover": "/account/recover"} {
+		response, err := client.Get(server.URL + path)
 		if err != nil {
 			t.Fatalf("open %s: %v", path, err)
 		}
-		body, _ := io.ReadAll(response.Body)
 		response.Body.Close()
-		if !strings.Contains(string(body), `action="/account-auth`+path) {
-			t.Fatalf("%s form omitted public prefix: %s", path, body)
+		if response.StatusCode != http.StatusFound || response.Header.Get("Location") != target {
+			t.Fatalf("%s = %d %q, want Portal redirect %q", path, response.StatusCode, response.Header.Get("Location"), target)
 		}
 	}
 
-	client := server.Client()
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 	security, err := client.Get(server.URL + "/account/security")
 	if err != nil {
 		t.Fatalf("open unauthenticated security page: %v", err)
 	}
 	security.Body.Close()
 	if security.StatusCode != http.StatusFound ||
-		!strings.HasPrefix(security.Header.Get("Location"), "/account-auth/login?return_to=") {
-		t.Fatalf("security redirect = %d %q, want prefixed login", security.StatusCode, security.Header.Get("Location"))
+		security.Header.Get("Location") != "/account/login?next=%2Faccount%2Fsecurity" {
+		t.Fatalf("security redirect = %d %q, want Portal-owned account entry", security.StatusCode, security.Header.Get("Location"))
 	}
 }
 
@@ -600,7 +512,7 @@ func TestCookieTransportTrustsForwardedHTTPSOnlyFromConfiguredProxy(t *testing.T
 			}
 			server := httptest.NewServer(handler)
 			t.Cleanup(server.Close)
-			request, _ := http.NewRequest(http.MethodGet, server.URL+"/login", nil)
+			request, _ := http.NewRequest(http.MethodGet, server.URL+"/account/bootstrap?flow=login", nil)
 			request.Header.Set("X-Forwarded-Proto", "https")
 			response, err := server.Client().Do(request)
 			if err != nil {
@@ -630,54 +542,15 @@ func TestAccountCenterPasswordLoginCreatesCoreSession(t *testing.T) {
 	server := newVerificationServer(t, pool, redisClient)
 
 	registrationClient := clientForDevice(server, "password-seed-device")
-	registrationPage, err := registrationClient.Get(server.URL + "/register")
-	if err != nil {
-		t.Fatalf("open registration page: %v", err)
-	}
-	registrationBody, _ := io.ReadAll(registrationPage.Body)
-	registrationPage.Body.Close()
-	csrfMatch := csrfValuePattern.FindSubmatch(registrationBody)
-	if len(csrfMatch) != 2 {
-		t.Fatal("registration page omitted CSRF token")
-	}
-	csrfToken := string(csrfMatch[1])
-	requested, err := registrationClient.PostForm(server.URL+"/register/code", url.Values{
-		"csrf_token": {csrfToken}, "email": {testStudentEmail},
-	})
-	if err != nil {
-		t.Fatalf("request registration code: %v", err)
-	}
-	requested.Body.Close()
-	sender := &captureSender{messageID: "provider_password_login_seed"}
-	worker, _ := mailworker.New(store.New(pool), sender, "worker_password_login_seed", testVerificationEncryptionKey, time.Minute, time.Second)
-	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
-		t.Fatalf("deliver registration code: outcome=%+v err=%v", outcome, err)
-	}
-	registered, err := registrationClient.PostForm(server.URL+"/register", url.Values{
-		"csrf_token": {csrfToken}, "display_name": {"登录测试"}, "email": {testStudentEmail},
-		"code": {sender.lastMessage().Code}, "password": {"correct horse 电池 staple"},
-	})
-	if err != nil {
-		t.Fatalf("seed registered account: %v", err)
-	}
-	registered.Body.Close()
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, registrationClient)
 
 	loginClient := clientForDevice(server, "password-login-device")
 	loginClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	loginPage, err := loginClient.Get(server.URL + "/login")
-	if err != nil {
-		t.Fatalf("open login page: %v", err)
-	}
-	loginBody, _ := io.ReadAll(loginPage.Body)
-	loginPage.Body.Close()
-	loginCSRF := csrfValuePattern.FindSubmatch(loginBody)
-	if len(loginCSRF) != 2 {
-		t.Fatal("login page omitted CSRF token")
-	}
+	loginCSRF := accountBootstrapCSRF(t, loginClient, server.URL, "login")
 	loggedIn, err := loginClient.PostForm(server.URL+"/login/password", url.Values{
-		"csrf_token": {string(loginCSRF[1])}, "email": {testStudentEmail},
+		"csrf_token": {loginCSRF}, "email": {testStudentEmail},
 		"password": {"correct horse 电池 staple"}, "return_to": {"/"},
 	})
 	if err != nil {
@@ -691,8 +564,8 @@ func TestAccountCenterPasswordLoginCreatesCoreSession(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE kind='core' AND revoked_at IS NULL`).Scan(&sessions); err != nil {
 		t.Fatalf("count password login sessions: %v", err)
 	}
-	if sessions != 2 {
-		t.Fatalf("active Core Sessions = %d, want registration plus password login", sessions)
+	if sessions != 1 {
+		t.Fatalf("active Core Sessions = %d, want password login session", sessions)
 	}
 	accountURL, _ := url.Parse(server.URL)
 	var hasCoreSession bool
@@ -730,18 +603,9 @@ func TestAccountCenterPasswordLoginUpgradesOldArgon2idVerifier(t *testing.T) {
 	loginClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	page, err := loginClient.Get(server.URL + "/login")
-	if err != nil {
-		t.Fatalf("open password login: %v", err)
-	}
-	body, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrfMatch := csrfValuePattern.FindSubmatch(body)
-	if len(csrfMatch) != 2 {
-		t.Fatal("password login page omitted CSRF token")
-	}
+	csrfToken := accountBootstrapCSRF(t, loginClient, server.URL, "login")
 	response, err := loginClient.PostForm(server.URL+"/login/password", url.Values{
-		"csrf_token": {string(csrfMatch[1])}, "email": {testStudentEmail},
+		"csrf_token": {csrfToken}, "email": {testStudentEmail},
 		"password": {"correct horse 电池 staple"}, "return_to": {"/"},
 	})
 	if err != nil {
@@ -779,8 +643,8 @@ func TestAccountCenterPasswordLoginUsesGenericFailureForUnknownAndWrongCredentia
 			response := submitPasswordLogin(t, server, test.deviceID, test.email, test.password)
 			body, _ := io.ReadAll(response.Body)
 			response.Body.Close()
-			if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "邮箱或密码错误，或登录暂不可用。") {
-				t.Fatalf("failed password login = %d %s, want generic failure", response.StatusCode, body)
+			if response.StatusCode != http.StatusUnauthorized || !bytes.Contains(body, []byte(`"code":"AUTHENTICATION_FAILED"`)) || bytes.Contains(body, []byte("<html")) {
+				t.Fatalf("failed password login = %d %s, want bounded generic failure", response.StatusCode, body)
 			}
 		})
 	}
@@ -819,8 +683,8 @@ func TestAccountCenterPasswordLoginFailsClosedWhenRedisIsUnavailable(t *testing.
 	response := submitPasswordLogin(t, server, "redis-failure-login", testStudentEmail, "correct horse 电池 staple")
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "邮箱或密码错误，或登录暂不可用。") {
-		t.Fatalf("Redis-failed password login = %d %s, want generic fail-closed response", response.StatusCode, body)
+	if response.StatusCode != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"DEPENDENCY_UNAVAILABLE"`)) || bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("Redis-failed password login = %d %s, want bounded fail-closed response", response.StatusCode, body)
 	}
 	var sessions int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions`).Scan(&sessions); err != nil {

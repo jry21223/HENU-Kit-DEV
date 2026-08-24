@@ -642,7 +642,6 @@ services:
       dockerfile: apps/console/Dockerfile
       args:
         VITE_BASE_PATH: ${VITE_CONSOLE_BASE_PATH:-/}
-        VITE_QUIZCRAFT_WORKSHOP_URL: ${VITE_QUIZCRAFT_WORKSHOP_URL:-}
     depends_on:
       - console-gateway
     expose:

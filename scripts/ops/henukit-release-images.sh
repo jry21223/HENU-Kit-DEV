@@ -134,7 +134,7 @@ release_dockerfiles=(
 # PORTAL_PRACTICE_COMMANDS_ENABLED) enabled in the same bundle, or the browser
 # surfaces render honest 404/503s — never a mock/legacy fallback.
 release_build_args=(
-  $'VITE_BASE_PATH=/\nVITE_QUIZCRAFT_WORKSHOP_URL='
+  $'VITE_BASE_PATH=/'
   ""
   ""
   ""
