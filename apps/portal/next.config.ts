@@ -12,17 +12,48 @@ const nextConfig: NextConfig = {
       { key: "X-Robots-Tag", value: "noindex, nofollow" },
     ];
 
+    const accountHeaders = [
+      ...noIndexHeaders,
+      { key: "Cache-Control", value: "private, no-store, max-age=0" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      {
+        key: "Content-Security-Policy",
+        value: "base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+      },
+    ];
+
     return [
-      "/account/:path*",
-      "/campus/deals",
-      "/campus/publish",
-      "/food/publish",
-      "/library/read/:path*",
-      "/library/shelf",
-      "/practice/favorites/:path*",
-      "/practice/quiz",
-      "/practice/stats",
-    ].map((source) => ({ source, headers: noIndexHeaders }));
+      { source: "/account/:path*", headers: accountHeaders },
+      ...[
+        "/campus/deals",
+        "/campus/publish",
+        "/food/publish",
+        "/library/read/:path*",
+        "/library/shelf",
+        "/practice/favorites/:path*",
+        "/practice/quiz",
+        "/practice/stats",
+      ].map((source) => ({ source, headers: noIndexHeaders })),
+    ];
+  },
+  async rewrites() {
+    const accountAuthFixture = process.env.PLAYWRIGHT_ACCOUNT_AUTH_URL;
+    const portalGatewayFixture = process.env.PLAYWRIGHT_PORTAL_GATEWAY_URL;
+    const rewrites: Array<{ source: string; destination: string }> = [];
+    if (accountAuthFixture) {
+      rewrites.push({
+        source: "/account-auth/:path*",
+        destination: `${accountAuthFixture}/:path*`,
+      });
+    }
+    if (portalGatewayFixture) {
+      rewrites.push({
+        source: "/api/:path*",
+        destination: `${portalGatewayFixture}/api/:path*`,
+      });
+    }
+    return rewrites;
   },
   async redirects() {
     return [

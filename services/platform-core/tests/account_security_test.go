@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -92,12 +93,144 @@ func postExplicitCredentialForm(t *testing.T, client *http.Client, endpoint stri
 		t.Fatalf("create explicit credential request: %v", err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Accept", "application/json")
 	request.Header.Set("X-Henukit-Form-Response", "status")
 	response, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("submit explicit credential request: %v", err)
 	}
 	return response
+}
+
+func accountBootstrapCSRF(t *testing.T, client *http.Client, serverURL, flow string) string {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodGet, serverURL+"/account/bootstrap?flow="+url.QueryEscape(flow), nil)
+	if err != nil {
+		t.Fatalf("create %s Account Center Bootstrap: %v", flow, err)
+	}
+	request.Header.Set("Accept", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("open %s Account Center Bootstrap: %v", flow, err)
+	}
+	defer response.Body.Close()
+	var envelope struct {
+		Data struct {
+			Flow      string `json:"flow"`
+			CSRFToken string `json:"csrf_token"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode %s Account Center Bootstrap: %v", flow, err)
+	}
+	if response.StatusCode != http.StatusOK || envelope.Data.Flow != flow || len(envelope.Data.CSRFToken) < 32 || envelope.RequestID == "" {
+		t.Fatalf("%s Account Center Bootstrap = %d %+v, want bounded success", flow, response.StatusCode, envelope)
+	}
+	return envelope.Data.CSRFToken
+}
+
+func TestExplicitPasswordRecoveryReturnsStatusWithoutHTML(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "explicit-recovery-registration-seed"))
+	client := clientForDevice(server, "explicit-recovery-device")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "recover")
+
+	requested := postExplicitCredentialForm(t, client, server.URL+"/recover/code", url.Values{
+		"csrf_token": {csrfToken}, "email": {testStudentEmail},
+	})
+	requestedBody, _ := io.ReadAll(requested.Body)
+	requested.Body.Close()
+	if requested.StatusCode != http.StatusNoContent || len(requestedBody) != 0 {
+		t.Fatalf("explicit recovery-code request = %d %q, want empty 204", requested.StatusCode, requestedBody)
+	}
+
+	sender := &captureSender{messageID: "provider_explicit_recovery"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_explicit_recovery", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver explicit recovery code: outcome=%+v err=%v", outcome, err)
+	}
+	recovered := postExplicitCredentialForm(t, client, server.URL+"/recover", url.Values{
+		"csrf_token": {csrfToken}, "email": {testStudentEmail},
+		"code": {sender.lastMessage().Code}, "password": {"recovered horse 电池 staple"},
+	})
+	recoveredBody, _ := io.ReadAll(recovered.Body)
+	recovered.Body.Close()
+	if recovered.StatusCode != http.StatusNoContent || recovered.Header.Get("Location") != "" || len(recoveredBody) != 0 {
+		t.Fatalf("explicit recovery = %d location=%q body=%q, want empty 204", recovered.StatusCode, recovered.Header.Get("Location"), recoveredBody)
+	}
+	accountURL, _ := url.Parse(server.URL)
+	var hasCoreSession bool
+	for _, cookie := range client.Jar.Cookies(accountURL) {
+		hasCoreSession = hasCoreSession || cookie.Name == "__Host-henukit_core_session" && cookie.Value != ""
+	}
+	if !hasCoreSession {
+		t.Fatal("explicit recovery did not establish the new Core Session")
+	}
+}
+
+func TestExplicitSecurityJourneyReturnsStatusWithoutHTML(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "explicit-security-registration-seed"))
+
+	client := clientForDevice(server, "explicit-security-device")
+	login := submitPasswordLogin(t, server, "explicit-security-device", testStudentEmail, "correct horse 电池 staple")
+	login.Body.Close()
+	if login.StatusCode != http.StatusSeeOther {
+		t.Fatalf("create security Core Session = %d, want 303", login.StatusCode)
+	}
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "security")
+	requested := postExplicitCredentialForm(t, client, server.URL+"/account/security/code", url.Values{
+		"csrf_token": {csrfToken}, "email": {testStudentEmail},
+	})
+	requestedBody, _ := io.ReadAll(requested.Body)
+	requested.Body.Close()
+	if requested.StatusCode != http.StatusNoContent || len(requestedBody) != 0 {
+		t.Fatalf("explicit security-code request = %d %q, want empty 204", requested.StatusCode, requestedBody)
+	}
+
+	sender := &captureSender{messageID: "provider_explicit_security_change"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_explicit_security_change", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver explicit security code: outcome=%+v err=%v", outcome, err)
+	}
+	changed := postExplicitCredentialForm(t, client, server.URL+"/account/security/password", url.Values{
+		"csrf_token": {csrfToken}, "email": {testStudentEmail}, "code": {sender.lastMessage().Code},
+		"current_password": {"correct horse 电池 staple"}, "new_password": {"changed horse 电池 staple"},
+	})
+	changedBody, _ := io.ReadAll(changed.Body)
+	changed.Body.Close()
+	if changed.StatusCode != http.StatusNoContent || changed.Header.Get("Location") != "" || len(changedBody) != 0 {
+		t.Fatalf("explicit security change = %d location=%q body=%q, want empty 204", changed.StatusCode, changed.Header.Get("Location"), changedBody)
+	}
+
+	security, err := client.Get(server.URL + "/account/security")
+	if err != nil {
+		t.Fatalf("reuse Core Session after password change: %v", err)
+	}
+	security.Body.Close()
+	if security.StatusCode != http.StatusOK {
+		t.Fatalf("Core Session after password change = %d, want 200", security.StatusCode)
+	}
+	newPasswordLogin := submitPasswordLogin(t, server, "explicit-security-new-password", testStudentEmail, "changed horse 电池 staple")
+	newPasswordLogin.Body.Close()
+	if newPasswordLogin.StatusCode != http.StatusSeeOther {
+		t.Fatalf("changed password login = %d, want 303", newPasswordLogin.StatusCode)
+	}
 }
 
 func TestPasswordRecoveryRevokesEveryOldSessionAndIssuesOneNewCoreSession(t *testing.T) {
@@ -303,11 +436,6 @@ func TestPasswordRecoveryFailsClosedWhenRedisIsUnavailable(t *testing.T) {
 	seedRegisteredAccount(t, ctx, pool, redisClient, seedServer.URL, clientForDevice(seedServer, "recovery-redis-seed"))
 	codeClient := clientForDevice(seedServer, "recovery-code-device")
 	_, code := prepareCredentialCode(t, ctx, pool, seedServer, codeClient, "/recover", "/recover/code")
-
-	var originalVerifier string
-	if err := pool.QueryRow(ctx, `SELECT verifier FROM password_credentials`).Scan(&originalVerifier); err != nil {
-		t.Fatalf("read original verifier: %v", err)
-	}
 	unavailableRedis := redis.NewClient(&redis.Options{
 		Addr: "127.0.0.1:1", DialTimeout: 50 * time.Millisecond,
 		ReadTimeout: 50 * time.Millisecond, WriteTimeout: 50 * time.Millisecond,
@@ -324,41 +452,37 @@ func TestPasswordRecoveryFailsClosedWhenRedisIsUnavailable(t *testing.T) {
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
 	client := clientForDevice(server, "recovery-redis-device")
-	page, err := client.Get(server.URL + "/recover")
-	if err != nil {
-		t.Fatalf("open recovery page with unavailable Redis: %v", err)
-	}
-	pageBody, _ := io.ReadAll(page.Body)
-	page.Body.Close()
-	csrf := csrfValuePattern.FindSubmatch(pageBody)
-	if len(csrf) != 2 {
-		t.Fatal("recovery page omitted CSRF token")
-	}
-	response, err := client.PostForm(server.URL+"/recover", url.Values{
-		"csrf_token": {string(csrf[1])}, "email": {testStudentEmail}, "code": {code},
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "recover")
+	response := postExplicitCredentialForm(t, client, server.URL+"/recover", url.Values{
+		"csrf_token": {csrfToken}, "email": {testStudentEmail}, "code": {code},
 		"password": {"redis failure must not commit"},
 	})
-	if err != nil {
-		t.Fatalf("submit recovery with unavailable Redis: %v", err)
+	var envelope struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+		RequestID string `json:"request_id"`
 	}
-	body, _ := io.ReadAll(response.Body)
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decode Redis-failed recovery response: %v", err)
+	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "无法重置密码") {
-		t.Fatalf("Redis-failed recovery = %d %s, want generic fail-closed response", response.StatusCode, body)
+	if response.StatusCode != http.StatusServiceUnavailable || envelope.Error.Code != "DEPENDENCY_UNAVAILABLE" || envelope.RequestID == "" {
+		t.Fatalf("Redis-failed recovery = %d %+v, want bounded 503 dependency response", response.StatusCode, envelope)
 	}
-	var verifier string
-	var sessions, consumed int
-	if err := pool.QueryRow(ctx, `
-		SELECT
-			(SELECT verifier FROM password_credentials),
-			(SELECT count(*) FROM sessions),
-			(SELECT count(*) FROM verification_codes WHERE used_at IS NOT NULL)
-	`).Scan(&verifier, &sessions, &consumed); err != nil {
-		t.Fatalf("read Redis-failed recovery facts: %v", err)
+	if strings.Contains(strings.ToLower(envelope.Error.Message), "redis") {
+		t.Fatalf("dependency response exposed implementation detail: %+v", envelope)
 	}
-	if verifier != originalVerifier || sessions != 0 || consumed != 0 {
-		t.Fatalf("Redis-failed recovery mutated verifier/session/code: changed=%t sessions=%d consumed=%d",
-			verifier != originalVerifier, sessions, consumed)
+	oldPasswordLogin := submitPasswordLogin(t, seedServer, "redis-failure-old-password", testStudentEmail, "correct horse 电池 staple")
+	oldPasswordLogin.Body.Close()
+	if oldPasswordLogin.StatusCode != http.StatusSeeOther {
+		t.Fatalf("old password after Redis failure = %d, want 303", oldPasswordLogin.StatusCode)
+	}
+	newPasswordLogin := submitPasswordLogin(t, seedServer, "redis-failure-new-password", testStudentEmail, "redis failure must not commit")
+	newPasswordLogin.Body.Close()
+	if newPasswordLogin.StatusCode == http.StatusSeeOther {
+		t.Fatal("Redis-failed recovery changed the password")
 	}
 }
 

@@ -25,6 +25,55 @@ import (
 var csrfValuePattern = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
 var returnToValuePattern = regexp.MustCompile(`name="return_to" value="([^"]*)"`)
 
+func TestExplicitAccountRegistrationReturnsStatusWithoutHTML(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "explicit-registration-device")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+
+	csrfToken := accountBootstrapCSRF(t, client, server.URL, "register")
+
+	requested := postExplicitCredentialForm(t, client, server.URL+"/register/code", url.Values{
+		"csrf_token": {csrfToken}, "email": {testStudentEmail},
+		"return_to": {"/api/v1/auth/login?return_to=%2Faccount%2Fsecurity"},
+	})
+	requestedBody, _ := io.ReadAll(requested.Body)
+	requested.Body.Close()
+	if requested.StatusCode != http.StatusNoContent || len(requestedBody) != 0 {
+		t.Fatalf("explicit registration-code request = %d %q, want empty 204", requested.StatusCode, requestedBody)
+	}
+
+	sender := &captureSender{messageID: "provider_explicit_registration"}
+	worker, err := mailworker.New(store.New(pool), sender, "worker_explicit_registration", testVerificationEncryptionKey, time.Minute, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
+		t.Fatalf("deliver explicit registration code: outcome=%+v err=%v", outcome, err)
+	}
+	registered := postExplicitCredentialForm(t, client, server.URL+"/register", url.Values{
+		"csrf_token": {csrfToken}, "display_name": {"小河同学"},
+		"email": {testStudentEmail}, "code": {sender.lastMessage().Code},
+		"password":  {"correct horse 电池 staple"},
+		"return_to": {"/api/v1/auth/login?return_to=%2Faccount%2Fsecurity"},
+	})
+	registeredBody, _ := io.ReadAll(registered.Body)
+	registered.Body.Close()
+	if registered.StatusCode != http.StatusNoContent || registered.Header.Get("Location") != "" || len(registeredBody) != 0 {
+		t.Fatalf("explicit registration = %d location=%q body=%q, want empty 204", registered.StatusCode, registered.Header.Get("Location"), registeredBody)
+	}
+	accountURL, _ := url.Parse(server.URL)
+	var hasCoreSession bool
+	for _, cookie := range client.Jar.Cookies(accountURL) {
+		hasCoreSession = hasCoreSession || cookie.Name == "__Host-henukit_core_session" && cookie.Value != ""
+	}
+	if !hasCoreSession {
+		t.Fatal("explicit registration did not establish the Core Session")
+	}
+}
+
 func submitPasswordLogin(t *testing.T, server *httptest.Server, deviceID, email, passwordValue string) *http.Response {
 	t.Helper()
 	client := clientForDevice(server, deviceID)
