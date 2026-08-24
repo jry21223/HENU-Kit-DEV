@@ -21,11 +21,11 @@ export default function CareerNoProfileView() {
           <span className="mx-2">/</span>
           PROFILE REQUIRED
         </p>
-        <h2 data-enter className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+        <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
           先完成求职画像，再开始扫描
-        </h2>
+        </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
-          求职雷达根据你的画像匹配受控招聘来源。目前画像尚未设置，
+          求职雷达根据你的画像匹配受控官方招聘来源。目前画像尚未设置，
           完成画像后即可发起首次扫描。
         </p>
         <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">

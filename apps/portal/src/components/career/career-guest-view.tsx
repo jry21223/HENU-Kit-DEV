@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import CareerRadarVisual from "@/components/career/career-radar-visual";
+import WorkRadar from "@/components/career/work-radar";
 import { useReveal } from "@/components/account/use-reveal";
 
 const FEATURES = [
   "后台异步扫描，无需守在页面",
   "匹配结果与命中原因一目了然",
-  "完成后邮件送达结果简报",
+  "完成后向已验证的账户邮箱发送结果简报",
 ];
 
 /** 未登录：产品介绍 + 雷达视觉 + 登录 CTA，不含任何个人数据。 */
@@ -23,12 +23,12 @@ export default function CareerGuestView() {
             <span className="mx-2">/</span>
             WORK RADAR
           </p>
-          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+          <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
             让雷达替你扫一遍招聘信息
-          </h2>
+          </h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">
-            设定求职画像，后台异步扫描受控招聘来源，
-            匹配结果与命中原因一目了然，完成后自动发送结果简报至当前账户邮箱。
+            设定求职画像，后台异步扫描受控官方招聘来源，
+            匹配结果与命中原因一目了然，完成后自动把结果简报发送到已验证的账户邮箱。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {FEATURES.map((f) => (
@@ -47,7 +47,7 @@ export default function CareerGuestView() {
         </div>
 
         <div data-enter className="flex items-center justify-center">
-          <CareerRadarVisual />
+          <WorkRadar compact schematic className="w-full" />
         </div>
       </div>
     </section>

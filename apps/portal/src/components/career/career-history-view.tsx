@@ -27,9 +27,9 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           <span className="mx-2">/</span>
           SIGN IN REQUIRED
         </p>
-        <h2 data-enter className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+        <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
           登录后查看扫描历史
-        </h2>
+        </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
           扫描历史按账户保存。登录后即可查看每次扫描的状态与结果记录。
         </p>
@@ -52,9 +52,9 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           <span className="mx-2">/</span>
           LIFETIME REQUIRED
         </p>
-        <h2 data-enter className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+        <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
           扫描历史属于 Lifetime VIP 权益
-        </h2>
+        </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
           当前账户不是 Lifetime VIP 会员，无法查看求职雷达的扫描历史。
           开通后即可发起扫描并查看每次任务的记录。
@@ -78,9 +78,9 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           <span className="mx-2">/</span>
           PROFILE REQUIRED
         </p>
-        <h2 data-enter className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+        <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
           先完成求职画像，再开始扫描
-        </h2>
+        </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
           完成求职画像后才能发起扫描，扫描记录也会在这里汇总。
         </p>
@@ -102,8 +102,15 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         role="alert"
         className="mt-10 max-w-2xl border border-accent px-5 py-6"
       >
-        <p className="font-mono text-xs tracking-[0.14em] text-accent">HISTORY UNAVAILABLE</p>
-        <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent">R-02</span>
+          <span className="mx-2">/</span>
+          HISTORY UNAVAILABLE
+        </p>
+        <h1 className="mt-3 font-display text-2xl font-bold tracking-tight md:text-3xl">
+          扫描历史暂时不可用
+        </h1>
+        <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>
         <p className="mt-3 text-sm leading-6 text-ink/60">
           扫描历史读取失败时，不会以本地或会话数据替代真实记录。
         </p>
@@ -122,9 +129,16 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
   if (searches.length === 0) {
     return (
       <section data-career-history-state="empty" className="mt-10">
-        <div data-enter className="max-w-2xl border border-line px-5 py-12 text-center">
-          <p className="font-mono text-xs tracking-[0.25em] text-ink/40">NO SCAN RECORDS</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">
+        <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent">R-02</span>
+          <span className="mx-2">/</span>
+          NO SCAN RECORDS
+        </p>
+        <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
+          扫描历史
+        </h1>
+        <div data-enter className="mt-8 max-w-2xl border border-line px-5 py-12 text-center">
+          <p className="text-sm leading-6 text-ink/60">
             还没有扫描记录。发起第一次扫描后，任务状态与结果会汇总在这里。
           </p>
           <Link
@@ -140,7 +154,15 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
 
   return (
     <section data-career-history-state="ready" className="mt-10">
-      <div className="max-w-3xl">
+      <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
+        <span className="text-accent">R-02</span>
+        <span className="mx-2">/</span>
+        SCAN HISTORY
+      </p>
+      <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
+        扫描历史
+      </h1>
+      <div className="mt-8 max-w-3xl">
         <ul data-enter className="divide-y divide-line border border-line">
           {searches.map((search) => (
             <li key={search.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">

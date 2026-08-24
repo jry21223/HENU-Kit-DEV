@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useReveal } from "@/components/account/use-reveal";
 
 const BENEFITS = [
-  "后台异步扫描受控招聘来源",
+  "后台异步扫描受控官方招聘来源",
   "匹配结果与命中原因一目了然",
-  "完成后自动发送结果简报至账户邮箱",
+  "完成后向已验证的账户邮箱发送结果简报",
 ];
 
 /** 已登录但非 Lifetime：产品介绍 + 会员权益说明 + ¥9.9 购买 CTA；无任何可执行的扫描入口。 */
@@ -22,12 +22,12 @@ export default function CareerFreeView() {
             <span className="mx-2">/</span>
             WORK RADAR
           </p>
-          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+          <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
             求职雷达属于 Lifetime VIP 权益
-          </h2>
+          </h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">
-            设定求职画像，后台异步扫描受控招聘来源，
-            匹配结果与命中原因一目了然，完成后自动发送结果简报至当前账户邮箱。
+            设定求职画像，后台异步扫描受控官方招聘来源，
+            匹配结果与命中原因一目了然，完成后自动把结果简报发送到已验证的账户邮箱。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {BENEFITS.map((b) => (

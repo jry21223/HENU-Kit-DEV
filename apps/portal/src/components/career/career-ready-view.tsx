@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReveal } from "@/components/account/use-reveal";
 import CareerScanStatusPanel from "@/components/career/career-scan-status-panel";
+import WorkRadar from "@/components/career/work-radar";
+import type { WorkRadarStatus } from "@/components/career/work-radar";
 import { formatPortalError } from "@/lib/api/client";
 import type { CareerJobType, CareerProfile, CareerSearch } from "@/lib/api/types";
 import {
@@ -11,6 +13,7 @@ import {
   careerSearchStatusLabel,
   formatCareerSearchTime,
 } from "@/lib/career/career-scan-state";
+import type { CareerScanPollState } from "@/lib/career/career-scan-state";
 import {
   careerLifetimeRequiredMessage,
   careerSearchCreateErrorMessage,
@@ -33,6 +36,15 @@ type ScanState =
   | { kind: "starting" }
   | { kind: "error"; message: string };
 
+/** 表盘状态映射：只反映服务端确认的任务状态，不自行编造进度。 */
+function radarStatusFor(scan: ScanState, poll: CareerScanPollState | null): WorkRadarStatus {
+  if (scan.kind === "starting" || scan.kind === "restoring") return "queued";
+  if (!poll) return "idle";
+  if (poll.kind === "completed") return "completed";
+  if (poll.kind === "failed") return "failed";
+  return poll.search.status === "queued" ? "queued" : "running";
+}
+
 /** Lifetime 且画像就绪：画像摘要 + 开始扫描 + 异步状态跟踪（#402）+ 历史入口。 */
 export default function CareerReadyView({
   profile,
@@ -50,12 +62,33 @@ export default function CareerReadyView({
   // 幂等键：创建成功即消费置空；失败保留供重试复用，网关只会创建一次任务。
   const idempotencyKey = useRef<string | null>(null);
   const restoreVersion = useRef(0);
+  // 深链（邮件 / 历史「查看详情」）只决定进入页面时恢复哪条任务。本次会话
+  // 手动发起新扫描后深链即作废——否则窗口重新获得焦点触发的恢复会把正在跑
+  // 的新任务顶回那条历史记录。用 ref 而非 state：它不该自己触发一次恢复。
+  const deepLinkConsumed = useRef(false);
   const { state: pollState, isPolling, start: startPolling } = useCareerSearchPolling();
 
   const latest = searches[0] ?? null;
-  // A historical deep link drives the result panel, but must not relabel that
-  // older task as the account's latest scan in the sidebar.
-  const displayedLatest = requestedSearchID ? latest : pollState?.search ?? latest;
+  const latestID = latest?.id ?? null;
+  const latestStatus = latest?.status ?? null;
+  // 恢复逻辑要读完整的 latest，但它不能进依赖数组：父页面在窗口重新获得焦点
+  // 时会重新拉取历史，每次都是新数组，按对象身份做依赖会把正在进行的轮询
+  // 反复重启。声明顺序保证这条同步 effect 先于下面的恢复 effect 执行。
+  const latestRef = useRef<CareerSearch | null>(latest);
+  useEffect(() => {
+    latestRef.current = latest;
+  }, [latest]);
+
+  // 侧栏「最近一次」= 账户最新的一条。刚发起的扫描服务端列表还没刷新，用轮询
+  // 里的那条补位；深链打开的是历史任务，绝不能被贴上「最近一次」的标签，
+  // 因此只有它确实比列表里那条更新时才补位。
+  const polled = pollState?.search ?? null;
+  const polledAt = polled ? Date.parse(polled.created_at) : Number.NaN;
+  const latestAt = latest ? Date.parse(latest.created_at) : Number.NaN;
+  const displayedLatest =
+    polled && (!latest || (Number.isFinite(polledAt) && Number.isFinite(latestAt) && polledAt >= latestAt))
+      ? polled
+      : latest;
 
   // 邮件/历史深链必须读取 actor-scoped 的指定任务；普通刷新则恢复最近一条。
   // completed 列表只带有界摘要，因此仍通过单条状态接口读取完整岗位。
@@ -65,15 +98,16 @@ export default function CareerReadyView({
     const restore = async () => {
       await Promise.resolve();
       if (cancelled || version !== restoreVersion.current) return;
-      const selected = requestedSearchID ? null : latest;
-      if (!requestedSearchID && !selected) {
+      const deepLinkID = deepLinkConsumed.current ? null : requestedSearchID;
+      const selected = deepLinkID ? null : latestRef.current;
+      if (!deepLinkID && !selected) {
         if (!cancelled && version === restoreVersion.current) setScan({ kind: "idle" });
         return;
       }
-      setScan({ kind: "restoring" });
       try {
-        if (requestedSearchID || selected?.status === "completed") {
-          const response = await requestCareerSearchStatus(requestedSearchID ?? selected!.id);
+        if (deepLinkID || selected?.status === "completed") {
+          setScan({ kind: "restoring" });
+          const response = await requestCareerSearchStatus(deepLinkID ?? selected!.id);
           if (!cancelled && version === restoreVersion.current) {
             startPolling(response.search);
             setScan({ kind: "idle" });
@@ -94,7 +128,7 @@ export default function CareerReadyView({
     return () => {
       cancelled = true;
     };
-  }, [latest, requestedSearchID, startPolling]);
+  }, [latestID, latestStatus, requestedSearchID, startPolling]);
 
   const startScan = useCallback(async () => {
     if (scan.kind === "starting" || scan.kind === "restoring" || isPolling) return;
@@ -118,6 +152,8 @@ export default function CareerReadyView({
       );
       // 创建成功即消费幂等键：之后的重试 / 重新扫描会生成新键，创建新任务。
       idempotencyKey.current = null;
+      // 新任务接管面板，深链失效。
+      deepLinkConsumed.current = true;
       setScan({ kind: "idle" });
       startPolling(response.search);
     } catch (error) {
@@ -131,6 +167,10 @@ export default function CareerReadyView({
     }
   }, [profile, scan.kind, isPolling, startPolling]);
 
+  const radarStatus = radarStatusFor(scan, pollState);
+  const radarMatched =
+    pollState?.kind === "completed" ? pollState.search.result?.matched_count ?? null : null;
+
   return (
     <section data-career-state="lifetime-ready" className="mt-10">
       <div className="grid gap-10 lg:grid-cols-5">
@@ -140,9 +180,9 @@ export default function CareerReadyView({
             <span className="mx-2">/</span>
             READY TO SCAN
           </p>
-          <h2 data-enter className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+          <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
             求职画像已就绪
-          </h2>
+          </h1>
 
           <dl data-enter className="mt-8 grid gap-x-10 gap-y-5 border-t border-line pt-6 sm:grid-cols-2">
             <div>
@@ -210,6 +250,9 @@ export default function CareerReadyView({
         </div>
 
         <aside data-enter className="lg:col-span-2">
+          {/* 表盘只反映服务端确认的状态；具体计数由下方状态区给出，避免两处读数打架。 */}
+          <WorkRadar compact status={radarStatus} matched={radarMatched} className="mb-6" />
+
           <div className="border border-line p-5">
             <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.22em] text-ink/50">
               <span>SCAN HISTORY</span>

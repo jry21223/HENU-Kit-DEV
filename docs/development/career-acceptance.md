@@ -121,7 +121,7 @@ cd apps/portal && pnpm test && pnpm typecheck
 | 扫描状态机轮询、终态即停、瞬态失败继续轮询 | `src/lib/career/career-scan-state.test.ts`（12 用例） |
 | API client：403 门 / 401 / 503 不透传 mock | `src/lib/career/gateway.test.ts`（6 用例） |
 | 画像设置 API（Console A-08 与 /career 共用） | `src/lib/api/career-profile.test.ts` |
-| reduced-motion：雷达动画以 `prefers-reduced-motion: no-preference` 门控，reduced 时静态 | `src/components/career/career-radar-visual.tsx`、`work-radar.tsx`（#406） |
+| reduced-motion：雷达动画以 `prefers-reduced-motion: no-preference` 门控，reduced 时静态 | `src/components/career/work-radar.tsx`（#406） |
 
 ## 2. 失败/恢复矩阵
 
@@ -198,9 +198,12 @@ map）即停掉全部来源，无需改代码、无需新开关。空 allowlist 
 
 ### 5.4 前端守门
 
-- reduced-motion：雷达动画（`career-radar-visual.tsx`、`work-radar.tsx`）均以
+- reduced-motion：雷达动画（`work-radar.tsx`，模块内唯一的表盘组件）以
   `(prefers-reduced-motion: no-preference)` 门控，reduced-motion 用户看到静态
-  展示。
+  展示：光束不转、命中呼吸的涟漪圈保持 `opacity=0`、目标点保持墨色。
+- 表盘读数只渲染服务端确认过的数字，未知一律显示「—」；`schematic` 模式
+  （首页 05 区块、未登录介绍页）表头标 `SCHEMATIC` 且完全不渲染读数区，
+  装饰表盘不会被读成真实扫描结果。
 - 状态机/四态/权限门文案均经单元测试覆盖；生产模式失败不静默回退 mock
   （`gateway.test.ts`）。
 
