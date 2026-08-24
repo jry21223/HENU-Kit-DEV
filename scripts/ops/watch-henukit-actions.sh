@@ -370,6 +370,10 @@ expected_name() {
         "$candidate" == "henukit-runtime-${release_sha}.tar.gz.sha256" ]]; then
     return 0
   fi
+  if [[ "$signature_policy" == "unsigned" &&
+        "$candidate" == "oauth-continuation-${release_sha}.env" ]]; then
+    return 0
+  fi
   [[ "$signature_policy" == "signed" &&
      ( "$candidate" == "henukit-release-${release_sha}.manifest" ||
        "$candidate" == "henukit-release-${release_sha}.manifest.sig" ) ]]
@@ -422,6 +426,24 @@ verify_artifact_dir() {
     done
     sha256sum -c "henukit-runtime-${release_sha}.tar.gz.sha256" || exit 1
   ) >&2 || die "artifact checksum verification failed"
+}
+
+verify_workflow_continuation_gate_receipt() {
+  local artifact_dir="$1"
+  local release_dir="$2"
+  local release_sha="$3"
+  local receipt="$artifact_dir/oauth-continuation-${release_sha}.env"
+  local packaged_receipt="$release_dir/release-gates/oauth-continuation.env"
+
+  [[ -e "$receipt" || -L "$receipt" ]] ||
+    die "workflow continuation gate receipt is missing"
+  [[ -f "$receipt" && -r "$receipt" && -s "$receipt" && ! -L "$receipt" ]] ||
+    die "workflow continuation gate receipt must be a readable regular non-symlink file"
+  [[ -f "$packaged_receipt" && -r "$packaged_receipt" && -s "$packaged_receipt" &&
+     ! -L "$packaged_receipt" ]] ||
+    die "packaged runtime has no continuation gate receipt"
+  cmp -s "$receipt" "$packaged_receipt" ||
+    die "continuation gate receipt does not match the packaged runtime"
 }
 
 download_artifacts() {
@@ -1484,6 +1506,9 @@ deploy_release() {
     die "release directory SHA does not match the workflow run"
   [[ -x "$release_dir/bin/deploy-henukit-artifact.sh" ]] ||
     die "release directory has no executable deployment helper"
+  if [[ -z "$artifact_override" ]]; then
+    verify_workflow_continuation_gate_receipt "$artifact_dir" "$release_dir" "$release_sha"
+  fi
   verify_account_boundary_manifest "$release_dir" "$release_sha"
 
   if ! release_is_approved "$release_sha"; then
