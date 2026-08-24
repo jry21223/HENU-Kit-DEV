@@ -547,13 +547,39 @@ Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
 `000006` and `000007` remain service-owned startup migrations.
 
-If activation fails, the watcher invokes the previous fixed-SHA helper with the
-pre-release environment snapshot before the outer command restores that file,
-so running containers and disk state agree. A crash after the new containers
+Before a normal rollback-protected activation, the root-owned watcher binds the
+candidate and previous release SHAs to hashes of the previous Compose file, the
+root-only rollback environment snapshot, and the materials-runtime manifest.
+Both releases must carry byte-identical, valid materials manifests; a normal
+release that changes that payload is refused until it has a separately reviewed
+atomic materials rollback. Both normal activation and explicitly authorized
+degraded-baseline recovery capture whether the approved materials path was
+enabled or disabled and whether the main deploy receiver was present and active.
+The watcher temporarily disables the path, waits for any already-started runner
+to drain without stopping it, and restores and verifies the captured state on
+success or rollback. That state and the mode-specific rollback hashes are
+recorded in an immutable candidate-SHA attempt contract, so a watcher restart
+reconciles the in-flight candidate before consulting a newer GitHub run. A
+failed, masked, missing, or otherwise ambiguous systemd state is never treated
+as inactive or disabled.
+If activation fails while the previous exact image set and materials control
+plane remain healthy (for example, a migration failed before Compose switched
+containers), the watcher verifies them in place and does not replay migrations.
+After a normal container switch, the watcher uses only the bound previous
+Compose file and rollback environment to restore the previous fixed-SHA images,
+without executing either release's deployment helper or replaying owner
+migrations. Explicit degraded recovery retains its separately authorized
+previous-helper restoration path. Both modes then restore and verify materials
+service state. A crash after the new containers
 become healthy but before the grant is recorded converges on the next run: the
 active SHA path re-invokes Platform Core's idempotent audited grant before it
 writes `last-activated-sha`. Migration `000018` is itself safe to reapply after
 a later release step fails.
+
+The immutable degraded-recovery authorization and terminal audits permanently
+reserve their candidate SHA. If an authorized degraded attempt restores its
+baseline instead of activating, retry with a newly reviewed candidate commit
+and a new exact-SHA approval; the failed candidate SHA cannot be re-approved.
 
 The defaults assume SSH key access to `root@metaview.top` and gateway directory
 `/root/epay-gateway`; override only with

@@ -20,6 +20,15 @@ test("the materials mount stays an explicit bind when runtime packaging disables
   );
 });
 
+test("runtime binaries omit VCS metadata so unchanged materials remain rollback-compatible", () => {
+  const source = readFileSync(packager, "utf8");
+  const buildLines = source.split("\n").filter((line) => line.trim().startsWith("go build "));
+  assert.equal(buildLines.length, 5);
+  for (const line of buildLines) {
+    assert.match(line, /go build -buildvcs=false -trimpath /);
+  }
+});
+
 test("the shared runtime packager produces the same fixed-SHA operator payload for local and Actions builds", () => {
   const outputDirectory = mkdtempSync(join(tmpdir(), "henukit-runtime-package-"));
   const binDirectory = join(outputDirectory, "bin");

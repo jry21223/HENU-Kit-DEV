@@ -26,6 +26,7 @@ Optional configuration:
   HENUKIT_BACKUP_ROOT    Platform and Account Portfolio backups (default: /opt/henukit-backups)
   HENUKIT_STATE_ROOT     Watcher state and lock (default: /var/lib/henukit-actions-watch)
   HENUKIT_POLL_SECONDS   Watch interval (default: 60)
+  HENUKIT_ACTIVE_RELEASE_ATTEMPTS Readiness attempts per activation (default: 30)
   HENUKIT_PUBLIC_BASE_URL Public smoke-test base URL
   HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE Active role receiving Account Console permissions
   HENUKIT_PLATFORM_MIGRATIONS Comma-separated reviewed Platform Core migrations
@@ -76,6 +77,7 @@ release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
 backup_root="${HENUKIT_BACKUP_ROOT:-/opt/henukit-backups}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
 poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
+active_release_attempts="${HENUKIT_ACTIVE_RELEASE_ATTEMPTS:-30}"
 public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
 account_public_origin="https://henukit.cn"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
@@ -103,15 +105,19 @@ conditional_images=()
   die "HENUKIT_ROLLBACK_ENV_FILE must point to a readable, non-symlink environment file"
 [[ -r "$token_file" && -f "$token_file" ]] || die "GH_TOKEN_FILE must point to a readable regular file"
 [[ "$poll_seconds" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_POLL_SECONDS must be a positive integer"
+[[ "$active_release_attempts" =~ ^[1-9][0-9]*$ ]] ||
+  die "HENUKIT_ACTIVE_RELEASE_ATTEMPTS must be a positive integer"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
 [[ "$account_operator_role" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] ||
   die "HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE must name an explicit role using lowercase letters, digits, or hyphens"
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
+command -v cmp >/dev/null 2>&1 || die "cmp is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v flock >/dev/null 2>&1 || die "flock is required"
 command -v jq >/dev/null 2>&1 || die "jq is required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
+command -v systemctl >/dev/null 2>&1 || die "systemctl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
 
 file_mode() {
@@ -315,7 +321,8 @@ export GH_TOKEN
 install -d -m 0700 \
   "$staging_root" "$release_root" "$backup_root" "$state_root" \
   "$state_root/approvals" "$state_root/approvals/consumed" "$state_root/prepared" \
-  "$state_root/degraded-recoveries"
+  "$state_root/degraded-recoveries" \
+  "$state_root/rollback-contracts/pending" "$state_root/rollback-contracts/completed"
 scratch_dirs=()
 restore_database=""
 restore_account_database=""
@@ -501,7 +508,7 @@ stage_local_artifacts() {
 
 active_release_matches() {
   local release_sha="$1"
-  local running image index service
+  local running image index service tagged_image
   running="$(docker ps --format '{{.Image}}')"
   for image in "${base_images[@]}"; do
     if [[ "$image" == "henukit-portal-summary" ]]; then
@@ -524,6 +531,12 @@ active_release_matches() {
       grep -Fqx "${conditional_images[$index]}:${release_sha}" <<<"$running" || return 1
     fi
   done
+  # A previous release is not exact when a partial candidate switch left any
+  # additional HENU image on a different SHA. This prevents rollback from
+  # treating a mixed runtime as an already-healthy previous release.
+  while IFS= read -r tagged_image; do
+    [[ "${tagged_image##*:}" == "$release_sha" ]] || return 1
+  done < <(grep -E '^henukit-[a-z0-9-]+:[0-9a-f]{40}$' <<<"$running" || true)
 }
 
 degraded_baseline_matches() {
@@ -600,6 +613,12 @@ account_portfolio_is_healthy() {
   container_is_healthy "$account_portfolio_container"
 }
 
+legacy_runtime_is_absent() {
+  local legacy_names
+  legacy_names='^(henukit-)?(study-api|study-worker|quizcraft-api|quizcraft-web)(-|$)'
+  ! docker ps -a --format '{{.Names}}' | grep -E "$legacy_names" >/dev/null
+}
+
 current_release_sha() {
   local running image line found_sha image_sha
   running="$(docker ps --format '{{.Image}}')" || return 1
@@ -659,6 +678,7 @@ verify_active_release() {
   local release_sha="$1"
   local account_portfolio_state account_status callback_status practice_state service index
   active_release_matches "$release_sha" || return 1
+  legacy_runtime_is_absent || return 1
   if release_uses_account_portfolio "$release_sha"; then
     account_portfolio_state=0
   else
@@ -716,12 +736,12 @@ verify_active_release() {
 wait_for_active_release() {
   local release_sha="$1"
   local attempt
-  for ((attempt = 1; attempt <= 30; attempt++)); do
+  for ((attempt = 1; attempt <= active_release_attempts; attempt++)); do
     if verify_active_release "$release_sha"; then
       return 0
     fi
-    if ((attempt < 30)); then
-      log "release $release_sha is not ready yet (attempt $attempt/30)"
+    if ((attempt < active_release_attempts)); then
+      log "release $release_sha is not ready yet (attempt $attempt/$active_release_attempts)"
       sleep 2
     fi
   done
@@ -743,6 +763,8 @@ record_activation() {
   printf '%s\n' "$release_sha" > "$temporary"
   chmod 0600 "$temporary"
   mv "$temporary" "$state_root/last-activated-sha"
+  complete_rollback_state_contract "$release_sha" ||
+    die "could not complete rollback state contract for activated release $release_sha"
 }
 
 ensure_account_portfolio_database() {
@@ -772,15 +794,24 @@ prepare_backup() {
   local account_backup_file account_backup_sha account_backup_size account_schema_present account_restored_counts
   local marker_incoming
 
-  if [[ "$refresh" != "yes" && -s "$marker" ]]; then
+  if [[ "$refresh" != "yes" && ( -e "$marker" || -L "$marker" ) ]]; then
+    trusted_root_file "$marker" "prepared backup marker"
+    [[ -s "$marker" ]] || die "prepared backup marker is empty"
+    [[ "$(file_mode "$marker")" == "600" || "$(file_mode "$marker")" == "400" ]] ||
+      die "prepared backup marker must have mode 600 or 400"
     backup_file="$(tr -d '\r\n' < "$marker")"
     [[ "$backup_file" == "$backup_root/"* ]] || die "prepared backup path is outside HENUKIT_BACKUP_ROOT"
     [[ -s "$backup_file" && -s "$backup_file.sha256" && -s "$backup_file.meta" ]] ||
       die "prepared backup evidence is incomplete"
+    trusted_root_file "$backup_file" "prepared Platform backup"
+    trusted_root_file "$backup_file.sha256" "prepared Platform backup checksum"
+    trusted_root_file "$backup_file.meta" "prepared backup metadata"
     account_backup_file="$(awk -F= '$1 == "account_portfolio_backup" { print substr($0, index($0, "=") + 1); exit }' "$backup_file.meta")"
     [[ "$account_backup_file" == "$backup_root/"* ]] || die "prepared Account Portfolio backup evidence is incomplete"
     [[ -s "$account_backup_file" && -s "$account_backup_file.sha256" ]] ||
       die "prepared Account Portfolio backup evidence is incomplete"
+    trusted_root_file "$account_backup_file" "prepared Account Portfolio backup"
+    trusted_root_file "$account_backup_file.sha256" "prepared Account Portfolio backup checksum"
     (cd "$backup_root" && sha256sum -c "$(basename "$backup_file").sha256") >&2 ||
       die "prepared backup checksum verification failed"
     (cd "$backup_root" && sha256sum -c "$(basename "$account_backup_file").sha256") >&2 ||
@@ -899,11 +930,12 @@ release_is_approved() {
   local release_sha="$1"
   local approval="$state_root/approvals/$release_sha"
   local approval_mode approval_owner
-  [[ -f "$approval" && -r "$approval" ]] || return 1
+  [[ -e "$approval" || -L "$approval" ]] || return 1
+  trusted_root_file "$approval" "exact-SHA approval"
   approval_mode="$(file_mode "$approval")"
   approval_owner="$(file_owner "$approval")"
   [[ "$approval_mode" == "600" || "$approval_mode" == "400" ]] || return 1
-  [[ "$approval_owner" == "$(id -u)" ]] || return 1
+  [[ "$approval_owner" == "0" ]] || return 1
   [[ "$(tr -d '\r\n' < "$approval")" == "$release_sha" ]]
 }
 
@@ -920,16 +952,345 @@ github_branch_head() {
   gh api "repos/$repo/branches/$branch" --jq '.commit.sha'
 }
 
+rollback_contract_previous_sha=""
+rollback_contract_candidate_sha=""
+rollback_contract_compose_sha=""
+rollback_contract_env_sha=""
+rollback_contract_materials_sha=""
+rollback_contract_materials_path_state=""
+rollback_contract_deploy_webhook_state=""
+rollback_contract_mode=""
+pending_approved_release_sha=""
+rollback_reconciliation_handled="0"
+
+rollback_state_contract_matches() {
+  local target="$1"
+  local candidate_sha="$2"
+  local previous_sha="$3"
+  local path_state="$4"
+  local deploy_state="$5"
+  local contract_mode="$6"
+  local compose_sha="$7"
+  local env_sha="$8"
+  local materials_sha="$9"
+  [[ -f "$target" && ! -L "$target" ]] || return 1
+  [[ "$(file_owner "$target")" == "$(id -u)" ]] || return 1
+  [[ "$(file_mode "$target")" == "400" ]] || return 1
+  [[ "$(grep -Fxc "candidate_sha=$candidate_sha" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "previous_sha=$previous_sha" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "materials_path_state=$path_state" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "deploy_webhook_state=$deploy_state" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "rollback_mode=$contract_mode" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "previous_compose_sha256=$compose_sha" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "rollback_env_sha256=$env_sha" "$target" || true)" == "1" ]] || return 1
+  [[ "$(grep -Fxc "materials_manifest_sha256=$materials_sha" "$target" || true)" == "1" ]] || return 1
+  [[ "$(wc -l < "$target" | tr -d '[:space:]')" == "8" ]]
+}
+
+persist_rollback_state_contract() {
+  local candidate_sha="$1"
+  local previous_sha="$2"
+  local path_state="$3"
+  local deploy_state="$4"
+  local contract_mode="$5"
+  local compose_sha="$6"
+  local env_sha="$7"
+  local materials_sha="$8"
+  local target="$state_root/rollback-contracts/pending/$candidate_sha"
+  local incoming="$state_root/rollback-contracts/pending/.${candidate_sha}.$$"
+  if [[ -e "$target" ]]; then
+    rollback_state_contract_matches \
+      "$target" "$candidate_sha" "$previous_sha" "$path_state" "$deploy_state" \
+      "$contract_mode" "$compose_sha" "$env_sha" "$materials_sha"
+    return
+  fi
+  umask 077
+  {
+    printf 'candidate_sha=%s\n' "$candidate_sha"
+    printf 'previous_sha=%s\n' "$previous_sha"
+    printf 'materials_path_state=%s\n' "$path_state"
+    printf 'deploy_webhook_state=%s\n' "$deploy_state"
+    printf 'rollback_mode=%s\n' "$contract_mode"
+    printf 'previous_compose_sha256=%s\n' "$compose_sha"
+    printf 'rollback_env_sha256=%s\n' "$env_sha"
+    printf 'materials_manifest_sha256=%s\n' "$materials_sha"
+  } > "$incoming"
+  chmod 0400 "$incoming"
+  mv "$incoming" "$target"
+}
+
+load_rollback_state_contract() {
+  local candidate_sha="$1"
+  local target="$state_root/rollback-contracts/pending/$candidate_sha"
+  local previous_sha path_state deploy_state contract_mode compose_sha env_sha materials_sha
+  previous_sha="$(awk -F= '$1 == "previous_sha" {print $2}' "$target" 2>/dev/null)"
+  path_state="$(awk -F= '$1 == "materials_path_state" {print $2}' "$target" 2>/dev/null)"
+  deploy_state="$(awk -F= '$1 == "deploy_webhook_state" {print $2}' "$target" 2>/dev/null)"
+  contract_mode="$(awk -F= '$1 == "rollback_mode" {print $2}' "$target" 2>/dev/null)"
+  compose_sha="$(awk -F= '$1 == "previous_compose_sha256" {print $2}' "$target" 2>/dev/null)"
+  env_sha="$(awk -F= '$1 == "rollback_env_sha256" {print $2}' "$target" 2>/dev/null)"
+  materials_sha="$(awk -F= '$1 == "materials_manifest_sha256" {print $2}' "$target" 2>/dev/null)"
+  [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ "$path_state" == "enabled" || "$path_state" == "disabled" ]] || return 1
+  [[ "$deploy_state" == "active" || "$deploy_state" == "absent" ]] || return 1
+  [[ "$contract_mode" == "normal" || "$contract_mode" == "degraded" ]] || return 1
+  [[ "$compose_sha" =~ ^[0-9a-f]{64}$ && "$env_sha" =~ ^[0-9a-f]{64}$ &&
+     "$materials_sha" =~ ^[0-9a-f]{64}$ ]] || return 1
+  rollback_state_contract_matches \
+    "$target" "$candidate_sha" "$previous_sha" "$path_state" "$deploy_state" \
+    "$contract_mode" "$compose_sha" "$env_sha" "$materials_sha" || return 1
+  rollback_contract_candidate_sha="$candidate_sha"
+  rollback_contract_previous_sha="$previous_sha"
+  rollback_contract_materials_path_state="$path_state"
+  rollback_contract_deploy_webhook_state="$deploy_state"
+  rollback_contract_mode="$contract_mode"
+  rollback_contract_compose_sha="$compose_sha"
+  rollback_contract_env_sha="$env_sha"
+  rollback_contract_materials_sha="$materials_sha"
+}
+
+complete_rollback_state_contract() {
+  local candidate_sha="$1"
+  local pending="$state_root/rollback-contracts/pending/$candidate_sha"
+  local completed timestamp sequence
+  [[ -e "$pending" ]] || return 0
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  sequence=0
+  while :; do
+    completed="$state_root/rollback-contracts/completed/${candidate_sha}.${timestamp}.$$.$sequence"
+    [[ -e "$completed" ]] || break
+    sequence=$((sequence + 1))
+  done
+  mv "$pending" "$completed" || return 1
+  if [[ "$pending_approved_release_sha" == "$candidate_sha" ]]; then
+    pending_approved_release_sha=""
+  fi
+}
+
+trusted_rollback_file() {
+  local path="$1"
+  [[ -f "$path" && -r "$path" && ! -L "$path" ]] || return 1
+  [[ "$(file_owner "$path")" == "0" ]] || return 1
+  (( (8#$(file_mode "$path") & 8#022) == 0 )) || return 1
+  trusted_root_parent_chain "$path" "rollback file"
+}
+
+systemd_unit_load_state() {
+  systemctl show -p LoadState --value "$1" 2>/dev/null
+}
+
+systemd_unit_active_state() {
+  systemctl show -p ActiveState --value "$1" 2>/dev/null
+}
+
+materials_path_state() {
+  systemctl is-enabled henukit-materials-webhook.path 2>/dev/null || true
+}
+
+deploy_webhook_state() {
+  local load_state
+  load_state="$(systemd_unit_load_state henukit-deploy-webhook.service)" || return 1
+  if [[ "$load_state" == "not-found" ]]; then
+    printf 'absent\n'
+  elif [[ "$load_state" == "loaded" &&
+          "$(systemd_unit_active_state henukit-deploy-webhook.service)" == "active" ]]; then
+    printf 'active\n'
+  else
+    return 1
+  fi
+}
+
+materials_control_plane_matches() {
+  local expected_path_state="$1"
+  local expected_deploy_webhook_state="$2"
+  local unit load_state actual_path_state actual_deploy_webhook_state
+  for unit in \
+    henukit-materials-webhook.service \
+    henukit-materials-runner.service \
+    henukit-materials-webhook.path; do
+    load_state="$(systemd_unit_load_state "$unit")" || return 1
+    [[ "$load_state" == "loaded" ]] || return 1
+  done
+  [[ "$(systemd_unit_active_state henukit-materials-webhook.service)" == "active" ]] || return 1
+  [[ "$(systemd_unit_active_state henukit-materials-runner.service)" == "inactive" ]] || return 1
+  actual_path_state="$(materials_path_state)"
+  [[ "$actual_path_state" == "$expected_path_state" ]] || return 1
+  actual_deploy_webhook_state="$(deploy_webhook_state)" || return 1
+  [[ "$actual_deploy_webhook_state" == "$expected_deploy_webhook_state" ]]
+}
+
+quiesce_materials_control_plane() {
+  systemctl disable --now henukit-materials-webhook.path >/dev/null 2>&1 || return 1
+  wait_for_materials_runner_inactive || return 1
+  materials_control_plane_matches disabled "$rollback_contract_deploy_webhook_state"
+}
+
+wait_for_materials_runner_inactive() {
+  local attempt
+  for ((attempt = 1; attempt <= 30; attempt++)); do
+    if [[ "$(systemd_unit_active_state henukit-materials-runner.service)" == "inactive" ]]; then
+      return 0
+    fi
+    ((attempt < 30)) && sleep 2
+  done
+  return 1
+}
+
+restore_materials_control_plane() {
+  systemctl daemon-reload || return 1
+  wait_for_materials_runner_inactive || return 1
+  systemctl restart henukit-materials-webhook.service || return 1
+  if [[ "$rollback_contract_deploy_webhook_state" == "active" ]]; then
+    [[ "$(systemd_unit_load_state henukit-deploy-webhook.service)" == "loaded" ]] || return 1
+    systemctl restart henukit-deploy-webhook.service || return 1
+  fi
+  case "$rollback_contract_materials_path_state" in
+    enabled) systemctl enable --now henukit-materials-webhook.path >/dev/null 2>&1 || return 1 ;;
+    disabled) systemctl disable --now henukit-materials-webhook.path >/dev/null 2>&1 || return 1 ;;
+    *) return 1 ;;
+  esac
+  wait_for_materials_runner_inactive || return 1
+  materials_control_plane_matches \
+    "$rollback_contract_materials_path_state" \
+    "$rollback_contract_deploy_webhook_state"
+}
+
+capture_materials_operational_state() {
+  local materials_path deploy_state
+  materials_path="$(materials_path_state)"
+  [[ "$materials_path" == "enabled" || "$materials_path" == "disabled" ]] || return 1
+  deploy_state="$(deploy_webhook_state)" || return 1
+  materials_control_plane_matches "$materials_path" "$deploy_state" || return 1
+  rollback_contract_materials_path_state="$materials_path"
+  rollback_contract_deploy_webhook_state="$deploy_state"
+}
+
+materials_manifest_is_valid() {
+  local materials_dir="$1"
+  (
+    cd "$materials_dir"
+    sha256sum --check --strict SHA256SUMS >/dev/null
+  )
+}
+
+rollback_contract_is_ready() {
+  local previous_sha="$1"
+  local candidate_sha="$2"
+  local previous_dir="$release_root/$previous_sha"
+  local candidate_dir="$release_root/$candidate_sha"
+  local previous_compose="$previous_dir/docker-compose.henukit.release.yml"
+  local previous_materials="$previous_dir/materials-runtime/SHA256SUMS"
+  local candidate_materials="$candidate_dir/materials-runtime/SHA256SUMS"
+  trusted_rollback_file "$rollback_env_file" || return 1
+  trusted_rollback_file "$previous_dir/RELEASE_SHA" || return 1
+  trusted_rollback_file "$previous_compose" || return 1
+  trusted_rollback_file "$previous_materials" || return 1
+  trusted_rollback_file "$candidate_materials" || return 1
+  [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA")" == "$previous_sha" ]] || return 1
+  materials_manifest_is_valid "$previous_dir/materials-runtime" || return 1
+  materials_manifest_is_valid "$candidate_dir/materials-runtime" || return 1
+  cmp --silent "$previous_materials" "$candidate_materials" || return 1
+}
+
+capture_rollback_contract() {
+  local previous_sha="$1"
+  local candidate_sha="$2"
+  local previous_dir="$release_root/$previous_sha"
+  rollback_contract_is_ready "$previous_sha" "$candidate_sha" || return 1
+  capture_materials_operational_state || return 1
+  rollback_contract_previous_sha="$previous_sha"
+  rollback_contract_candidate_sha="$candidate_sha"
+  rollback_contract_compose_sha="$(sha256sum "$previous_dir/docker-compose.henukit.release.yml" | awk '{print $1}')"
+  rollback_contract_env_sha="$(sha256sum "$rollback_env_file" | awk '{print $1}')"
+  rollback_contract_materials_sha="$(sha256sum "$previous_dir/materials-runtime/SHA256SUMS" | awk '{print $1}')"
+  rollback_contract_mode="normal"
+  [[ "$rollback_contract_compose_sha" =~ ^[0-9a-f]{64}$ &&
+     "$rollback_contract_env_sha" =~ ^[0-9a-f]{64}$ &&
+     "$rollback_contract_materials_sha" =~ ^[0-9a-f]{64}$ ]] || return 1
+  persist_rollback_state_contract \
+    "$candidate_sha" "$previous_sha" \
+    "$rollback_contract_materials_path_state" "$rollback_contract_deploy_webhook_state" \
+    normal \
+    "$rollback_contract_compose_sha" "$rollback_contract_env_sha" \
+    "$rollback_contract_materials_sha"
+}
+
+degraded_rollback_contract_is_ready() {
+  local previous_sha="$1"
+  local candidate_sha="$2"
+  local previous_dir="$release_root/$previous_sha"
+  local candidate_dir="$release_root/$candidate_sha"
+  [[ "$rollback_contract_mode" == "degraded" &&
+     "$rollback_contract_previous_sha" == "$previous_sha" &&
+     "$rollback_contract_candidate_sha" == "$candidate_sha" ]] || return 1
+  trusted_rollback_file "$rollback_env_file" || return 1
+  trusted_rollback_file "$previous_dir/RELEASE_SHA" || return 1
+  trusted_rollback_file "$previous_dir/docker-compose.henukit.release.yml" || return 1
+  trusted_rollback_file "$previous_dir/materials-runtime/SHA256SUMS" || return 1
+  trusted_rollback_file "$candidate_dir/materials-runtime/SHA256SUMS" || return 1
+  [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA")" == "$previous_sha" ]] || return 1
+  materials_manifest_is_valid "$previous_dir/materials-runtime" || return 1
+  materials_manifest_is_valid "$candidate_dir/materials-runtime" || return 1
+  [[ "$(sha256sum "$previous_dir/docker-compose.henukit.release.yml" | awk '{print $1}')" == "$rollback_contract_compose_sha" ]] || return 1
+  [[ "$(sha256sum "$rollback_env_file" | awk '{print $1}')" == "$rollback_contract_env_sha" ]] || return 1
+  [[ "$(sha256sum "$previous_dir/materials-runtime/SHA256SUMS" | awk '{print $1}')" == "$rollback_contract_materials_sha" ]]
+}
+
+capture_degraded_rollback_contract() {
+  local previous_sha="$1"
+  local candidate_sha="$2"
+  local previous_dir="$release_root/$previous_sha"
+  rollback_contract_previous_sha="$previous_sha"
+  rollback_contract_candidate_sha="$candidate_sha"
+  rollback_contract_mode="degraded"
+  capture_materials_operational_state || return 1
+  rollback_contract_compose_sha="$(sha256sum "$previous_dir/docker-compose.henukit.release.yml" | awk '{print $1}')"
+  rollback_contract_env_sha="$(sha256sum "$rollback_env_file" | awk '{print $1}')"
+  rollback_contract_materials_sha="$(sha256sum "$previous_dir/materials-runtime/SHA256SUMS" | awk '{print $1}')"
+  [[ "$rollback_contract_compose_sha" =~ ^[0-9a-f]{64}$ &&
+     "$rollback_contract_env_sha" =~ ^[0-9a-f]{64}$ &&
+     "$rollback_contract_materials_sha" =~ ^[0-9a-f]{64}$ ]] || return 1
+  degraded_rollback_contract_is_ready "$previous_sha" "$candidate_sha" || return 1
+  persist_rollback_state_contract \
+    "$candidate_sha" "$previous_sha" \
+    "$rollback_contract_materials_path_state" "$rollback_contract_deploy_webhook_state" \
+    degraded \
+    "$rollback_contract_compose_sha" "$rollback_contract_env_sha" \
+    "$rollback_contract_materials_sha"
+}
+
 rollback_release() {
   local previous_sha="$1"
+  local candidate_sha="$2"
   local previous_dir="$release_root/$previous_sha"
-  local previous_helper="$previous_dir/bin/deploy-henukit-artifact.sh"
+  local previous_compose="$previous_dir/docker-compose.henukit.release.yml"
+  local portal_deployed_at
+  local -a rollback_compose
   [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
   [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA" 2>/dev/null)" == "$previous_sha" ]] ||
     return 1
-  [[ -x "$previous_helper" ]] || return 1
+  [[ "$rollback_contract_previous_sha" == "$previous_sha" &&
+     "$rollback_contract_candidate_sha" == "$candidate_sha" &&
+     "$rollback_contract_mode" == "normal" ]] || return 1
+  rollback_contract_is_ready "$previous_sha" "$candidate_sha" || return 1
+  [[ "$(sha256sum "$previous_compose" | awk '{print $1}')" == "$rollback_contract_compose_sha" ]] || return 1
+  [[ "$(sha256sum "$rollback_env_file" | awk '{print $1}')" == "$rollback_contract_env_sha" ]] || return 1
+  [[ "$(sha256sum "$previous_dir/materials-runtime/SHA256SUMS" | awk '{print $1}')" == "$rollback_contract_materials_sha" ]] || return 1
+  if verify_active_release "$previous_sha"; then
+    restore_materials_control_plane || return 1
+    log "release $previous_sha remained active; rollback needs no runtime replacement"
+    return 0
+  fi
   log "rolling back to release $previous_sha"
-  "$previous_helper" "$previous_dir" "$rollback_env_file" || return 1
+  export RELEASE_SHA="$previous_sha"
+  export PORTAL_VERSION="$previous_sha"
+  portal_deployed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  [[ "$portal_deployed_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
+  export PORTAL_DEPLOYED_AT="$portal_deployed_at"
+  rollback_compose=(docker compose --env-file "$rollback_env_file" -f "$previous_compose")
+  "${rollback_compose[@]}" config --quiet || return 1
+  "${rollback_compose[@]}" up -d --remove-orphans || return 1
+  restore_materials_control_plane || return 1
   wait_for_active_release "$previous_sha"
 }
 
@@ -939,7 +1300,6 @@ rollback_release_is_ready() {
   [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
   [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA" 2>/dev/null)" == "$previous_sha" ]] ||
     return 1
-  [[ -x "$previous_dir/bin/deploy-henukit-artifact.sh" ]] || return 1
   verify_active_release "$previous_sha"
 }
 
@@ -1022,12 +1382,18 @@ fail_candidate_activation() {
   if [[ -n "$recovery_baseline_sha" ]]; then
     restore_degraded_baseline "$previous_sha" ||
       die "$phase failed and restoration of degraded baseline $previous_sha also failed"
+    restore_materials_control_plane ||
+      die "$phase failed; degraded baseline returned but materials operational state did not restore"
+    complete_rollback_state_contract "$release_sha" ||
+      die "$phase failed; degraded baseline returned but its state contract did not complete"
     ensure_degraded_recovery_audit \
       "$release_sha" "$previous_sha" restored_known_degraded_baseline restored
-    die "$phase failed; restored known degraded baseline $previous_sha"
+    die "$phase failed; restored known degraded baseline $previous_sha; retry requires a new candidate SHA"
   fi
-  rollback_release "$previous_sha" ||
+  rollback_release "$previous_sha" "$release_sha" ||
     die "$phase failed and rollback to $previous_sha also failed"
+  complete_rollback_state_contract "$release_sha" ||
+    die "$phase failed; rollback succeeded but its state contract did not complete"
   die "$phase failed; rolled back to $previous_sha"
 }
 
@@ -1037,11 +1403,26 @@ deploy_release() {
   local run_url="$3"
   local artifact_override="${4:-}"
   local artifact_dir runtime_archive release_dir release_incoming
-  local image helper previous_sha activation_status
+  local image helper previous_sha activation_status activation_record
 
   [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release source returned an invalid SHA"
+  if [[ -n "$pending_approved_release_sha" &&
+        "$pending_approved_release_sha" != "$release_sha" ]]; then
+    die "approved pending release $pending_approved_release_sha must finish or be withdrawn before release $release_sha"
+  fi
 
   if active_release_matches "$release_sha"; then
+    activation_record=""
+    if [[ -f "$state_root/last-activated-sha" ]]; then
+      activation_record="$(tr -d '[:space:]' < "$state_root/last-activated-sha")"
+    fi
+    if [[ "$activation_record" != "$release_sha" &&
+          -e "$state_root/rollback-contracts/pending/$release_sha" ]]; then
+      load_rollback_state_contract "$release_sha" ||
+        die "active release has an invalid pending rollback state contract"
+      restore_materials_control_plane ||
+        die "active release could not restore its captured materials operational state"
+    fi
     verify_active_release "$release_sha" || die "active release failed public health verification"
     if [[ -n "$recovery_baseline_sha" ]]; then
       degraded_recovery_audit_matches \
@@ -1062,7 +1443,8 @@ deploy_release() {
   fi
 
   if [[ -n "$recovery_baseline_sha" &&
-        -e "$state_root/degraded-recoveries/${release_sha}.authorized" ]]; then
+        -e "$state_root/degraded-recoveries/${release_sha}.authorized" &&
+        "$pending_approved_release_sha" != "$release_sha" ]]; then
     degraded_recovery_audit_matches \
       "$state_root/degraded-recoveries/${release_sha}.authorized" \
       "$release_sha" "$recovery_baseline_sha" authorized "*" ||
@@ -1072,7 +1454,7 @@ deploy_release() {
       die "prior degraded recovery is neither active nor restored to its exact baseline"
     ensure_degraded_recovery_audit \
       "$release_sha" "$recovery_baseline_sha" restored_known_degraded_baseline restored
-    die "prior degraded recovery attempt converged to the known degraded baseline; issue a new exact-SHA approval before retrying"
+    die "prior degraded recovery attempt converged to the known degraded baseline; retry requires a new candidate SHA"
   fi
 
   if [[ -n "$artifact_override" ]]; then
@@ -1120,14 +1502,24 @@ deploy_release() {
     if rollback_release_is_ready "$previous_sha"; then
       die "declared recovery baseline is healthy; use the normal rollback-protected activation path"
     fi
+    capture_degraded_rollback_contract "$previous_sha" "$release_sha" ||
+      die "declared recovery baseline could not bind its materials rollback contract"
     log "authorized degraded-baseline recovery from exact release $previous_sha"
   else
     previous_sha="$(current_release_sha 2>/dev/null || true)"
     rollback_release_is_ready "$previous_sha" ||
       die "no healthy fixed-SHA rollback release is ready; refusing production activation"
+    capture_rollback_contract "$previous_sha" "$release_sha" ||
+      die "candidate and previous releases do not satisfy the exact rollback contract; refusing production activation"
   fi
   prepared_backup_file=""
-  prepare_backup "$release_sha" yes
+  if [[ -n "$recovery_baseline_sha" &&
+        "$pending_approved_release_sha" == "$release_sha" &&
+        -e "$state_root/degraded-recoveries/${release_sha}.authorized" ]]; then
+    prepare_backup "$release_sha"
+  else
+    prepare_backup "$release_sha" yes
+  fi
   log "release $release_sha has a fresh verified pre-activation backup $prepared_backup_file"
   [[ "$(github_branch_head)" == "$release_sha" ]] ||
     die "GitHub branch head changed during preparation; refusing stale activation"
@@ -1140,6 +1532,12 @@ deploy_release() {
     log "loading ${image}:${release_sha}"
     gzip -dc "$artifact_dir/${image}-${release_sha}.docker.tar.gz" | docker load >/dev/null
   done
+
+  if ! quiesce_materials_control_plane; then
+    restore_materials_control_plane ||
+      die "materials quiesce failed and the captured operational state could not be restored"
+    die "materials quiesce failed; restored the captured operational state"
+  fi
 
   helper="$release_dir/bin/deploy-henukit-artifact.sh"
   set +e
@@ -1158,6 +1556,9 @@ deploy_release() {
   if ! wait_for_active_release "$release_sha"; then
     fail_candidate_activation "release verification" "$previous_sha" "$release_sha"
   fi
+  if ! restore_materials_control_plane; then
+    fail_candidate_activation "materials operational-state restoration" "$previous_sha" "$release_sha"
+  fi
   if ! grant_account_operator_permissions "$release_sha"; then
     fail_candidate_activation "permission grant" "$previous_sha" "$release_sha"
   fi
@@ -1168,8 +1569,94 @@ deploy_release() {
   log "release $release_sha activated and deterministic smoke checks passed; manual acceptance remains"
 }
 
+reconcile_pending_rollback_contract() {
+  local contract contract_candidate candidate_sha activation_record pending_count candidate_ready
+  rollback_reconciliation_handled="0"
+  pending_count=0
+  contract=""
+  for contract_candidate in "$state_root/rollback-contracts/pending/"*; do
+    [[ -e "$contract_candidate" ]] || continue
+    contract="$contract_candidate"
+    pending_count=$((pending_count + 1))
+  done
+  ((pending_count <= 1)) || die "multiple pending rollback contracts require operator reconciliation"
+  ((pending_count == 1)) || return 0
+
+  candidate_sha="$(basename "$contract")"
+  [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]] || die "pending rollback contract has an invalid candidate SHA"
+  activation_record=""
+  if [[ -f "$state_root/last-activated-sha" ]]; then
+    activation_record="$(tr -d '[:space:]' < "$state_root/last-activated-sha")"
+  fi
+  if [[ "$activation_record" == "$candidate_sha" ]]; then
+    complete_rollback_state_contract "$candidate_sha" ||
+      die "activated release has an incomplete rollback contract"
+    rollback_reconciliation_handled="1"
+    return 0
+  fi
+  if release_is_approved "$candidate_sha"; then
+    # The exact approval still exists, so activation has not consumed it yet.
+    pending_approved_release_sha="$candidate_sha"
+    return 0
+  fi
+
+  load_rollback_state_contract "$candidate_sha" ||
+    die "interrupted release has an invalid rollback state contract"
+  if [[ "$rollback_contract_mode" == "degraded" ]]; then
+    degraded_recovery_audit_matches \
+      "$state_root/degraded-recoveries/${candidate_sha}.authorized" \
+      "$candidate_sha" "$rollback_contract_previous_sha" authorized "*" ||
+      die "interrupted degraded recovery has no matching immutable authorization audit"
+  fi
+  if active_release_matches "$candidate_sha"; then
+    candidate_ready=0
+    if restore_materials_control_plane && wait_for_active_release "$candidate_sha"; then
+      if ! release_uses_account_portfolio "$candidate_sha" ||
+         grant_account_operator_permissions "$candidate_sha"; then
+        candidate_ready=1
+      fi
+    fi
+    if [[ "$candidate_ready" == "1" ]]; then
+      if [[ "$rollback_contract_mode" == "degraded" ]]; then
+        ensure_degraded_recovery_audit \
+          "$candidate_sha" "$rollback_contract_previous_sha" activated activated
+      fi
+      record_activation "$candidate_sha"
+      log "interrupted active release $candidate_sha converged from its persisted rollback contract"
+      rollback_reconciliation_handled="1"
+      return 0
+    fi
+    log "interrupted active release $candidate_sha failed convergence; restoring its persisted baseline"
+  fi
+
+  if [[ "$rollback_contract_mode" == "degraded" ]]; then
+    validate_degraded_baseline_authority "$rollback_contract_previous_sha"
+    degraded_rollback_contract_is_ready \
+      "$rollback_contract_previous_sha" "$candidate_sha" ||
+      die "interrupted degraded recovery contract no longer matches trusted disk state"
+    restore_degraded_baseline "$rollback_contract_previous_sha" ||
+      die "interrupted degraded recovery could not restore its exact baseline"
+    restore_materials_control_plane ||
+      die "interrupted degraded recovery could not restore materials operational state"
+    ensure_degraded_recovery_audit \
+      "$candidate_sha" "$rollback_contract_previous_sha" \
+      restored_known_degraded_baseline restored
+  else
+    rollback_release "$rollback_contract_previous_sha" "$candidate_sha" ||
+      die "interrupted release could not restore its persisted rollback contract"
+  fi
+  complete_rollback_state_contract "$candidate_sha" ||
+    die "interrupted release rollback succeeded but its contract did not complete"
+  if [[ "$rollback_contract_mode" == "degraded" ]]; then
+    die "interrupted degraded recovery $candidate_sha reconciled to $rollback_contract_previous_sha; retry requires a new candidate SHA"
+  fi
+  die "interrupted release $candidate_sha reconciled to $rollback_contract_previous_sha; issue a new exact-SHA approval before retrying"
+}
+
 check_once() {
   local run_row run_id release_sha run_status run_conclusion run_url branch_head
+  reconcile_pending_rollback_contract
+  [[ "$rollback_reconciliation_handled" == "0" ]] || return 0
   run_row="$(
     gh run list \
       --repo "$repo" \
@@ -1201,6 +1688,8 @@ check_once() {
 
 check_local_artifacts() {
   local branch_head
+  reconcile_pending_rollback_contract
+  [[ "$rollback_reconciliation_handled" == "0" ]] || return 0
   branch_head="$(github_branch_head)"
   [[ "$branch_head" =~ ^[0-9a-f]{40}$ ]] || die "GitHub returned an invalid $branch head SHA"
   [[ "$branch_head" == "$local_release_sha" ]] ||

@@ -117,13 +117,13 @@ docker run --rm --platform linux/amd64 \
   golang:1.26.6-alpine \
   sh -ceu '
     cd /src/services/deploy-webhook
-    go build -trimpath -ldflags="-s -w" -o /out/henukit-deploy-webhook ./cmd/server
-    go build -trimpath -ldflags="-s -w" -o /out/materials-oss-canary ./cmd/materials-oss-canary
-    go build -trimpath -ldflags="-s -w" -o /out/materials-oss-release ./cmd/materials-oss-release
+    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/henukit-deploy-webhook ./cmd/server
+    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/materials-oss-canary ./cmd/materials-oss-canary
+    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/materials-oss-release ./cmd/materials-oss-release
     cd /src/services/library
-    go build -trimpath -ldflags="-s -w" -o /out/library-activate-public-release ./cmd/activate-public-release
+    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/library-activate-public-release ./cmd/activate-public-release
     cd /src/services/food
-    go build -trimpath -ldflags="-s -w" -o /host-out/food-sanitize-post-image ./cmd/sanitize-post-image
+    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /host-out/food-sanitize-post-image ./cmd/sanitize-post-image
   '
 chmod 0555 "$runtime/materials-runtime/bin"/*
 chmod 0555 "$runtime/bin/food-sanitize-post-image"
