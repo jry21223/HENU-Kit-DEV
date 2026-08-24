@@ -1,5 +1,26 @@
 import type { NextConfig } from "next";
 
+function localPlaywrightOrigin(raw: string | undefined): string {
+  if (!raw) return "";
+  try {
+    const value = new URL(raw);
+    if (
+      value.protocol !== "http:" ||
+      value.hostname !== "127.0.0.1" ||
+      value.username ||
+      value.password ||
+      value.pathname !== "/" ||
+      value.search ||
+      value.hash
+    ) {
+      return "";
+    }
+    return value.origin;
+  } catch {
+    return "";
+  }
+}
+
 const nextConfig: NextConfig = {
   // Required for multi-stage Docker image (apps/portal/Dockerfile).
   output: "standalone",
@@ -11,6 +32,13 @@ const nextConfig: NextConfig = {
     const noIndexHeaders = [
       { key: "X-Robots-Tag", value: "noindex, nofollow" },
     ];
+    const accountFormActions = ["'self'", "https://console.henukit.cn"];
+    const playwrightConsoleOrigin = localPlaywrightOrigin(
+      process.env.PLAYWRIGHT_CONSOLE_ORIGIN
+    );
+    if (playwrightConsoleOrigin) {
+      accountFormActions.push(playwrightConsoleOrigin);
+    }
 
     const accountHeaders = [
       ...noIndexHeaders,
@@ -19,7 +47,7 @@ const nextConfig: NextConfig = {
       { key: "X-Content-Type-Options", value: "nosniff" },
       {
         key: "Content-Security-Policy",
-        value: "base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+        value: `base-uri 'self'; form-action ${accountFormActions.join(" ")}; frame-ancestors 'none'`,
       },
     ];
 

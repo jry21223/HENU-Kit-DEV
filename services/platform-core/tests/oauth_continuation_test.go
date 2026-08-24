@@ -29,6 +29,8 @@ const (
 	portalContinuationRedirectURI  = "https://portal.henukit.test/api/v1/auth/callback"
 	portalContinuationClientSecret = "portal-continuation-secret-with-enough-entropy"
 	portalContinuationVerifier     = "portal-continuation-verifier-at-least-forty-three-characters"
+	consoleContinuationClientID    = "console-gateway"
+	consoleContinuationRedirectURI = "https://console.henukit.test/api/v1/auth/callback"
 )
 
 func TestPortalOAuthContinuationRestoresValidatedAuthorizeRequest(t *testing.T) {
@@ -194,6 +196,46 @@ func TestPortalOAuthContinuationRestoresValidatedAuthorizeRequest(t *testing.T) 
 	}
 	if !strings.Contains(logged, `"service_id":"portal-gateway"`) {
 		t.Fatalf("continuation audit log omitted trusted client classification: %s", logged)
+	}
+}
+
+func TestConsoleOAuthContinuationUsesTrustedDestination(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ($1, $2)`, consoleContinuationClientID, []string{consoleContinuationRedirectURI}); err != nil {
+		t.Fatalf("seed Console OAuth client: %v", err)
+	}
+
+	client := clientForDevice(server, "console-continuation-browser")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	authorizeURL := server.URL + "/api/v1/oauth/authorize?" + url.Values{
+		"response_type": {"code"}, "client_id": {consoleContinuationClientID},
+		"redirect_uri": {consoleContinuationRedirectURI}, "state": {"console_continuation_state_01"},
+		"code_challenge": {portalContinuationChallenge()}, "code_challenge_method": {"S256"},
+	}.Encode()
+	authorize, err := client.Get(authorizeURL)
+	if err != nil {
+		t.Fatalf("start signed-out Console authorize: %v", err)
+	}
+	defer authorize.Body.Close()
+	accountCenter, err := url.Parse(authorize.Header.Get("Location"))
+	if err != nil || authorize.StatusCode != http.StatusFound || accountCenter.Path != "/account/login" || accountCenter.Query().Get("continuation") == "" {
+		t.Fatalf("Console authorize = %d %q err=%v, want Portal Account Center continuation", authorize.StatusCode, authorize.Header.Get("Location"), err)
+	}
+
+	bootstrap := requestContinuationBootstrap(t, client, server.URL, accountCenter.Query().Get("continuation"))
+	defer bootstrap.Body.Close()
+	var envelope struct {
+		Data struct {
+			Continuation struct {
+				ProductName string `json:"product_name"`
+			} `json:"continuation"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(bootstrap.Body).Decode(&envelope); err != nil || bootstrap.StatusCode != http.StatusOK || envelope.Data.Continuation.ProductName != "HENUKit Console" {
+		t.Fatalf("Console continuation Bootstrap = %d %+v err=%v", bootstrap.StatusCode, envelope, err)
 	}
 }
 
