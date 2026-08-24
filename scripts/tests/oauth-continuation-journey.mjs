@@ -5,6 +5,7 @@ const forbiddenPublicCopy = [
   /QuizCraft/i,
   /\bQC-[A-Za-z0-9_-]*/i,
   /\bV2\b/i,
+  /\bACC-[0-9]+(?:\/AUTH)?\b/i,
   /题库工坊/,
   /后台口令/
 ];
@@ -56,15 +57,15 @@ async function expectAccountCenter(page, product, transportResponse) {
   await expect(
     page.getByText(`登录后继续前往 ${product.productName}`)
   ).toBeVisible();
-  await expect(page.getByText("ACC-01")).toBeVisible();
+  await expect(page.getByText("账号中心", { exact: true })).toBeVisible();
   await expectAccountCenterStructure(page, product);
-  await expectNoRetiredPublicCopy(page, product);
+  await expectNoForbiddenPublicCopy(page, product);
   await expectDOMNoSecrets(page, product, [handle, product.redirectURI]);
   return { url: url.toString(), handle };
 }
 async function expectAccountCenterStructure(page, product) {
   const { expect } = product;
-  await expect(page.getByText("ACC-01")).toBeVisible();
+  await expect(page.getByText("账号中心", { exact: true })).toBeVisible();
   await expect(
     page.locator(
       'form[action], input[name="return_to"], input[name="csrf_token"]',
@@ -104,7 +105,7 @@ async function expectProductSession(page, product) {
   expect(session.status).toBe(200);
   expect(session.body).toMatchObject(product.expectedSession);
 }
-async function expectNoRetiredPublicCopy(page, product) {
+async function expectNoForbiddenPublicCopy(page, product) {
   const surfaces = await page.evaluate(() => {
     const result = [
       { surface: "document.title", value: document.title },
@@ -176,7 +177,7 @@ async function expectUnavailableRecovery(page, product, secrets = []) {
     )
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "重新开始登录" })).toBeVisible();
-  await expectNoRetiredPublicCopy(page, product);
+  await expectNoForbiddenPublicCopy(page, product);
   await expectDOMNoSecrets(page, product, secrets);
 }
 async function eventCursor(request, product) {
@@ -368,7 +369,7 @@ function defineOAuthContinuationJourney(productConfig, playwright) {
         "authorization_code_issued",
         "product_session_issued"
       ], [...secrets, product.password]);
-      await expectNoRetiredPublicCopy(page, product);
+      await expectNoForbiddenPublicCopy(page, product);
       for (const route of product.publicRoutes) {
         const isolatedContext =
           route.isolatedSignedOut === true
@@ -401,7 +402,7 @@ function defineOAuthContinuationJourney(productConfig, playwright) {
           if (route.accountCenter === true) {
             await expectAccountCenterStructure(routePage, product);
           }
-          await expectNoRetiredPublicCopy(routePage, product);
+          await expectNoForbiddenPublicCopy(routePage, product);
         } finally {
           await isolatedContext?.close();
         }
@@ -560,7 +561,7 @@ function defineOAuthContinuationJourney(productConfig, playwright) {
         page.getByText("请返回原应用；如需继续使用，请联系该应用的维护者。")
       ).toBeVisible();
       await expect(page.getByRole("button", { name: "返回上一步" })).toBeVisible();
-      await expectNoRetiredPublicCopy(page, product);
+      await expectNoForbiddenPublicCopy(page, product);
       await expectDOMNoSecrets(page, product, [
         untrustedClientID,
         unsupportedClientID,
@@ -614,7 +615,7 @@ function defineOAuthContinuationJourney(productConfig, playwright) {
         "product_session_issued",
         "continuation_unavailable"
       ], [continuation.handle, product.redirectURI, product.password]);
-      await expectNoRetiredPublicCopy(page, product);
+      await expectNoForbiddenPublicCopy(page, product);
     });
   });
 }

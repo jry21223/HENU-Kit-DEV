@@ -22,6 +22,13 @@ test("public copy checks include document and accessible attribute surfaces", ()
       ]),
     /img\[alt\]/,
   );
+  assert.throws(
+    () =>
+      assertNoForbiddenPublicCopy([
+        { surface: "body.innerText", value: "ACC-01/AUTH" },
+      ]),
+    /body\.innerText/,
+  );
   assert.doesNotThrow(() =>
     assertNoForbiddenPublicCopy([
       { surface: "body.innerText", value: "刷题 · 收藏 · 错题 · 统计" },
