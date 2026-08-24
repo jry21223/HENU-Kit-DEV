@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import nextConfig from "../../../next.config";
+
 import {
   bootstrapAccountLogin,
   bootstrapAccountRegister,
   bootstrapAccountSecurity,
   bootstrapPasswordRecovery,
+  buildOAuthContinuationResume,
   changePassword,
   passwordLogin,
   registerAccount,
@@ -114,6 +117,106 @@ describe("Account Center Bootstrap", () => {
       code: "VERIFY_FAILED",
       message: "登录状态已过期，请重新登录后再操作",
     });
+  });
+
+  it("loads a trusted OAuth continuation destination without exposing OAuth facts", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        data: {
+          flow: "login",
+          csrf_token: "csrf-token-with-at-least-thirty-two-characters",
+          continuation: { available: true, product_name: "HENU Kit" },
+        },
+        request_id: "req_account_continuation",
+      })
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      bootstrapAccountLogin("opaque-continuation-handle/value")
+    ).resolves.toEqual({
+      csrfToken: "csrf-token-with-at-least-thirty-two-characters",
+      continuation: { productName: "HENU Kit" },
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      "/account-auth/account/bootstrap?flow=login&continuation=opaque-continuation-handle%2Fvalue"
+    );
+  });
+
+  it("classifies an unavailable OAuth continuation with a safe request id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              code: "OAUTH_CONTINUATION_UNAVAILABLE",
+              message: "internal continuation detail",
+            },
+            request_id: "req_continuation_unavailable",
+          },
+          410
+        )
+      )
+    );
+
+    await expect(bootstrapAccountLogin("expired-handle")).rejects.toMatchObject({
+      code: "CONTINUATION_UNAVAILABLE",
+      message: "登录链接已过期或不可继续，请重新开始登录",
+      requestID: "req_continuation_unavailable",
+    });
+  });
+
+  it("keeps the request id when a continuation dependency is temporarily unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: { code: "DEPENDENCY_UNAVAILABLE", message: "redis unavailable" },
+            request_id: "req_continuation_dependency",
+          },
+          503
+        )
+      )
+    );
+
+    await expect(bootstrapAccountLogin("opaque-handle")).rejects.toMatchObject({
+      code: "NETWORK",
+      message: "登录服务暂时不可用，请稍后再试",
+      requestID: "req_continuation_dependency",
+    });
+  });
+});
+
+describe("OAuth continuation resume", () => {
+  it("builds a same-origin POST without putting the handle in the action URL", () => {
+    expect(
+      buildOAuthContinuationResume(
+        "opaque-continuation-handle",
+        "csrf-token-with-at-least-thirty-two-characters"
+      )
+    ).toEqual({
+      action: "/account-auth/account/continuation/resume",
+      fields: {
+        continuation: "opaque-continuation-handle",
+        csrf_token: "csrf-token-with-at-least-thirty-two-characters",
+      },
+    });
+  });
+
+  it("configures the Account Center document boundary as private and non-referring", async () => {
+    const rules = await nextConfig.headers?.();
+    const accountRule = rules?.find((rule) => rule.source === "/account/:path*");
+    const headers = new Map(
+      accountRule?.headers.map((header) => [header.key.toLowerCase(), header.value])
+    );
+
+    expect(headers.get("cache-control")).toContain("no-store");
+    expect(headers.get("referrer-policy")).toBe("no-referrer");
+    expect(headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'none'"
+    );
   });
 });
 

@@ -20,6 +20,7 @@ import (
 	"henukit.dev/platform-core/internal/coordination"
 	"henukit.dev/platform-core/internal/httpapi"
 	"henukit.dev/platform-core/internal/identity"
+	"henukit.dev/platform-core/internal/oauthcontinuation"
 	"henukit.dev/platform-core/internal/operationsinbox"
 	"henukit.dev/platform-core/internal/password"
 	"henukit.dev/platform-core/internal/platformoperations"
@@ -197,7 +198,8 @@ func New(config Config) (http.Handler, error) {
 	if config.MailDeliveryRetiringToken != "" {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
-	return httpapi.New(flow, verificationFlow, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger), nil
+	continuations := oauthcontinuation.New(config.Redis)
+	return httpapi.New(flow, verificationFlow, continuations, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger), nil
 }
 
 func credentialPlaceholder(value string) bool {

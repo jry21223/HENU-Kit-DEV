@@ -5,7 +5,8 @@
  * original HENUKIT account page, with real Platform Core mail channel for codes.
  *
  * Existing Portal UI; every production credential flow is owned by Platform
- * Core through the same-origin /account-auth route.
+ * Core through the same-origin /account-auth route. Validated cross-product
+ * OAuth requests arrive only as browser-bound opaque continuation handles.
  */
 
 import Link from "next/link";
@@ -21,6 +22,7 @@ import {
   AccountCenterError,
   bootstrapAccountLogin,
   bootstrapAccountRegister,
+  buildOAuthContinuationResume,
   passwordLogin,
   portalOAuthStartUrl,
   registerAccount,
@@ -78,6 +80,9 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const requestedNext = params.get("next");
+  const continuationHandle = params.get("continuation")?.trim() ?? "";
+  const continuationError = params.get("continuation_error")?.trim() ?? "";
+  const continuationRequestID = params.get("request_id")?.trim() ?? "";
 
   const { user, ready } = useSyncExternalStore(
     authStore.subscribe,
@@ -98,6 +103,18 @@ function LoginForm() {
   const [info, setInfo] = useState("");
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
+  const [continuationProduct, setContinuationProduct] = useState("");
+  const [continuationFailure, setContinuationFailure] = useState<{
+    kind: "expired" | "service";
+    requestID?: string;
+  } | null>(
+    continuationError
+      ? {
+          kind: continuationError === "service" ? "service" : "expired",
+          requestID: continuationRequestID,
+        }
+      : null
+  );
   const csrfBootstrap = useRef<Promise<string> | null>(null);
   const defaultNext = tab === "register" ? "/account/security" : "/account";
   const nextPath =
@@ -109,6 +126,7 @@ function LoginForm() {
   const passwordLength = Array.from(pwd).length;
 
   useEffect(() => {
+    if (continuationHandle || continuationError) return;
     if (!ready || !user) return;
     // The cached user can be stale: signed out, session expired, or a fresh
     // module copy re-initialised from a server session. Only bounce to the
@@ -135,7 +153,35 @@ function LoginForm() {
     return () => {
       cancelled = true;
     };
-  }, [ready, user, nextPath, router]);
+  }, [ready, user, nextPath, router, continuationHandle, continuationError]);
+
+  useEffect(() => {
+    if (!continuationHandle || continuationError) return;
+    let cancelled = false;
+    const bootstrap = bootstrapAccountLogin(continuationHandle);
+    void bootstrap.then(
+      (result) => {
+        if (cancelled) return;
+        setCsrf(result.csrfToken);
+        setContinuationProduct(result.continuation?.productName ?? "");
+      },
+      (cause) => {
+        if (cancelled) return;
+        setContinuationFailure({
+          kind:
+            cause instanceof AccountCenterError &&
+            cause.code === "CONTINUATION_UNAVAILABLE"
+              ? "expired"
+              : "service",
+          requestID:
+            cause instanceof AccountCenterError ? cause.requestID : undefined,
+        });
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [continuationHandle, continuationError]);
 
   useEffect(() => {
     if (cd <= 0) return;
@@ -148,8 +194,8 @@ function LoginForm() {
     if (!csrfBootstrap.current) {
       csrfBootstrap.current = (
         tab === "register"
-          ? bootstrapAccountRegister()
-          : bootstrapAccountLogin()
+          ? bootstrapAccountRegister(continuationHandle)
+          : bootstrapAccountLogin(continuationHandle)
       ).then((result) => result.csrfToken);
     }
     const pendingBootstrap = csrfBootstrap.current;
@@ -254,6 +300,22 @@ function LoginForm() {
           returnTo: oauthReturnTo,
         });
       }
+      if (continuationHandle) {
+        const resume = buildOAuthContinuationResume(continuationHandle, token);
+        const form = document.createElement("form");
+        form.method = "post";
+        form.action = resume.action;
+        for (const [fieldName, fieldValue] of Object.entries(resume.fields)) {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = fieldName;
+          input.value = fieldValue;
+          form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        return;
+      }
       window.location.assign(oauthReturnTo);
     } catch (e) {
       if (e instanceof AccountCenterError && e.code === "CSRF") {
@@ -271,6 +333,74 @@ function LoginForm() {
       setPending(false);
     }
   };
+
+  const displayedRequestID = (
+    continuationFailure?.requestID || continuationRequestID
+  ).match(/^req_[A-Za-z0-9_-]{1,116}$/)?.[0];
+
+  if (continuationFailure || continuationError) {
+    const serviceUnavailable = continuationFailure?.kind === "service";
+    return (
+      <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
+        <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
+          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            <span className="text-accent">ACC-01</span>
+            <span className="mx-2">/</span>
+            AUTH
+          </p>
+          <h1 className="mt-4 font-display text-3xl font-bold tracking-tight">
+            {serviceUnavailable ? "登录暂时不可用" : "登录链接已过期或不可继续"}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-ink/65">
+            {serviceUnavailable
+              ? "暂时无法验证这次登录，请稍后重试。"
+              : "这次登录无法继续。请重新开始登录，我们会为你创建一条新的安全链接。"}
+          </p>
+          {displayedRequestID ? (
+            <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/45">
+              请求编号：{displayedRequestID}
+            </p>
+          ) : null}
+          {serviceUnavailable ? (
+            <Button
+              type="button"
+              className="mt-7 w-full"
+              onClick={() => window.location.reload()}
+            >
+              重新尝试
+            </Button>
+          ) : (
+            <Button asChild className="mt-7 w-full">
+              <a href="/api/v1/auth/login?return_to=%2Faccount">重新开始登录</a>
+            </Button>
+          )}
+          <Link
+            href="/"
+            className="mt-4 block text-center font-mono text-[10px] tracking-widest text-ink/45 hover:text-accent"
+          >
+            返回 HENU Kit 首页
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (continuationHandle && !continuationProduct) {
+    return (
+      <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
+        <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
+          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            <span className="text-accent">ACC-01</span>
+            <span className="mx-2">/</span>
+            AUTH
+          </p>
+          <p className="mt-6 font-mono text-xs tracking-wider text-ink/60" role="status">
+            正在验证登录链接…
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
@@ -297,6 +427,11 @@ function LoginForm() {
         <p className="mt-2 font-mono text-[11px] leading-5 tracking-wider text-ink/50">
           首次注册需验证学校邮箱并设置密码；之后可用密码或验证码登录。
         </p>
+        {continuationProduct ? (
+          <p className="mt-3 border-l-2 border-accent pl-3 font-mono text-[11px] leading-5 tracking-wider text-ink/65">
+            登录后继续前往 {continuationProduct}
+          </p>
+        ) : null}
 
         {/* 登录 / 注册 */}
         <div className="mt-6 flex border border-line">

@@ -211,7 +211,7 @@ func (s *Service) authenticateServiceRequest(ctx context.Context, credentials se
 }
 
 func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authorization, error) {
-	if input.CoreSessionToken == "" || input.ClientID == "" || input.RedirectURI == "" || !validCodeChallenge(input.CodeChallenge) {
+	if input.CoreSessionToken == "" {
 		return Authorization{}, ErrInvalid
 	}
 	tx, err := s.database.BeginTx(ctx, pgx.TxOptions{})
@@ -220,6 +220,9 @@ func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authoriz
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	queries := s.queries.WithTx(tx)
+	if err := validateAuthorizeClient(ctx, queries, input); err != nil {
+		return Authorization{}, err
+	}
 	tokenHash := sha256.Sum256([]byte(input.CoreSessionToken))
 	session, err := queries.GetActiveCoreSessionByTokenHash(ctx, tokenHash[:])
 	if err != nil {
@@ -230,16 +233,6 @@ func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authoriz
 	}
 	if session.Status != "active" {
 		return Authorization{}, ErrUnauthorized
-	}
-	client, err := queries.GetOAuthClient(ctx, input.ClientID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Authorization{}, ErrCallback
-		}
-		return Authorization{}, err
-	}
-	if !containsExact(client.RedirectUris, input.RedirectURI) {
-		return Authorization{}, ErrCallback
 	}
 	code, codeHash, err := randomToken()
 	if err != nil {
@@ -261,6 +254,31 @@ func (s *Service) Authorize(ctx context.Context, input AuthorizeInput) (Authoriz
 		return Authorization{}, err
 	}
 	return Authorization{Code: code, SessionExpires: session.ExpiresAt.Time, UserID: uuidString(session.UserID)}, nil
+}
+
+// ValidateAuthorizeRequest proves the registered client, exact callback and
+// PKCE shape before a signed-out browser is allowed to create a continuation.
+// Authorize repeats the callback check in its transaction when issuing the
+// short-lived code after authentication.
+func (s *Service) ValidateAuthorizeRequest(ctx context.Context, input AuthorizeInput) error {
+	return validateAuthorizeClient(ctx, s.queries, input)
+}
+
+func validateAuthorizeClient(ctx context.Context, queries *store.Queries, input AuthorizeInput) error {
+	if input.ClientID == "" || input.RedirectURI == "" || !validCodeChallenge(input.CodeChallenge) {
+		return ErrInvalid
+	}
+	client, err := queries.GetOAuthClient(ctx, input.ClientID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrCallback
+		}
+		return err
+	}
+	if !containsExact(client.RedirectUris, input.RedirectURI) {
+		return ErrCallback
+	}
+	return nil
 }
 
 func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (Exchange, error) {

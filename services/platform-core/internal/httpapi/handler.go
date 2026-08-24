@@ -32,6 +32,7 @@ import (
 	"henukit.dev/platform-core/internal/careerdigestmail"
 	"henukit.dev/platform-core/internal/contract"
 	"henukit.dev/platform-core/internal/identity"
+	"henukit.dev/platform-core/internal/oauthcontinuation"
 	"henukit.dev/platform-core/internal/operationsinbox"
 	"henukit.dev/platform-core/internal/platformoperations"
 	"henukit.dev/platform-core/internal/store"
@@ -43,6 +44,7 @@ type Handler struct {
 	publicPathPrefix     string
 	flow                 *identity.Service
 	verification         *verification.Service
+	continuations        *oauthcontinuation.Store
 	inbox                *operationsinbox.Service
 	platformOps          *platformoperations.Service
 	queries              *store.Queries
@@ -87,8 +89,8 @@ func writeExplicitAccountFormError(writer http.ResponseWriter, request *http.Req
 	return true
 }
 
-func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, coreSessionTTL time.Duration, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, digestMail *careerdigestmail.Service, careerDigestClientID string, careerDigestKeys map[string][]byte, logger *slog.Logger) http.Handler {
-	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, coreSessionTTL: coreSessionTTL, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, digestMail: digestMail, careerDigestClientID: careerDigestClientID, careerDigestKeys: careerDigestKeys, logger: logger}
+func New(flow *identity.Service, verificationFlow *verification.Service, continuations *oauthcontinuation.Store, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, coreSessionTTL time.Duration, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, digestMail *careerdigestmail.Service, careerDigestClientID string, careerDigestKeys map[string][]byte, logger *slog.Logger) http.Handler {
+	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, continuations: continuations, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, coreSessionTTL: coreSessionTTL, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, digestMail: digestMail, careerDigestClientID: careerDigestClientID, careerDigestKeys: careerDigestKeys, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
 	router.Get("/api/v1/healthz", handler.health)
@@ -107,6 +109,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Get("/account/security", handler.securityPage)
 	router.Post("/account/security/code", handler.securityRequestCode)
 	router.Post("/account/security/password", handler.securityChangePassword)
+	router.Post("/account/continuation/resume", handler.resumeOAuthContinuation)
 	router.Get(contract.AuthorizeRoute, handler.authorize)
 	router.Post(contract.TokenRoute, handler.exchange)
 	router.Post(contract.AuthorizationCheckRoute, handler.checkAuthorization)
@@ -922,6 +925,25 @@ func (h *Handler) accountBootstrap(writer http.ResponseWriter, request *http.Req
 		return
 	}
 	profile := h.browserCookies(request)
+	continuationHandle := strings.TrimSpace(request.URL.Query().Get("continuation"))
+	var continuation *oauthcontinuation.Continuation
+	if continuationHandle != "" {
+		browserID, ok := h.existingDeviceID(request)
+		if !ok {
+			writeError(writer, request, http.StatusGone, "OAUTH_CONTINUATION_UNAVAILABLE", "OAuth continuation is unavailable")
+			return
+		}
+		stored, err := h.continuations.Peek(request.Context(), continuationHandle, browserID)
+		if err != nil {
+			if errors.Is(err, oauthcontinuation.ErrDependency) {
+				writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+			} else {
+				writeError(writer, request, http.StatusGone, "OAUTH_CONTINUATION_UNAVAILABLE", "OAuth continuation is unavailable")
+			}
+			return
+		}
+		continuation = &stored
+	}
 	if flow == "security" {
 		coreCookie, err := request.Cookie(profile.core)
 		if err != nil || len(coreCookie.Value) < 32 {
@@ -949,10 +971,87 @@ func (h *Handler) accountBootstrap(writer http.ResponseWriter, request *http.Req
 	if deviceCookie != nil {
 		http.SetCookie(writer, deviceCookie)
 	}
-	writeSuccess(writer, request, http.StatusOK, map[string]string{
-		"flow":       flow,
-		"csrf_token": csrfToken,
+	data := map[string]any{"flow": flow, "csrf_token": csrfToken}
+	if continuation != nil {
+		data["continuation"] = map[string]any{"available": true, "product_name": continuation.ProductName}
+	}
+	writeSuccess(writer, request, http.StatusOK, data)
+}
+
+func (h *Handler) resumeOAuthContinuation(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
+	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
+	if err := request.ParseForm(); err != nil {
+		h.redirectOAuthContinuationFailure(writer, request, "expired")
+		return
+	}
+	profile := h.browserCookies(request)
+	csrfToken := request.FormValue("csrf_token")
+	csrfCookie, err := request.Cookie(profile.csrf)
+	if err != nil || len(csrfToken) < 32 || !hmac.Equal([]byte(csrfCookie.Value), []byte(csrfToken)) {
+		h.redirectOAuthContinuationFailure(writer, request, "expired")
+		return
+	}
+	coreCookie, err := request.Cookie(profile.core)
+	if err != nil || len(coreCookie.Value) < 32 {
+		h.redirectOAuthContinuationFailure(writer, request, "unavailable")
+		return
+	}
+	if _, err := h.verification.CoreSession(request.Context(), coreCookie.Value); err != nil {
+		h.redirectOAuthContinuationFailure(writer, request, "unavailable")
+		return
+	}
+	browserID, ok := h.existingDeviceID(request)
+	if !ok {
+		h.redirectOAuthContinuationFailure(writer, request, "unavailable")
+		return
+	}
+	continuation, err := h.continuations.Consume(request.Context(), strings.TrimSpace(request.FormValue("continuation")), browserID)
+	if err != nil {
+		if errors.Is(err, oauthcontinuation.ErrDependency) {
+			h.redirectOAuthContinuationFailure(writer, request, "service")
+		} else {
+			h.redirectOAuthContinuationFailure(writer, request, "unavailable")
+		}
+		return
+	}
+	auditFrom(request.Context()).serviceID = continuation.ClientID
+	authorization, err := h.flow.Authorize(request.Context(), identity.AuthorizeInput{
+		CoreSessionToken: coreCookie.Value, ClientID: continuation.ClientID,
+		RedirectURI: continuation.RedirectURI, CodeChallenge: continuation.CodeChallenge,
 	})
+	if err != nil {
+		h.redirectOAuthContinuationFailure(writer, request, "unavailable")
+		return
+	}
+	callback, err := url.Parse(continuation.RedirectURI)
+	if err != nil {
+		h.redirectOAuthContinuationFailure(writer, request, "unavailable")
+		return
+	}
+	callbackQuery := callback.Query()
+	callbackQuery.Set("code", authorization.Code)
+	callbackQuery.Set("state", continuation.State)
+	callback.RawQuery = callbackQuery.Encode()
+	http.SetCookie(writer, h.browserCookie(profile.core, coreCookie.Value, max(1, int(time.Until(authorization.SessionExpires).Seconds())), authorization.SessionExpires, profile.secure))
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
+	auditFrom(request.Context()).subjectUserID = maskSubject(authorization.UserID)
+	writer.Header().Set("Pragma", "no-cache")
+	http.Redirect(writer, request, callback.String(), http.StatusSeeOther)
+}
+
+func (h *Handler) redirectOAuthContinuationFailure(writer http.ResponseWriter, request *http.Request, category string) {
+	if category != "service" {
+		category = "expired"
+		auditFrom(request.Context()).errorCode = "OAUTH_CONTINUATION_UNAVAILABLE"
+	} else {
+		auditFrom(request.Context()).errorCode = "OAUTH_CONTINUATION_DEPENDENCY_UNAVAILABLE"
+	}
+	writer.Header().Set("Pragma", "no-cache")
+	target := "/account/login?" + url.Values{
+		"continuation_error": {category}, "request_id": {requestIDFrom(request.Context())},
+	}.Encode()
+	http.Redirect(writer, request, target, http.StatusSeeOther)
 }
 
 func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request) {
@@ -1062,11 +1161,11 @@ func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Requ
 	}
 	profile := h.browserCookies(request)
 	http.SetCookie(writer, h.browserCookie(profile.core, registered.SessionToken, max(1, int(time.Until(registered.SessionExpiresAt).Seconds())), registered.SessionExpiresAt, profile.secure))
-	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(registered.UserID)
 	if writeExplicitAccountFormSuccess(writer, request) {
 		return
 	}
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 
@@ -1452,11 +1551,11 @@ func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Requ
 	}
 	profile := h.browserCookies(request)
 	http.SetCookie(writer, h.browserCookie(profile.core, verified.SessionToken, max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), verified.SessionExpiresAt, profile.secure))
-	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)
 	if writeExplicitAccountFormSuccess(writer, request) {
 		return
 	}
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 
@@ -1505,11 +1604,11 @@ func (h *Handler) loginPassword(writer http.ResponseWriter, request *http.Reques
 	}
 	profile := h.browserCookies(request)
 	http.SetCookie(writer, h.browserCookie(profile.core, loggedIn.SessionToken, max(1, int(time.Until(loggedIn.SessionExpiresAt).Seconds())), loggedIn.SessionExpiresAt, profile.secure))
-	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(loggedIn.UserID)
 	if writeExplicitAccountFormSuccess(writer, request) {
 		return
 	}
+	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 
@@ -1735,7 +1834,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	profile := h.browserCookies(request)
 	cookie, err := request.Cookie(profile.core)
 	if err != nil {
-		h.redirectToLogin(writer, request)
+		h.startOAuthContinuation(writer, request, query)
 		return
 	}
 	authorization, err := h.flow.Authorize(request.Context(), identity.AuthorizeInput{
@@ -1744,7 +1843,7 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, identity.ErrUnauthorized) {
-			h.redirectToLogin(writer, request)
+			h.startOAuthContinuation(writer, request, query)
 			return
 		}
 		h.writeFlowError(writer, request, err)
@@ -1760,6 +1859,59 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Pragma", "no-cache")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	http.Redirect(writer, request, callback.String(), http.StatusFound)
+}
+
+func (h *Handler) startOAuthContinuation(writer http.ResponseWriter, request *http.Request, query contract.AuthorizeOAuthClientQuery) {
+	input := identity.AuthorizeInput{
+		ClientID: query.ClientID, RedirectURI: query.RedirectURI, CodeChallenge: query.CodeChallenge,
+	}
+	if err := h.flow.ValidateAuthorizeRequest(request.Context(), input); err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).serviceID = query.ClientID
+	productName, supported := oauthContinuationProductName(query.ClientID)
+	if !supported {
+		h.redirectToLogin(writer, request)
+		return
+	}
+	browserID, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.redirectOAuthContinuationFailure(writer, request, "service")
+		return
+	}
+	allowed, err := h.continuations.AllowCreate(request.Context(), query.ClientID, browserID, h.clientIP(request))
+	if err != nil {
+		h.redirectOAuthContinuationFailure(writer, request, "service")
+		return
+	}
+	if !allowed {
+		h.redirectOAuthContinuationFailure(writer, request, "service")
+		auditFrom(request.Context()).errorCode = "OAUTH_CONTINUATION_RATE_LIMITED"
+		return
+	}
+	handle, err := h.continuations.Create(request.Context(), oauthcontinuation.CreateInput{
+		ClientID: query.ClientID, ProductName: productName, RedirectURI: query.RedirectURI,
+		State: query.State, CodeChallenge: query.CodeChallenge, BrowserID: browserID,
+	})
+	if err != nil {
+		h.redirectOAuthContinuationFailure(writer, request, "service")
+		return
+	}
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	accountBrowserResponseHeaders(writer)
+	http.Redirect(writer, request, "/account/login?"+url.Values{"continuation": {handle}}.Encode(), http.StatusFound)
+}
+
+func oauthContinuationProductName(clientID string) (string, bool) {
+	switch clientID {
+	case "portal-gateway":
+		return "HENU Kit", true
+	default:
+		return "", false
+	}
 }
 
 func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
@@ -2112,19 +2264,10 @@ func (h *Handler) expiredBrowserCookie(name string, secure bool) *http.Cookie {
 }
 
 func (h *Handler) deviceID(request *http.Request) (string, *http.Cookie, error) {
-	profile := h.browserCookies(request)
-	if cookie, err := request.Cookie(profile.device); err == nil {
-		parts := strings.Split(cookie.Value, ".")
-		if len(parts) == 2 {
-			identifier, decodeIDErr := base64.RawURLEncoding.DecodeString(parts[0])
-			signature, decodeSignatureErr := base64.RawURLEncoding.DecodeString(parts[1])
-			mac := hmac.New(sha256.New, h.deviceKey)
-			_, _ = mac.Write(identifier)
-			if decodeIDErr == nil && decodeSignatureErr == nil && len(identifier) == 16 && hmac.Equal(signature, mac.Sum(nil)) {
-				return parts[0], nil, nil
-			}
-		}
+	if identifier, ok := h.existingDeviceID(request); ok {
+		return identifier, nil, nil
 	}
+	profile := h.browserCookies(request)
 	identifier := make([]byte, 16)
 	if _, err := io.ReadFull(rand.Reader, identifier); err != nil {
 		return "", nil, err
@@ -2133,4 +2276,23 @@ func (h *Handler) deviceID(request *http.Request) (string, *http.Cookie, error) 
 	_, _ = mac.Write(identifier)
 	value := base64.RawURLEncoding.EncodeToString(identifier) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return base64.RawURLEncoding.EncodeToString(identifier), h.browserCookie(profile.device, value, 365*24*60*60, time.Time{}, profile.secure), nil
+}
+
+func (h *Handler) existingDeviceID(request *http.Request) (string, bool) {
+	cookie, err := request.Cookie(h.browserCookies(request).device)
+	if err != nil {
+		return "", false
+	}
+	parts := strings.Split(cookie.Value, ".")
+	if len(parts) != 2 {
+		return "", false
+	}
+	identifier, decodeIDErr := base64.RawURLEncoding.DecodeString(parts[0])
+	signature, decodeSignatureErr := base64.RawURLEncoding.DecodeString(parts[1])
+	mac := hmac.New(sha256.New, h.deviceKey)
+	_, _ = mac.Write(identifier)
+	if decodeIDErr != nil || decodeSignatureErr != nil || len(identifier) != 16 || !hmac.Equal(signature, mac.Sum(nil)) {
+		return "", false
+	}
+	return parts[0], true
 }

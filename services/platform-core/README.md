@@ -10,6 +10,7 @@ Independent Go service for platform-owned identity and operations data. The deli
 - email-code password recovery at `/recover`, which atomically replaces the credential, revokes every old Core and exchange Session, consumes the code, and issues exactly one new Core Session;
 - authenticated password changes at `/account/security`, which require the current password plus a fresh email code, retain only the current Core Session, and revoke every other Core and exchange Session;
 - a bounded Account Center Bootstrap response that supplies Portal with CSRF and account-flow state without exposing OAuth or Session facts, plus explicit status responses that remove Portal's dependency on Platform Core HTML;
+- a 30-minute, browser-bound, digest-keyed and atomically single-use OAuth continuation for supported products, restoring the already-validated authorize request only after Account Center establishes a Core Session;
 - exact-callback OAuth authorization with S256 PKCE;
 - 60–120 second, hash-only, single-use Authorization Codes;
 - eight-hour product-local exchange Sessions for Console and Workshop high-privilege work, with immediate server-side revocation; the `portal-gateway` OAuth client overrides this to 30 days (`PLATFORM_CORE_EXCHANGE_SESSION_TTL_OVERRIDES`) so the Portal Session stays valid for the full Core Session window;

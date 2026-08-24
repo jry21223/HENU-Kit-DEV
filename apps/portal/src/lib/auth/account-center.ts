@@ -18,7 +18,9 @@ export class AccountCenterError extends Error {
       | "PARSE"
       | "SEND_FAILED"
       | "VERIFY_FAILED"
-      | "UNKNOWN" = "UNKNOWN"
+      | "CONTINUATION_UNAVAILABLE"
+      | "UNKNOWN" = "UNKNOWN",
+    readonly requestID?: string
   ) {
     super(message);
     this.name = "AccountCenterError";
@@ -27,6 +29,7 @@ export class AccountCenterError extends Error {
 
 export type BootstrapResult = {
   csrfToken: string;
+  continuation?: { productName: string };
 };
 
 type AccountBootstrapFlow = "login" | "register" | "recover" | "security";
@@ -42,10 +45,31 @@ type AccountFormPath =
   | "/account/security/code"
   | "/account/security/password";
 
+async function accountResponseRequestID(res: Response): Promise<string | undefined> {
+  try {
+    const envelope: unknown = await res.json();
+    if (
+      envelope &&
+      typeof envelope === "object" &&
+      "request_id" in envelope &&
+      typeof envelope.request_id === "string" &&
+      envelope.request_id.startsWith("req_")
+    ) {
+      return envelope.request_id;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 async function bootstrapAccountForm(
-  flow: AccountBootstrapFlow
+  flow: AccountBootstrapFlow,
+  continuation = ""
 ): Promise<BootstrapResult> {
-  const url = `${ACCOUNT_AUTH_BASE}/account/bootstrap?flow=${flow}`;
+  const query = new URLSearchParams({ flow });
+  if (continuation) query.set("continuation", continuation);
+  const url = `${ACCOUNT_AUTH_BASE}/account/bootstrap?${query.toString()}`;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -66,8 +90,23 @@ async function bootstrapAccountForm(
       "VERIFY_FAILED"
     );
   }
+  if (res.status === 410 && continuation) {
+    const requestID = await accountResponseRequestID(res);
+    throw new AccountCenterError(
+      "登录链接已过期或不可继续，请重新开始登录",
+      "CONTINUATION_UNAVAILABLE",
+      requestID
+    );
+  }
   if (!res.ok) {
-    throw new AccountCenterError(`登录服务暂时不可用，请稍后再试`, "NETWORK");
+    const requestID = continuation
+      ? await accountResponseRequestID(res)
+      : undefined;
+    throw new AccountCenterError(
+      `登录服务暂时不可用，请稍后再试`,
+      "NETWORK",
+      requestID
+    );
   }
   let envelope: unknown;
   try {
@@ -92,6 +131,29 @@ async function bootstrapAccountForm(
     !requestID.startsWith("req_")
   ) {
     throw new AccountCenterError("登录服务返回了无法识别的内容，请刷新重试", "PARSE");
+  }
+  if (continuation) {
+    const continuationData =
+      "continuation" in data ? data.continuation : undefined;
+    if (
+      !continuationData ||
+      typeof continuationData !== "object" ||
+      !("available" in continuationData) ||
+      continuationData.available !== true ||
+      !("product_name" in continuationData) ||
+      typeof continuationData.product_name !== "string" ||
+      continuationData.product_name.length < 1 ||
+      continuationData.product_name.length > 80
+    ) {
+      throw new AccountCenterError(
+        "登录服务返回了无法识别的内容，请刷新重试",
+        "PARSE"
+      );
+    }
+    return {
+      csrfToken: data.csrf_token,
+      continuation: { productName: continuationData.product_name },
+    };
   }
   return { csrfToken: data.csrf_token };
 }
@@ -165,12 +227,16 @@ async function postAccountForm(
 }
 
 /** Load login form + CSRF cookie for subsequent POSTs. */
-export function bootstrapAccountLogin(): Promise<BootstrapResult> {
-  return bootstrapAccountForm("login");
+export function bootstrapAccountLogin(
+  continuation = ""
+): Promise<BootstrapResult> {
+  return bootstrapAccountForm("login", continuation);
 }
 
-export function bootstrapAccountRegister(): Promise<BootstrapResult> {
-  return bootstrapAccountForm("register");
+export function bootstrapAccountRegister(
+  continuation = ""
+): Promise<BootstrapResult> {
+  return bootstrapAccountForm("register", continuation);
 }
 
 export function bootstrapPasswordRecovery(): Promise<BootstrapResult> {
@@ -407,4 +473,17 @@ export async function changePassword(input: {
 export function portalOAuthStartUrl(nextPath: string): string {
   const next = nextPath.startsWith("/") ? nextPath : "/account";
   return `/api/v1/auth/login?return_to=${encodeURIComponent(next)}`;
+}
+
+export function buildOAuthContinuationResume(
+  continuation: string,
+  csrfToken: string
+): {
+  action: string;
+  fields: { continuation: string; csrf_token: string };
+} {
+  return {
+    action: `${ACCOUNT_AUTH_BASE}/account/continuation/resume`,
+    fields: { continuation, csrf_token: csrfToken },
+  };
 }

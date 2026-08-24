@@ -347,18 +347,21 @@ paths:
           required: true
           schema:
             type: string
+            maxLength: 120
         - name: redirect_uri
           in: query
           required: true
           schema:
             type: string
             format: uri
+            maxLength: 2048
         - name: state
           in: query
           required: true
           schema:
             type: string
             minLength: 8
+            maxLength: 200
         - name: code_challenge
           in: query
           required: true
