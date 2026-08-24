@@ -23,25 +23,27 @@ function createCleanSourceCheckout() {
     encoding: "buffer",
     maxBuffer: 20 * 1024 * 1024,
   });
-  const applied = spawnSync("git", ["apply", "--index", "--binary"], {
-    cwd: checkout,
-    input: diff,
-    encoding: "utf8",
-  });
-  assert.equal(applied.status, 0, applied.stderr);
-  execFileSync(
-    "git",
-    [
-      "-c",
-      "user.name=HENU Kit Test",
-      "-c",
-      "user.email=test@henukit.invalid",
-      "commit",
-      "-m",
-      "test source snapshot",
-    ],
-    { cwd: checkout, stdio: "pipe" },
-  );
+  if (diff.byteLength > 0) {
+    const applied = spawnSync("git", ["apply", "--index", "--binary"], {
+      cwd: checkout,
+      input: diff,
+      encoding: "utf8",
+    });
+    assert.equal(applied.status, 0, applied.stderr);
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=HENU Kit Test",
+        "-c",
+        "user.email=test@henukit.invalid",
+        "commit",
+        "-m",
+        "test source snapshot",
+      ],
+      { cwd: checkout, stdio: "pipe" },
+    );
+  }
   const releaseSha = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: checkout,
     encoding: "utf8",
