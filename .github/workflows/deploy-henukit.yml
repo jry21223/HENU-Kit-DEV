@@ -37,6 +37,7 @@ jobs:
               scripts/ops/tests/deploy-henukit-artifact.test.mjs \
               scripts/ops/tests/account-portfolio-workflow.test.mjs \
               scripts/ops/tests/check-account-production-boundary.test.mjs \
+              scripts/ops/tests/oauth-continuation-release-gate.test.mjs \
               scripts/ops/tests/henukit-release-images.test.mjs \
               scripts/ops/tests/import-henukit-materials-preflight.test.mjs \
               scripts/ops/tests/materials-study-migration.test.mjs \
@@ -89,6 +90,45 @@ jobs:
       - name: Verify Library owner download behavior
         run: pnpm --filter @henukit/portal test:e2e:library-download
 
+  oauth-continuation:
+    name: oauth-continuation
+    needs: validate-release-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.9.0 --activate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+          cache-dependency-path: |
+            services/platform-core/go.sum
+            services/portal-gateway/go.sum
+            services/console-gateway/go.sum
+      - name: Install cross-product browser-test dependencies
+        run: pnpm install --frozen-lockfile --filter @henukit/portal... --filter @henukit/console...
+      - name: Install Chromium
+        run: pnpm --filter @henukit/portal exec playwright install --with-deps chromium
+      - name: Verify cumulative Account Center continuation journeys
+        run: |
+          mkdir -p release-gates
+          scripts/ops/oauth-continuation-release-gate.sh run \
+            --sha "$GITHUB_SHA" \
+            --output "release-gates/oauth-continuation-${GITHUB_SHA}.env"
+      - name: Upload SHA-bound OAuth continuation gate receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: henukit-oauth-continuation-gate-${{ github.sha }}
+          path: release-gates/oauth-continuation-${{ github.sha }}.env
+          if-no-files-found: error
+          retention-days: 14
+
   release-image-matrix:
     name: release-image-matrix
     needs: validate-release-contract
@@ -104,7 +144,7 @@ jobs:
 
   build-image:
     name: image-${{ matrix.name }}
-    needs: [validate-release-contract, release-image-matrix]
+    needs: [validate-release-contract, oauth-continuation, release-image-matrix]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
@@ -112,6 +152,18 @@ jobs:
       matrix: ${{ fromJSON(needs.release-image-matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download SHA-bound OAuth continuation gate receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: henukit-oauth-continuation-gate-${{ github.sha }}
+          path: release-gates
+
+      - name: Verify OAuth continuation gate receipt
+        run: |
+          scripts/ops/oauth-continuation-release-gate.sh verify \
+            --sha "$GITHUB_SHA" \
+            --receipt "release-gates/oauth-continuation-${GITHUB_SHA}.env"
 
       - name: Build fixed-SHA image
         env:
@@ -121,6 +173,10 @@ jobs:
           BUILD_ARGS: ${{ matrix.build_args }}
         run: |
           set -euo pipefail
+          source_root="$(mktemp -d)"
+          trap 'rm -rf -- "$source_root"' EXIT
+          git archive --format=tar "$GITHUB_SHA" | tar -xf - -C "$source_root"
+          cd "$source_root"
           args=()
           while IFS= read -r arg; do
             if [[ -n "$arg" ]]; then
@@ -160,14 +216,24 @@ jobs:
 
   package-runtime:
     name: runtime-config
-    needs: validate-release-contract
+    needs: [validate-release-contract, oauth-continuation]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download SHA-bound OAuth continuation gate receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: henukit-oauth-continuation-gate-${{ github.sha }}
+          path: release-gates
+
       - name: Package fixed-SHA runtime and prebuilt materials tools
-        run: scripts/ops/package-henukit-runtime.sh --sha "$GITHUB_SHA" --output-dir release
+        run: |
+          scripts/ops/package-henukit-runtime.sh \
+            --sha "$GITHUB_SHA" \
+            --output-dir release \
+            --oauth-gate-receipt "release-gates/oauth-continuation-${GITHUB_SHA}.env"
 
       - name: Upload runtime artifact
         uses: actions/upload-artifact@v4

@@ -25,11 +25,15 @@ test("the local builder is WSL-only and locks every artifact to the current clea
   );
   assert.equal(
     (source.match(/assert_source_snapshot/g) ?? []).length,
-    5,
+    6,
     "the exact clean source tree is rechecked before signing and publishing",
   );
   assert.match(source, /docker build[\s\S]*--platform linux\/amd64/);
-  assert.match(source, /done < <\("\$inventory" --field "\$name" build_args\)/);
+  assert.match(source, /done < <\("\$build_inventory" --field "\$name" build_args\)/);
+  assert.match(
+    source,
+    /git -C "\$repo_root" archive --format=tar "\$release_sha" \| tar -xf - -C "\$source_root"/,
+  );
   assert.match(source, /build_args\+=\(--build-arg "\$argument"\)/);
   assert.match(source, /docker build[\s\S]*"\$\{build_args\[@\]\}"/);
   assert.match(source, /Docker server must be linux\/amd64/);
@@ -43,7 +47,9 @@ test("the local builder is WSL-only and locks every artifact to the current clea
   assert.match(source, /public key[\s\S]*ssh-agent/i);
   assert.match(source, /ssh-add -l -E sha256/);
   assert.match(source, /signing_public_key/);
-  assert.match(source, /"\$runtime_packager" --sha/);
+  assert.match(source, /"\$oauth_gate" run --sha "\$release_sha" --output "\$oauth_gate_receipt"/);
+  assert.match(source, /"\$oauth_gate" verify --sha "\$release_sha" --receipt "\$oauth_gate_receipt"/);
+  assert.match(source, /"\$runtime_packager"[\s\S]*--oauth-gate-receipt "\$oauth_gate_receipt"/);
   assert.match(source, /"\$verifier"[\s\S]*--allowed-signers/);
   assert.match(source, /refusing to overwrite existing artifact directory/);
 });

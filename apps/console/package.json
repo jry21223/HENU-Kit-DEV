@@ -21,6 +21,7 @@
     "vue": "3.5.41"
   },
   "devDependencies": {
+    "@henukit/oauth-continuation-e2e": "workspace:*",
     "@playwright/test": "1.61.0",
     "@tailwindcss/vite": "4.3.0",
     "@vitejs/plugin-vue": "6.0.7",

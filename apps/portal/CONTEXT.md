@@ -30,6 +30,23 @@ Account pages obtain CSRF and flow state through Platform Core's bounded Account
 
 When a validated Portal or Console OAuth authorize request reaches Platform Core without a Core Session, the Account Center receives only a short-lived opaque continuation handle. It renders the trusted server-provided product name, submits credentials through the same explicit Platform Core contract, and navigates with a same-origin POST to resume that continuation. Its form policy allows only the Portal origin plus the exact production Console origin so the registered Console callback can complete cross-origin; local acceptance may add only a loopback origin. Portal never receives OAuth state, PKCE, callback, Authorization Code, or product Session facts; expired, replayed, tampered, and cross-browser handles render the Portal-owned safe recovery state.
 
+The first `/account/login?continuation=...` request is transport-only and must
+never render HTML. Portal's Next proxy answers it with a private, no-store,
+no-referrer `303` whose same-origin destination carries the handle in the URL
+fragment. Fragments are excluded from the following HTTP request and Referer,
+so the final Account Center document and its eager font/script requests start
+from `/account/login` without the handle. Before paint, the client captures and
+removes the fragment with the native `History.prototype.replaceState`; using
+Next's patched history instance here is prohibited because it can dispatch an
+RSC request before URL sanitization. The handle then exists only in component
+state for bootstrap, same-page retry, and the final resume POST.
+
+The release gate runs one shared parameterized browser journey for Portal and
+Console. It verifies signed-out continuation, the existing-Core-Session fast
+path, fail-closed variants, 360px keyboard and reduced-motion behavior, public
+copy, browser leakage, and bounded observability before any fixed-SHA release
+artifact can be built. See `docs/operations/oauth-continuation-acceptance.md`.
+
 The Practice catalog preparation is explicitly dark by default: without `NEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1`, `/practice` does not request or render the service catalog. When the browser flag and Gateway's matching server-side flag are both deliberately coordinated, Portal renders only Gateway-provided real bank and immutable bank-version facts, emits both IDs to `/practice/quiz`, and treats loading, empty, and error states honestly. A failed catalog read must not fall back to legacy Practice, cache, or local mock success. The merged default-off Practice session boundary owns the browser `create-session` command; this catalog ticket verifies its real bank/version handoff into that boundary, including a stable idempotency key under React development replay.
 
 For ADR-0027 public-free downloads, Portal navigates only to the same-origin

@@ -31,6 +31,11 @@ The Account Center Bootstrap is a bounded browser contract for Portal-owned acco
 
 OAuth Continuation is the Redis-backed, 30-minute coordination fact created only after registered-client, exact-callback, response-type and S256 shape validation when a supported product authorize request lacks a Core Session. Portal Gateway and Console Gateway are the only supported destinations and use fixed server-side names; browser input cannot name either product. A registered but unsupported client fails closed without a continuation, legacy login page, or product Session. The browser receives only a 32-byte opaque handle bound to the signed HttpOnly device cookie; Redis lookup keys contain irreversible handle and browser digests. Bootstrap may expose only availability plus a trusted server-side product name. Resume requires the original browser binding, CSRF and a valid Core Session, consumes atomically once, then reuses the existing Authorization Code + PKCE flow. Raw handles, OAuth state, PKCE, callbacks, codes and credentials never enter audit logs.
 
+The cumulative release gate parameterizes this contract across Portal and
+Console. Its observable event schema is limited to request ID, trusted client
+ID, outcome category, and duration; raw OAuth and credential material is never
+accepted as release evidence.
+
 ## Language
 
 **Account Center**:

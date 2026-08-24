@@ -121,6 +121,7 @@ signing_key="$(cd "$(dirname "$signing_key")" && pwd -P)/$(basename "$signing_ke
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v gzip >/dev/null 2>&1 || die "gzip is required"
+command -v tar >/dev/null 2>&1 || die "tar is required for the fixed-SHA source snapshot"
 command -v ssh-keygen >/dev/null 2>&1 || die "ssh-keygen with -Y support is required"
 command -v getent >/dev/null 2>&1 || die "getent is required to validate the handoff group"
 getent group "$handoff_group" >/dev/null || die "--handoff-group does not exist"
@@ -145,8 +146,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 inventory="$repo_root/scripts/ops/henukit-release-images.sh"
 runtime_packager="$repo_root/scripts/ops/package-henukit-runtime.sh"
 verifier="$repo_root/scripts/ops/verify-henukit-local-release.sh"
-[[ -x "$inventory" && -x "$runtime_packager" && -x "$verifier" ]] ||
-  die "release inventory, runtime packager, and verifier must be executable"
+oauth_gate="$repo_root/scripts/ops/oauth-continuation-release-gate.sh"
+[[ -x "$inventory" && -x "$runtime_packager" && -x "$verifier" && -x "$oauth_gate" ]] ||
+  die "release inventory, runtime packager, verifier, and OAuth gate must be executable"
 "$inventory" --check
 
 source_tree="$(git -C "$repo_root" rev-parse "${release_sha}^{tree}")" ||
@@ -169,6 +171,34 @@ remote_main_sha() {
 [[ "$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" == "linux/amd64" ]] ||
   die "Docker server must be linux/amd64"
 
+incoming=""
+signers_file=""
+source_root=""
+oauth_gate_dir="$(mktemp -d "${TMPDIR:-/tmp}/henukit-oauth-gate.XXXXXX")"
+oauth_gate_receipt="$oauth_gate_dir/oauth-continuation-${release_sha}.env"
+cleanup() {
+  if [[ -n "$incoming" ]]; then
+    rm -rf -- "$incoming"
+  fi
+  if [[ -n "$signers_file" ]]; then
+    rm -f -- "$signers_file"
+  fi
+  if [[ -n "$source_root" ]]; then
+    rm -rf -- "$source_root"
+  fi
+  rm -rf -- "$oauth_gate_dir"
+}
+trap cleanup EXIT
+cd "$repo_root"
+"$oauth_gate" run --sha "$release_sha" --output "$oauth_gate_receipt"
+"$oauth_gate" verify --sha "$release_sha" --receipt "$oauth_gate_receipt"
+assert_source_snapshot
+source_root="$(mktemp -d "${TMPDIR:-/tmp}/henukit-release-source-${release_sha}.XXXXXX")"
+git -C "$repo_root" archive --format=tar "$release_sha" | tar -xf - -C "$source_root"
+build_inventory="$source_root/scripts/ops/henukit-release-images.sh"
+[[ -x "$build_inventory" ]] || die "fixed-SHA source snapshot is incomplete"
+"$build_inventory" --check
+
 signer="${HENUKIT_RELEASE_SIGNER:-henukit-release}"
 namespace="${HENUKIT_RELEASE_SIGNATURE_NAMESPACE:-henukit-release}"
 [[ "$signer" =~ ^[A-Za-z0-9_.@-]+$ ]] || die "HENUKIT_RELEASE_SIGNER contains unsupported characters"
@@ -186,24 +216,16 @@ final_dir="$output_dir/henukit-release-$release_sha"
 [[ ! -e "$final_dir" ]] || die "refusing to overwrite existing artifact directory: $final_dir"
 incoming="$(mktemp -d "$output_dir/.henukit-release-${release_sha}.incoming.XXXXXX")"
 signers_file="$(mktemp "${TMPDIR:-/tmp}/henukit-local-builder-signers.XXXXXX")"
-cleanup() {
-  if [[ -n "$incoming" ]]; then
-    rm -rf -- "$incoming"
-  fi
-  rm -f -- "$signers_file"
-}
-trap cleanup EXIT
-
-cd "$repo_root"
+cd "$source_root"
 while IFS=$'\t' read -r name image service role; do
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ && "$image" =~ ^henukit-[a-z0-9][a-z0-9-]*$ ]] ||
     die "inventory emitted an invalid build record"
-  context="$("$inventory" --field "$name" context)"
-  dockerfile="$("$inventory" --field "$name" dockerfile)"
+  context="$("$build_inventory" --field "$name" context)"
+  dockerfile="$("$build_inventory" --field "$name" dockerfile)"
   build_args=()
   while IFS= read -r argument || [[ -n "${argument:-}" ]]; do
     [[ -n "$argument" ]] && build_args+=(--build-arg "$argument")
-  done < <("$inventory" --field "$name" build_args)
+  done < <("$build_inventory" --field "$name" build_args)
   printf '%s: building %s:%s\n' "$program" "$image" "$release_sha"
   docker build \
     --platform linux/amd64 \
@@ -217,9 +239,12 @@ while IFS=$'\t' read -r name image service role; do
   docker save "$image:$release_sha" | gzip -1 > "$incoming/$archive"
   [[ -s "$incoming/$archive" ]] || die "image archive is empty: $archive"
   write_checksum "$incoming" "$archive"
-done < <("$inventory" --records)
+done < <("$build_inventory" --records)
 
-"$runtime_packager" --sha "$release_sha" --output-dir "$incoming" >/dev/null
+"$runtime_packager" \
+  --sha "$release_sha" \
+  --output-dir "$incoming" \
+  --oauth-gate-receipt "$oauth_gate_receipt" >/dev/null
 printf '%s\n' "$release_sha" > "$incoming/RELEASE_SHA"
 
 assert_source_snapshot

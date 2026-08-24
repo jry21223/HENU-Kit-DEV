@@ -77,6 +77,7 @@ async function bootstrapAccountForm(
       credentials: "include",
       headers: { Accept: "application/json" },
       cache: "no-store",
+      referrerPolicy: "no-referrer",
     });
   } catch (e) {
     throw new AccountCenterError(
@@ -178,6 +179,7 @@ async function postAccountForm(
       },
       body,
       redirect: "manual",
+      referrerPolicy: "no-referrer",
     });
   } catch (e) {
     throw new AccountCenterError(

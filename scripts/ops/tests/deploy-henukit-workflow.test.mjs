@@ -8,6 +8,9 @@ const workflow = readFileSync(
   new URL("../../../.github/workflows/deploy-henukit.yml", import.meta.url),
   "utf8",
 );
+const rootPackage = JSON.parse(
+  readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+);
 const portalDockerfile = readFileSync(
   new URL("../../../apps/portal/Dockerfile", import.meta.url),
   "utf8",
@@ -26,6 +29,18 @@ const exampleEnvironment = readFileSync(
 );
 const runtimePackager = readFileSync(
   new URL("../package-henukit-runtime.sh", import.meta.url),
+  "utf8",
+);
+const localBuilder = readFileSync(
+  new URL("../build-henukit-release-local.sh", import.meta.url),
+  "utf8",
+);
+const quickBuilder = readFileSync(
+  new URL("../build-henukit-release-quick.sh", import.meta.url),
+  "utf8",
+);
+const oauthGate = readFileSync(
+  new URL("../oauth-continuation-release-gate.sh", import.meta.url),
   "utf8",
 );
 const actionsWatcher = readFileSync(
@@ -85,6 +100,65 @@ test("CI runs the Account Portfolio browser behavior spec", () => {
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:account/);
 });
 
+test("release artifacts are blocked on the cumulative cross-product OAuth journey", () => {
+  assert.equal(
+    rootPackage.scripts["test:oauth-continuation"],
+    "node --test scripts/tests/oauth-continuation-journey.test.mjs && go -C services/platform-core test ./internal/httpapi -run '^TestOAuthContinuationAuditUsesBoundedSchema$' -count=1 && go -C services/platform-core test ./tests -run '^TestPortalOAuthContinuationRestoresValidatedAuthorizeRequest$' -count=1 && pnpm --filter @henukit/portal run test:e2e:oauth-continuation && pnpm --filter @henukit/console run test:e2e:oauth-continuation",
+  );
+  assert.match(workflow, /oauth-continuation:\s+name: oauth-continuation/);
+  assert.match(
+    workflow,
+    /build-image:[\s\S]*needs: \[validate-release-contract, oauth-continuation, release-image-matrix\]/,
+  );
+  assert.match(
+    workflow,
+    /package-runtime:[\s\S]*needs: \[validate-release-contract, oauth-continuation\]/,
+  );
+  assert.match(workflow, /oauth-continuation-release-gate\.sh run[\s\S]*--sha "\$GITHUB_SHA"/);
+  assert.match(workflow, /actions\/upload-artifact@v4[\s\S]*henukit-oauth-continuation-gate-/);
+  assert.match(workflow, /actions\/download-artifact@v4[\s\S]*henukit-oauth-continuation-gate-/);
+  assert.match(workflow, /oauth-continuation-release-gate\.sh verify/);
+  assert.match(
+    workflow,
+    /Build fixed-SHA image[\s\S]*git archive --format=tar "\$GITHUB_SHA"[\s\S]*cd "\$source_root"[\s\S]*docker build/,
+  );
+  assert.match(workflow, /scripts\/ops\/tests\/oauth-continuation-release-gate\.test\.mjs/);
+  for (const builder of [localBuilder, quickBuilder]) {
+    assert.match(builder, /"\$oauth_gate" run --sha "\$release_sha" --output "\$oauth_gate_receipt"/);
+    assert.match(builder, /"\$oauth_gate" verify --sha "\$release_sha" --receipt "\$oauth_gate_receipt"/);
+    assert.match(builder, /"\$runtime_packager"[\s\S]*--oauth-gate-receipt "\$oauth_gate_receipt"/);
+    assert.ok(
+      builder.indexOf('"$oauth_gate" run') < builder.indexOf("docker build"),
+      "local builders must run the gate before the first image build",
+    );
+    assert.match(
+      builder,
+      /git -C "\$repo_root" archive --format=tar "\$release_sha" \| tar -xf - -C "\$source_root"/,
+    );
+    assert.ok(
+      builder.indexOf('archive --format=tar "$release_sha"') <
+        builder.indexOf("docker build"),
+      "local builders must build images from an exact Git snapshot",
+    );
+  }
+  assert.match(
+    quickBuilder,
+    /\[\[ -z "\$output_dir" \]\] && output_dir="\$repo_root\/artifacts\/henukit-release-quick"/,
+  );
+  assert.match(quickBuilder, /source_tree=.*rev-parse "\$\{release_sha\}\^\{tree\}"/);
+  assert.equal(
+    (quickBuilder.match(/assert_source_snapshot/g) ?? []).length,
+    4,
+    "the quick builder rechecks the exact source before and after construction",
+  );
+  assert.match(oauthGate, /pnpm -C "\$repo_root" run test:oauth-continuation/);
+  assert.match(oauthGate, /release_sha=%s/);
+  assert.match(oauthGate, /source_tree=%s/);
+  assert.match(runtimePackager, /oauth-continuation-release-gate\.sh/);
+  assert.match(runtimePackager, /git -C "\$repo_root" archive --format=tar "\$release_sha"/);
+  assert.match(runtimePackager, /release-gates\/oauth-continuation\.env/);
+});
+
 test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {
   assert.match(workflow, /Verify enabled QuizCraft V2 stats and rankings/);
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:stats/);
@@ -93,7 +167,7 @@ test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {
 test("release artifacts carry an exact-SHA Account mock-free boundary manifest", () => {
   assert.match(
     workflow,
-    /scripts\/ops\/package-henukit-runtime\.sh --sha "\$GITHUB_SHA" --output-dir release/,
+    /scripts\/ops\/package-henukit-runtime\.sh[\s\S]*--sha "\$GITHUB_SHA"[\s\S]*--oauth-gate-receipt/,
   );
 });
 
@@ -670,7 +744,10 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     /henukit_dev_change_me|replace-[a-z]|0123456789abcdef|cUUpjiEH/,
   );
   assert.match(workflow, /name: henukit-runtime-\$\{\{ github\.sha \}\}/);
-  assert.match(workflow, /scripts\/ops\/package-henukit-runtime\.sh --sha "\$GITHUB_SHA" --output-dir release/);
+  assert.match(
+    workflow,
+    /scripts\/ops\/package-henukit-runtime\.sh[\s\S]*--sha "\$GITHUB_SHA"[\s\S]*--oauth-gate-receipt/,
+  );
   assert.match(
     runtimePackager,
     /config --no-interpolate --no-path-resolution > "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
@@ -688,22 +765,22 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/platform-core\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/platform-core\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry the registration migration",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Account Portfolio recovery migrations",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/notice\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/notice\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Notice recovery migrations",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/food\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/food\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Food recovery migrations",
   );
 });

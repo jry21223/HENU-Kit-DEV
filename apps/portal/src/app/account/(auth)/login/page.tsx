@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
@@ -30,6 +30,10 @@ import {
   requestRegistrationCode,
   verifyLoginCode,
 } from "@/lib/auth/account-center";
+import {
+  accountCenterURLWithoutContinuation,
+  continuationHandleFromURL,
+} from "@/lib/auth/account-continuation-url";
 import { fetchSession, hasGateway } from "@/lib/api/client";
 import {
   isValidHenuLocalPart,
@@ -80,7 +84,9 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const requestedNext = params.get("next");
-  const continuationHandle = params.get("continuation")?.trim() ?? "";
+  const [continuationHandle, setContinuationHandle] = useState(
+    () => params.get("continuation")?.trim() ?? ""
+  );
   const continuationError = params.get("continuation_error")?.trim() ?? "";
   const continuationRequestID = params.get("request_id")?.trim() ?? "";
 
@@ -104,6 +110,7 @@ function LoginForm() {
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
   const [continuationProduct, setContinuationProduct] = useState("");
+  const [continuationAttempt, setContinuationAttempt] = useState(0);
   const [continuationFailure, setContinuationFailure] = useState<{
     kind: "expired" | "service" | "unsupported";
     requestID?: string;
@@ -133,6 +140,24 @@ function LoginForm() {
   const fullEmail = toHenuEmail(localPart);
   const needCode = tab === "register" || mode === "code";
   const passwordLength = Array.from(pwd).length;
+
+  useLayoutEffect(() => {
+    const currentURL = new URL(window.location.href);
+    const urlHandle = continuationHandleFromURL(currentURL.toString());
+    if (!urlHandle) return;
+    // The server moved the handle into a fragment before returning any HTML,
+    // so it cannot reach HTTP requests or Referer. Remove that fragment using
+    // the browser primitive before paint without dispatching a Next transition.
+    History.prototype.replaceState.call(
+      window.history,
+      window.history.state,
+      "",
+      accountCenterURLWithoutContinuation(currentURL.toString())
+    );
+    if (!continuationHandle) {
+      window.queueMicrotask(() => setContinuationHandle(urlHandle));
+    }
+  }, [continuationHandle]);
 
   useEffect(() => {
     if (continuationHandle || continuationError) return;
@@ -196,7 +221,7 @@ function LoginForm() {
     return () => {
       cancelled = true;
     };
-  }, [continuationHandle, continuationError]);
+  }, [continuationHandle, continuationError, continuationAttempt]);
 
   useEffect(() => {
     if (cd <= 0) return;
@@ -413,7 +438,12 @@ function LoginForm() {
             <Button
               type="button"
               className="mt-7 w-full"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                continuationBootstrap.current = null;
+                setContinuationProduct("");
+                setContinuationFailure(null);
+                setContinuationAttempt((attempt) => attempt + 1);
+              }}
             >
               重新尝试
             </Button>

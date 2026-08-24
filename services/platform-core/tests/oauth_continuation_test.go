@@ -12,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -195,7 +196,59 @@ func TestPortalOAuthContinuationRestoresValidatedAuthorizeRequest(t *testing.T) 
 		}
 	}
 	if !strings.Contains(logged, `"service_id":"portal-gateway"`) {
-		t.Fatalf("continuation audit log omitted trusted client classification: %s", logged)
+		// Continuation-specific events intentionally use client_id and replace
+		// the generic HTTP audit on OAuth endpoints.
+		if !strings.Contains(logged, `"client_id":"portal-gateway"`) {
+			t.Fatalf("continuation audit log omitted trusted client classification: %s", logged)
+		}
+	}
+	allowedEventKeys := map[string]bool{
+		"time": true, "level": true, "msg": true, "request_id": true,
+		"client_id": true, "outcome": true, "duration_ms": true,
+	}
+	wantOutcomes := []string{
+		"continuation_created", "continuation_bootstrapped",
+		"authorization_code_issued", "product_session_issued", "recovery_unavailable",
+	}
+	seenOutcomes := map[string]bool{}
+	continuationEvents := 0
+	for _, line := range strings.Split(strings.TrimSpace(logged), "\n") {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatalf("decode audit event: %v line=%s", err, line)
+		}
+		if event["msg"] == "http_request" {
+			path, _ := event["path"].(string)
+			if slices.Contains([]string{"/api/v1/oauth/authorize", "/account/continuation/resume", "/api/v1/oauth/token"}, path) {
+				t.Fatalf("OAuth continuation endpoint used unbounded HTTP audit: %s", line)
+			}
+			continue
+		}
+		if event["msg"] != "oauth_continuation" {
+			continue
+		}
+		continuationEvents++
+		if len(event) != len(allowedEventKeys) {
+			t.Fatalf("continuation event has %d fields, want %d: %s", len(event), len(allowedEventKeys), line)
+		}
+		for key := range event {
+			if !allowedEventKeys[key] {
+				t.Fatalf("continuation event exposed field %q: %s", key, line)
+			}
+		}
+		if clientID, _ := event["client_id"].(string); clientID != "" && clientID != portalContinuationClientID {
+			t.Fatalf("continuation event client_id = %q, want trusted Portal ID or empty rejection", clientID)
+		}
+		outcome, _ := event["outcome"].(string)
+		seenOutcomes[outcome] = true
+	}
+	if continuationEvents == 0 {
+		t.Fatalf("continuation flow emitted no bounded events: %s", logged)
+	}
+	for _, outcome := range wantOutcomes {
+		if !seenOutcomes[outcome] {
+			t.Fatalf("continuation events omitted outcome %q: %s", outcome, logged)
+		}
 	}
 }
 
