@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import nextConfig from "../../../next.config";
+import { metadata as accountAuthMetadata } from "../../app/account/(auth)/layout";
 
 import {
   bootstrapAccountLogin,
@@ -214,6 +215,7 @@ describe("OAuth continuation resume", () => {
 
     expect(headers.get("cache-control")).toContain("no-store");
     expect(headers.get("referrer-policy")).toBe("no-referrer");
+    expect(accountAuthMetadata.referrer).toBe("no-referrer");
     expect(headers.get("content-security-policy")).toContain(
       "frame-ancestors 'none'"
     );
