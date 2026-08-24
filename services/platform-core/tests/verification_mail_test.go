@@ -576,6 +576,9 @@ func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
 	resetIdentityTables(t, ctx, pool, redisClient)
 	server := newVerificationServer(t, pool, redisClient)
 	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "browser-registration-seed"))
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ('quizcraft', ARRAY['https://quiz.example/auth/callback'])`); err != nil {
+		t.Fatalf("seed browser-login OAuth client: %v", err)
+	}
 	client := clientForDevice(server, "browser-login-device")
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
