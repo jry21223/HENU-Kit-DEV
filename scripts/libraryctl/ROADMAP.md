@@ -1,5 +1,9 @@
 # libraryctl Roadmap
 
+> **已废弃。** 下列 V2/V3 计划均不再推进——资料库维护已迁到
+> [`jry21223/HENU-Final-Review`](https://github.com/jry21223/HENU-Final-Review)。
+> 详见 `README.md` 顶部的能力对照表。
+
 ## V1 — 已实现（2026-06-30）
 
 | 命令 | 状态 | 说明 |

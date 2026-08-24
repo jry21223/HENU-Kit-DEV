@@ -1,5 +1,19 @@
 # libraryctl
 
+> **已废弃，不再维护。** 资料库的实际维护已迁到独立仓库
+> [`jry21223/HENU-Final-Review`](https://github.com/jry21223/HENU-Final-Review)，
+> 那边的工具链在每个维度都覆盖并超过了本工具，且有 CI 把关：
+>
+> | libraryctl | HENU-Final-Review 中的对应实现 |
+> |---|---|
+> | `validate` | `scripts/validate-materials.mjs`（另有个人信息检测、署名与授权校验） |
+> | `export-web` | `manifest.json` 本身即清单，由 `scripts/update-readme.mjs` 同步目录 |
+> | `hash` | `scripts/refresh-manifest-metadata.mjs`（含 CI 用的 `--check` 漂移检测） |
+> | `dedupe`（V2 规划） | `scripts/audit-material-duplicates.py`（精确哈希 + 语义文件名 + Office 正文相似度） |
+> | `init-root` / `init-course` | 不需要：该仓库按「课程名/资料类型/文件」扁平组织 |
+>
+> 本目录保留仅供追溯历史。新需求请直接提到 HENU-Final-Review，不要在这里加功能。
+
 本地资料库规范化工具，用于初始化课程目录、校验索引、规范文件命名、去重，并生成可导入网页后台的资料清单。
 
 ## 定位
