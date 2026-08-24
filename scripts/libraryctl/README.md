@@ -30,6 +30,12 @@ node scripts/libraryctl/libraryctl.mjs validate --root ./资料库
 node scripts/libraryctl/libraryctl.mjs export-web \
   --root ./资料库 \
   --out ./dist/material-import-manifest.json
+
+# 计算缺失的 SHA256 并查看可能重复（预览，不写文件）
+node scripts/libraryctl/libraryctl.mjs hash --root ./资料库
+
+# 确认无误后写回 materials.csv
+node scripts/libraryctl/libraryctl.mjs hash --root ./资料库 --apply
 ```
 
 ## 命令
@@ -42,6 +48,7 @@ node scripts/libraryctl/libraryctl.mjs export-web \
 | `init-course` | 初始化单个课程目录，生成 course.yaml + materials.csv + 全部子目录 |
 | `validate` | 校验目录结构完整性、course.yaml 必填字段、materials.csv 数据有效性、文件路径是否存在 |
 | `export-web` | 遍历所有课程，生成可导入网页后台的 JSON manifest |
+| `hash` | 计算 SHA256 补全 materials.csv 缺失的 sha256 字段，并按哈希列出可能重复的资料 |
 
 ### V2（规划中）
 
@@ -49,8 +56,20 @@ node scripts/libraryctl/libraryctl.mjs export-web \
 |---|---|
 | `scan` | 扫描资料库统计（课程数、资料数、未登记文件、可能重复） |
 | `normalize` | 规范文件命名（按 课程名_类型_年份_标题.扩展名 规则） |
-| `hash` | 计算 SHA256，补全 materials.csv 中缺失的 sha256 字段 |
 | `dedupe` | 按 SHA256 去重，重复文件移至 99_课程归档/01_重复文件/ |
+
+#### `hash` 细则
+
+| 行为 | 说明 |
+|---|---|
+| 预览优先 | 默认只输出报告；只有 `--apply` 才写回 materials.csv |
+| 只补空值 | 已登记的 sha256 一律保留；格式非法的值会告警且不参与重复比对 |
+| 单课运行 | `--course <课程名 或 课程目录名>` 只处理一门课；匹配不到即报错 |
+| 大文件 | 超过 500MB 的文件跳过并告警，其余条目照常处理 |
+| 路径边界 | 与 `validate` / `export-web` 共用同一个路径安全 helper，越界或缺失路径记为 error 并继续处理其余行 |
+| 写回保护 | 表头出现 materials.csv 未定义的列时跳过写回并报错，避免静默丢列；写入走临时文件 + rename |
+
+输出中的 `possibleDuplicates` 按 SHA256 分组（含跨课程重复），可直接作为后续 `dedupe` 的输入。存在 error 时进程以退出码 1 结束。
 
 ## 资料库结构
 
@@ -113,7 +132,7 @@ libraryctl/
     scanner.mjs         文件扫描 (V2)
     validator.mjs       结构与数据校验
     normalizer.mjs      文件名规范化
-    hasher.mjs          SHA256 计算 (V2)
+    hasher.mjs          SHA256 计算与重复检测
     dedupe.mjs          去重 (V2)
     export-web.mjs      网页导入清单生成
   schemas/

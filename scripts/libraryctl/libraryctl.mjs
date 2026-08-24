@@ -9,11 +9,11 @@
 //   init-course    初始化单个课程目录
 //   validate       校验资料库结构和数据
 //   export-web     生成网页后台导入清单
+//   hash           计算 SHA256 并检测可能重复
 //
 // Commands (V2, not yet implemented):
 //   scan           扫描资料库统计
 //   normalize      规范文件命名
-//   hash           计算 SHA256
 //   dedupe         去重
 
 import { randomUUID } from "node:crypto";
@@ -30,6 +30,7 @@ import { generateDefaultCourseYaml, writeCourseYaml } from "./lib/course.mjs";
 import { MATERIALS_HEADER } from "./lib/materials.mjs";
 import { validateAll } from "./lib/validator.mjs";
 import { ExportPathError, generateWebManifest } from "./lib/export-web.mjs";
+import { hashAll } from "./lib/hasher.mjs";
 import { SafePathError } from "./lib/safe-path.mjs";
 
 function writeJsonAtomically(outPath, value) {
@@ -97,17 +98,19 @@ function printHelp() {
                --semester <学期> --course <课程名>
   validate     --root <path>                  校验资料库结构和数据
   export-web   --root <path> [--out <file>]   生成网页后台导入清单
+  hash         --root <path> [--course <名称>] 补全 materials.csv 缺失的 sha256
+               [--apply]                       并列出可能重复的资料
 
 命令 (V2, 尚未实现):
   scan         --root <path>                  扫描资料库统计
   normalize    --root <path> [--dry-run]      规范文件命名
-  hash         --root <path>                  计算 SHA256
   dedupe       --root <path> [--dry-run]      去重
 
 选项:
   --root       资料库根目录路径（必填）
   --out        输出文件路径（export-web 使用）
-  --dry-run    仅预览，不实际修改
+  --course     只处理指定课程（hash 使用，课程名或课程目录名）
+  --dry-run    仅预览，不实际修改（默认行为）
   --apply      实际执行修改
   --help       显示此帮助
 
@@ -119,6 +122,8 @@ function printHelp() {
   node scripts/libraryctl/libraryctl.mjs validate --root ./资料库
   node scripts/libraryctl/libraryctl.mjs export-web --root ./资料库 \\
     --out ./dist/material-import-manifest.json
+  node scripts/libraryctl/libraryctl.mjs hash --root ./资料库
+  node scripts/libraryctl/libraryctl.mjs hash --root ./资料库 --course 离散数学 --apply
 `);
 }
 
@@ -286,10 +291,36 @@ function main() {
         break;
       }
 
+      case "hash": {
+        const root = resolve(options.root || ".");
+        const apply = flags.includes("apply");
+        const dryRun = flags.includes("dry-run");
+
+        if (apply && dryRun) {
+          console.error(
+            JSON.stringify(
+              { ok: false, error: "--apply 与 --dry-run 不能同时使用" },
+              null,
+              2,
+            ),
+          );
+          process.exit(1);
+        }
+
+        const result = hashAll(root, {
+          apply,
+          course: options.course ?? null,
+        });
+        console.log(JSON.stringify(result, null, 2));
+        // exitCode rather than exit(): the duplicate list can outgrow the pipe
+        // buffer, and exiting mid-write would truncate it.
+        process.exitCode = result.ok ? 0 : 1;
+        break;
+      }
+
       // V2 stubs
       case "scan":
       case "normalize":
-      case "hash":
       case "dedupe": {
         console.error(
           JSON.stringify(

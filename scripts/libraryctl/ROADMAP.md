@@ -18,6 +18,16 @@
 - manifest 中的合法路径统一使用 `/` 分隔符，导出文件采用临时文件后 rename 的替换方式。
 - `pnpm run test:libraryctl` 覆盖正常路径、跨平台危险输入、符号链接与失败导出不破坏旧文件。
 
+### V1.2 — `hash` 命令（2026-08-24）
+
+- `hash` 遍历课程 `materials.csv`，只为 `sha256` 为空的条目计算哈希并按哈希分组。
+- 默认预览、`--apply` 才写回，遵循「保守操作」原则；`--course` 支持只跑一门课。
+- `hashFile` 改为按 1MB 分块读取，超大文件不再整体进内存；超过 500MB 的条目跳过并告警。
+- 写回前检查表头是否含 materials.csv 未定义的列，含则跳过写回并报错，避免静默丢列。
+- `materials.csv` 写入改为临时文件 + rename，写到一半崩溃不会截断课程索引。
+- `parseCsv` 拆行时保留引号，带逗号的引用字段不再被错误切分（`hash --apply` 会把这类错误固化下来）。
+- `pnpm run test:libraryctl` 覆盖预览/写回、已有哈希保留、跨课程重复、超限跳过、越界与缺失路径、未知列拦截、`--course` 过滤。
+
 ---
 
 ## V2 — 规划中
@@ -78,27 +88,22 @@ libraryctl normalize --root ./资料库 --apply       # 执行
 
 ---
 
-### 2.3 `hash` — SHA256 计算与去重检测
+### 2.3 `hash` — SHA256 计算与去重检测 ✅ 已实现（2026-08-24）
 
 ```
-libraryctl hash --root ./资料库
+libraryctl hash --root ./资料库                      # 预览
+libraryctl hash --root ./资料库 --apply              # 写回 materials.csv
+libraryctl hash --root ./资料库 --course 离散数学     # 只处理单门课程
 ```
 
-**实现要点：**
-- 遍历所有课程的 `materials.csv`
-- 对 `sha256` 为空的条目，读取文件计算 SHA256
-- 写回 `materials.csv`
-- 按 SHA256 分组，标记相同哈希的文件组
-- 输出可能重复列表
-
-**性能考虑：**
+**已落地：**
+- 遍历所有课程的 `materials.csv`，对 `sha256` 为空的条目计算 SHA256
+- `--apply` 才写回 `materials.csv`（默认预览，与「保守操作」原则一致）
+- 按 SHA256 分组，输出 `possibleDuplicates`（含跨课程重复）
 - 跳过超大文件（> 500MB）并记录 warning
-- 大文件可使用流式哈希（`fs.createReadStream` + `crypto.createHash`）
-- 支持 `--course` 参数只处理单门课程
+- 分块读取（1MB/次）替代整文件读入，`--course` 只处理单门课程
 
-**依赖：** `hasher.mjs`（`hashFile` 已实现，`hashAll` 待实现）
-
-**工作量：** ~200 行
+**依赖：** `hasher.mjs`（`hashFile`、`hashAll` 均已实现）
 
 ---
 
@@ -122,7 +127,7 @@ libraryctl dedupe --root ./资料库 --apply       # 执行
 sha256, kept_path, removed_path, removed_original_name, dedupe_date
 ```
 
-**依赖：** `hasher.mjs`、`dedupe.mjs`（待实现）、`materials.mjs`
+**依赖：** `hasher.mjs`（已实现，可直接消费 `hash` 输出的 `possibleDuplicates`）、`dedupe.mjs`（待实现）、`materials.mjs`
 
 **工作量：** ~250 行
 
@@ -170,7 +175,7 @@ sha256, kept_path, removed_path, removed_original_name, dedupe_date
 ```
 P0 (今天): V1 4 个命令 ✅
 P1 (本周): scan + normalize
-P2 (下周): hash + dedupe
+P2 (下周): hash ✅ + dedupe
 P3 (后续): validate 增强 + export-web 增强
 P4 (远期): V3 功能
 ```

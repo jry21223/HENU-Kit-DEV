@@ -1,7 +1,15 @@
 // libraryctl — materials.csv read/write
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, resolve, join } from 'node:path';
 
 /** CSV header fields for materials.csv */
 export const MATERIALS_HEADER = [
@@ -54,7 +62,9 @@ export function parseCsv(csv) {
   for (let i = 0; i < csv.length; i++) {
     const ch = csv[i];
     if (ch === '"') {
+      // Keep the quote so parseCsvLine can still see the field boundaries.
       inQuotes = !inQuotes;
+      current += ch;
     } else if (ch === '\n' && !inQuotes) {
       lines.push(current);
       current = '';
@@ -157,5 +167,18 @@ export function readMaterialsCsv(courseDir) {
 export function writeMaterialsCsv(courseDir, rows) {
   const archiveDir = resolve(courseDir, '00_课程档案');
   const csvPath = join(archiveDir, 'materials.csv');
-  writeFileSync(csvPath, rowsToCsv(rows), 'utf-8');
+  mkdirSync(archiveDir, { recursive: true });
+
+  // Write to a sibling temp file and rename, so a crash mid-write cannot leave
+  // the course index truncated.
+  const tempPath = join(
+    archiveDir,
+    `.${basename(csvPath)}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  try {
+    writeFileSync(tempPath, rowsToCsv(rows), { encoding: 'utf-8', flag: 'wx' });
+    renameSync(tempPath, csvPath);
+  } finally {
+    if (existsSync(tempPath)) unlinkSync(tempPath);
+  }
 }
