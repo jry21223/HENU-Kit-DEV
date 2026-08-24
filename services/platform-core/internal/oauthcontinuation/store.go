@@ -16,6 +16,7 @@ import (
 
 var (
 	ErrUnavailable = errors.New("OAuth continuation is unavailable")
+	ErrConsumed    = errors.New("OAuth continuation was already consumed")
 	ErrDependency  = errors.New("OAuth continuation dependency is unavailable")
 )
 
@@ -50,7 +51,7 @@ func New(redisClient *redis.Client) *Store {
 	return &Store{redis: redisClient, now: func() time.Time { return time.Now().UTC() }}
 }
 
-func (s *Store) AllowCreate(ctx context.Context, clientID, browserID, clientIP string) (bool, error) {
+func (s *Store) ConsumeCreationQuota(ctx context.Context, clientID, browserID, clientIP string) (bool, error) {
 	if s == nil || s.redis == nil || clientID == "" || browserID == "" || clientIP == "" {
 		return false, ErrUnavailable
 	}
@@ -125,8 +126,35 @@ func (s *Store) Consume(ctx context.Context, handle, browserID string) (Continua
 	if !validHandle(handle) || browserID == "" {
 		return Continuation{}, ErrUnavailable
 	}
-	payload, err := s.redis.GetDel(ctx, lookupKey(handle, browserID)).Bytes()
-	return s.decode(payload, err, browserID)
+	const script = `
+local payload = redis.call("GET", KEYS[1])
+if payload then
+  local ttl = redis.call("PTTL", KEYS[1])
+  redis.call("DEL", KEYS[1])
+  if ttl > 0 then redis.call("SET", KEYS[2], "1", "PX", ttl) end
+  return {"ok", payload}
+end
+if redis.call("EXISTS", KEYS[2]) == 1 then return {"consumed", ""} end
+return {"missing", ""}`
+	result, err := s.redis.Eval(ctx, script, []string{
+		lookupKey(handle, browserID), consumedKey(handle, browserID),
+	}).Slice()
+	if err != nil || len(result) != 2 {
+		return Continuation{}, ErrDependency
+	}
+	status, statusOK := result[0].(string)
+	payload, payloadOK := result[1].(string)
+	if !statusOK || !payloadOK {
+		return Continuation{}, ErrDependency
+	}
+	switch status {
+	case "ok":
+		return s.decode([]byte(payload), nil, browserID)
+	case "consumed":
+		return Continuation{}, ErrConsumed
+	default:
+		return Continuation{}, ErrUnavailable
+	}
 }
 
 func (s *Store) decode(payload []byte, err error, browserID string) (Continuation, error) {
@@ -146,6 +174,11 @@ func (s *Store) decode(payload []byte, err error, browserID string) (Continuatio
 func lookupKey(handle, browserID string) string {
 	handleHash := sha256.Sum256([]byte(handle))
 	return "platform-core:oauth-continuation:" + hex.EncodeToString(handleHash[:]) + ":" + bindingDigest(browserID)
+}
+
+func consumedKey(handle, browserID string) string {
+	handleHash := sha256.Sum256([]byte(handle))
+	return "platform-core:oauth-continuation-consumed:" + hex.EncodeToString(handleHash[:]) + ":" + bindingDigest(browserID)
 }
 
 func bindingDigest(browserID string) string {

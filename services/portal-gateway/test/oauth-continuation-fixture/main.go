@@ -30,7 +30,7 @@ const (
 	clientID       = "portal-gateway"
 	clientSecret   = "portal-e2e-client-secret-with-enough-entropy"
 	keyID          = "primary"
-	redirectURI    = "http://127.0.0.1:3210/api/v1/auth/callback"
+	redirectURI    = portalOrigin + "/api/v1/auth/callback"
 	testEmail      = "student@henu.edu.cn"
 	testPassword   = "correct horse battery staple"
 )

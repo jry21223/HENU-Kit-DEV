@@ -6,7 +6,7 @@ test("Portal browser completes Account Center continuation through the real Gate
   await page.addInitScript(() => window.localStorage.clear());
 
   await page.goto(
-    "http://127.0.0.1:3210/api/v1/auth/login?return_to=%2Faccount"
+    "http://127.0.0.1:3111/api/v1/auth/login?return_to=%2Faccount"
   );
   await expect(page).toHaveURL(
     /http:\/\/127\.0\.0\.1:3111\/account\/login\?continuation=[A-Za-z0-9_-]+$/

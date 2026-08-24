@@ -201,6 +201,20 @@ test("Account Center renders a retryable continuation service failure with reque
   await expect(page.getByText("redis unavailable")).toHaveCount(0);
 });
 
+test("Core-side continuation failure offers a fresh safe OAuth start", async ({
+  page,
+}) => {
+  await page.goto(
+    "/account/login?continuation_error=service&request_id=req_core_continuation_service",
+    { waitUntil: "networkidle" }
+  );
+
+  await expect(page.getByRole("heading", { name: "登录暂时不可用" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "重新开始登录" })
+  ).toHaveAttribute("href", "/api/v1/auth/login?return_to=%2Faccount");
+});
+
 test("OAuth continuation Account Center remains operable at 360px with reduced motion", async ({
   page,
 }) => {

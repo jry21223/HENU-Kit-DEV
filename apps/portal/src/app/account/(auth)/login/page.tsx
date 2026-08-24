@@ -116,6 +116,10 @@ function LoginForm() {
       : null
   );
   const csrfBootstrap = useRef<Promise<string> | null>(null);
+  const continuationBootstrap = useRef<{
+    handle: string;
+    request: ReturnType<typeof bootstrapAccountLogin>;
+  } | null>(null);
   const defaultNext = tab === "register" ? "/account/security" : "/account";
   const nextPath =
     requestedNext?.startsWith("/") ? requestedNext : defaultNext;
@@ -158,7 +162,13 @@ function LoginForm() {
   useEffect(() => {
     if (!continuationHandle || continuationError) return;
     let cancelled = false;
-    const bootstrap = bootstrapAccountLogin(continuationHandle);
+    if (continuationBootstrap.current?.handle !== continuationHandle) {
+      continuationBootstrap.current = {
+        handle: continuationHandle,
+        request: bootstrapAccountLogin(continuationHandle),
+      };
+    }
+    const bootstrap = continuationBootstrap.current.request;
     void bootstrap.then(
       (result) => {
         if (cancelled) return;
@@ -191,6 +201,18 @@ function LoginForm() {
 
   const ensureCsrf = async () => {
     if (csrf) return csrf;
+    if (continuationHandle) {
+      if (continuationBootstrap.current?.handle !== continuationHandle) {
+        continuationBootstrap.current = {
+          handle: continuationHandle,
+          request: bootstrapAccountLogin(continuationHandle),
+        };
+      }
+      const result = await continuationBootstrap.current.request;
+      setCsrf(result.csrfToken);
+      setContinuationProduct(result.continuation?.productName ?? "");
+      return result.csrfToken;
+    }
     if (!csrfBootstrap.current) {
       csrfBootstrap.current = (
         tab === "register"
@@ -340,6 +362,7 @@ function LoginForm() {
 
   if (continuationFailure || continuationError) {
     const serviceUnavailable = continuationFailure?.kind === "service";
+    const canRetryContinuation = serviceUnavailable && Boolean(continuationHandle);
     return (
       <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
         <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
@@ -353,7 +376,9 @@ function LoginForm() {
           </h1>
           <p className="mt-3 text-sm leading-6 text-ink/65">
             {serviceUnavailable
-              ? "暂时无法验证这次登录，请稍后重试。"
+              ? canRetryContinuation
+                ? "暂时无法验证这次登录，请稍后重试。"
+                : "这次登录暂时无法继续。请重新开始登录；如仍失败，请稍后再试。"
               : "这次登录无法继续。请重新开始登录，我们会为你创建一条新的安全链接。"}
           </p>
           {displayedRequestID ? (
@@ -361,7 +386,7 @@ function LoginForm() {
               请求编号：{displayedRequestID}
             </p>
           ) : null}
-          {serviceUnavailable ? (
+          {canRetryContinuation ? (
             <Button
               type="button"
               className="mt-7 w-full"

@@ -589,6 +589,9 @@ func assertContinuationRecovery(t *testing.T, response *http.Response, category 
 	if err != nil || response.StatusCode != http.StatusSeeOther || location.Path != "/account/login" || location.Query().Get("continuation_error") != category || !strings.HasPrefix(location.Query().Get("request_id"), "req_") {
 		t.Fatalf("continuation recovery = %d %q err=%v, want Portal %s recovery", response.StatusCode, response.Header.Get("Location"), err, category)
 	}
+	if response.Header.Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("continuation recovery Referrer-Policy = %q, want no-referrer", response.Header.Get("Referrer-Policy"))
+	}
 }
 
 func requestContinuationBootstrap(t *testing.T, client *http.Client, serverURL, continuation string) *http.Response {

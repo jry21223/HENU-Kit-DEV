@@ -1008,10 +1008,14 @@ func (h *Handler) resumeOAuthContinuation(writer http.ResponseWriter, request *h
 	}
 	continuation, err := h.continuations.Consume(request.Context(), strings.TrimSpace(request.FormValue("continuation")), browserID)
 	if err != nil {
-		if errors.Is(err, oauthcontinuation.ErrDependency) {
+		switch {
+		case errors.Is(err, oauthcontinuation.ErrDependency):
 			h.redirectOAuthContinuationFailure(writer, request, "service")
-		} else {
+		case errors.Is(err, oauthcontinuation.ErrConsumed):
+			auditFrom(request.Context()).errorCode = "OAUTH_CONTINUATION_REPLAYED"
 			h.redirectOAuthContinuationFailure(writer, request, "unavailable")
+		default:
+			h.redirectOAuthContinuationFailure(writer, request, "expired")
 		}
 		return
 	}
@@ -1041,11 +1045,22 @@ func (h *Handler) resumeOAuthContinuation(writer http.ResponseWriter, request *h
 }
 
 func (h *Handler) redirectOAuthContinuationFailure(writer http.ResponseWriter, request *http.Request, category string) {
-	if category != "service" {
+	accountBrowserResponseHeaders(writer)
+	audit := auditFrom(request.Context())
+	switch category {
+	case "service":
+		if audit.errorCode == "" {
+			audit.errorCode = "OAUTH_CONTINUATION_DEPENDENCY_UNAVAILABLE"
+		}
+	case "unavailable":
+		if audit.errorCode == "" {
+			audit.errorCode = "OAUTH_CONTINUATION_UNAVAILABLE"
+		}
+	default:
 		category = "expired"
-		auditFrom(request.Context()).errorCode = "OAUTH_CONTINUATION_UNAVAILABLE"
-	} else {
-		auditFrom(request.Context()).errorCode = "OAUTH_CONTINUATION_DEPENDENCY_UNAVAILABLE"
+		if audit.errorCode == "" {
+			audit.errorCode = "OAUTH_CONTINUATION_EXPIRED"
+		}
 	}
 	writer.Header().Set("Pragma", "no-cache")
 	target := "/account/login?" + url.Values{
@@ -1880,7 +1895,7 @@ func (h *Handler) startOAuthContinuation(writer http.ResponseWriter, request *ht
 		h.redirectOAuthContinuationFailure(writer, request, "service")
 		return
 	}
-	allowed, err := h.continuations.AllowCreate(request.Context(), query.ClientID, browserID, h.clientIP(request))
+	allowed, err := h.continuations.ConsumeCreationQuota(request.Context(), query.ClientID, browserID, h.clientIP(request))
 	if err != nil {
 		h.redirectOAuthContinuationFailure(writer, request, "service")
 		return
