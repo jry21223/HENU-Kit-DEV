@@ -853,6 +853,9 @@ func (h *Handler) accountBootstrap(writer http.ResponseWriter, request *http.Req
 	continuationHandle := strings.TrimSpace(request.URL.Query().Get("continuation"))
 	var continuation *oauthcontinuation.Continuation
 	if continuationHandle != "" {
+		audit := auditFrom(request.Context())
+		audit.oauthContinuation = true
+		audit.continuationOutcome = "continuation_unavailable"
 		browserID, ok := h.existingDeviceID(request)
 		if !ok {
 			writeError(writer, request, http.StatusGone, "OAUTH_CONTINUATION_UNAVAILABLE", "OAuth continuation is unavailable")
@@ -868,6 +871,8 @@ func (h *Handler) accountBootstrap(writer http.ResponseWriter, request *http.Req
 			return
 		}
 		continuation = &stored
+		audit.continuationClientID = stored.ClientID
+		audit.continuationOutcome = "continuation_bootstrapped"
 	}
 	if flow == "security" {
 		coreCookie, err := request.Cookie(profile.core)
@@ -905,6 +910,9 @@ func (h *Handler) accountBootstrap(writer http.ResponseWriter, request *http.Req
 
 func (h *Handler) resumeOAuthContinuation(writer http.ResponseWriter, request *http.Request) {
 	accountBrowserResponseHeaders(writer)
+	audit := auditFrom(request.Context())
+	audit.oauthContinuation = true
+	audit.continuationOutcome = "resume_rejected"
 	request.Body = http.MaxBytesReader(writer, request.Body, 16<<10)
 	if err := request.ParseForm(); err != nil {
 		h.redirectOAuthContinuationFailure(writer, request, "expired")
@@ -944,7 +952,8 @@ func (h *Handler) resumeOAuthContinuation(writer http.ResponseWriter, request *h
 		}
 		return
 	}
-	auditFrom(request.Context()).serviceID = continuation.ClientID
+	audit.serviceID = continuation.ClientID
+	audit.continuationClientID = continuation.ClientID
 	authorization, err := h.flow.Authorize(request.Context(), identity.AuthorizeInput{
 		CoreSessionToken: coreCookie.Value, ClientID: continuation.ClientID,
 		RedirectURI: continuation.RedirectURI, CodeChallenge: continuation.CodeChallenge,
@@ -964,7 +973,8 @@ func (h *Handler) resumeOAuthContinuation(writer http.ResponseWriter, request *h
 	callback.RawQuery = callbackQuery.Encode()
 	http.SetCookie(writer, h.browserCookie(profile.core, coreCookie.Value, max(1, int(time.Until(authorization.SessionExpires).Seconds())), authorization.SessionExpires, profile.secure))
 	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
-	auditFrom(request.Context()).subjectUserID = maskSubject(authorization.UserID)
+	audit.subjectUserID = maskSubject(authorization.UserID)
+	audit.continuationOutcome = "authorization_code_issued"
 	writer.Header().Set("Pragma", "no-cache")
 	http.Redirect(writer, request, callback.String(), http.StatusSeeOther)
 }
@@ -972,6 +982,7 @@ func (h *Handler) resumeOAuthContinuation(writer http.ResponseWriter, request *h
 func (h *Handler) redirectOAuthContinuationFailure(writer http.ResponseWriter, request *http.Request, category string) {
 	accountBrowserResponseHeaders(writer)
 	audit := auditFrom(request.Context())
+	audit.oauthContinuation = true
 	switch category {
 	case "service":
 		if audit.errorCode == "" {
@@ -991,6 +1002,7 @@ func (h *Handler) redirectOAuthContinuationFailure(writer http.ResponseWriter, r
 			audit.errorCode = "OAUTH_CONTINUATION_EXPIRED"
 		}
 	}
+	audit.continuationOutcome = "recovery_" + category
 	writer.Header().Set("Pragma", "no-cache")
 	target := "/account/login?" + url.Values{
 		"continuation_error": {category}, "request_id": {requestIDFrom(request.Context())},
@@ -1580,6 +1592,9 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
+	audit := auditFrom(request.Context())
+	audit.oauthContinuation = true
+	audit.continuationOutcome = "authorize_rejected"
 	query, err := contract.ParseAuthorizeOAuthClientQuery(request.URL.Query())
 	if err != nil {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "authorization request is invalid")
@@ -1599,9 +1614,11 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 			h.writeFlowError(writer, request, err)
 			return
 		}
+		audit.continuationClientID = query.ClientID
 		h.redirectUnsupportedOAuthContinuation(writer, request, query.ClientID)
 		return
 	}
+	audit.continuationClientID = query.ClientID
 	profile := h.browserCookies(request)
 	cookie, err := request.Cookie(profile.core)
 	if err != nil {
@@ -1625,7 +1642,8 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 	callbackQuery.Set("code", authorization.Code)
 	callbackQuery.Set("state", query.State)
 	callback.RawQuery = callbackQuery.Encode()
-	auditFrom(request.Context()).subjectUserID = maskSubject(authorization.UserID)
+	audit.subjectUserID = maskSubject(authorization.UserID)
+	audit.continuationOutcome = "core_session_fast_path"
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Pragma", "no-cache")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
@@ -1633,6 +1651,8 @@ func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (h *Handler) startOAuthContinuation(writer http.ResponseWriter, request *http.Request, query contract.AuthorizeOAuthClientQuery) {
+	audit := auditFrom(request.Context())
+	audit.oauthContinuation = true
 	input := identity.AuthorizeInput{
 		ClientID: query.ClientID, RedirectURI: query.RedirectURI, CodeChallenge: query.CodeChallenge,
 	}
@@ -1640,7 +1660,8 @@ func (h *Handler) startOAuthContinuation(writer http.ResponseWriter, request *ht
 		h.writeFlowError(writer, request, err)
 		return
 	}
-	auditFrom(request.Context()).serviceID = query.ClientID
+	audit.serviceID = query.ClientID
+	audit.continuationClientID = query.ClientID
 	productName, supported := oauthContinuationProductName(query.ClientID)
 	if !supported {
 		h.redirectUnsupportedOAuthContinuation(writer, request, query.ClientID)
@@ -1672,13 +1693,17 @@ func (h *Handler) startOAuthContinuation(writer http.ResponseWriter, request *ht
 	if deviceCookie != nil {
 		http.SetCookie(writer, deviceCookie)
 	}
+	audit.continuationOutcome = "continuation_created"
 	accountBrowserResponseHeaders(writer)
 	http.Redirect(writer, request, "/account/login?"+url.Values{"continuation": {handle}}.Encode(), http.StatusFound)
 }
 
 func (h *Handler) redirectUnsupportedOAuthContinuation(writer http.ResponseWriter, request *http.Request, clientID string) {
-	auditFrom(request.Context()).serviceID = clientID
-	auditFrom(request.Context()).errorCode = "OAUTH_CONTINUATION_CLIENT_UNSUPPORTED"
+	audit := auditFrom(request.Context())
+	audit.oauthContinuation = true
+	audit.serviceID = clientID
+	audit.continuationClientID = clientID
+	audit.errorCode = "OAUTH_CONTINUATION_CLIENT_UNSUPPORTED"
 	h.redirectOAuthContinuationFailure(writer, request, "unsupported")
 }
 
@@ -1695,6 +1720,8 @@ func oauthContinuationProductName(clientID string) (string, bool) {
 
 func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 	audit := auditFrom(request.Context())
+	audit.oauthContinuation = true
+	audit.continuationOutcome = "token_exchange_rejected"
 	audit.serviceID, audit.keyID = request.Header.Get(contract.ServiceIDHeader), request.Header.Get(contract.KeyIDHeader)
 	headers, err := contract.ParseExchangeHeaders(request.Header)
 	if err != nil {
@@ -1713,6 +1740,9 @@ func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 	if err := decoder.Decode(&body); err != nil || body.GrantType != "authorization_code" {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "token request is invalid")
 		return
+	}
+	if _, supported := oauthContinuationProductName(body.ClientID); supported {
+		audit.continuationClientID = body.ClientID
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "token request is invalid")
@@ -1741,6 +1771,7 @@ func (h *Handler) exchange(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	audit.subjectUserID = maskSubject(exchange.UserID)
+	audit.continuationOutcome = "product_session_issued"
 	var displayName *string
 	if exchange.DisplayName != "" {
 		displayName = &exchange.DisplayName
@@ -1901,6 +1932,8 @@ const requestContextKey contextKey = "request-audit"
 
 type auditContext struct {
 	requestID, errorCode, serviceID, keyID, subjectUserID string
+	oauthContinuation                                     bool
+	continuationClientID, continuationOutcome             string
 }
 
 type statusRecorder struct {
@@ -1925,6 +1958,15 @@ func (h *Handler) requestAudit(next http.Handler) http.Handler {
 		writer.Header().Set("X-Request-Id", id)
 		recorder := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
 		next.ServeHTTP(recorder, request)
+		if audit.oauthContinuation {
+			h.logger.Info("oauth_continuation",
+				"request_id", id,
+				"client_id", audit.continuationClientID,
+				"outcome", audit.continuationOutcome,
+				"duration_ms", time.Since(started).Milliseconds(),
+			)
+			return
+		}
 		h.logger.Info("http_request",
 			"request_id", id, "method", request.Method, "path", request.URL.Path,
 			"status", recorder.status, "error_code", audit.errorCode,

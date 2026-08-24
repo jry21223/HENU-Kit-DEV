@@ -15,3 +15,8 @@
 ## Current boundary
 
 HC-04 provides the responsive six-module Overview presentation states. HC-09 integrates the same-origin Console Gateway Session endpoint. HC-10 replaces metric fixtures with the Gateway's six-module aggregation response. HC-12 adds a responsive Platform Operations workspace. HC-13 adds Notice review and distribution. HC-14 adds the responsive Library workspace at desktop and 390px, limited to courses, materials, downloads, submission review, and corrections. HC-15 adds responsive Food submission, anomaly-ticket, and tier-adjustment operations. HC-357 changes membership operations to a server-bounded user page: operators search by Display Name or email, select exactly one user identified visibly by Display Name and email, then use the existing grant/revoke workflow; UUIDs remain transport identifiers rather than primary UI labels. HC-441 keeps the existing deep-path login link: an unauthenticated operator at `/food` enters the Portal-owned Account Center and returns only after Console Gateway establishes the authenticated Console Session. Owner writes carry generated idempotency keys, surface optimistic conflicts, and resolve unknown outcomes before resubmission; the browser receives no exchange token, owner-service credential, or product database access.
+
+HC-444 makes that boundary part of the same parameterized release gate used by
+Portal. Console must pass signed-out and existing-Core-Session paths,
+fail-closed variants, 360px keyboard and reduced-motion checks, public-copy
+checks, and browser/log redaction before release artifacts can be produced.

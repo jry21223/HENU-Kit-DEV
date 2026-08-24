@@ -23,6 +23,12 @@ const config = {
   displayName: process.env.OAUTH_FIXTURE_DISPLAY_NAME?.trim() ?? "",
   authorizationMode:
     process.env.OAUTH_FIXTURE_AUTHORIZATION_MODE?.trim() ?? "disabled",
+  unsupportedClientID:
+    process.env.OAUTH_FIXTURE_UNSUPPORTED_CLIENT_ID?.trim() ??
+    "retired-practice-client",
+  unsupportedRedirectURI:
+    process.env.OAUTH_FIXTURE_UNSUPPORTED_REDIRECT_URI?.trim() ??
+    "https://practice.henukit.test/auth/callback",
 };
 
 if (!/^[A-Za-z0-9_]+$/.test(config.cookieNamespace)) {
@@ -41,8 +47,31 @@ const cookieNames = {
 };
 const continuations = new Map();
 const codes = new Map();
+const events = [];
 
 const randomToken = (size) => randomBytes(size).toString("base64url");
+
+const recordEvent = (clientID, outcome, startedAt = Date.now()) => {
+  const event = {
+    request_id: `req_${randomToken(12)}`,
+    client_id: clientID,
+    outcome,
+    duration_ms: Math.max(0, Date.now() - startedAt),
+  };
+  events.push(event);
+  console.log(JSON.stringify(event));
+  return event.request_id;
+};
+
+const activeContinuation = (handle) => {
+  const stored = continuations.get(handle);
+  if (!stored) return undefined;
+  if (stored.expiresAt <= Date.now()) {
+    continuations.delete(handle);
+    return undefined;
+  }
+  return stored;
+};
 
 const cookies = (request) =>
   Object.fromEntries(
@@ -113,18 +142,76 @@ const hasValidServiceSignature = (request, body) => {
 };
 
 const handleAuthorize = (request, response, url) => {
+  const startedAt = Date.now();
   const query = url.searchParams;
+  const clientID = query.get("client_id") ?? "unknown-client";
+  const observableClientID =
+    clientID === config.clientID || clientID === config.unsupportedClientID
+      ? clientID
+      : "unknown-client";
+  const validShape =
+    query.get("response_type") === "code" &&
+    query.get("code_challenge_method") === "S256" &&
+    (query.get("state")?.length ?? 0) >= 8 &&
+    (query.get("code_challenge")?.length ?? 0) === 43;
+
+  if (clientID === config.unsupportedClientID) {
+    if (
+      !validShape ||
+      query.get("redirect_uri") !== config.unsupportedRedirectURI
+    ) {
+      recordEvent(clientID, "authorize_invalid", startedAt);
+      response.writeHead(400).end("invalid authorize");
+      return;
+    }
+    const requestID = recordEvent(
+      clientID,
+      "unsupported_client_rejected",
+      startedAt
+    );
+    response
+      .writeHead(303, {
+        Location: `${config.portalOrigin}/account/login?continuation_error=unsupported&request_id=${requestID}`,
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+      })
+      .end();
+    return;
+  }
+
   if (
-    query.get("response_type") !== "code" ||
-    query.get("client_id") !== config.clientID ||
+    !validShape ||
+    clientID !== config.clientID ||
     query.get("redirect_uri") !== config.redirectURI ||
-    query.get("code_challenge_method") !== "S256" ||
-    (query.get("state")?.length ?? 0) < 8 ||
-    (query.get("code_challenge")?.length ?? 0) !== 43
+    query.get("code_challenge_method") !== "S256"
   ) {
+    recordEvent(observableClientID, "authorize_invalid", startedAt);
     response.writeHead(400).end("invalid authorize");
     return;
   }
+
+  const stored = {
+    state: query.get("state"),
+    challenge: query.get("code_challenge"),
+    redirectURI: query.get("redirect_uri"),
+  };
+  if (cookies(request)[cookieNames.session]) {
+    const code = randomToken(32);
+    codes.set(code, stored);
+    const callback = new URL(stored.redirectURI);
+    callback.searchParams.set("code", code);
+    callback.searchParams.set("state", stored.state);
+    recordEvent(clientID, "core_session_fast_path", startedAt);
+    response
+      .writeHead(302, {
+        Location: callback.toString(),
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+      })
+      .end();
+    return;
+  }
+
   let device = cookies(request)[cookieNames.device];
   const headers = {
     "Cache-Control": "no-store",
@@ -136,23 +223,27 @@ const handleAuthorize = (request, response, url) => {
   }
   const handle = randomToken(32);
   continuations.set(handle, {
-    state: query.get("state"),
-    challenge: query.get("code_challenge"),
-    redirectURI: query.get("redirect_uri"),
+    ...stored,
     device,
+    expiresAt:
+      Date.now() +
+      (stored.state.startsWith("expires_soon_") ? 250 : 60_000),
   });
+  recordEvent(clientID, "continuation_created", startedAt);
   headers.Location = `${config.portalOrigin}/account/login?continuation=${encodeURIComponent(handle)}`;
   response.writeHead(302, headers).end();
 };
 
 const handleBootstrap = (request, response, url) => {
+  const startedAt = Date.now();
   const handle = url.searchParams.get("continuation");
-  const stored = continuations.get(handle);
+  const stored = activeContinuation(handle);
   if (
     !stored ||
     stored.device !== cookies(request)[cookieNames.device] ||
     url.searchParams.get("flow") !== "login"
   ) {
+    recordEvent(config.clientID, "continuation_unavailable", startedAt);
     writeJSON(response, 410, {
       error: {
         code: "OAUTH_CONTINUATION_UNAVAILABLE",
@@ -163,6 +254,7 @@ const handleBootstrap = (request, response, url) => {
     return;
   }
   const csrf = randomToken(32);
+  recordEvent(config.clientID, "continuation_bootstrapped", startedAt);
   response.setHeader("Set-Cookie", browserCookie(cookieNames.csrf, csrf, 600));
   writeJSON(response, 200, {
     data: {
@@ -175,6 +267,7 @@ const handleBootstrap = (request, response, url) => {
 };
 
 const handlePasswordLogin = async (request, response) => {
+  const startedAt = Date.now();
   const form = new URLSearchParams((await readBody(request)).toString("utf8"));
   const requestCookies = cookies(request);
   if (
@@ -184,6 +277,7 @@ const handlePasswordLogin = async (request, response) => {
     form.get("email") !== config.testEmail ||
     form.get("password") !== config.testPassword
   ) {
+    recordEvent(config.clientID, "authentication_failed", startedAt);
     writeJSON(response, 401, {
       error: {
         code: "AUTHENTICATION_FAILED",
@@ -193,6 +287,7 @@ const handlePasswordLogin = async (request, response) => {
     });
     return;
   }
+  recordEvent(config.clientID, "authentication_succeeded", startedAt);
   response.writeHead(204, {
     "Set-Cookie": browserCookie(cookieNames.session, randomToken(32), 1800),
   });
@@ -200,6 +295,7 @@ const handlePasswordLogin = async (request, response) => {
 };
 
 const handleResume = async (request, response) => {
+  const startedAt = Date.now();
   const form = new URLSearchParams((await readBody(request)).toString("utf8"));
   const requestCookies = cookies(request);
   if (
@@ -207,6 +303,7 @@ const handleResume = async (request, response) => {
     form.get("csrf_token") !== requestCookies[cookieNames.csrf] ||
     !requestCookies[cookieNames.session]
   ) {
+    recordEvent(config.clientID, "resume_rejected", startedAt);
     response.writeHead(303, {
       Location: `${config.portalOrigin}/account/login?continuation_error=expired&request_id=req_e2e_resume_rejected`,
       "Referrer-Policy": "no-referrer",
@@ -215,8 +312,9 @@ const handleResume = async (request, response) => {
     return;
   }
   const handle = form.get("continuation");
-  const stored = continuations.get(handle);
+  const stored = activeContinuation(handle);
   if (!stored || stored.device !== requestCookies[cookieNames.device]) {
+    recordEvent(config.clientID, "continuation_unavailable", startedAt);
     response.writeHead(303, {
       Location: `${config.portalOrigin}/account/login?continuation_error=expired&request_id=req_e2e_resume_unavailable`,
       "Referrer-Policy": "no-referrer",
@@ -230,6 +328,7 @@ const handleResume = async (request, response) => {
   const callback = new URL(stored.redirectURI);
   callback.searchParams.set("code", code);
   callback.searchParams.set("state", stored.state);
+  recordEvent(config.clientID, "authorization_code_issued", startedAt);
   response.writeHead(303, {
     Location: callback.toString(),
     "Referrer-Policy": "no-referrer",
@@ -238,8 +337,10 @@ const handleResume = async (request, response) => {
 };
 
 const handleExchange = async (request, response) => {
+  const startedAt = Date.now();
   const body = await readBody(request);
   if (!hasValidServiceSignature(request, body)) {
+    recordEvent(config.clientID, "exchange_rejected", startedAt);
     response.writeHead(401).end("unauthorized");
     return;
   }
@@ -247,6 +348,7 @@ const handleExchange = async (request, response) => {
   try {
     payload = JSON.parse(body.toString("utf8"));
   } catch {
+    recordEvent(config.clientID, "exchange_rejected", startedAt);
     response.writeHead(400).end("invalid exchange");
     return;
   }
@@ -255,6 +357,7 @@ const handleExchange = async (request, response) => {
     payload.client_id !== config.clientID ||
     payload.redirect_uri !== config.redirectURI
   ) {
+    recordEvent(config.clientID, "exchange_rejected", startedAt);
     response.writeHead(400).end("invalid exchange");
     return;
   }
@@ -264,11 +367,13 @@ const handleExchange = async (request, response) => {
     .update(payload.code_verifier ?? "")
     .digest("base64url");
   if (!stored || challenge !== stored.challenge) {
+    recordEvent(config.clientID, "exchange_rejected", startedAt);
     response.writeHead(400).end("invalid code");
     return;
   }
   const user = { user_id: config.userID };
   if (config.displayName) user.display_name = config.displayName;
+  recordEvent(config.clientID, "product_session_issued", startedAt);
   writeJSON(response, 200, {
     data: {
       user,
@@ -280,8 +385,10 @@ const handleExchange = async (request, response) => {
 };
 
 const handleAuthorizationCheck = async (request, response) => {
+  const startedAt = Date.now();
   const body = await readBody(request);
   if (!hasValidServiceSignature(request, body)) {
+    recordEvent(config.clientID, "authorization_rejected", startedAt);
     response.writeHead(401).end("unauthorized");
     return;
   }
@@ -289,6 +396,7 @@ const handleAuthorizationCheck = async (request, response) => {
   try {
     payload = JSON.parse(body.toString("utf8"));
   } catch {
+    recordEvent(config.clientID, "authorization_rejected", startedAt);
     response.writeHead(400).end("invalid authorization check");
     return;
   }
@@ -296,9 +404,11 @@ const handleAuthorizationCheck = async (request, response) => {
     payload.session_exchange_token !== config.exchangeToken ||
     !payload.permission_code
   ) {
+    recordEvent(config.clientID, "authorization_rejected", startedAt);
     response.writeHead(400).end("invalid authorization check");
     return;
   }
+  recordEvent(config.clientID, "authorization_allowed", startedAt);
   writeJSON(response, 200, {
     data: { allowed: true },
     request_id: "req_e2e_authorization",
@@ -310,6 +420,15 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${config.address}`);
     if (url.pathname === "/healthz") {
       writeJSON(response, 200, { status: "ok" });
+    } else if (url.pathname === "/__e2e/events") {
+      const rawAfter = Number.parseInt(url.searchParams.get("after") ?? "0", 10);
+      const after = Number.isSafeInteger(rawAfter)
+        ? Math.max(0, Math.min(rawAfter, events.length))
+        : 0;
+      writeJSON(response, 200, {
+        cursor: events.length,
+        events: events.slice(after),
+      });
     } else if (url.pathname === "/api/v1/oauth/authorize") {
       handleAuthorize(request, response, url);
     } else if (url.pathname === "/account/bootstrap") {
@@ -328,8 +447,8 @@ const server = createServer(async (request, response) => {
     } else {
       response.writeHead(404).end("not found");
     }
-  } catch (error) {
-    console.error(error);
+  } catch {
+    console.error("oauth_fixture_internal_error");
     if (!response.headersSent) response.writeHead(500);
     response.end("fixture failure");
   }

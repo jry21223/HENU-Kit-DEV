@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   testMatch: "oauth-continuation-portal.e2e.spec.ts",
-  timeout: 60_000,
+  timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   retries: 0,

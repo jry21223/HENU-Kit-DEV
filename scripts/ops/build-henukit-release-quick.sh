@@ -23,7 +23,7 @@ usage() {
 usage: build-henukit-release-quick.sh [--sha <full-main-sha>] [--output-dir <dir>]
 
 Builds every canonical HENU Kit image and the fixed-SHA runtime payload into
-<output-dir> (default ./release), without production signing or handoff-group
+<output-dir> (default ./artifacts/henukit-release-quick), without production signing or handoff-group
 gates.
 
 Safety baseline enforced here:
@@ -87,9 +87,10 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 inventory="$repo_root/scripts/ops/henukit-release-images.sh"
 runtime_packager="$repo_root/scripts/ops/package-henukit-runtime.sh"
+oauth_gate="$repo_root/scripts/ops/oauth-continuation-release-gate.sh"
 
-[[ -x "$inventory" && -x "$runtime_packager" ]] ||
-  die "release inventory and runtime packager must be executable"
+[[ -x "$inventory" && -x "$runtime_packager" && -x "$oauth_gate" ]] ||
+  die "release inventory, runtime packager, and OAuth gate must be executable"
 "$inventory" --check
 
 [[ "$(uname -s)" == "Linux" ]] || die "builder must run on Linux; use the WSL2 builder, not macOS Docker"
@@ -103,35 +104,60 @@ esac
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v gzip >/dev/null 2>&1 || die "gzip is required"
+command -v tar >/dev/null 2>&1 || die "tar is required for the fixed-SHA source snapshot"
 docker info >/dev/null 2>&1 || die "Docker daemon is not running"
 
 [[ -z "$release_sha" ]] && release_sha="$(git -C "$repo_root" rev-parse HEAD)"
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "--sha must be a full lowercase Git SHA"
 
-[[ "$(git -C "$repo_root" rev-parse HEAD)" == "$release_sha" ]] ||
-  die "checkout HEAD does not match requested SHA"
-[[ -z "$(git -C "$repo_root" status --porcelain --untracked-files=all)" ]] ||
-  die "checkout must be clean, including untracked files"
+source_tree="$(git -C "$repo_root" rev-parse "${release_sha}^{tree}")" ||
+  die "requested SHA is not available as a source tree in this checkout"
+assert_source_snapshot() {
+  [[ "$(git -C "$repo_root" rev-parse HEAD)" == "$release_sha" ]] ||
+    die "checkout HEAD does not match requested SHA"
+  [[ "$(git -C "$repo_root" rev-parse HEAD^{tree})" == "$source_tree" ]] ||
+    die "checkout tree does not match requested SHA"
+  [[ -z "$(git -C "$repo_root" status --porcelain --untracked-files=all)" ]] ||
+    die "builder checkout must be clean, including untracked files"
+}
+assert_source_snapshot
 [[ "$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" == "linux/amd64" ]] ||
   die "Docker server must be linux/amd64"
 
-[[ -z "$output_dir" ]] && output_dir="$repo_root/release"
+oauth_gate_dir="$(mktemp -d "${TMPDIR:-/tmp}/henukit-oauth-gate.XXXXXX")"
+oauth_gate_receipt="$oauth_gate_dir/oauth-continuation-${release_sha}.env"
+source_root=""
+cleanup() {
+  [[ -z "$source_root" ]] || rm -rf -- "$source_root"
+  rm -rf -- "$oauth_gate_dir"
+}
+trap cleanup EXIT
+"$oauth_gate" run --sha "$release_sha" --output "$oauth_gate_receipt"
+"$oauth_gate" verify --sha "$release_sha" --receipt "$oauth_gate_receipt"
+assert_source_snapshot
+source_root="$(mktemp -d "${TMPDIR:-/tmp}/henukit-release-source-${release_sha}.XXXXXX")"
+git -C "$repo_root" archive --format=tar "$release_sha" | tar -xf - -C "$source_root"
+build_inventory="$source_root/scripts/ops/henukit-release-images.sh"
+[[ -x "$build_inventory" ]] || die "fixed-SHA source snapshot is incomplete"
+"$build_inventory" --check
+
+[[ -z "$output_dir" ]] && output_dir="$repo_root/artifacts/henukit-release-quick"
 install -d -m 0750 "$output_dir"
 output_dir="$(cd "$output_dir" && pwd -P)"
 
 mkdir -p "$output_dir"
 printf '%s: building fixed-SHA release %s\n' "$program" "$release_sha"
 
-cd "$repo_root"
+cd "$source_root"
 while IFS=$'\t' read -r name image service role; do
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ && "$image" =~ ^henukit-[a-z0-9][a-z0-9-]*$ ]] ||
     die "inventory emitted an invalid build record"
-  context="$("$inventory" --field "$name" context)"
-  dockerfile="$("$inventory" --field "$name" dockerfile)"
+  context="$("$build_inventory" --field "$name" context)"
+  dockerfile="$("$build_inventory" --field "$name" dockerfile)"
   build_args=()
   while IFS= read -r argument || [[ -n "${argument:-}" ]]; do
     [[ -n "$argument" ]] && build_args+=(--build-arg "$argument")
-  done < <("$inventory" --field "$name" build_args)
+  done < <("$build_inventory" --field "$name" build_args)
   printf '%s: building %s:%s\n' "$program" "$image" "$release_sha"
   docker build \
     --platform linux/amd64 \
@@ -145,10 +171,14 @@ while IFS=$'\t' read -r name image service role; do
   docker save "$image:$release_sha" | gzip -1 > "$output_dir/$archive"
   [[ -s "$output_dir/$archive" ]] || die "image archive is empty: $archive"
   write_checksum "$output_dir" "$archive"
-done < <("$inventory" --records)
+done < <("$build_inventory" --records)
 
-"$runtime_packager" --sha "$release_sha" --output-dir "$output_dir" >/dev/null
+"$runtime_packager" \
+  --sha "$release_sha" \
+  --output-dir "$output_dir" \
+  --oauth-gate-receipt "$oauth_gate_receipt" >/dev/null
 printf '%s\n' "$release_sha" > "$output_dir/RELEASE_SHA"
+assert_source_snapshot
 
 {
   printf 'format=henukit-release-quick-v1\n'
