@@ -21,9 +21,7 @@ RUN node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.
 
 FROM pnpm AS builder
 ARG VITE_BASE_PATH=/
-ARG VITE_QUIZCRAFT_WORKSHOP_URL=
 ENV VITE_BASE_PATH=$VITE_BASE_PATH
-ENV VITE_QUIZCRAFT_WORKSHOP_URL=$VITE_QUIZCRAFT_WORKSHOP_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/console/node_modules ./apps/console/node_modules
 COPY . .

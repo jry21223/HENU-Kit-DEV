@@ -8,10 +8,9 @@ Do not enter the write freeze until all of these are true:
 
 1. Platform Core is independently deployed at `https://account.superhuazai.me`, with its own systemd services, PostgreSQL database/user, Redis access, loopback SMTP Provider, TLS vhost, and root-owned secrets.
 2. A real `henu.edu.cn` mailbox has completed request, delivery, manual entry of the current emailed code, verification, 30-day Core Session, OAuth callback, and logout/revocation checks. The owner enters the code through the verifier's hidden interactive terminal prompt; environment variables, command arguments, test claims, and manual SQL are forbidden.
-3. QuizCraft OAuth/HMAC credentials were generated on the host and provisioned with `services/platform-core/scripts/provision-quizcraft-client.sh`.
-4. The first human operator logged in normally; root then used `grant-initial-operator` to grant only platform operations and QuizCraft Workshop permissions. The audit row exists.
-5. The immutable Go release and the `VITE_QUIZCRAFT_GO_WRITES=1` browser bundle are staged but not public. The immutable web-app directory retains its locked Playwright dependency and installed Chromium for the release gate. Install the explicit maintenance page at `/var/www/quizcraft-maintenance/maintenance.html` before enabling the marker; it must not depend on either release symlink.
-6. Legacy and Go backups have each been restored into temporary databases and queried successfully. Final backups are root-only, SHA-256 recorded, and retained for 30 days.
+3. Portal/Gateway HMAC credentials were generated on the host and provisioned from root-owned environment files; no independent practice-product OAuth client is required.
+4. The immutable Go release and the `VITE_QUIZCRAFT_GO_WRITES=1` browser bundle are staged but not public. The immutable web-app directory retains its locked Playwright dependency and installed Chromium for the release gate. Install the explicit maintenance page at `/var/www/quizcraft-maintenance/maintenance.html` before enabling the marker; it must not depend on either release symlink.
+5. Legacy and Go backups have each been restored into temporary databases and queried successfully. Final backups are root-only, SHA-256 recorded, and retained for 30 days.
 
 Any authentication, restore, reconciliation, hash, or migration-exception failure aborts. There is no human override.
 
@@ -24,18 +23,18 @@ Any authentication, restore, reconciliation, hash, or migration-exception failur
 5. Run the final incremental catch-up.
 6. Require cursor=head, zero unresolved exceptions, and 100% reconciliation of banks, questions, types, answers, chapters, feedback, legacy ranking snapshots, and content hashes.
 7. Take the final dual-database dumps, record SHA-256 values, restore both into temporary databases, and query their key tables.
-8. Run desktop and 390px synthetic checks for practice, feedback, favorites, rankings, and Workshop. Also verify health, readiness, account login, mail delivery, OAuth, and logs.
+8. Run desktop and 390px synthetic checks for practice, feedback, rankings, retired-route convergence, and visible-copy zero exposure. Also verify health, readiness, supported Portal/Console account login, mail delivery, OAuth, and logs. Authenticated favorites are covered by the Portal/Gateway cumulative gate.
 
 Record release/reconciliation and backup metadata in a root-owned, non-group/world-writable JSON file following `deploy/cutover-gate-evidence.example.json`. Boolean claims are not acceptance evidence. `verify-cutover.sh` binds metadata to the exact release SHA, migration run and source head; recomputes both backup SHA-256 values; uses its version-controlled restore verifier to create/query/drop fresh databases from those exact dumps; runs its version-controlled desktop/390px browser, interactive real-mail Platform Core login/OAuth/logout, and journal log-audit verifiers; and probes the live maintenance page plus public mutation paths. It reads the dedicated Portal-read credentials only from a root-owned, mode `0600` `QUIZCRAFT_GO_ENV_FILE`, writes a fresh short-lived signed curl configuration for each protected catalog or ranking probe, and never puts that credential in a curl command argument. The ranking probe is part of the pre-write gate, and all protected probes use the normal Portal-read contract. The verifier requests a fresh email, requires the mailbox owner to enter its current code without echo through `/dev/tty`, and submits that code to the real verification API before checking Session and OAuth behavior. It intentionally does not require mailbox credentials or a traffic shadow report.
 
 ## Atomic activation
 
-Load `CUTOVER_EVIDENCE_SECRET`, the dedicated operator Session, source database URLs, isolated restore-admin URL, real test mailbox address, Console origin, log start time, migration run ID, source head, release SHA, and legacy source hash from root-owned environment files. `GO_BASE_URL` and `LEGACY_BASE_URL` must be loopback origins that bypass public maintenance; `PUBLIC_BASE_URL` is the public origin. Run the gate from an interactive terminal so the mailbox owner can enter the current emailed code at the hidden prompt. Do not place the code or other secrets in environment variables, shell history, or arguments.
+Load `CUTOVER_EVIDENCE_SECRET`, source database URLs, isolated restore-admin URL, real test mailbox address, Console origin, log start time, migration run ID, source head, release SHA, and legacy source hash from root-owned environment files. `GO_BASE_URL` and `LEGACY_BASE_URL` must be loopback origins that bypass public maintenance; `PUBLIC_BASE_URL` is the public origin. Run the gate from an interactive terminal so the mailbox owner can enter the current emailed code at the hidden prompt. Do not place the code or other secrets in environment variables, shell history, or arguments.
 
 ```bash
 VITE_QUIZCRAFT_GO_WRITES=1 pnpm --filter quiz-app build:ops
 
-sudo --preserve-env=CONFIRM_CUTOVER_SWITCH,GO_BASE_URL,LEGACY_BASE_URL,PUBLIC_BASE_URL,CUTOVER_E2E_BASE_URL,CUTOVER_WEB_APP_DIR,PLATFORM_ACCOUNT_ORIGIN,CONSOLE_ORIGIN,EXPECTED_RELEASE_SHA,EXPECTED_LEGACY_READ_ONLY,CUTOVER_EVIDENCE_SECRET,CUTOVER_GATE_EVIDENCE_FILE,EXPECTED_MIGRATION_RUN_ID,EXPECTED_SOURCE_HEAD,LEGACY_SERVER_PATH,EXPECTED_LEGACY_SHA256,LEGACY_DATABASE_URL,CUTOVER_RESTORE_ADMIN_URL,CUTOVER_TEST_EMAIL,CUTOVER_LOG_SINCE,PLATFORM_CLIENT_SECRET,QUIZCRAFT_OPERATOR_SESSION,QUIZCRAFT_GO_ENV_FILE \
+sudo --preserve-env=CONFIRM_CUTOVER_SWITCH,GO_BASE_URL,LEGACY_BASE_URL,PUBLIC_BASE_URL,CUTOVER_E2E_BASE_URL,CUTOVER_WEB_APP_DIR,PLATFORM_ACCOUNT_ORIGIN,CONSOLE_ORIGIN,EXPECTED_RELEASE_SHA,EXPECTED_LEGACY_READ_ONLY,CUTOVER_EVIDENCE_SECRET,CUTOVER_GATE_EVIDENCE_FILE,EXPECTED_MIGRATION_RUN_ID,EXPECTED_SOURCE_HEAD,LEGACY_SERVER_PATH,EXPECTED_LEGACY_SHA256,LEGACY_DATABASE_URL,CUTOVER_RESTORE_ADMIN_URL,CUTOVER_TEST_EMAIL,CUTOVER_LOG_SINCE,PLATFORM_CLIENT_SECRET,QUIZCRAFT_GO_ENV_FILE \
   /opt/quizcraft-go/releases/current/scripts/switch-cutover-release.sh \
   activate-writes "$EXPECTED_RELEASE_SHA" "$EXPECTED_RELEASE_SHA-writes"
 ```

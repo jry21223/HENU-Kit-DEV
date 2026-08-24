@@ -1327,17 +1327,6 @@ type ValidateWorkshopBankVersionParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
-// FinishQuizCraftPlatformLoginParams defines parameters for FinishQuizCraftPlatformLogin.
-type FinishQuizCraftPlatformLoginParams struct {
-	Code  string `form:"code" json:"code"`
-	State string `form:"state" json:"state"`
-}
-
-// StartQuizCraftPlatformLoginParams defines parameters for StartQuizCraftPlatformLogin.
-type StartQuizCraftPlatformLoginParams struct {
-	ReturnTo *string `form:"return_to,omitempty" json:"return_to,omitempty"`
-}
-
 // CreateQuestionFeedbackJSONRequestBody defines body for CreateQuestionFeedback for application/json ContentType.
 type CreateQuestionFeedbackJSONRequestBody = QuestionFeedback
 

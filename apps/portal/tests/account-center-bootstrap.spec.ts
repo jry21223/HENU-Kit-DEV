@@ -219,6 +219,24 @@ test("Core-side continuation failure offers a fresh safe OAuth start", async ({
   ).toHaveAttribute("href", "/api/v1/auth/login?return_to=%2Faccount");
 });
 
+test("unsupported application recovery does not promise a retry that cannot succeed", async ({
+  page,
+}) => {
+  await page.goto(
+    "/account/login?continuation_error=unsupported&request_id=req_unsupported_application",
+    { waitUntil: "networkidle" }
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "此应用暂不支持统一登录" })
+  ).toBeVisible();
+  await expect(
+    page.getByText("请返回原应用；如需继续使用，请联系该应用的维护者。")
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "返回上一步" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "重新开始登录" })).toHaveCount(0);
+});
+
 test("OAuth continuation Account Center remains operable at 360px with reduced motion", async ({
   page,
 }) => {

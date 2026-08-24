@@ -105,12 +105,17 @@ function LoginForm() {
   const [csrf, setCsrf] = useState("");
   const [continuationProduct, setContinuationProduct] = useState("");
   const [continuationFailure, setContinuationFailure] = useState<{
-    kind: "expired" | "service";
+    kind: "expired" | "service" | "unsupported";
     requestID?: string;
   } | null>(
     continuationError
       ? {
-          kind: continuationError === "service" ? "service" : "expired",
+          kind:
+            continuationError === "service"
+              ? "service"
+              : continuationError === "unsupported"
+                ? "unsupported"
+                : "expired",
           requestID: continuationRequestID,
         }
       : null
@@ -362,6 +367,7 @@ function LoginForm() {
 
   if (continuationFailure || continuationError) {
     const serviceUnavailable = continuationFailure?.kind === "service";
+    const unsupportedApplication = continuationFailure?.kind === "unsupported";
     const canRetryContinuation = serviceUnavailable && Boolean(continuationHandle);
     return (
       <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
@@ -372,21 +378,38 @@ function LoginForm() {
             AUTH
           </p>
           <h1 className="mt-4 font-display text-3xl font-bold tracking-tight">
-            {serviceUnavailable ? "登录暂时不可用" : "登录链接已过期或不可继续"}
+            {serviceUnavailable
+              ? "登录暂时不可用"
+              : unsupportedApplication
+                ? "此应用暂不支持统一登录"
+                : "登录链接已过期或不可继续"}
           </h1>
           <p className="mt-3 text-sm leading-6 text-ink/65">
             {serviceUnavailable
               ? canRetryContinuation
                 ? "暂时无法验证这次登录，请稍后重试。"
                 : "这次登录暂时无法继续。请重新开始登录；如仍失败，请稍后再试。"
-              : "这次登录无法继续。请重新开始登录，我们会为你创建一条新的安全链接。"}
+              : unsupportedApplication
+                ? "请返回原应用；如需继续使用，请联系该应用的维护者。"
+                : "这次登录无法继续。请重新开始登录，我们会为你创建一条新的安全链接。"}
           </p>
           {displayedRequestID ? (
             <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/45">
               请求编号：{displayedRequestID}
             </p>
           ) : null}
-          {canRetryContinuation ? (
+          {unsupportedApplication ? (
+            <Button
+              type="button"
+              className="mt-7 w-full"
+              onClick={() => {
+                if (window.history.length > 1) window.history.back();
+                else window.location.assign("/");
+              }}
+            >
+              返回上一步
+            </Button>
+          ) : canRetryContinuation ? (
             <Button
               type="button"
               className="mt-7 w-full"

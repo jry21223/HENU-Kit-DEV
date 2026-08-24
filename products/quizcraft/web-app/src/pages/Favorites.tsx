@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import type { FavoriteFolder } from '@/generated/quizcraft-api';
 import {
   isQuizcraftAuthenticationError,
-  quizcraftLoginHref,
   shadowFavoritesApi,
   shadowPracticeApi,
 } from '@/api/quizcraftShadowClient';
@@ -32,7 +31,7 @@ export default function Favorites() {
         if (!cancelled) {
           const needsLogin = isQuizcraftAuthenticationError(loadError);
           setRequiresLogin(needsLogin);
-          setError(needsLogin ? '请登录后查看收藏夹' : '收藏夹暂时加载不出来，请检查网络后重试');
+          setError(needsLogin ? '收藏夹请在练习服务中查看' : '收藏夹暂时加载不出来，请检查网络后重试');
         }
       })
       .finally(() => {
@@ -58,7 +57,7 @@ export default function Favorites() {
     } catch (startError) {
       const needsLogin = isQuizcraftAuthenticationError(startError);
       setRequiresLogin(needsLogin);
-      setError(needsLogin ? '请登录后再从收藏发起练习' : '收藏练习创建失败，请登录后重试');
+      setError(needsLogin ? '请前往练习服务使用收藏' : '收藏练习创建失败，请稍后重试');
     } finally {
       setStartingBankId('');
     }
@@ -73,8 +72,8 @@ export default function Favorites() {
       {loading && <p className="text-sm text-gray-500">正在加载收藏夹…</p>}
       {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {requiresLogin && (
-        <a className="mb-4 inline-flex rounded-xl bg-primary-500 px-4 py-2 text-sm font-medium text-white" href={quizcraftLoginHref('/favorites')}>
-          登录后查看收藏夹
+        <a className="mb-4 inline-flex rounded-xl bg-primary-500 px-4 py-2 text-sm font-medium text-white" href="https://henukit.cn/practice/favorites">
+          前往练习服务
         </a>
       )}
       {!loading && !error && folders.length === 0 && (

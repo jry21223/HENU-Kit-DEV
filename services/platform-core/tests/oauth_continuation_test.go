@@ -239,6 +239,381 @@ func TestConsoleOAuthContinuationUsesTrustedDestination(t *testing.T) {
 	}
 }
 
+func TestUnsupportedOAuthClientDoesNotFallBackToLegacyLogin(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	const clientID = "retired-practice-client"
+	const redirectURI = "https://practice.henukit.test/auth/callback"
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ($1, $2)`, clientID, []string{redirectURI}); err != nil {
+		t.Fatalf("seed unsupported OAuth client: %v", err)
+	}
+
+	client := clientForDevice(server, "unsupported-continuation-browser")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	authorizeURL := server.URL + "/api/v1/oauth/authorize?" + url.Values{
+		"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {redirectURI},
+		"state": {"unsupported_client_state_01"}, "code_challenge": {portalContinuationChallenge()},
+		"code_challenge_method": {"S256"},
+	}.Encode()
+	response, err := client.Get(authorizeURL)
+	if err != nil {
+		t.Fatalf("authorize unsupported client: %v", err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	recovery, parseErr := url.Parse(response.Header.Get("Location"))
+	if response.StatusCode != http.StatusSeeOther || parseErr != nil || recovery.Path != "/account/login" || recovery.Query().Get("continuation_error") != "unsupported" || !strings.HasPrefix(recovery.Query().Get("request_id"), "req_") || bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("unsupported client = %d location=%q body=%s parse_error=%v, want safe Portal recovery", response.StatusCode, response.Header.Get("Location"), body, parseErr)
+	}
+	for _, secret := range []string{clientID, redirectURI, "unsupported_client_state_01", portalContinuationChallenge()} {
+		if strings.Contains(response.Header.Get("Location"), secret) || bytes.Contains(body, []byte(secret)) {
+			t.Fatalf("unsupported client response exposed OAuth input %q", secret)
+		}
+	}
+	if cookies := response.Cookies(); len(cookies) != 0 {
+		t.Fatalf("unsupported client issued browser cookies: %+v", cookies)
+	}
+}
+
+func TestUnsupportedOAuthClientWithCoreSessionCannotBypassContinuationPolicy(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	seedIdentity(t, ctx, pool)
+	server := newVerificationServer(t, pool, redisClient)
+	const clientID = "retired-practice-client"
+	const redirectURI = "https://practice.henukit.test/auth/callback"
+	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ($1, $2)`, clientID, []string{redirectURI}); err != nil {
+		t.Fatalf("seed unsupported OAuth client: %v", err)
+	}
+
+	client := clientForDevice(server, "unsupported-continuation-core-session-browser")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	authorizeURL := server.URL + "/api/v1/oauth/authorize?" + url.Values{
+		"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {redirectURI},
+		"state": {"unsupported_core_session_state_01"}, "code_challenge": {portalContinuationChallenge()},
+		"code_challenge_method": {"S256"},
+	}.Encode()
+	request, err := http.NewRequest(http.MethodGet, authorizeURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(&http.Cookie{Name: "__Host-henukit_core_session", Value: testCoreToken})
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("authorize unsupported client with Core Session: %v", err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	recovery, parseErr := url.Parse(response.Header.Get("Location"))
+	if response.StatusCode != http.StatusSeeOther || parseErr != nil || recovery.Path != "/account/login" || recovery.Query().Get("continuation_error") != "unsupported" || !strings.HasPrefix(recovery.Query().Get("request_id"), "req_") || bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("unsupported client with Core Session = %d location=%q body=%s parse_error=%v, want safe Portal recovery", response.StatusCode, response.Header.Get("Location"), body, parseErr)
+	}
+	for _, secret := range []string{clientID, redirectURI, "unsupported_core_session_state_01", portalContinuationChallenge()} {
+		if strings.Contains(response.Header.Get("Location"), secret) || bytes.Contains(body, []byte(secret)) {
+			t.Fatalf("unsupported client with Core Session response exposed OAuth input %q", secret)
+		}
+	}
+	if cookies := response.Cookies(); len(cookies) != 0 {
+		t.Fatalf("unsupported client with Core Session issued browser cookies: %+v", cookies)
+	}
+	var codeCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM authorization_codes WHERE client_id = $1`, clientID).Scan(&codeCount); err != nil || codeCount != 0 {
+		t.Fatalf("unsupported client with Core Session persisted %d authorization codes (query error %v)", codeCount, err)
+	}
+}
+
+func TestDirectCredentialPagesRedirectToPortalAccountCenter(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := server.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+
+	for name, target := range map[string]struct {
+		path     string
+		location string
+	}{
+		"login": {
+			path:     "/login?return_to=" + url.QueryEscape("https://evil.example/steal"),
+			location: "/account/login",
+		},
+		"register": {
+			path:     "/register?return_to=" + url.QueryEscape("https://evil.example/register"),
+			location: "/account/login",
+		},
+		"recover": {
+			path:     "/recover",
+			location: "/account/recover",
+		},
+		"security": {
+			path:     "/account/security",
+			location: "/account/login?next=%2Faccount%2Fsecurity",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response, err := client.Get(server.URL + target.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			body, _ := io.ReadAll(response.Body)
+			if response.StatusCode != http.StatusFound || response.Header.Get("Location") != target.location || bytes.Contains(body, []byte("HENU Kit 账号中心")) || bytes.Contains(body, []byte(`name="csrf_token"`)) {
+				t.Fatalf("direct %s = %d location=%q body=%s", name, response.StatusCode, response.Header.Get("Location"), body)
+			}
+			if response.Header.Get("Cache-Control") != "no-store" || response.Header.Get("Referrer-Policy") != "no-referrer" || len(response.Cookies()) != 0 {
+				t.Fatalf("direct %s response headers/cookies are unsafe: headers=%v cookies=%+v", name, response.Header, response.Cookies())
+			}
+		})
+	}
+}
+
+func TestLegacyLoginFormPostDoesNotRenderTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "legacy-login-form-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "login")
+
+	response, err := client.PostForm(server.URL+"/login/code", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "return_to": {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusNoContent || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy login form response = %d content-type=%q body=%s, want empty 204", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacyPasswordPostReturnsBoundedErrorInsteadOfTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "legacy-password-registration-seed"))
+	client := clientForDevice(server, "legacy-password-form-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "login")
+
+	response, err := client.PostForm(server.URL+"/login/password", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "password": {"wrong password value"}, "return_to": {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusUnauthorized || !bytes.Contains(body, []byte(`"code":"AUTHENTICATION_FAILED"`)) || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy password error = %d content-type=%q body=%s, want bounded JSON 401", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacyEmailCodePostReturnsBoundedErrorInsteadOfTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "legacy-email-code-form-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "login")
+	requested, err := client.PostForm(server.URL+"/login/code", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "return_to": {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested.Body.Close()
+
+	response, err := client.PostForm(server.URL+"/login/verify", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "code": {"000000"}, "return_to": {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusUnauthorized || !bytes.Contains(body, []byte(`"code":"AUTHENTICATION_FAILED"`)) || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy email-code error = %d content-type=%q body=%s, want bounded JSON 401", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacyRegistrationCodePostDoesNotRenderTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "legacy-registration-form-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "register")
+
+	response, err := client.PostForm(server.URL+"/register/code", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "return_to": {"/account/security"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusNoContent || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy registration-code response = %d content-type=%q body=%s, want empty 204", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacyRecoveryCodePostDoesNotRenderTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "legacy-recovery-form-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "recover")
+
+	response, err := client.PostForm(server.URL+"/recover/code", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusNoContent || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy recovery-code response = %d content-type=%q body=%s, want empty 204", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacyRegistrationPostReturnsBoundedErrorInsteadOfTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "legacy-registration-submit-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "register")
+
+	response, err := client.PostForm(server.URL+"/register", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "display_name": {"练习用户"},
+		"code": {"000000"}, "password": {"correct horse battery staple"}, "return_to": {"/account/security"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"REGISTRATION_FAILED"`)) || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy registration error = %d content-type=%q body=%s, want bounded JSON 400", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacyRecoveryPostReturnsBoundedErrorInsteadOfTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "legacy-recovery-submit-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "recover")
+
+	response, err := client.PostForm(server.URL+"/recover", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "code": {"000000"},
+		"password": {"correct horse battery staple"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"RECOVERY_FAILED"`)) || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy recovery error = %d content-type=%q body=%s, want bounded JSON 400", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacySecurityCodePostDoesNotRenderTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "legacy-security-registration-seed"))
+	client := clientForDevice(server, "legacy-security-form-browser")
+	loginCSRF := accountBootstrapCSRF(t, client, server.URL, "login")
+	loggedIn := postExplicitCredentialForm(t, client, server.URL+"/login/password", url.Values{
+		"csrf_token": {loginCSRF}, "email": {testStudentEmail}, "password": {"correct horse 电池 staple"}, "return_to": {"/"},
+	})
+	loggedIn.Body.Close()
+	if loggedIn.StatusCode != http.StatusNoContent {
+		t.Fatalf("prepare security Session = %d", loggedIn.StatusCode)
+	}
+	securityCSRF := accountBootstrapCSRF(t, client, server.URL, "security")
+
+	response, err := client.PostForm(server.URL+"/account/security/code", url.Values{
+		"csrf_token": {securityCSRF}, "email": {testStudentEmail},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusNoContent || bytes.Contains(body, []byte("<html")) || strings.Contains(response.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("legacy security-code response = %d content-type=%q body=%s, want empty 204", response.StatusCode, response.Header.Get("Content-Type"), body)
+	}
+}
+
+func TestLegacySecurityPasswordPostWithoutSessionReturnsBoundedError(t *testing.T) {
+	ctx := context.Background()
+	pool, redisClient := openDependencies(t, ctx)
+	resetIdentityTables(t, ctx, pool, redisClient)
+	server := newVerificationServer(t, pool, redisClient)
+	client := clientForDevice(server, "legacy-security-password-browser")
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	csrf := accountBootstrapCSRF(t, client, server.URL, "login")
+
+	response, err := client.PostForm(server.URL+"/account/security/password", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "code": {"000000"},
+		"current_password": {"old password"}, "new_password": {"new password value"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusUnauthorized || response.Header.Get("Location") != "" || !bytes.Contains(body, []byte(`"code":"CORE_SESSION_REQUIRED"`)) || bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("legacy security password = %d location=%q body=%s, want bounded JSON 401", response.StatusCode, response.Header.Get("Location"), body)
+	}
+}
+
+func TestLegacyLoginCodeDependencyFailureDoesNotRenderTemplate(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := openDependencies(t, ctx)
+	unavailableRedis := redis.NewClient(&redis.Options{
+		Addr: "127.0.0.1:1", DialTimeout: 50 * time.Millisecond,
+		ReadTimeout: 50 * time.Millisecond, WriteTimeout: 50 * time.Millisecond, MaxRetries: 0,
+	})
+	t.Cleanup(func() { _ = unavailableRedis.Close() })
+	handler, err := platformcore.New(platformcore.Config{
+		Database: pool, Redis: unavailableRedis, IdempotencyEncryptionKey: testIdempotencyEncryptionKey,
+		VerificationEncryptionKey: testVerificationEncryptionKey, StudentEmailDomains: []string{"henu.edu.cn"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewTLSServer(handler)
+	t.Cleanup(server.Close)
+	client := clientForDevice(server, "legacy-login-dependency-browser")
+	csrf := accountBootstrapCSRF(t, client, server.URL, "login")
+
+	response, err := client.PostForm(server.URL+"/login/code", url.Values{
+		"csrf_token": {csrf}, "email": {testStudentEmail}, "return_to": {"/"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"VERIFICATION_UNAVAILABLE"`)) || bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("legacy login dependency failure = %d body=%s, want bounded JSON 503", response.StatusCode, body)
+	}
+}
+
 func TestPortalContinuationRejectsInvalidAuthorizeBeforeAccountCenter(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)

@@ -391,96 +391,25 @@ test('answer retry keeps its idempotency key after a browser refresh', async ({ 
   expect(answerKeys[1]).toBe(answerKeys[0]);
 });
 
-test('Workshop uses scoped generated APIs and requires human validation before publish', async ({ page }) => {
-  let lifecycleVersion = 1;
-  let state: 'none' | 'draft' | 'validated' = 'none';
-  let active = false;
-  const versionId = '66666666-6666-4666-8666-666666666666';
-  const writes: string[] = [];
-  await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (request.method() === 'GET' && url.pathname === '/api/v1/workshop/catalog') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_workshop', data: [{ bank_id: bankId, bank_key: 'browser-bank', name: '浏览器题库', lifecycle_version: lifecycleVersion, ...(active ? { active_version_id: versionId } : {}), versions: state === 'none' ? [] : [{ bank_version_id: versionId, content_sha256: 'b'.repeat(64), question_count: 1, state, active }] }] }) });
-      return;
-    }
-    if (request.method() === 'GET' && url.pathname === `/api/v1/workshop/banks/${bankId}/versions/${versionId}`) {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_detail', data: { bank_id: bankId, bank_version_id: versionId, state: 'draft', content_sha256: 'b'.repeat(64), questions: [{ question_id: questionId, question_version_id: versionId, source_question_id: 'q0001', type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '1 + 1 = ?', options: ['1', '2'], answer: 1, analysis: '2', position: 1 }] } }) });
-      return;
-    }
-    if (request.method() === 'POST') {
-      expect(request.headers()['idempotency-key']).toBeTruthy();
-      writes.push(url.pathname);
-      if (url.pathname.endsWith('/versions')) {
-        expect(request.postDataJSON().expected_version).toBe(1);
-        state = 'draft'; lifecycleVersion = 2;
-      } else if (url.pathname.endsWith('/validate')) {
-        expect(request.postDataJSON().expected_version).toBe(2);
-        state = 'validated'; lifecycleVersion = 3;
-      } else if (url.pathname.endsWith('/publish')) {
-        expect(request.postDataJSON().expected_version).toBe(3);
-        active = true; lifecycleVersion = 4;
-      }
-      await route.fulfill({ status: url.pathname.endsWith('/versions') ? 201 : 200, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_write', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'req_write', resource_id: versionId } }) });
-      return;
-    }
-    await route.abort();
+test('retired standalone routes converge on the practice surface without legacy copy', async ({ page }) => {
+  await page.route('http://127.0.0.1:18080/api/v1/banks', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_retired_routes', data: [] }) });
   });
-  await page.goto('/extract');
-  await expect(page.getByRole('heading', { name: '题库工坊' })).toBeVisible();
-  await expect(page.getByText(/ADMIN_TOKEN/)).toHaveCount(0);
-  await page.getByRole('button', { name: '创建草稿版本' }).click();
-  await expect(page.getByText('draft', { exact: false })).toBeVisible();
-  await expect(page.getByRole('button', { name: '发布' })).toHaveCount(0);
-  await page.getByRole('button', { name: '查看并校验题目' }).click();
-  await expect(page.getByText('1. 1 + 1 = ?', { exact: true })).toBeVisible();
-  await expect(page.locator('ol li')).toHaveText(['1', '2']);
-  await page.getByRole('button', { name: '人工校验通过' }).click();
-  await page.getByRole('button', { name: '发布' }).click();
-  await expect(page.getByRole('status').getByText('已发布校验版本')).toBeVisible();
-  expect(writes).toEqual([
-    `/api/v1/workshop/banks/${bankId}/versions`,
-    `/api/v1/workshop/banks/${bankId}/versions/${versionId}/validate`,
-    `/api/v1/workshop/banks/${bankId}/versions/${versionId}/publish`,
-  ]);
-});
 
-test('Operations Inbox deep link reads full feedback only from QuizCraft', async ({ page }) => {
-  const feedbackId = '77777777-7777-4777-8777-777777777777';
-  await page.route(`http://127.0.0.1:18080/api/v1/workshop/feedback/${feedbackId}`, async (route) => {
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_feedback_detail', data: { feedback_id: feedbackId, bank_id: bankId, question_id: questionId, question_version_id: '66666666-6666-4666-8666-666666666666', category: 'wrong_answer', detail: '正确答案与解析矛盾', created_at: '2026-07-20T00:00:00Z' } }) });
-  });
-  await page.goto(`/workshop/feedback/${feedbackId}`);
-  await expect(page.getByRole('heading', { name: 'QuizCraft 纠错反馈' })).toBeVisible();
-  await expect(page.getByText('正确答案与解析矛盾')).toBeVisible();
-  await expect(page.getByText('正文仅从 QuizCraft 读取')).toBeVisible();
-});
-
-test('Workshop deep link offers Platform Core login and preserves return path on 401', async ({ page }) => {
-  await page.route('http://127.0.0.1:18080/api/v1/workshop/catalog', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_login', error: { code: 'platform_session_required', message: 'sign in' } }) }));
-  await page.goto('/extract');
-  const login = page.getByRole('link', { name: '登录管理账号后即可使用' });
-  await expect(login).toBeVisible();
-  await expect(login).toHaveAttribute('href', 'http://127.0.0.1:18080/auth/login?return_to=%2Fextract');
-});
-
-test('Workshop offers login when a detail read or mutation loses its session', async ({ page }) => {
-  const versionId = '66666666-6666-4666-8666-666666666666';
-  await page.route('http://127.0.0.1:18080/api/v1/workshop/**', async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    if (path === '/api/v1/workshop/catalog') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'req_catalog', data: [{ bank_id: bankId, bank_key: 'session-bank', name: 'Session Bank', lifecycle_version: 1, versions: [{ bank_version_id: versionId, content_sha256: 'd'.repeat(64), question_count: 1, state: 'draft', active: false }] }] }) });
-      return;
+  for (const [path, target] of [
+    ['/', '/practice'],
+    ['/extract', '/practice'],
+    ['/wheel', '/practice'],
+    [`/workshop/feedback/${feedbackId}`, '/feedback'],
+  ]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(`${target}$`));
+    await expect(page.getByRole('link', { name: '刷题', exact: true })).toBeVisible();
+    for (const retiredCopy of ['QuizCraft', '题库工坊', '随机大转盘', '管理令牌', '开源项目，可自行部署']) {
+      await expect(page.locator('body')).not.toContainText(retiredCopy);
     }
-    await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'req_expired', error: { code: 'invalid_session', message: 'expired' } }) });
-  });
-  await page.goto('/extract');
-  await page.getByRole('button', { name: '查看并校验题目' }).click();
-  await expect(page.getByRole('link', { name: '登录管理账号后即可使用' })).toBeVisible();
-  await page.reload();
-  await page.getByRole('button', { name: '创建草稿版本' }).click();
-  await expect(page.getByRole('link', { name: '登录管理账号后即可使用' })).toBeVisible();
+    await expect(page.locator('a[href="/extract"], a[href="/wheel"], a[href^="/workshop"]')).toHaveCount(0);
+  }
 });
 
 test('shadow bank failure does not fall back to browser-owned mock banks', async ({ page }) => {
@@ -498,21 +427,13 @@ test('shadow bank failure does not fall back to browser-owned mock banks', async
   await expect(page).toHaveURL(/\/practice$/);
 });
 
-test('favorites use the generated server client and never merge guest browser state', async ({ page }) => {
-  const existingQuestionId = '77777777-7777-5777-8777-777777777777';
-  const existingQuestionVersionId = '88888888-8888-5888-8888-888888888888';
+test('favorite authentication failure hands off to HENU Kit without restoring standalone OAuth', async ({ page }) => {
   let favoriteWrites = 0;
-  let favoriteListReads = 0;
-  const favoriteMethods: string[] = [];
-  let authenticated = false;
-  let mutationAccepted = false;
-  let postWriteRefreshStarted = false;
-  let releasePostWriteRefresh = () => {};
-  const postWriteRefreshGate = new Promise<void>((resolve) => {
-    releasePostWriteRefresh = resolve;
-  });
-  const serverFavorites = new Set([existingQuestionId]);
+  let retiredLoginRequests = 0;
   await page.context().addCookies([{ name: 'quizcraft_anonymous', value: 'server-issued-anonymous-session', domain: '127.0.0.1', path: '/', httpOnly: true, secure: false, sameSite: 'Lax' }]);
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/auth/login') retiredLoginRequests += 1;
+  });
   await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
     const request = route.request();
     if (request.url().endsWith('/api/v1/banks')) {
@@ -520,68 +441,30 @@ test('favorites use the generated server client and never merge guest browser st
       return;
     }
     if (request.url().endsWith('/api/v1/practice/sessions')) {
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ request_id: 'session', data: { session_id: sessionId, bank_id: bankId, bank_version_id: bankVersionId, mode: 'random', excluded_unavailable_count: 0, questions: [{ question_id: questionId, question_version_id: questionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '需要登录收藏的问题', options: ['是', '否'] }, { question_id: existingQuestionId, question_version_id: existingQuestionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '已收藏的另一道题', options: ['是', '否'] }] } }) });
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ request_id: 'session', data: { session_id: sessionId, bank_id: bankId, bank_version_id: bankVersionId, mode: 'random', excluded_unavailable_count: 0, questions: [{ question_id: questionId, question_version_id: questionVersionId, type: 'single', chapter_id: 'ch01', chapter: '第一章', content: '需要登录收藏的问题', options: ['是', '否'] }] } }) });
       return;
     }
     if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites`)) {
-      favoriteListReads += 1;
-      if (mutationAccepted) {
-        postWriteRefreshStarted = true;
-        await postWriteRefreshGate;
-      }
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'list', data: Array.from(serverFavorites, (favoriteQuestionId) => ({ bank_id: bankId, question_id: favoriteQuestionId, available: true, question_version_id: favoriteQuestionId === questionId ? questionVersionId : existingQuestionVersionId })) }) });
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'list', data: [] }) });
       return;
     }
     if (request.url().endsWith(`/api/v1/banks/${bankId}/favorites/${questionId}`)) {
       favoriteWrites += 1;
-      favoriteMethods.push(request.method());
-      if (!authenticated) {
-        await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'auth', error: { code: 'authentication_required', message: 'sign in' } }) });
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      if (request.method() === 'PUT') serverFavorites.add(questionId);
-      if (request.method() === 'DELETE') serverFavorites.delete(questionId);
-      mutationAccepted = true;
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'favorite', data: { operation_id: questionId, state: 'succeeded', idempotency_key: request.headers()['idempotency-key'], request_id: 'favorite', resource_id: questionId } }) });
-      return;
-    }
-    if (request.url().endsWith(`/api/v1/practice/sessions/${sessionId}/answers`)) {
-      expect((await request.allHeaders()).cookie).toContain('quizcraft_anonymous=server-issued-anonymous-session');
-      expect((await request.allHeaders()).cookie).toContain('quizcraft_session=signed-in');
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ request_id: 'answer', data: { question_id: questionId, question_version_id: questionVersionId, correct: true, replayed: false, expected_answer: 1, analysis: '登录回跳后仍可作答' } }) });
+      await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ request_id: 'auth', error: { code: 'authentication_required', message: 'sign in' } }) });
       return;
     }
     await route.abort();
   });
-  await page.route('http://127.0.0.1:18080/auth/login**', async (route) => {
-    const returnTo = new URL(route.request().url()).searchParams.get('return_to');
-    expect(returnTo).toContain('/quiz?favorite_question_id=');
-    authenticated = true;
-    await route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:4173${returnTo}`, 'set-cookie': 'quizcraft_session=signed-in; Path=/; HttpOnly; SameSite=Lax' } });
+  await page.route('https://henukit.cn/practice/favorites', async (route) => {
+    await route.fulfill({ contentType: 'text/html', body: '<main>练习服务收藏夹</main>' });
   });
 
   await page.goto('/practice');
   await page.getByRole('button', { name: '开始练习' }).click();
   await page.getByRole('button', { name: '收藏本题' }).click();
-  await expect(page).toHaveURL(/\/quiz$/);
-  await expect(page.getByRole('button', { name: '取消收藏本题' })).toBeVisible();
-  await expect.poll(() => postWriteRefreshStarted).toBe(true);
-  releasePostWriteRefresh();
-  await page.getByRole('button', { name: '下一题' }).click();
-  await expect(page.getByRole('button', { name: '取消收藏本题' })).toBeVisible();
-  await page.getByRole('button', { name: '上一题' }).click();
-  await page.getByRole('button', { name: /B.*否/ }).first().click();
-  await page.getByRole('button', { name: '提交答案' }).click();
-  await expect(page.getByText('登录回跳后仍可作答')).toBeVisible();
-
-  authenticated = false;
-  await page.getByRole('button', { name: '取消收藏本题' }).click();
-  await expect(page).toHaveURL(/\/quiz$/);
-  await expect.poll(() => favoriteWrites).toBe(4);
-  expect(favoriteListReads).toBeGreaterThanOrEqual(2);
-  await expect(page.getByRole('button', { name: '收藏本题' })).toBeVisible();
-  expect(favoriteMethods).toEqual(['PUT', 'PUT', 'DELETE', 'DELETE']);
+  await expect(page).toHaveURL('https://henukit.cn/practice/favorites');
+  expect(favoriteWrites).toBe(1);
+  expect(retiredLoginRequests).toBe(0);
   const persistedStars = await page.evaluate(() => JSON.parse(localStorage.getItem('quiz-storage') || '{}')?.state?.starredQuestions || []);
   expect(persistedStars).toEqual([]);
 });
@@ -615,7 +498,7 @@ test('favorite write failure stays visible and never falls back to browser stora
   await page.getByRole('button', { name: '开始练习' }).click();
   await expect(page.getByRole('heading', { name: '失败后不能伪造收藏' })).toBeVisible();
   await page.getByRole('button', { name: '收藏本题' }).click();
-  await expect(page.getByRole('status')).toHaveText('收藏失败，请登录后重试');
+  await expect(page.getByRole('status')).toHaveText('收藏失败，请稍后重试');
   await expect(page.getByRole('button', { name: '收藏本题' })).toBeVisible();
   const persistedStars = await page.evaluate(() => JSON.parse(localStorage.getItem('quiz-storage') || '{}')?.state?.starredQuestions || []);
   expect(persistedStars).toEqual([]);
@@ -654,6 +537,7 @@ test('favorites overview starts a bank-scoped favorites practice', async ({ page
 });
 
 test('favorites overview distinguishes an unavailable service from a login requirement', async ({ page }) => {
+  let favoritesStatus = 503;
   await page.route('http://127.0.0.1:18080/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/v1/banks') {
@@ -661,7 +545,7 @@ test('favorites overview distinguishes an unavailable service from a login requi
       return;
     }
     if (url.pathname === '/api/v1/favorites') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ request_id: 'unavailable', error: { code: 'database_unavailable', message: 'unavailable' } }) });
+      await route.fulfill({ status: favoritesStatus, contentType: 'application/json', body: JSON.stringify({ request_id: 'favorites_state', error: { code: favoritesStatus === 401 ? 'authentication_required' : 'database_unavailable', message: 'unavailable' } }) });
       return;
     }
     await route.abort();
@@ -670,4 +554,9 @@ test('favorites overview distinguishes an unavailable service from a login requi
   await page.goto('/favorites');
   await expect(page.getByRole('alert')).toHaveText('收藏夹暂时加载不出来，请检查网络后重试');
   await expect(page.getByRole('link', { name: '登录后查看收藏夹' })).toHaveCount(0);
+
+  favoritesStatus = 401;
+  await page.goto('/favorites');
+  await expect(page.getByRole('alert')).toHaveText('收藏夹请在练习服务中查看');
+  await expect(page.getByRole('link', { name: '前往练习服务' })).toHaveAttribute('href', 'https://henukit.cn/practice/favorites');
 });

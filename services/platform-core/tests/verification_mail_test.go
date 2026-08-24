@@ -570,126 +570,6 @@ func TestExplicitPasswordLoginReturnsStatusWithoutHTML(t *testing.T) {
 	}
 }
 
-func TestAccountCenterLoginPageCompletesBrowserSession(t *testing.T) {
-	ctx := context.Background()
-	pool, redisClient := openDependencies(t, ctx)
-	resetIdentityTables(t, ctx, pool, redisClient)
-	server := newVerificationServer(t, pool, redisClient)
-	seedRegisteredAccount(t, ctx, pool, redisClient, server.URL, clientForDevice(server, "browser-registration-seed"))
-	if _, err := pool.Exec(ctx, `INSERT INTO oauth_clients (id, redirect_uris) VALUES ('quizcraft', ARRAY['https://quiz.example/auth/callback'])`); err != nil {
-		t.Fatalf("seed browser-login OAuth client: %v", err)
-	}
-	client := clientForDevice(server, "browser-login-device")
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-
-	returnTo := contract.AuthorizeRoute + "?response_type=code&client_id=quizcraft&redirect_uri=https%3A%2F%2Fquiz.example%2Fauth%2Fcallback&state=12345678&code_challenge=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&code_challenge_method=S256"
-	authorize, err := client.Get(server.URL + returnTo)
-	if err != nil {
-		t.Fatalf("open authorize entry: %v", err)
-	}
-	authorize.Body.Close()
-	if authorize.StatusCode != http.StatusFound || !strings.HasPrefix(authorize.Header.Get("Location"), "/login?return_to=") {
-		t.Fatalf("authorize without Session = %d %q, want account login redirect", authorize.StatusCode, authorize.Header.Get("Location"))
-	}
-	login, err := client.Get(server.URL + authorize.Header.Get("Location"))
-	if err != nil {
-		t.Fatalf("open account login: %v", err)
-	}
-	loginBody, _ := io.ReadAll(login.Body)
-	login.Body.Close()
-	if login.StatusCode != http.StatusOK || !bytes.Contains(loginBody, []byte("HENU Kit 账号中心")) || !bytes.Contains(loginBody, []byte("学生自主运营 · 非河南大学官方项目")) || !bytes.Contains(loginBody, []byte(`name="email"`)) {
-		t.Fatalf("invalid account login page = %d %s", login.StatusCode, loginBody)
-	}
-	accountURL, _ := url.Parse(server.URL)
-	var csrf string
-	for _, cookie := range client.Jar.Cookies(accountURL) {
-		if cookie.Name == "__Host-henukit_login_csrf" {
-			csrf = cookie.Value
-		}
-	}
-	if csrf == "" {
-		t.Fatal("account login page did not set a CSRF cookie")
-	}
-	requestCode, err := client.PostForm(server.URL+"/login/code", url.Values{
-		"csrf_token": {csrf}, "return_to": {returnTo}, "email": {testStudentEmail},
-	})
-	if err != nil {
-		t.Fatalf("submit account email: %v", err)
-	}
-	requestBody, _ := io.ReadAll(requestCode.Body)
-	requestCode.Body.Close()
-	if requestCode.StatusCode != http.StatusOK || !bytes.Contains(requestBody, []byte(`name="code"`)) {
-		t.Fatalf("account code page = %d %s", requestCode.StatusCode, requestBody)
-	}
-	sender := &captureSender{messageID: "provider_browser_login_001"}
-	worker, _ := mailworker.New(store.New(pool), sender, "worker_browser_login", testVerificationEncryptionKey, time.Minute, time.Second)
-	if outcome, err := worker.ProcessOne(ctx); err != nil || !outcome.Processed {
-		t.Fatalf("deliver browser login code: outcome=%+v err=%v", outcome, err)
-	}
-	verified, err := client.PostForm(server.URL+"/login/verify", url.Values{
-		"csrf_token": {csrf}, "return_to": {returnTo}, "email": {testStudentEmail}, "code": {sender.lastMessage().Code},
-	})
-	if err != nil {
-		t.Fatalf("submit browser login code: %v", err)
-	}
-	verified.Body.Close()
-	if verified.StatusCode != http.StatusSeeOther || verified.Header.Get("Location") != returnTo {
-		t.Fatalf("browser login completion = %d %q, want 303 to OAuth authorize", verified.StatusCode, verified.Header.Get("Location"))
-	}
-	var hasCoreSession bool
-	for _, cookie := range client.Jar.Cookies(accountURL) {
-		hasCoreSession = hasCoreSession || cookie.Name == "__Host-henukit_core_session" && cookie.Value != ""
-	}
-	if !hasCoreSession {
-		t.Fatal("browser account login did not establish a Core Session")
-	}
-	revokeBody := bytes.NewBufferString(`{"all_sessions":true}`)
-	revokeRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/revoke", revokeBody)
-	revokeRequest.Header.Set("Content-Type", "application/json")
-	revokeRequest.Header.Set("Origin", server.URL)
-	revoked, err := client.Do(revokeRequest)
-	if err != nil {
-		t.Fatalf("revoke Core Session: %v", err)
-	}
-	revoked.Body.Close()
-	if revoked.StatusCode != http.StatusOK {
-		t.Fatalf("revoke Core Session = %d, want 200", revoked.StatusCode)
-	}
-	var activeSessions int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 0 {
-		t.Fatalf("active sessions after global revocation = %d err=%v, want 0", activeSessions, err)
-	}
-	siblingTokenHash := sha256.Sum256([]byte("active-sibling-core-session"))
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO sessions (user_id, kind, token_hash, expires_at)
-		SELECT user_id, 'core', $1, now() + interval '1 hour'
-		FROM sessions WHERE kind = 'core' LIMIT 1`, siblingTokenHash[:]); err != nil {
-		t.Fatalf("create active sibling Core Session: %v", err)
-	}
-	revokedRetryRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/revoke", bytes.NewBufferString(`{"all_sessions":true}`))
-	revokedRetryRequest.Header.Set("Content-Type", "application/json")
-	revokedRetryRequest.Header.Set("Origin", server.URL)
-	revokedRetry, err := client.Do(revokedRetryRequest)
-	if err != nil {
-		t.Fatalf("retry global revocation with revoked Session: %v", err)
-	}
-	revokedRetry.Body.Close()
-	if revokedRetry.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("global revocation with revoked Session = %d, want 401", revokedRetry.StatusCode)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 1 {
-		t.Fatalf("active sessions after rejected revoked-Session request = %d err=%v, want 1", activeSessions, err)
-	}
-	afterRevoke, err := client.Get(server.URL + returnTo)
-	if err != nil {
-		t.Fatalf("authorize after Core Session revocation: %v", err)
-	}
-	afterRevoke.Body.Close()
-	if afterRevoke.StatusCode != http.StatusFound || !strings.HasPrefix(afterRevoke.Header.Get("Location"), "/login?return_to=") {
-		t.Fatalf("authorization after revocation = %d %q, want login redirect", afterRevoke.StatusCode, afterRevoke.Header.Get("Location"))
-	}
-}
-
 func TestAccountCenterLoginFailsClosedWhenRandomSourceUnavailable(t *testing.T) {
 	ctx := context.Background()
 	pool, redisClient := openDependencies(t, ctx)
@@ -702,7 +582,7 @@ func TestAccountCenterLoginFailsClosedWhenRandomSourceUnavailable(t *testing.T) 
 	originalReader := rand.Reader
 	t.Cleanup(func() { rand.Reader = originalReader })
 	rand.Reader = failingRandomReader{}
-	response, err := client.Get(server.URL + "/login")
+	response, err := client.Get(server.URL + "/account/bootstrap?flow=login")
 	if err != nil {
 		t.Fatalf("open account login with failed random source: %v", err)
 	}
@@ -734,7 +614,7 @@ func TestAccountCenterLoginFailsClosedWhenDeviceRandomSourceUnavailable(t *testi
 	originalReader := rand.Reader
 	t.Cleanup(func() { rand.Reader = originalReader })
 	rand.Reader = &randomReadsThenFail{successfulReads: 2}
-	response, err := client.Get(server.URL + "/login")
+	response, err := client.Get(server.URL + "/account/bootstrap?flow=login")
 	if err != nil {
 		t.Fatalf("open account login with failed device random source: %v", err)
 	}
@@ -832,22 +712,7 @@ func TestAccountCenterLoginVerificationFailsClosedWhenIdempotencyRandomFails(t *
 
 func openLoginAndCSRF(t *testing.T, server *httptest.Server, client *http.Client) string {
 	t.Helper()
-	login, err := client.Get(server.URL + "/login")
-	if err != nil {
-		t.Fatalf("open account login: %v", err)
-	}
-	_, _ = io.Copy(io.Discard, login.Body)
-	login.Body.Close()
-	if login.StatusCode != http.StatusOK {
-		t.Fatalf("open account login = %d, want 200", login.StatusCode)
-	}
-	for _, cookie := range client.Jar.Cookies(mustURL(t, server.URL)) {
-		if cookie.Name == "__Host-henukit_login_csrf" {
-			return cookie.Value
-		}
-	}
-	t.Fatal("account login did not set a CSRF cookie")
-	return ""
+	return accountBootstrapCSRF(t, client, server.URL, "login")
 }
 
 func primeHTTPConnection(t *testing.T, server *httptest.Server, client *http.Client) {

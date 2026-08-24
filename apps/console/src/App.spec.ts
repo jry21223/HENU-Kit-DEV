@@ -118,15 +118,14 @@ describe("Console Overview", () => {
     readOnly.unmount();
   });
   it("renders six modules only after the server verifies the access context", async () => {
-	vi.stubEnv("VITE_QUIZCRAFT_WORKSHOP_URL", "https://quizcraft.staging.example/extract");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App, { attachTo: document.body });
     await flushPromises();
 
     expect(wrapper.findAll("[data-module-card]")).toHaveLength(6);
-    for (const name of ["Portal", "Platform Operations", "Notice", "Library", "QuizCraft", "Food"]) expect(wrapper.text()).toContain(name);
-    expect(wrapper.get("a[href='https://quizcraft.staging.example/extract']").text()).toContain("打开 QuizCraft 题库工坊");
+    for (const name of ["Portal", "Platform Operations", "Notice", "Library", "练习服务", "Food"]) expect(wrapper.text()).toContain(name);
+    for (const retiredCopy of ["QuizCraft", "题库工坊", "刷题产品"]) expect(wrapper.text()).not.toContain(retiredCopy);
     expect(wrapper.text()).not.toContain("创建草稿版本");
     for (const state of ["ok", "empty", "partial", "stale", "unavailable"]) expect(wrapper.find(`[data-state="${state}"]`).exists()).toBe(true);
     expect(wrapper.text()).toContain("摘要暂不可用");

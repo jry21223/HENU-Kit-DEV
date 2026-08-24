@@ -242,7 +242,7 @@ func TestQuizCraftConsoleSummaryIsSignedAndBounded(t *testing.T) {
 	defer response.Body.Close()
 	var body bytes.Buffer
 	_, _ = body.ReadFrom(response.Body)
-	if response.StatusCode != http.StatusOK || !bytes.Contains(body.Bytes(), []byte(`"request_id":"req_quizcraft_summary_test"`)) || !bytes.Contains(body.Bytes(), []byte(`"id":"quizcraft"`)) || !bytes.Contains(body.Bytes(), []byte(`"待人工校验"`)) || bytes.Contains(body.Bytes(), []byte(`"detail"`)) {
+	if response.StatusCode != http.StatusOK || !bytes.Contains(body.Bytes(), []byte(`"request_id":"req_quizcraft_summary_test"`)) || !bytes.Contains(body.Bytes(), []byte(`"id":"quizcraft"`)) || !bytes.Contains(body.Bytes(), []byte(`"练习会话"`)) || bytes.Contains(body.Bytes(), []byte(`"待人工校验"`)) || bytes.Contains(body.Bytes(), []byte(`"detail"`)) {
 		t.Fatalf("signed summary = %d %s", response.StatusCode, body.Bytes())
 	}
 	replay, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/console-summary", nil)

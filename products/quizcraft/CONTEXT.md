@@ -1,21 +1,17 @@
-# QuizCraft Context
+# Practice Service Context
 
 ## Language
 
 **Practice Core**:
-QuizCraft 中基于一个不可变题库版本创建练习、提交答案并记录结果的业务边界。
+练习服务中基于一个不可变题库版本创建练习、提交答案并记录结果的业务边界。
 _Avoid_: 临时 JSON 刷题、前端题库事实
 
 **Stable Question ID**:
 由稳定题库键和源题目 ID 确定、不会因题目内容修改而变化的题目身份。一次具体内容使用独立的 Question Version ID。
 _Avoid_: 数组下标、题目文本哈希即题目 ID
 
-**Question Bank Workshop**:
-显式导入、校验、版本化与发布题库的管理边界。导入报告必须说明题数、题型、答案、章节与哈希结果。
-_Avoid_: 服务启动扫描、JSON 运行时兜底
-
 **无人使用维护期**:
-因学期或考试结束而不预期有真实用户流量的 QuizCraft 维护时段；服务仍可运行，且该事实本身不证明后台任务或数据库写入已停止。
+因学期或考试结束而不预期有真实用户流量的练习服务维护时段；服务仍可运行，且该事实本身不证明后台任务或数据库写入已停止。
 _Avoid_: 服务已停止、零写入窗口
 
 **技术停写窗口**:
@@ -23,7 +19,7 @@ _Avoid_: 服务已停止、零写入窗口
 _Avoid_: 无人使用维护期、人工口头停写
 
 **维护窗口全量切换**:
-在技术停写窗口内完成最终对账后，一次性将 QuizCraft 全部读写流量从 FastAPI 切换到 Go 的迁移方式；它只取代比例灰度步骤，不降低快照、对账、健康和回退门禁。
+在技术停写窗口内完成最终对账后，一次性将练习服务全部读写流量从 FastAPI 切换到 Go 的迁移方式；它只取代比例灰度步骤，不降低快照、对账、健康和回退门禁。
 _Avoid_: 比例灰度、未停写全量放量、大爆炸重写
 
 **Go 写入承诺点**:
@@ -32,13 +28,14 @@ _Avoid_: 流量已切换、Go 服务已启动
 
 ## Owns
 
-- Practice、Favorites、Ranking、Feedback 与 Question Bank Workshop 的 QuizCraft 契约。
+- Practice、Favorites、Wrong Answers、Statistics、Ranking 与 Feedback 契约。
 - 稳定 Bank/Question ID、不可变 Bank/Question Version ID 以及题库版本成员关系。
 - PostgreSQL 中的题库事实和显式 JSON 导入报告。
 
 ## Does not own
 
 - Platform 账户、Console Session、权限或产品 Scope。
+- 独立产品首页、题库管理界面、管理令牌界面、转盘或独立 OAuth 登录。
 - 本地 JSON 文件的自动发现、启动同步或生产运行时兜底。
 - 旧 FastAPI 到 Go 的生产切换；该切换属于后续迁移事项。
 

@@ -277,8 +277,6 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if len(service.cutoverEvidenceSecret) != 0 {
 		router.With(service.authenticateCutoverEvidence).Get("/api/v1/cutover-evidence", service.cutoverEvidence)
 	}
-	router.Get("/auth/login", service.startPlatformLogin)
-	router.Get("/auth/callback", service.finishPlatformLogin)
 	router.With(service.authenticateConsoleSummary).Get("/api/v1/console-summary", service.consoleSummary)
 	if service.catalogClientID != "" {
 		portalRead := router.With(service.authenticatePortalRead)
@@ -297,6 +295,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
 	writes.Post("/api/v1/feedback", service.createFeedback)
 	writes.Get("/api/v1/feedback/{feedback_id}/status", service.getFeedbackStatus)
+	// The versioned administration contract remains available to trusted
+	// service callers during data migration, but it has no browser UI or OAuth
+	// entry. Removing this frozen API is a separate breaking-contract release.
 	router.Get("/api/v1/workshop/banks", service.listWorkshopBanks)
 	router.Get("/api/v1/workshop/catalog", service.listWorkshopCatalog)
 	writes.Post("/api/v1/workshop/banks", service.createWorkshopBank)

@@ -199,7 +199,7 @@ func New(config Config) (http.Handler, error) {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
 	continuations := oauthcontinuation.New(config.Redis)
-	return httpapi.New(flow, verificationFlow, continuations, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, config.CoreSessionTTL, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger), nil
+	return httpapi.New(flow, verificationFlow, continuations, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger), nil
 }
 
 func credentialPlaceholder(value string) bool {

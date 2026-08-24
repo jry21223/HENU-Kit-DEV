@@ -622,10 +622,10 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["console-gateway"].depends_on["portal-summary"].condition,
     "service_healthy",
   );
-  assert.match(
+  assert.doesNotMatch(
     releaseImageMatrix().include.find(({ name }) => name === "console").build_args,
-    /VITE_QUIZCRAFT_WORKSHOP_URL=$/m,
-    "production Console must not bake a retired QuizCraft workshop route",
+    /VITE_QUIZCRAFT_WORKSHOP_URL/,
+    "production Console must not retain a retired workshop build argument",
   );
   assert.equal(
     config.services["notice"].environment.NOTICE_SERVICE_CLIENT_ID,

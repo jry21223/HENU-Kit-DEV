@@ -4,17 +4,12 @@ import {
   FavoritesService,
   OpenAPI,
   PracticeService,
-  WorkshopService,
-  type BankImportRequest,
   type BankVersion,
   type ChapterPracticeSelection,
   type DifficultPracticeSelection,
   type PracticeQuestion,
   type QuestionFeedback,
   type RandomPracticeSelection,
-  type WorkshopBank,
-  type WorkshopFeedback,
-  type WorkshopVersionDetail,
 } from '@/generated/quizcraft-api';
 import type { PracticeSettings, Question, QuestionBank } from '@/types';
 import {
@@ -229,13 +224,6 @@ export const shadowPracticeApi = {
 export const isQuizcraftAuthenticationError = (error: unknown) =>
   error instanceof ApiError && error.status === 401;
 
-export const quizcraftLoginHref = (returnTo: string) => {
-  const loginEntry = import.meta.env.VITE_QUIZCRAFT_LOGIN_URL?.trim() || '/auth/login';
-  const loginURL = new URL(loginEntry, window.location.origin);
-  loginURL.searchParams.set('return_to', returnTo);
-  return loginURL.toString();
-};
-
 export const getActiveShadowBankId = () => restoreActiveSession()?.bankId;
 export const getActiveShadowQuestionVersionId = (questionId: string) => restoreActiveSession()?.versions.get(questionId);
 
@@ -293,67 +281,8 @@ export const shadowFeedbackApi = {
   },
 };
 
-export const shadowWorkshopApi = {
-  async list(): Promise<WorkshopBank[]> {
-    configureGeneratedClient();
-    return (await WorkshopService.listWorkshopCatalog()).data;
-  },
-  async createBank(bank_key: string, name: string) {
-    configureGeneratedClient();
-    return WorkshopService.createWorkshopBank({ idempotencyKey: randomKey(), requestBody: { bank_key, name } });
-  },
-  async detail(bankId: string, bankVersionId: string): Promise<WorkshopVersionDetail> {
-    configureGeneratedClient();
-    return (await WorkshopService.getWorkshopBankVersion({ bankId, bankVersionId })).data;
-  },
-  async feedback(feedbackId: string): Promise<WorkshopFeedback> {
-    configureGeneratedClient();
-    return (await WorkshopService.getWorkshopFeedback({ feedbackId })).data;
-  },
-  async createVersion(bankId: string, expectedVersion: number, questions: BankImportRequest['questions']) {
-    configureGeneratedClient();
-    return WorkshopService.createWorkshopBankVersion({ bankId, idempotencyKey: randomKey(), requestBody: { expected_version: expectedVersion, questions } });
-  },
-  async importVersion(bankId: string, expectedVersion: number, sourceSHA256: string, questions: BankImportRequest['questions']) {
-    configureGeneratedClient();
-    return WorkshopService.importWorkshopBank({ bankId, idempotencyKey: randomKey(), requestBody: { expected_version: expectedVersion, source_sha256: sourceSHA256, questions } });
-  },
-  async validate(bankId: string, bankVersionId: string, expectedVersion: number) {
-    configureGeneratedClient();
-    return WorkshopService.validateWorkshopBankVersion({ bankId, bankVersionId, idempotencyKey: randomKey(), requestBody: { expected_version: expectedVersion, note: '题库工坊人工逐题校验' } });
-  },
-  async publish(bankId: string, bankVersionId: string, expectedVersion: number) {
-    configureGeneratedClient();
-    return WorkshopService.publishWorkshopBankVersion({ bankId, bankVersionId, idempotencyKey: randomKey(), requestBody: { expected_version: expectedVersion, note: '人工校验后发布' } });
-  },
-  async unpublish(bankId: string, bankVersionId: string, expectedVersion: number) {
-    configureGeneratedClient();
-    return WorkshopService.unpublishWorkshopBankVersion({ bankId, bankVersionId, idempotencyKey: randomKey(), requestBody: { expected_version: expectedVersion, note: '下架保留不可变版本' } });
-  },
-  async rollback(bankId: string, bankVersionId: string, expectedVersion: number) {
-    configureGeneratedClient();
-    return WorkshopService.rollbackWorkshopBank({ bankId, idempotencyKey: randomKey(), requestBody: { expected_version: expectedVersion, target_bank_version_id: bankVersionId, note: '回滚至已校验版本' } });
-  },
-};
-
-export const redirectToQuizcraftLogin = (bankId: string, questionId: string, favorite: boolean) => {
-  const loginEntry = import.meta.env.VITE_QUIZCRAFT_LOGIN_URL?.trim();
-  if (!loginEntry) {
-    throw new Error('未配置 QuizCraft 登录入口');
-  }
-  const returnURL = new URL(window.location.href);
-  window.sessionStorage.setItem(
-    'quizcraft_pending_favorite',
-    JSON.stringify({ bankId, questionId, favorite }),
-  );
-  returnURL.searchParams.set('favorite_question_id', questionId);
-  returnURL.searchParams.set('favorite_bank_id', bankId);
-  const loginURL = new URL(loginEntry, window.location.origin);
-  loginURL.searchParams.set(
-    'return_to',
-    `${returnURL.pathname}${returnURL.search}${returnURL.hash}`,
-  );
-  window.location.assign(loginURL.toString());
+export const redirectToHenuKitFavorites = () => {
+  window.location.assign('https://henukit.cn/practice/favorites');
 };
 
 export const shadowFavoritesApi = {

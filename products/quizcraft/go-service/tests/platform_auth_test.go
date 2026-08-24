@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -181,33 +180,12 @@ func TestFeedbackStatusProjectsOperationsInboxStateAndListsOwnedFeedback(t *test
 	}
 }
 
-func TestWorkshopUsesPlatformCoreOAuthAndLiveAuthorization(t *testing.T) {
+func TestIndependentOAuthRoutesAreRetired(t *testing.T) {
 	pool := practicePool(t)
-	var mu sync.Mutex
-	var checked map[string]any
-	var exchangeKeys []string
+	var platformRequests atomic.Int32
 	platform := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("X-Signature") == "" || request.Header.Get("X-Service-Id") != "quizcraft" {
-			t.Errorf("missing signed service identity")
-			writer.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		switch request.URL.Path {
-		case "/api/v1/oauth/token":
-			mu.Lock()
-			exchangeKeys = append(exchangeKeys, request.Header.Get("Idempotency-Key"))
-			mu.Unlock()
-			_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{"user": map[string]string{"id": "11111111-1111-4111-8111-111111111111"}, "session_exchange_token": strings.Repeat("x", 40), "expires_at": time.Now().Add(time.Hour).UTC()}})
-		case "/api/v1/authorization/check":
-			var body map[string]any
-			_ = json.NewDecoder(request.Body).Decode(&body)
-			mu.Lock()
-			checked = body
-			mu.Unlock()
-			_ = json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{"allowed": true}})
-		default:
-			http.NotFound(writer, request)
-		}
+		platformRequests.Add(1)
+		http.NotFound(writer, request)
 	}))
 	defer platform.Close()
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), PlatformCoreURL: platform.URL, PlatformClientID: "quizcraft", PlatformClientSecret: strings.Repeat("s", 40), PlatformKeyID: "key-1", PublicURL: "https://quizcraft.henukit.test", SessionEncryptionKey: []byte("0123456789abcdef0123456789abcdef")})
@@ -217,59 +195,18 @@ func TestWorkshopUsesPlatformCoreOAuthAndLiveAuthorization(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
-	login, err := client.Get(server.URL + "/auth/login?return_to=%2Fextract")
-	if err != nil {
-		t.Fatal(err)
+	for _, path := range []string{"/auth/login?return_to=%2Fpractice", "/auth/callback?code=retired&state=retired"} {
+		response, err := client.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound || response.Header.Get("Location") != "" || len(response.Cookies()) != 0 {
+			t.Fatalf("retired OAuth route %s = %d location=%q cookies=%+v", path, response.StatusCode, response.Header.Get("Location"), response.Cookies())
+		}
 	}
-	if login.StatusCode != http.StatusFound {
-		t.Fatalf("login = %d", login.StatusCode)
-	}
-	oauthCookie := findCookie(t, login.Cookies(), "__Host-quizcraft_oauth")
-	redirect, _ := url.Parse(login.Header.Get("Location"))
-	state := redirect.Query().Get("state")
-	_ = login.Body.Close()
-	callback, _ := http.NewRequest(http.MethodGet, server.URL+"/auth/callback?code=single-use-code&state="+url.QueryEscape(state), nil)
-	callback.AddCookie(oauthCookie)
-	callbackResponse, err := client.Do(callback)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if callbackResponse.StatusCode != http.StatusFound || callbackResponse.Header.Get("Location") != "/extract" {
-		t.Fatalf("callback = %d %s", callbackResponse.StatusCode, callbackResponse.Header.Get("Location"))
-	}
-	sessionCookie := findCookie(t, callbackResponse.Cookies(), "__Host-quizcraft_session")
-	_ = callbackResponse.Body.Close()
-	retryCallback, _ := http.NewRequest(http.MethodGet, server.URL+"/auth/callback?code=single-use-code&state="+url.QueryEscape(state), nil)
-	retryCallback.AddCookie(oauthCookie)
-	retried, err := client.Do(retryCallback)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = retried.Body.Close()
-	mu.Lock()
-	keys := append([]string(nil), exchangeKeys...)
-	mu.Unlock()
-	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
-		t.Fatalf("OAuth exchange idempotency keys = %#v", keys)
-	}
-	create, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/workshop/banks", strings.NewReader(`{"bank_key":"oauth-bank","name":"OAuth Bank"}`))
-	create.Header.Set("Content-Type", "application/json")
-	create.Header.Set("Idempotency-Key", "oauth-bank-create")
-	create.AddCookie(sessionCookie)
-	created, err := client.Do(create)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer created.Body.Close()
-	if created.StatusCode != http.StatusCreated {
-		t.Fatalf("Platform-authorized create = %d", created.StatusCode)
-	}
-	mu.Lock()
-	decision := checked
-	mu.Unlock()
-	scope, _ := decision["scope"].(map[string]any)
-	if decision["permission_code"] != "quizcraft.workshop.write" || scope["kind"] != "product" || scope["product_code"] != "quizcraft" || decision["session_exchange_token"] != strings.Repeat("x", 40) {
-		t.Fatalf("authorization check = %#v", decision)
+	if platformRequests.Load() != 0 {
+		t.Fatalf("retired OAuth routes made %d Platform Core requests", platformRequests.Load())
 	}
 }
 
