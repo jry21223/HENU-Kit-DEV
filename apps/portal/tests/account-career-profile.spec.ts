@@ -478,14 +478,19 @@ test("refocusing the tab does not re-restore an unchanged scan", async ({ page }
   const statusReadsAfterFirstRestore = statusReads;
   const listReadsBeforeRefocus = listReads;
 
-  // 父页面在 visibilitychange / focus 时重新解析整页状态。
-  for (let i = 0; i < 3; i += 1) {
+  // 父页面在 visibilitychange / focus 时重新解析整页状态。逐轮触发并等到列表
+  // 确实被重新拉取，用真实信号代替固定等待。
+  //
+  // 走满两轮是有意的：listReads 在请求「到达」时自增，早于它要守的那个恢复
+  // effect；只观察一轮的话，断言可能赶在 React 重渲染之前就跑完了。等到第二
+  // 轮的请求发出，第一轮的重渲染与 effect 必然已经结束。
+  for (let round = 0; round < 2; round += 1) {
+    const listReadsBeforeRound = listReads;
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => listReads).toBeGreaterThan(listReadsBeforeRound);
   }
-
-  // 先等到列表确实被重新拉取——这才证明焦点刷新真的落地了，而不是靠固定等待。
-  await expect.poll(() => listReads).toBeGreaterThan(listReadsBeforeRefocus);
+  expect(listReads).toBeGreaterThan(listReadsBeforeRefocus);
 
   // 刷新落地之后，恢复 effect 不应重跑：同一条任务的完整状态不会被再读一次。
   expect(statusReads).toBe(statusReadsAfterFirstRestore);
