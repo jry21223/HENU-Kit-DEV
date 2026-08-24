@@ -265,7 +265,11 @@ async function expectNoBrowserLeakage(page, product, observed, continuationHandl
       continuationHandle,
       product.redirectURI
     ]) {
-      expect(item.referer).not.toContain(secret);
+      if (item.referer.includes(secret)) {
+        throw new Error(
+          `OAuth continuation secret leaked via Referer to ${item.method} ${url.origin}${url.pathname} (${item.resourceType})`,
+        );
+      }
     }
     if (item !== authorize) expect(item.url).not.toContain(codeChallenge);
     if (item !== authorize && item !== callback) {
@@ -331,7 +335,9 @@ function defineOAuthContinuationJourney(productConfig, playwright) {
       page.on("request", (browserRequest) => {
         observed.push({
           url: browserRequest.url(),
-          referer: browserRequest.headers()["referer"] ?? ""
+          referer: browserRequest.headers()["referer"] ?? "",
+          method: browserRequest.method(),
+          resourceType: browserRequest.resourceType()
         });
       });
       const continuation = await startProductContinuation(page, product);

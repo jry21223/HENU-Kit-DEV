@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
@@ -138,13 +138,17 @@ function LoginForm() {
   const needCode = tab === "register" || mode === "code";
   const passwordLength = Array.from(pwd).length;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!continuationHandle) return;
     const currentURL = new URL(window.location.href);
     if (currentURL.searchParams.get("continuation") !== continuationHandle) {
       return;
     }
-    window.history.replaceState(
+    // Next patches the instance method to dispatch a router transition. That
+    // transition can issue an RSC request before the old URL is gone, so use
+    // the browser primitive directly and scrub before child passive effects.
+    History.prototype.replaceState.call(
+      window.history,
       window.history.state,
       "",
       accountCenterURLWithoutContinuation(currentURL.toString())
