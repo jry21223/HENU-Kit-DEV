@@ -398,9 +398,7 @@ function LoginForm() {
       <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
         <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">ACC-01</span>
-            <span className="mx-2">/</span>
-            AUTH
+            账号中心
           </p>
           <h1 className="mt-4 font-display text-3xl font-bold tracking-tight">
             {serviceUnavailable
@@ -468,9 +466,7 @@ function LoginForm() {
       <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
         <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">ACC-01</span>
-            <span className="mx-2">/</span>
-            AUTH
+            账号中心
           </p>
           <p className="mt-6 font-mono text-xs tracking-wider text-ink/60" role="status">
             正在验证登录链接…
@@ -488,9 +484,7 @@ function LoginForm() {
       >
         <div className="flex items-baseline justify-between">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">ACC-01</span>
-            <span className="mx-2">/</span>
-            AUTH
+            账号中心
           </p>
           <Link
             href="/"
