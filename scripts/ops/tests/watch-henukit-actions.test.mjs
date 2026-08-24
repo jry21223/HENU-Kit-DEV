@@ -158,6 +158,8 @@ function fixture({
   missingLibraryArtifact = false,
   nonRootTrustRoot = "",
   incompletePreviousRelease = "",
+  includeOAuthContinuationArtifact = true,
+  tamperOAuthContinuationArtifact = false,
   previousHasAccountPortfolio = true,
   previousSha = "b".repeat(40),
   portalAllowMock = false,
@@ -381,6 +383,16 @@ for image in "\${images[@]}"; do
     sha256sum "$image-$FAKE_RELEASE_SHA.docker.tar.gz" > "$image-$FAKE_RELEASE_SHA.docker.tar.gz.sha256"
   )
 done
+if [[ "$FAKE_INCLUDE_OAUTH_CONTINUATION_ARTIFACT" == "1" ]]; then
+  continuation_artifact="$dest/oauth-continuation-$FAKE_RELEASE_SHA"
+  mkdir -p "$continuation_artifact"
+  cat > "$continuation_artifact/oauth-continuation-$FAKE_RELEASE_SHA.env" <<EOF
+format=henukit-oauth-continuation-gate-v1
+release_sha=$FAKE_RELEASE_SHA
+source_tree=cccccccccccccccccccccccccccccccccccccccc
+result=$([[ "$FAKE_TAMPER_OAUTH_CONTINUATION_ARTIFACT" == "1" ]] && printf fail || printf pass)
+EOF
+fi
 runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
 mkdir -p "$runtime_artifact" "$runtime_tree/bin" "$runtime_tree/release-gates" "$runtime_tree/materials-runtime"
@@ -404,6 +416,12 @@ account_payment_provider=easypay_or_disabled
 portal_require_gateway=1
 portal_allow_mock=0
 portal_api_default_mode=live
+EOF
+cat > "$runtime_tree/release-gates/oauth-continuation.env" <<EOF
+format=henukit-oauth-continuation-gate-v1
+release_sha=$FAKE_RELEASE_SHA
+source_tree=cccccccccccccccccccccccccccccccccccccccc
+result=pass
 EOF
 cat > "$runtime_tree/bin/deploy-henukit-artifact.sh" <<'HELPER'
 #!/usr/bin/env bash
@@ -711,6 +729,8 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       FAKE_FAIL_ACCOUNT_GRANT: failAccountGrant ? "1" : "0",
       FAKE_LIBRARY_HEALTH_ATTEMPTS: libraryHealthAttempts,
       FAKE_LEGACY_RUNTIME_PRESENT: legacyRuntimePresent ? "1" : "0",
+      FAKE_INCLUDE_OAUTH_CONTINUATION_ARTIFACT: includeOAuthContinuationArtifact ? "1" : "0",
+      FAKE_TAMPER_OAUTH_CONTINUATION_ARTIFACT: tamperOAuthContinuationArtifact ? "1" : "0",
       FAKE_MISSING_LIBRARY_ARTIFACT: missingLibraryArtifact ? "1" : "0",
       FAKE_MISSING_MATERIALS_RUNNER_UNIT: missingMaterialsRunnerUnit ? "1" : "0",
       FAKE_FAILED_MATERIALS_RUNNER_UNIT: failedMaterialsRunnerUnit ? "1" : "0",
@@ -787,6 +807,49 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   execFileSync(script, ["--once"], { env: setup.env });
   const secondCalls = readFileSync(setup.log, "utf8");
   assert.equal((secondCalls.match(/^deploy /gm) ?? []).length, 1);
+});
+
+test("one-shot accepts the SHA-bound OAuth continuation gate receipt", () => {
+  const setup = fixture({ includeOAuthContinuationArtifact: true });
+
+  const output = execFileSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.match(
+    output,
+    new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
+  );
+});
+
+test("one-shot rejects a continuation gate receipt that differs from the packaged runtime", () => {
+  const setup = fixture({
+    includeOAuthContinuationArtifact: true,
+    tamperOAuthContinuationArtifact: true,
+  });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /continuation gate receipt does not match the packaged runtime/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+test("one-shot rejects a missing workflow continuation gate receipt", () => {
+  const setup = fixture({ includeOAuthContinuationArtifact: false });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /workflow continuation gate receipt is missing/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
 });
 
 test("activation restores an enabled materials path after the quiesced release window", () => {
