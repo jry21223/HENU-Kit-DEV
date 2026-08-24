@@ -13,12 +13,16 @@ export default function CareerRadarVisual() {
       mm.add(FINE_MOTION, () => {
         const beam = ref.current?.querySelector("[data-career-radar-beam]");
         if (!beam) return;
+        // 支点必须落在雷达中心 (120,120)。SVG 元素上的 px transformOrigin 以自身 bbox
+        // 左上角为基准（GSAP _applySVGOrigin），光束 bbox 为 (120,28,92,92)，支点会被
+        // 算到 (240,148) —— 落在 240x240 视窗的右下角。svgOrigin 取绝对 SVG 用户坐标，
+        // 并单独用 gsap.set 在元素仍是单位矩阵时设定，避免被换算回局部坐标。
+        gsap.set(beam, { svgOrigin: "120 120" });
         gsap.to(beam, {
           rotation: 360,
           duration: 4,
           repeat: -1,
           ease: "none",
-          transformOrigin: "120px 120px",
         });
       });
       return () => mm.revert();

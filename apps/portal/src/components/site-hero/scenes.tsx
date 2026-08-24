@@ -57,6 +57,14 @@ export function SceneFood() {
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
+        // 支点必须落在定位针中心 (120,92)。两点都不能省：
+        // 1) 用 svgOrigin 而非 transformOrigin —— SVG 元素上的 px transformOrigin 以自身
+        //    bbox 左上角为基准（GSAP _applySVGOrigin），圆环 bbox 为 (100,72,40,40)，
+        //    支点会被算到 (220,164)，落在 240x160 视窗之外。
+        // 2) 必须在元素仍是单位矩阵时先行设定。若把 svgOrigin 放进 fromTo 的目标参数，
+        //    起始 scale 已经渲染，GSAP 会把绝对坐标换算回局部坐标（得到 150,122）
+        //    并叠加平滑偏移，支点照样跑偏。
+        gsap.set("[data-ring]", { svgOrigin: "120 92" });
         gsap.fromTo(
           "[data-ring]",
           { scale: 0.4, opacity: 0.8 },
@@ -67,7 +75,6 @@ export function SceneFood() {
             repeat: -1,
             ease: "sine.out",
             stagger: 0.7,
-            transformOrigin: "120px 92px",
           }
         );
         gsap.to("[data-steam]", {

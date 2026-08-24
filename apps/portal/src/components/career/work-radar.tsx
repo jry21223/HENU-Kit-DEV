@@ -87,7 +87,12 @@ export default function WorkRadar({
         if (!sweep) return;
 
         gsap.killTweensOf(sweep);
-        gsap.set(sweep, { transformOrigin: "280px 280px" });
+        // 支点必须落在雷达中心 (280,280)。SVG 元素上的 px transformOrigin 以自身 bbox
+        // 左上角为基准（GSAP _applySVGOrigin），扇形 bbox 约为 (280,30,205,250)，
+        // 支点会被算到 (560,310) —— 贴在 560x560 视窗右缘，扫描线绕边缘转而非绕圆心。
+        // svgOrigin 取绝对 SVG 用户坐标；且此处必须保持独立的 gsap.set，在元素仍是
+        // 单位矩阵时先行设定，否则 GSAP 会把绝对坐标换算回局部坐标并叠加平滑偏移。
+        gsap.set(sweep, { svgOrigin: "280 280" });
 
         if (status === "queued" || status === "running") {
           gsap.to(sweep, {
