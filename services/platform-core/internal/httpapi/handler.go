@@ -67,6 +67,26 @@ type browserCookieProfile struct {
 
 const explicitFormResponseHeader = "X-Henukit-Form-Response"
 
+func explicitAccountFormResponse(request *http.Request) bool {
+	return request.Header.Get(explicitFormResponseHeader) == "status"
+}
+
+func writeExplicitAccountFormSuccess(writer http.ResponseWriter, request *http.Request) bool {
+	if !explicitAccountFormResponse(request) {
+		return false
+	}
+	writer.WriteHeader(http.StatusNoContent)
+	return true
+}
+
+func writeExplicitAccountFormError(writer http.ResponseWriter, request *http.Request, status int, code, message string) bool {
+	if !explicitAccountFormResponse(request) {
+		return false
+	}
+	writeError(writer, request, status, code, message)
+	return true
+}
+
 func New(flow *identity.Service, verificationFlow *verification.Service, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, coreSessionTTL time.Duration, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, digestMail *careerdigestmail.Service, careerDigestClientID string, careerDigestKeys map[string][]byte, logger *slog.Logger) http.Handler {
 	handler := &Handler{publicPathPrefix: strings.TrimRight(os.Getenv("PLATFORM_CORE_PUBLIC_PATH_PREFIX"), "/"), flow: flow, verification: verificationFlow, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, coreSessionTTL: coreSessionTTL, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, digestMail: digestMail, careerDigestClientID: careerDigestClientID, careerDigestKeys: careerDigestKeys, logger: logger}
 	router := chi.NewRouter()
@@ -83,6 +103,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, inbox *
 	router.Get("/recover", handler.recoverPage)
 	router.Post("/recover/code", handler.recoverRequestCode)
 	router.Post("/recover", handler.recoverPassword)
+	router.Get("/account/bootstrap", handler.accountBootstrap)
 	router.Get("/account/security", handler.securityPage)
 	router.Post("/account/security/code", handler.securityRequestCode)
 	router.Post("/account/security/password", handler.securityChangePassword)
@@ -886,6 +907,54 @@ type accountCredentialView struct {
 	CodeRequested                       bool
 }
 
+func accountBrowserResponseHeaders(writer http.ResponseWriter) {
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+	writer.Header().Set("Referrer-Policy", "no-referrer")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+}
+
+func (h *Handler) accountBootstrap(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
+	flow := strings.TrimSpace(request.URL.Query().Get("flow"))
+	if flow != "login" && flow != "register" && flow != "recover" && flow != "security" {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_ACCOUNT_FLOW", "account flow is invalid")
+		return
+	}
+	profile := h.browserCookies(request)
+	if flow == "security" {
+		coreCookie, err := request.Cookie(profile.core)
+		if err != nil || len(coreCookie.Value) < 32 {
+			writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required")
+			return
+		}
+		session, err := h.verification.CoreSession(request.Context(), coreCookie.Value)
+		if err != nil {
+			writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required")
+			return
+		}
+		auditFrom(request.Context()).subjectUserID = maskSubject(session.UserID)
+	}
+	csrfToken, err := randomBrowserToken()
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "account_bootstrap_csrf")
+		return
+	}
+	_, deviceCookie, err := h.deviceID(request)
+	if err != nil {
+		h.writeRandomSourceError(writer, request, "account_bootstrap_device")
+		return
+	}
+	http.SetCookie(writer, h.browserCookie(profile.csrf, csrfToken, 10*60, time.Time{}, profile.secure))
+	if deviceCookie != nil {
+		http.SetCookie(writer, deviceCookie)
+	}
+	writeSuccess(writer, request, http.StatusOK, map[string]string{
+		"flow":       flow,
+		"csrf_token": csrfToken,
+	})
+}
+
 func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request) {
 	returnTo := safeRegistrationReturnTo(request.URL.Query().Get("return_to"))
 	csrfToken, err := randomBrowserToken()
@@ -907,6 +976,7 @@ func (h *Handler) registerPage(writer http.ResponseWriter, request *http.Request
 }
 
 func (h *Handler) registerRequestCode(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, returnTo, email, ok := h.parseRegistrationForm(writer, request)
 	if !ok {
 		return
@@ -930,13 +1000,20 @@ func (h *Handler) registerRequestCode(writer http.ResponseWriter, request *http.
 		http.SetCookie(writer, deviceCookie)
 	}
 	if err != nil {
+		if writeExplicitAccountFormError(writer, request, http.StatusServiceUnavailable, "VERIFICATION_UNAVAILABLE", "verification code delivery is unavailable") {
+			return
+		}
 		h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
+		return
+	}
+	if writeExplicitAccountFormSuccess(writer, request) {
 		return
 	}
 	h.renderRegister(writer, request, accountRegisterView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true})
 }
 
 func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, returnTo, email, ok := h.parseRegistrationForm(writer, request)
 	if !ok {
 		return
@@ -968,6 +1045,16 @@ func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Requ
 		if errors.Is(err, verification.ErrAlreadyRegistered) {
 			message = "该邮箱已注册，请登录或找回密码。"
 		}
+		status, code, detail := http.StatusBadRequest, "REGISTRATION_FAILED", "registration was rejected"
+		switch {
+		case errors.Is(err, verification.ErrAlreadyRegistered):
+			status, code, detail = http.StatusConflict, "ACCOUNT_ALREADY_REGISTERED", "account is already registered"
+		case errors.Is(err, verification.ErrDependency):
+			status, code, detail = http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "registration dependency is unavailable"
+		}
+		if writeExplicitAccountFormError(writer, request, status, code, detail) {
+			return
+		}
 		h.renderRegister(writer, request, accountRegisterView{
 			CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, CodeRequested: true, Error: message,
 		})
@@ -977,6 +1064,9 @@ func (h *Handler) registerAccount(writer http.ResponseWriter, request *http.Requ
 	http.SetCookie(writer, h.browserCookie(profile.core, registered.SessionToken, max(1, int(time.Until(registered.SessionExpiresAt).Seconds())), registered.SessionExpiresAt, profile.secure))
 	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(registered.UserID)
+	if writeExplicitAccountFormSuccess(writer, request) {
+		return
+	}
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 
@@ -1012,6 +1102,7 @@ func (h *Handler) recoverPage(writer http.ResponseWriter, request *http.Request)
 }
 
 func (h *Handler) recoverRequestCode(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
 	if !ok {
 		return
@@ -1036,12 +1127,19 @@ func (h *Handler) recoverRequestCode(writer http.ResponseWriter, request *http.R
 	}
 	view := accountCredentialView{CSRFToken: csrfToken, Email: email, CodeRequested: true}
 	if err != nil {
+		if writeExplicitAccountFormError(writer, request, http.StatusServiceUnavailable, "VERIFICATION_UNAVAILABLE", "verification code delivery is unavailable") {
+			return
+		}
 		view.CodeRequested, view.Error = false, "无法发送验证码，请检查邮箱或稍后重试。"
+	}
+	if writeExplicitAccountFormSuccess(writer, request) {
+		return
 	}
 	h.renderCredentialPage(writer, request, accountRecoverTemplate, view)
 }
 
 func (h *Handler) recoverPassword(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
 	if !ok {
 		return
@@ -1068,6 +1166,13 @@ func (h *Handler) recoverPassword(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if err != nil || recovered.SessionToken == "" {
+		status, code, detail := http.StatusBadRequest, "RECOVERY_FAILED", "password recovery was rejected"
+		if errors.Is(err, verification.ErrDependency) {
+			status, code, detail = http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "password recovery dependency is unavailable"
+		}
+		if writeExplicitAccountFormError(writer, request, status, code, detail) {
+			return
+		}
 		h.renderCredentialPage(writer, request, accountRecoverTemplate, accountCredentialView{
 			CSRFToken: csrfToken, Email: email, CodeRequested: true,
 			Error: "无法重置密码，请检查验证码和新密码后重试。",
@@ -1078,6 +1183,9 @@ func (h *Handler) recoverPassword(writer http.ResponseWriter, request *http.Requ
 	http.SetCookie(writer, h.browserCookie(profile.core, recovered.SessionToken, max(1, int(time.Until(recovered.SessionExpiresAt).Seconds())), recovered.SessionExpiresAt, profile.secure))
 	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(recovered.UserID)
+	if writeExplicitAccountFormSuccess(writer, request) {
+		return
+	}
 	http.Redirect(writer, request, "/account/security", http.StatusSeeOther)
 }
 
@@ -1112,6 +1220,7 @@ func (h *Handler) securityPage(writer http.ResponseWriter, request *http.Request
 }
 
 func (h *Handler) securityRequestCode(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
 	if !ok {
 		return
@@ -1119,11 +1228,17 @@ func (h *Handler) securityRequestCode(writer http.ResponseWriter, request *http.
 	profile := h.browserCookies(request)
 	coreCookie, err := request.Cookie(profile.core)
 	if err != nil {
+		if writeExplicitAccountFormError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required") {
+			return
+		}
 		h.redirectToLogin(writer, request)
 		return
 	}
 	session, err := h.verification.CoreSession(request.Context(), coreCookie.Value)
 	if err != nil {
+		if writeExplicitAccountFormError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required") {
+			return
+		}
 		h.redirectToLogin(writer, request)
 		return
 	}
@@ -1148,12 +1263,19 @@ func (h *Handler) securityRequestCode(writer http.ResponseWriter, request *http.
 	auditFrom(request.Context()).subjectUserID = maskSubject(session.UserID)
 	view := accountCredentialView{CSRFToken: csrfToken, Email: email, CodeRequested: true}
 	if err != nil {
+		if writeExplicitAccountFormError(writer, request, http.StatusServiceUnavailable, "VERIFICATION_UNAVAILABLE", "verification code delivery is unavailable") {
+			return
+		}
 		view.CodeRequested, view.Error = false, "无法发送验证码，请检查邮箱或稍后重试。"
+	}
+	if writeExplicitAccountFormSuccess(writer, request) {
+		return
 	}
 	h.renderCredentialPage(writer, request, accountSecurityTemplate, view)
 }
 
 func (h *Handler) securityChangePassword(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, _, email, ok := h.parseLoginForm(writer, request)
 	if !ok {
 		return
@@ -1161,8 +1283,7 @@ func (h *Handler) securityChangePassword(writer http.ResponseWriter, request *ht
 	profile := h.browserCookies(request)
 	coreCookie, err := request.Cookie(profile.core)
 	if err != nil {
-		if request.Header.Get(explicitFormResponseHeader) == "status" {
-			writeError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required")
+		if writeExplicitAccountFormError(writer, request, http.StatusUnauthorized, "CORE_SESSION_REQUIRED", "Core Session is required") {
 			return
 		}
 		h.redirectToLogin(writer, request)
@@ -1192,15 +1313,23 @@ func (h *Handler) securityChangePassword(writer http.ResponseWriter, request *ht
 		if errors.Is(err, verification.ErrChallengeRequired) {
 			message = "密码尝试过多，请先使用邮箱验证码登录后再试。"
 		}
+		status, code, detail := http.StatusBadRequest, "PASSWORD_CHANGE_FAILED", "password change was rejected"
+		switch {
+		case errors.Is(err, verification.ErrChallengeRequired):
+			status, code, detail = http.StatusTooManyRequests, "EMAIL_CODE_LOGIN_REQUIRED", "email-code login is required"
+		case errors.Is(err, verification.ErrDependency):
+			status, code, detail = http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "password change dependency is unavailable"
+		}
+		if writeExplicitAccountFormError(writer, request, status, code, detail) {
+			return
+		}
 		h.renderCredentialPage(writer, request, accountSecurityTemplate, accountCredentialView{
 			CSRFToken: csrfToken, Email: email, CodeRequested: true, Error: message,
 		})
 		return
 	}
 	auditFrom(request.Context()).subjectUserID = maskSubject(changed.UserID)
-	if request.Header.Get(explicitFormResponseHeader) == "status" {
-		writer.Header().Set("Cache-Control", "no-store")
-		writer.WriteHeader(http.StatusNoContent)
+	if writeExplicitAccountFormSuccess(writer, request) {
 		return
 	}
 	http.Redirect(writer, request, "/account/security?password_changed=1", http.StatusSeeOther)
@@ -1239,6 +1368,7 @@ func (h *Handler) loginPage(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (h *Handler) loginRequestCode(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, returnTo, email, ok := h.parseLoginForm(writer, request)
 	if !ok {
 		return
@@ -1265,6 +1395,9 @@ func (h *Handler) loginRequestCode(writer http.ResponseWriter, request *http.Req
 		if deviceCookie != nil {
 			http.SetCookie(writer, deviceCookie)
 		}
+		if writeExplicitAccountFormError(writer, request, http.StatusServiceUnavailable, "VERIFICATION_UNAVAILABLE", "verification code delivery is unavailable") {
+			return
+		}
 		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, PathPrefix: h.publicPathPrefix, Error: "无法发送验证码，请检查邮箱或稍后重试。"})
 		return
 	}
@@ -1272,10 +1405,14 @@ func (h *Handler) loginRequestCode(writer http.ResponseWriter, request *http.Req
 		http.SetCookie(writer, deviceCookie)
 	}
 	writer.Header().Set("X-Verification-Expires", accepted.ExpiresAt.Format(time.RFC3339))
+	if writeExplicitAccountFormSuccess(writer, request) {
+		return
+	}
 	h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, PathPrefix: h.publicPathPrefix, CodeRequested: true})
 }
 
 func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, returnTo, email, ok := h.parseLoginForm(writer, request)
 	if !ok {
 		return
@@ -1303,6 +1440,13 @@ func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Requ
 		http.SetCookie(writer, deviceCookie)
 	}
 	if err != nil || verified.SessionToken == "" {
+		status, code, detail := http.StatusUnauthorized, "AUTHENTICATION_FAILED", "email code is invalid or expired"
+		if errors.Is(err, verification.ErrDependency) {
+			status, code, detail = http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "authentication dependency is unavailable"
+		}
+		if writeExplicitAccountFormError(writer, request, status, code, detail) {
+			return
+		}
 		h.renderLogin(writer, request, accountLoginView{CSRFToken: csrfToken, ReturnTo: returnTo, Email: email, PathPrefix: h.publicPathPrefix, CodeRequested: true, Error: "验证码无效、已过期或登录暂不可用。"})
 		return
 	}
@@ -1310,10 +1454,14 @@ func (h *Handler) loginVerifyCode(writer http.ResponseWriter, request *http.Requ
 	http.SetCookie(writer, h.browserCookie(profile.core, verified.SessionToken, max(1, int(time.Until(verified.SessionExpiresAt).Seconds())), verified.SessionExpiresAt, profile.secure))
 	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(verified.UserID)
+	if writeExplicitAccountFormSuccess(writer, request) {
+		return
+	}
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 
 func (h *Handler) loginPassword(writer http.ResponseWriter, request *http.Request) {
+	accountBrowserResponseHeaders(writer)
 	csrfToken, returnTo, email, ok := h.parseLoginForm(writer, request)
 	if !ok {
 		return
@@ -1339,6 +1487,16 @@ func (h *Handler) loginPassword(writer http.ResponseWriter, request *http.Reques
 		if errors.Is(err, verification.ErrChallengeRequired) {
 			message = "密码尝试过多，请改用邮箱验证码登录。"
 		}
+		status, code, detail := http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed"
+		switch {
+		case errors.Is(err, verification.ErrChallengeRequired):
+			status, code, detail = http.StatusTooManyRequests, "EMAIL_CODE_LOGIN_REQUIRED", "email-code login is required"
+		case errors.Is(err, verification.ErrDependency):
+			status, code, detail = http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "authentication dependency is unavailable"
+		}
+		if writeExplicitAccountFormError(writer, request, status, code, detail) {
+			return
+		}
 		h.renderLogin(writer, request, accountLoginView{
 			CSRFToken: csrfToken, ReturnTo: returnTo, Email: email,
 			Error: message,
@@ -1349,6 +1507,9 @@ func (h *Handler) loginPassword(writer http.ResponseWriter, request *http.Reques
 	http.SetCookie(writer, h.browserCookie(profile.core, loggedIn.SessionToken, max(1, int(time.Until(loggedIn.SessionExpiresAt).Seconds())), loggedIn.SessionExpiresAt, profile.secure))
 	http.SetCookie(writer, h.expiredBrowserCookie(profile.csrf, profile.secure))
 	auditFrom(request.Context()).subjectUserID = maskSubject(loggedIn.UserID)
+	if writeExplicitAccountFormSuccess(writer, request) {
+		return
+	}
 	http.Redirect(writer, request, returnTo, http.StatusSeeOther)
 }
 

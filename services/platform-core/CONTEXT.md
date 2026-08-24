@@ -27,6 +27,8 @@ grant the exact eight Account Console permissions to one explicitly named
 active role, increment its authorization revision, and append an immutable
 release audit. Deployment scripts never write authorization tables directly.
 
+The Account Center Bootstrap is a bounded browser contract for Portal-owned account presentation. It returns only the requested account flow and a CSRF token, sets the signed device/CSRF cookies, and exposes no credentials, Session token, OAuth state, PKCE challenge, Authorization Code, or redirect URI. Explicit credential-form callers receive status/error envelopes instead of Platform Core HTML; Platform Core remains the sole credential and Core Session authority.
+
 ## Language
 
 **Account Center**:

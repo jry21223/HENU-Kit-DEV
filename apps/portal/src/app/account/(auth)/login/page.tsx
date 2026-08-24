@@ -148,8 +148,8 @@ function LoginForm() {
     if (!csrfBootstrap.current) {
       csrfBootstrap.current = (
         tab === "register"
-          ? bootstrapAccountRegister(oauthReturnTo)
-          : bootstrapAccountLogin(oauthReturnTo)
+          ? bootstrapAccountRegister()
+          : bootstrapAccountLogin()
       ).then((result) => result.csrfToken);
     }
     const pendingBootstrap = csrfBootstrap.current;

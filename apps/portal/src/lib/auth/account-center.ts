@@ -25,33 +25,11 @@ export class AccountCenterError extends Error {
   }
 }
 
-function extractCsrf(html: string): string | null {
-  const match =
-    html.match(/name=["']csrf_token["'][^>]*value=["']([^"']+)["']/) ||
-    html.match(/value=["']([^"']+)["'][^>]*name=["']csrf_token["']/);
-  return match?.[1] ?? null;
-}
-
-function extractError(html: string): string | null {
-  const match =
-    html.match(/class=["'][^"']*\berror\b[^"']*["'][^>]*>([^<]+)</) ||
-    html.match(/role=["']alert["'][^>]*>([^<]+)</);
-  return match?.[1]?.trim() || null;
-}
-
-function isCodeStep(html: string): boolean {
-  return (
-    html.includes('name="code"') ||
-    html.includes("验证码已进入发送队列") ||
-    html.includes('id="code"')
-  );
-}
-
 export type BootstrapResult = {
   csrfToken: string;
-  /** Absolute path to resume OAuth after core session exists */
-  returnTo: string;
 };
+
+type AccountBootstrapFlow = "login" | "register" | "recover" | "security";
 
 type AccountFormPath =
   | "/login/code"
@@ -65,17 +43,15 @@ type AccountFormPath =
   | "/account/security/password";
 
 async function bootstrapAccountForm(
-  path: "/login" | "/register" | "/recover" | "/account/security",
-  returnTo = ""
+  flow: AccountBootstrapFlow
 ): Promise<BootstrapResult> {
-  const query = returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : "";
-  const url = `${ACCOUNT_AUTH_BASE}${path}${query}`;
+  const url = `${ACCOUNT_AUTH_BASE}/account/bootstrap?flow=${flow}`;
   let res: Response;
   try {
     res = await fetch(url, {
       method: "GET",
       credentials: "include",
-      headers: { Accept: "text/html" },
+      headers: { Accept: "application/json" },
       cache: "no-store",
     });
   } catch (e) {
@@ -84,29 +60,48 @@ async function bootstrapAccountForm(
       "NETWORK"
     );
   }
+  if (res.status === 401 && flow === "security") {
+    throw new AccountCenterError(
+      "登录状态已过期，请重新登录后再操作",
+      "VERIFY_FAILED"
+    );
+  }
   if (!res.ok) {
     throw new AccountCenterError(`登录服务暂时不可用，请稍后再试`, "NETWORK");
   }
-  const html = await res.text();
-  const pageError = extractError(html);
-  if (pageError) {
-    throw new AccountCenterError(pageError, "UNKNOWN");
+  let envelope: unknown;
+  try {
+    envelope = await res.json();
+  } catch {
+    throw new AccountCenterError("登录服务返回了无法识别的内容，请刷新重试", "PARSE");
   }
-  const csrfToken = extractCsrf(html);
-  if (!csrfToken || csrfToken.length < 16) {
-    throw new AccountCenterError("无法获取登录凭证，请刷新重试", "CSRF");
+  if (!envelope || typeof envelope !== "object") {
+    throw new AccountCenterError("登录服务返回了无法识别的内容，请刷新重试", "PARSE");
   }
-  return { csrfToken, returnTo };
+  const data = "data" in envelope ? envelope.data : undefined;
+  const requestID = "request_id" in envelope ? envelope.request_id : undefined;
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("flow" in data) ||
+    data.flow !== flow ||
+    !("csrf_token" in data) ||
+    typeof data.csrf_token !== "string" ||
+    data.csrf_token.length < 32 ||
+    typeof requestID !== "string" ||
+    !requestID.startsWith("req_")
+  ) {
+    throw new AccountCenterError("登录服务返回了无法识别的内容，请刷新重试", "PARSE");
+  }
+  return { csrfToken: data.csrf_token };
 }
 
 async function postAccountForm(
   path: AccountFormPath,
   fields: Record<string, string>
 ): Promise<{
-  html: string;
-  redirected: boolean;
-  redirectedTo: string | null;
   status: number;
+  errorCode: string | null;
 }> {
   const body = new URLSearchParams(fields);
   let res: Response;
@@ -116,10 +111,8 @@ async function postAccountForm(
       credentials: "include",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "text/html",
-        ...(path === "/account/security/password"
-          ? { [EXPLICIT_FORM_RESPONSE_HEADER]: "status" }
-          : {}),
+        Accept: "application/json",
+        [EXPLICIT_FORM_RESPONSE_HEADER]: "status",
       },
       body,
       redirect: "manual",
@@ -131,65 +124,61 @@ async function postAccountForm(
     );
   }
 
-  // Chromium intentionally hides status and Location for a manual redirect,
-  // exposing only an opaque redirect response. These same-origin form actions
-  // redirect only after Platform Core has accepted the operation.
+  // This caller opts into Platform Core's explicit status contract. A redirect
+  // cannot prove that the requested credential operation established a Core
+  // Session, so it must fail closed like every other unexpected response.
   if (res.type === "opaqueredirect" && res.status === 0) {
-    return { html: "", redirected: true, redirectedTo: null, status: 0 };
+    return { status: 0, errorCode: null };
   }
 
   if (res.status === 403) {
     throw new AccountCenterError("登录表单已过期，请刷新页面", "CSRF");
   }
 
-  // Successful verify issues 303 to return_to
   if (res.status >= 300 && res.status < 400) {
-    const loc = res.headers.get("Location");
-    return {
-      html: "",
-      redirected: true,
-      redirectedTo: loc,
-      status: res.status,
-    };
+    return { status: res.status, errorCode: null };
   }
 
-  const html = await res.text();
-  return { html, redirected: false, redirectedTo: null, status: res.status };
-}
-
-function acceptedFormResult(result: {
-  html: string;
-  redirected: boolean;
-  status: number;
-}): string | null {
-  if (result.redirected) {
-    return null;
+  let errorCode: string | null = null;
+  if (res.status !== 204) {
+    try {
+      const envelope: unknown = await res.json();
+      if (
+        envelope &&
+        typeof envelope === "object" &&
+        "error" in envelope &&
+        envelope.error &&
+        typeof envelope.error === "object" &&
+        "code" in envelope.error &&
+        typeof envelope.error.code === "string"
+      ) {
+        errorCode = envelope.error.code;
+      }
+    } catch {
+      errorCode = null;
+    }
   }
-  if (result.status < 200 || result.status >= 400) {
-    return extractError(result.html) || `操作没有成功，请稍后重试`;
-  }
-  return extractError(result.html);
+  return {
+    status: res.status,
+    errorCode,
+  };
 }
 
 /** Load login form + CSRF cookie for subsequent POSTs. */
-export function bootstrapAccountLogin(
-  returnTo: string
-): Promise<BootstrapResult> {
-  return bootstrapAccountForm("/login", returnTo);
+export function bootstrapAccountLogin(): Promise<BootstrapResult> {
+  return bootstrapAccountForm("login");
 }
 
-export function bootstrapAccountRegister(
-  returnTo: string
-): Promise<BootstrapResult> {
-  return bootstrapAccountForm("/register", returnTo);
+export function bootstrapAccountRegister(): Promise<BootstrapResult> {
+  return bootstrapAccountForm("register");
 }
 
 export function bootstrapPasswordRecovery(): Promise<BootstrapResult> {
-  return bootstrapAccountForm("/recover");
+  return bootstrapAccountForm("recover");
 }
 
 export function bootstrapAccountSecurity(): Promise<BootstrapResult> {
-  return bootstrapAccountForm("/account/security");
+  return bootstrapAccountForm("security");
 }
 
 /** Request a 6-digit login code for a henu.edu.cn mailbox. */
@@ -204,31 +193,16 @@ export async function requestLoginCode(input: {
     throw new AccountCenterError("仅支持 @henu.edu.cn 邮箱", "SEND_FAILED");
   }
 
-  const { html, status } = await postAccountForm("/login/code", {
+  const { status } = await postAccountForm("/login/code", {
     csrf_token: input.csrfToken,
     email,
     return_to: input.returnTo,
   });
 
-  if (status >= 400 && status !== 200) {
-    throw new AccountCenterError(`验证码暂时发不出去，请稍后再试`, "SEND_FAILED");
+  if (status === 204) {
+    return { csrfToken: input.csrfToken };
   }
-
-  const err = extractError(html);
-  if (err) {
-    throw new AccountCenterError(err, "SEND_FAILED");
-  }
-  if (!isCodeStep(html)) {
-    // Some responses still 200 without code field — treat as soft failure
-    throw new AccountCenterError(
-      "无法发送验证码，请检查邮箱或稍后重试",
-      "SEND_FAILED"
-    );
-  }
-
-  // CSRF rotates on each render — pull fresh token if present
-  const nextCsrf = extractCsrf(html) ?? input.csrfToken;
-  return { csrfToken: nextCsrf };
+  throw new AccountCenterError(`验证码暂时发不出去，请稍后再试`, "SEND_FAILED");
 }
 
 /**
@@ -247,7 +221,7 @@ export async function verifyLoginCode(input: {
     throw new AccountCenterError("请输入 6 位数字验证码", "VERIFY_FAILED");
   }
 
-  const { html, redirected, redirectedTo, status } = await postAccountForm(
+  const { status, errorCode } = await postAccountForm(
     "/login/verify",
     {
       csrf_token: input.csrfToken,
@@ -257,17 +231,14 @@ export async function verifyLoginCode(input: {
     }
   );
 
-  if (redirected) {
-    return { redirectedTo };
+  if (status === 204) {
+    return { redirectedTo: null };
   }
 
-  if (status >= 400) {
-    throw new AccountCenterError(`验证没有成功，请检查验证码后重试`, "VERIFY_FAILED");
-  }
-
-  const err = extractError(html);
   throw new AccountCenterError(
-    err || "验证码无效、已过期或登录暂不可用",
+    errorCode === "DEPENDENCY_UNAVAILABLE"
+      ? "登录服务暂时不可用，请稍后再试"
+      : "验证没有成功，请检查验证码后重试",
     "VERIFY_FAILED"
   );
 }
@@ -284,13 +255,17 @@ export async function passwordLogin(input: {
     password: input.password,
     return_to: input.returnTo,
   });
-  const error = acceptedFormResult(result);
-  if (error || !result.redirected) {
-    throw new AccountCenterError(
-      error || "邮箱或密码错误，或登录暂不可用",
-      "VERIFY_FAILED"
-    );
+  if (result.status === 204) {
+    return;
   }
+  throw new AccountCenterError(
+    result.errorCode === "DEPENDENCY_UNAVAILABLE"
+      ? "登录服务暂时不可用，请稍后再试"
+      : result.errorCode === "EMAIL_CODE_LOGIN_REQUIRED"
+        ? "密码尝试过多，请改用邮箱验证码登录。"
+        : "邮箱或密码错误，或登录暂不可用",
+    "VERIFY_FAILED"
+  );
 }
 
 export async function requestRegistrationCode(input: {
@@ -303,14 +278,13 @@ export async function requestRegistrationCode(input: {
     email: input.email.trim().toLowerCase(),
     return_to: input.returnTo,
   });
-  const error = acceptedFormResult(result);
-  if (error || !isCodeStep(result.html)) {
-    throw new AccountCenterError(
-      error || "无法发送验证码，请检查邮箱或稍后重试",
-      "SEND_FAILED"
-    );
+  if (result.status === 204) {
+    return { csrfToken: input.csrfToken };
   }
-  return { csrfToken: extractCsrf(result.html) ?? input.csrfToken };
+  throw new AccountCenterError(
+    "无法发送验证码，请检查邮箱或稍后重试",
+    "SEND_FAILED"
+  );
 }
 
 export async function registerAccount(input: {
@@ -329,13 +303,17 @@ export async function registerAccount(input: {
     password: input.password,
     return_to: input.returnTo,
   });
-  const error = acceptedFormResult(result);
-  if (error || !result.redirected) {
-    throw new AccountCenterError(
-      error || "注册失败，请检查验证码和注册信息后重试",
-      "VERIFY_FAILED"
-    );
+  if (result.status === 204) {
+    return;
   }
+  throw new AccountCenterError(
+    result.errorCode === "DEPENDENCY_UNAVAILABLE"
+      ? "登录服务暂时不可用，请稍后再试"
+      : result.errorCode === "ACCOUNT_ALREADY_REGISTERED"
+        ? "该邮箱已注册，请登录或找回密码。"
+        : "注册失败，请检查验证码和注册信息后重试",
+    "VERIFY_FAILED"
+  );
 }
 
 export async function requestRecoveryCode(input: {
@@ -346,14 +324,13 @@ export async function requestRecoveryCode(input: {
     csrf_token: input.csrfToken,
     email: input.email.trim().toLowerCase(),
   });
-  const error = acceptedFormResult(result);
-  if (error || !isCodeStep(result.html)) {
-    throw new AccountCenterError(
-      error || "无法发送验证码，请检查邮箱或稍后重试",
-      "SEND_FAILED"
-    );
+  if (result.status === 204) {
+    return { csrfToken: input.csrfToken };
   }
-  return { csrfToken: extractCsrf(result.html) ?? input.csrfToken };
+  throw new AccountCenterError(
+    "无法发送验证码，请检查邮箱或稍后重试",
+    "SEND_FAILED"
+  );
 }
 
 export async function recoverPassword(input: {
@@ -368,13 +345,15 @@ export async function recoverPassword(input: {
     code: input.code.trim(),
     password: input.password,
   });
-  const error = acceptedFormResult(result);
-  if (error || !result.redirected) {
-    throw new AccountCenterError(
-      error || "无法重置密码，请检查验证码和新密码后重试",
-      "VERIFY_FAILED"
-    );
+  if (result.status === 204) {
+    return;
   }
+  throw new AccountCenterError(
+    result.errorCode === "DEPENDENCY_UNAVAILABLE"
+      ? "登录服务暂时不可用，请稍后再试"
+      : "无法重置密码，请检查验证码和新密码后重试",
+    "VERIFY_FAILED"
+  );
 }
 
 export async function requestSecurityCode(input: {
@@ -385,14 +364,13 @@ export async function requestSecurityCode(input: {
     csrf_token: input.csrfToken,
     email: input.email.trim().toLowerCase(),
   });
-  const error = acceptedFormResult(result);
-  if (error || !isCodeStep(result.html)) {
-    throw new AccountCenterError(
-      error || "无法发送验证码，请检查邮箱或稍后重试",
-      "SEND_FAILED"
-    );
+  if (result.status === 204) {
+    return { csrfToken: input.csrfToken };
   }
-  return { csrfToken: extractCsrf(result.html) ?? input.csrfToken };
+  throw new AccountCenterError(
+    "无法发送验证码，请检查邮箱或稍后重试",
+    "SEND_FAILED"
+  );
 }
 
 export async function changePassword(input: {
@@ -409,16 +387,17 @@ export async function changePassword(input: {
     current_password: input.currentPassword,
     new_password: input.newPassword,
   });
-  const error = acceptedFormResult(result);
   if (result.status === 401) {
     throw new AccountCenterError(
       "登录状态已过期，请重新登录后再修改密码",
       "VERIFY_FAILED"
     );
   }
-  if (error || result.redirected || result.status !== 204) {
+  if (result.status !== 204) {
     throw new AccountCenterError(
-      error || "无法更改密码，请检查当前密码、验证码和新密码",
+      result.errorCode === "DEPENDENCY_UNAVAILABLE"
+        ? "登录服务暂时不可用，请稍后再试"
+        : "无法更改密码，请检查当前密码、验证码和新密码",
       "VERIFY_FAILED"
     );
   }
