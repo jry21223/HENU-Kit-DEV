@@ -52,9 +52,11 @@ const RINGS = [58, 108, 158, 208, 250];
 const ANGLES = Array.from({ length: 12 }, (_, index) => index * 30);
 const TICKS = Array.from({ length: 72 }, (_, index) => index * 5);
 
-/** 一次命中呼吸的时长；光束停转时的呼吸周期；一次扫描回波的时长。 */
+/** 一次命中呼吸的时长。 */
 const PING_SECONDS = 0.9;
+/** 光束停转（completed）时命中呼吸的常驻周期。 */
 const IDLE_BREATH_SECONDS = 2.4;
+/** 一次扫描回波的时长。 */
 const ECHO_SECONDS = 0.8;
 
 const STATUS_COPY: Record<WorkRadarStatus, string> = {
@@ -93,9 +95,35 @@ function sweepOffsetSeconds(angle: number, sweepSeconds: number): number {
   return (((((angle - SWEEP_LEAD_DEG) % 360) + 360) % 360) / 360) * sweepSeconds;
 }
 
-/** 从元素上读回它对应的目标下标，不依赖 querySelectorAll 的返回顺序。 */
-function targetAngleOf(element: Element): number {
-  return TARGET_ANGLES[Number(element.getAttribute("data-radar-index"))] ?? 0;
+/**
+ * 从元素上读回它对应的目标极角，不依赖 querySelectorAll 的返回顺序。
+ *
+ * 属性缺失或越界返回 null，调用方跳过该元素——这些属性由本组件自己渲染，
+ * 读不到就是编程错误。绝不能兜底成某个下标：`Number(null)` 和 `Number("")`
+ * 都是 0，静默兜底会让标记按 0 号目标的相位起振，看着正常实则错位。
+ */
+function targetAngleOf(element: Element): number | null {
+  const raw = element.getAttribute("data-radar-index");
+  if (raw === null) return null;
+  const index = Number(raw);
+  return Number.isInteger(index) ? TARGET_ANGLES[index] ?? null : null;
+}
+
+/**
+ * 相位补间的公共尾巴：延迟到光束扫到该标记的时刻起振，之后每圈复现一次。
+ *
+ * `immediateRender: false` 不可省——fromTo 默认会在 delay 走完前就把 from 值
+ * 贴上去，那样所有标记会在进场瞬间一起亮起，直到各自的相位才开始动。
+ */
+function loopedPulse(duration: number, cycle: number, delay: number) {
+  return {
+    duration,
+    ease: "power2.out",
+    delay,
+    repeat: -1,
+    repeatDelay: Math.max(cycle - duration, 0),
+    immediateRender: false,
+  } as const;
 }
 
 function dialStatusLabel(status: WorkRadarStatus): string {
@@ -125,10 +153,6 @@ function animateSweep(sweep: SVGGElement, status: WorkRadarStatus, seconds: numb
 /**
  * 命中呼吸：光束前缘扫过某个已点亮的目标时，它涟漪一圈并短暂点亮成主题橙。
  * 光束停转（completed）时改为错峰常驻呼吸，结果依然是活的。
- *
- * 点亮的永远是 TARGETS 的前 N 个，所以 pings[i] 对应 TARGETS[i]，可直接按下标
- * 取极角。两条补间都要 immediateRender: false —— fromTo 默认会在 delay 走完前
- * 就贴上 from 值，那样所有目标会在进场瞬间一起亮起。
  */
 function animateHits(
   pings: SVGCircleElement[],
@@ -139,41 +163,25 @@ function animateHits(
   const cycle = spinning ? sweepSeconds : IDLE_BREATH_SECONDS;
 
   pings.forEach((ping, index) => {
-    const offset = spinning
-      ? sweepOffsetSeconds(targetAngleOf(ping), sweepSeconds)
-      : (index / Math.max(pings.length, 1)) * IDLE_BREATH_SECONDS;
+    let offset: number;
+    if (spinning) {
+      const angle = targetAngleOf(ping);
+      if (angle === null) return;
+      offset = sweepOffsetSeconds(angle, sweepSeconds);
+    } else {
+      offset = (index / Math.max(pings.length, 1)) * IDLE_BREATH_SECONDS;
+    }
 
     gsap.fromTo(
       ping,
       { attr: { r: 7 }, opacity: 0.85 },
-      {
-        attr: { r: 26 },
-        opacity: 0,
-        duration: PING_SECONDS,
-        ease: "power2.out",
-        delay: offset,
-        repeat: -1,
-        repeatDelay: Math.max(cycle - PING_SECONDS, 0),
-        immediateRender: false,
-      }
+      { attr: { r: 26 }, opacity: 0, ...loopedPulse(PING_SECONDS, cycle, offset) }
     );
 
     const blip = blips[index];
     if (!blip) return;
     const flash = Math.min(PING_SECONDS * 1.2, cycle);
-    gsap.fromTo(
-      blip,
-      { fill: "#ff4d00" },
-      {
-        fill: "#161513",
-        duration: flash,
-        ease: "power2.out",
-        delay: offset,
-        repeat: -1,
-        repeatDelay: Math.max(cycle - flash, 0),
-        immediateRender: false,
-      }
-    );
+    gsap.fromTo(blip, { fill: "#ff4d00" }, { fill: "#161513", ...loopedPulse(flash, cycle, offset) });
   });
 }
 
@@ -187,18 +195,12 @@ function animateHits(
  */
 function animateEcho(groups: SVGGElement[], sweepSeconds: number) {
   groups.forEach((group) => {
+    const angle = targetAngleOf(group);
+    if (angle === null) return;
     gsap.fromTo(
       group,
       { opacity: 0.62 },
-      {
-        opacity: 0.2,
-        duration: ECHO_SECONDS,
-        ease: "power2.out",
-        delay: sweepOffsetSeconds(targetAngleOf(group), sweepSeconds),
-        repeat: -1,
-        repeatDelay: Math.max(sweepSeconds - ECHO_SECONDS, 0),
-        immediateRender: false,
-      }
+      { opacity: 0.2, ...loopedPulse(ECHO_SECONDS, sweepSeconds, sweepOffsetSeconds(angle, sweepSeconds)) }
     );
   });
 }
@@ -234,18 +236,30 @@ export default function WorkRadar({
 
   const dialStatus: WorkRadarStatus = schematic ? "running" : status;
 
-  // 亮起的目标点：示意图全亮；真实任务只在完成后按服务端确认的推荐数点亮，
-  // 进行中一个都不亮——后端此时并不返回任何计数。推荐数超过表盘容量时截断，
-  // 表盘是刻度盘不是计数器，准确数字由旁边的任务状态区给出。
-  const detectedCount = schematic
-    ? TARGETS.length
-    : dialStatus === "completed"
-      ? Math.min(TARGETS.length, Math.max(0, Math.trunc(matched ?? 0)))
-      : 0;
+  /**
+   * 表盘一次只用一套标记语汇，两者互斥，绝不同时出现：
+   *
+   * - `hits`  主题橙涟漪 + 目标点点亮 + 锁定环。示意表盘（全部点亮）与真实任务
+   *           completed（服务端确认的 matched_count 个）走这条。
+   * - `echo`  仅墨色标记随光束提亮再落回。queued / running 走这条——后端此时
+   *           只返回 stage、不返回任何计数，表盘不能有任何东西暗示已找到岗位。
+   * - `none`  idle / failed，标记静止。
+   */
+  const markerMode: "hits" | "echo" | "none" =
+    schematic || dialStatus === "completed"
+      ? "hits"
+      : dialStatus === "queued" || dialStatus === "running"
+        ? "echo"
+        : "none";
 
-  // 真实任务且光束仍在转时，未命中的标记跟着光束做回波。示意表盘不需要——
-  // 它的目标点全部点亮，走的是命中呼吸那条路径。
-  const echoing = !schematic && (dialStatus === "queued" || dialStatus === "running");
+  // 点亮几个：示意图全亮；真实任务取服务端确认的推荐数，超过表盘容量即截断——
+  // 表盘是刻度盘不是计数器，准确数字由旁边的任务状态区给出。echo / none 恒为 0。
+  const hitCount =
+    markerMode !== "hits"
+      ? 0
+      : schematic
+        ? TARGETS.length
+        : Math.min(TARGETS.length, Math.max(0, Math.trunc(matched ?? 0)));
 
   useGSAP(
     () => {
@@ -276,7 +290,7 @@ export default function WorkRadar({
       });
       return () => mm.revert();
     },
-    { scope: rootRef, dependencies: [dialStatus, detectedCount], revertOnUpdate: true }
+    { scope: rootRef, dependencies: [dialStatus, markerMode, hitCount], revertOnUpdate: true }
   );
 
   return (
@@ -383,17 +397,17 @@ export default function WorkRadar({
             </g>
 
             {TARGETS.map((target, index) => {
-              const detected = index < detectedCount;
-              const selected = detected && index === 0;
+              const hit = index < hitCount;
+              const selected = hit && index === 0;
               return (
                 <g
                   key={`${target.x}-${target.y}`}
-                  opacity={detected ? 1 : 0.2}
-                  {...(!detected && echoing
+                  opacity={hit ? 1 : 0.2}
+                  {...(markerMode === "echo"
                     ? { "data-radar-echo": "", "data-radar-index": index }
                     : {})}
                 >
-                  {detected ? (
+                  {hit ? (
                     <circle
                       data-radar-ping
                       data-radar-index={index}
@@ -419,10 +433,10 @@ export default function WorkRadar({
                     />
                   ) : null}
                   <circle
-                    {...(detected ? { "data-radar-blip": "" } : {})}
+                    {...(hit ? { "data-radar-blip": "" } : {})}
                     cx={target.x}
                     cy={target.y}
-                    r={detected ? 5.5 : 4.5}
+                    r={hit ? 5.5 : 4.5}
                     fill="#161513"
                   />
                 </g>

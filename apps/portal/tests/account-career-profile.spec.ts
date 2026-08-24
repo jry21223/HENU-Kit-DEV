@@ -414,6 +414,16 @@ test("a running scan echoes the sweep but confirms no hits", async ({ page }) =>
 
   const dial = page.locator('svg[aria-label="求职雷达状态：扫描中"]');
   await expect(dial).toBeVisible();
+  // 光束一圈 3.2s；等它扫过几个标记，回波才有可采样的差异。
+  await expect
+    .poll(async () =>
+      dial.evaluate((svg) =>
+        [...svg.querySelectorAll("[data-radar-echo]")].filter(
+          (g) => Number(getComputedStyle(g).opacity) > 0.25
+        ).length
+      )
+    )
+    .toBeGreaterThan(0);
 
   // 进行中后端只返回 stage、没有任何计数：命中呼吸的三件套一个都不能出现，
   // 否则表盘就在暗示已经找到岗位。
@@ -424,11 +434,85 @@ test("a running scan echoes the sweep but confirms no hits", async ({ page }) =>
   // 但光束扫过标记时要有回波——只动透明度，不涂主题橙。
   await expect(dial.locator("[data-radar-echo]")).toHaveCount(8);
   const accentMarkers = await dial.evaluate((svg) =>
-    [...svg.querySelectorAll("[data-radar-echo] circle")].filter((c) =>
-      getComputedStyle(c).fill.includes("255, 77")
+    [...svg.querySelectorAll("[data-radar-echo] circle")].filter(
+      (c) => getComputedStyle(c).fill === "rgb(255, 77, 0)"
     ).length
   );
   expect(accentMarkers).toBe(0);
+
+  // 回波必须真的在动。只断言标记存在是空转的：把 animateEcho 整个删掉，
+  // 上面那些断言照样通过。这里采样实际透明度——静止值是 0.2，光束刚扫过的
+  // 那几个会被提亮，因此必须既有高于静止值的，也不能全都一样。
+  const opacities = await dial.evaluate((svg) =>
+    [...svg.querySelectorAll("[data-radar-echo]")].map((g) =>
+      Number(getComputedStyle(g).opacity)
+    )
+  );
+  expect(opacities.some((o) => o > 0.25)).toBe(true);
+  expect(new Set(opacities.map((o) => o.toFixed(2))).size).toBeGreaterThan(1);
+});
+
+// 扫描跑完的瞬间，表盘要把「回波」整套换成「命中」整套：回波标记清零、命中
+// 三件套按服务端确认的 matched_count 出现，且回波动过的 inline opacity 不能留
+// 残值（GSAP 写的是 style.opacity，JSX 上是 SVG 属性，两者打架会卡住）。
+test("a finishing scan swaps the echo for confirmed hits", async ({ page }) => {
+  let statusReads = 0;
+  await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches/*", async (route) => {
+    statusReads += 1;
+    // 首次恢复仍是进行中，下一次轮询翻成完成，触发真实的状态切换。
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        search: statusReads >= 2 ? { ...completedSearch, id: runningSearch.id } : runningSearch,
+        request_id: "req_search",
+      }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [runningSearch], request_id: "req_searches" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
+  await expect(page.locator("[data-radar-echo]")).toHaveCount(8);
+  await expect(page.locator("[data-radar-blip]")).toHaveCount(0);
+
+  // 轮询周期 4s；等它把任务推到完成。
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible({ timeout: 15000 });
+
+  // 两套语汇互斥：回波清零，命中三件套按 matched_count === 3 出现。
+  await expect(page.locator("[data-radar-echo]")).toHaveCount(0);
+  await expect(page.locator("[data-radar-blip]")).toHaveCount(3);
+  await expect(page.locator("[data-radar-lock]")).toHaveCount(1);
+
+  // 回波留下的 inline opacity 必须已被清掉：命中的满亮、其余落回静止值。
+  const dial = page.locator('svg[aria-label="求职雷达状态：已完成"]');
+  await expect
+    .poll(async () =>
+      dial.evaluate((svg) =>
+        [...svg.querySelectorAll("g")]
+          .filter((g) => g.querySelector("circle[r='5.5'], circle[r='4.5']"))
+          .map((g) => Number(getComputedStyle(g).opacity).toFixed(2))
+          .join(",")
+      )
+    )
+    .toBe("1.00,1.00,1.00,0.20,0.20,0.20,0.20,0.20");
 });
 
 test("the marketing radar is a schematic: labelled, aria-hidden, and lights nothing real", async ({ page }) => {
