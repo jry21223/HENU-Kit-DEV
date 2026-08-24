@@ -407,15 +407,28 @@ test("the work radar dial reflects only server-confirmed scan facts", async ({ p
   await expect(dial.locator("[data-radar-ping]")).toHaveCount(3);
 });
 
-test("a running scan lights no targets, because the backend confirms no counts yet", async ({ page }) => {
+test("a running scan echoes the sweep but confirms no hits", async ({ page }) => {
   await mockLifetimeCareer(page, [runningSearch]);
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
 
   const dial = page.locator('svg[aria-label="求职雷达状态：扫描中"]');
   await expect(dial).toBeVisible();
-  // 进行中后端只返回 stage，没有任何计数，表盘不得按进度估算点亮目标。
+
+  // 进行中后端只返回 stage、没有任何计数：命中呼吸的三件套一个都不能出现，
+  // 否则表盘就在暗示已经找到岗位。
   await expect(dial.locator("[data-radar-blip]")).toHaveCount(0);
+  await expect(dial.locator("[data-radar-ping]")).toHaveCount(0);
+  await expect(dial.locator("[data-radar-lock]")).toHaveCount(0);
+
+  // 但光束扫过标记时要有回波——只动透明度，不涂主题橙。
+  await expect(dial.locator("[data-radar-echo]")).toHaveCount(8);
+  const accentMarkers = await dial.evaluate((svg) =>
+    [...svg.querySelectorAll("[data-radar-echo] circle")].filter((c) =>
+      getComputedStyle(c).fill.includes("255, 77")
+    ).length
+  );
+  expect(accentMarkers).toBe(0);
 });
 
 test("the marketing radar is a schematic: labelled, aria-hidden, and lights nothing real", async ({ page }) => {

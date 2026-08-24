@@ -52,9 +52,10 @@ const RINGS = [58, 108, 158, 208, 250];
 const ANGLES = Array.from({ length: 12 }, (_, index) => index * 30);
 const TICKS = Array.from({ length: 72 }, (_, index) => index * 5);
 
-/** 一次命中呼吸的时长；光束停转时的呼吸周期。 */
+/** 一次命中呼吸的时长；光束停转时的呼吸周期；一次扫描回波的时长。 */
 const PING_SECONDS = 0.9;
 const IDLE_BREATH_SECONDS = 2.4;
+const ECHO_SECONDS = 0.8;
 
 const STATUS_COPY: Record<WorkRadarStatus, string> = {
   idle: "STANDBY",
@@ -86,6 +87,16 @@ const TARGET_ANGLES = TARGETS.map(({ x, y }) => {
   const deg = (Math.atan2(x - CENTER, CENTER - y) * 180) / Math.PI;
   return (deg + 360) % 360;
 });
+
+/** 光束前缘扫到某个极角的时刻，换算成一圈内的秒偏移。 */
+function sweepOffsetSeconds(angle: number, sweepSeconds: number): number {
+  return (((((angle - SWEEP_LEAD_DEG) % 360) + 360) % 360) / 360) * sweepSeconds;
+}
+
+/** 从元素上读回它对应的目标下标，不依赖 querySelectorAll 的返回顺序。 */
+function targetAngleOf(element: Element): number {
+  return TARGET_ANGLES[Number(element.getAttribute("data-radar-index"))] ?? 0;
+}
 
 function dialStatusLabel(status: WorkRadarStatus): string {
   return status === "idle" ? "待机" : careerSearchStatusLabel(status);
@@ -128,9 +139,8 @@ function animateHits(
   const cycle = spinning ? sweepSeconds : IDLE_BREATH_SECONDS;
 
   pings.forEach((ping, index) => {
-    const angle = TARGET_ANGLES[index] ?? 0;
     const offset = spinning
-      ? (((((angle - SWEEP_LEAD_DEG) % 360) + 360) % 360) / 360) * sweepSeconds
+      ? sweepOffsetSeconds(targetAngleOf(ping), sweepSeconds)
       : (index / Math.max(pings.length, 1)) * IDLE_BREATH_SECONDS;
 
     gsap.fromTo(
@@ -161,6 +171,32 @@ function animateHits(
         delay: offset,
         repeat: -1,
         repeatDelay: Math.max(cycle - flash, 0),
+        immediateRender: false,
+      }
+    );
+  });
+}
+
+/**
+ * 扫描回波：真实扫描进行中时，光束前缘扫过每个**未命中**的标记，让它短暂提亮
+ * 再落回。全程只动透明度——不涂主题橙、不加涟漪、不加锁定环。
+ *
+ * 这是「光束扫过空网格」的回波，不是命中。后端在 queued / running 期间只返回
+ * stage、不返回任何计数，因此表盘上不能有任何东西暗示已经找到岗位；主题橙与
+ * 锁定环是留给 completed 时服务端确认过的推荐岗位的。
+ */
+function animateEcho(groups: SVGGElement[], sweepSeconds: number) {
+  groups.forEach((group) => {
+    gsap.fromTo(
+      group,
+      { opacity: 0.62 },
+      {
+        opacity: 0.2,
+        duration: ECHO_SECONDS,
+        ease: "power2.out",
+        delay: sweepOffsetSeconds(targetAngleOf(group), sweepSeconds),
+        repeat: -1,
+        repeatDelay: Math.max(sweepSeconds - ECHO_SECONDS, 0),
         immediateRender: false,
       }
     );
@@ -207,6 +243,10 @@ export default function WorkRadar({
       ? Math.min(TARGETS.length, Math.max(0, Math.trunc(matched ?? 0)))
       : 0;
 
+  // 真实任务且光束仍在转时，未命中的标记跟着光束做回波。示意表盘不需要——
+  // 它的目标点全部点亮，走的是命中呼吸那条路径。
+  const echoing = !schematic && (dialStatus === "queued" || dialStatus === "running");
+
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
@@ -223,6 +263,11 @@ export default function WorkRadar({
           Array.from(root.querySelectorAll<SVGCircleElement>("[data-radar-ping]")),
           Array.from(root.querySelectorAll<SVGCircleElement>("[data-radar-blip]")),
           spinning,
+          sweepSeconds
+        );
+
+        animateEcho(
+          Array.from(root.querySelectorAll<SVGGElement>("[data-radar-echo]")),
           sweepSeconds
         );
 
@@ -341,10 +386,17 @@ export default function WorkRadar({
               const detected = index < detectedCount;
               const selected = detected && index === 0;
               return (
-                <g key={`${target.x}-${target.y}`} opacity={detected ? 1 : 0.2}>
+                <g
+                  key={`${target.x}-${target.y}`}
+                  opacity={detected ? 1 : 0.2}
+                  {...(!detected && echoing
+                    ? { "data-radar-echo": "", "data-radar-index": index }
+                    : {})}
+                >
                   {detected ? (
                     <circle
                       data-radar-ping
+                      data-radar-index={index}
                       cx={target.x}
                       cy={target.y}
                       r="7"

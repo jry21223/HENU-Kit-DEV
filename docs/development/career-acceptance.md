@@ -203,8 +203,14 @@ map）即停掉全部来源，无需改代码、无需新开关。空 allowlist 
   展示：光束不转、命中呼吸的涟漪圈保持 `opacity=0`、目标点保持墨色。
 - 表盘不渲染任何读数：准确计数只由任务状态区（`career-scan-status-panel.tsx`）
   给出，避免两处数字打架。表盘点亮的目标点数只在 completed 时取服务端确认的
-  `result.matched_count`（超过表盘容量即截断——它是刻度盘不是计数器），进行中
-  一个都不点亮，因为后端此时只返回 `stage`、不返回任何计数。
+  `result.matched_count`（超过表盘容量即截断——它是刻度盘不是计数器）。
+- 表盘上「命中」与「回波」是两套互不混用的语汇，因为后端在 queued / running
+  期间只返回 `stage`、不返回任何计数：
+  - **命中呼吸**（主题橙涟漪 + 目标点点亮 + 锁定环）只在 completed 时出现，
+    对应服务端确认过的推荐岗位；
+  - **扫描回波**（仅墨色标记随光束短暂提亮再落回，无涟漪、无橙色、无锁定环）
+    在 queued / running 时出现，表达的是「光束扫过空网格」，不暗示任何命中。
+  回归见 `a running scan echoes the sweep but confirms no hits`。
 - `schematic` 模式（首页 05 区块、未登录介绍页）表头标 `SCHEMATIC`，并对辅助
   技术 `aria-hidden`，装饰表盘不会被读成一次真实扫描。
 - 状态机/四态/权限门文案均经单元测试覆盖；生产模式失败不静默回退 mock
