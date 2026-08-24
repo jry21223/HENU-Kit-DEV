@@ -437,6 +437,9 @@ sudo install -o root -g root -m 0555 \
 sudo install -o root -g root -m 0555 \
   /opt/henukit-releases/<sha>/bin/verify-henukit-local-release.sh \
   /usr/local/sbin/verify-henukit-local-release.sh
+sudo install -o root -g root -m 0555 \
+  /opt/henukit-releases/<sha>/bin/adopt-henukit-degraded-baseline.sh \
+  /usr/local/sbin/adopt-henukit-degraded-baseline
 sudo install -o root -g root -m 0644 \
   /opt/henukit-releases/<sha>/infra/systemd/henukit-actions-watch.service \
   /etc/systemd/system/henukit-actions-watch.service
@@ -546,6 +549,24 @@ Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
 `000006` and `000007` remain service-owned startup migrations.
+
+Runtime extraction uses `tar --no-same-owner`, so a new Actions candidate is
+owned by the root watcher rather than the archive builder UID. If the exact
+healthy rollback release predates this rule, first determine its single
+historical numeric owner and pass it only for that activation:
+
+```bash
+HENUKIT_RETAINED_RELEASE_OWNER_UID=<exact-historical-owner-uid> \
+  /usr/local/sbin/activate-henukit-release <full-main-sha> --execute
+```
+
+The activation entry runs the existing reviewed ownership adopter in
+`--preflight` and `--execute` modes before creating the exact-SHA approval. The
+adopter binds the previous SHA, candidate SHA, historical UID, metadata digest,
+and complete content digest in its root-only audit, rejects mixed ownership or
+byte drift, and does not relax the normal requirement that the previous release
+is healthy. Do not set this variable for an already root-owned release or for
+degraded recovery.
 
 Before a normal rollback-protected activation, the root-owned watcher binds the
 candidate and previous release SHAs to hashes of the previous Compose file, the

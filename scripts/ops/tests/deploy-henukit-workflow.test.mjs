@@ -28,6 +28,10 @@ const runtimePackager = readFileSync(
   new URL("../package-henukit-runtime.sh", import.meta.url),
   "utf8",
 );
+const actionsWatcher = readFileSync(
+  new URL("../watch-henukit-actions.sh", import.meta.url),
+  "utf8",
+);
 const imageInventory = fileURLToPath(
   new URL("../henukit-release-images.sh", import.meta.url),
 );
@@ -90,6 +94,13 @@ test("release artifacts carry an exact-SHA Account mock-free boundary manifest",
   assert.match(
     workflow,
     /scripts\/ops\/package-henukit-runtime\.sh --sha "\$GITHUB_SHA" --output-dir release/,
+  );
+});
+
+test("the production watcher extracts runtime artifacts as the root release owner", () => {
+  assert.match(
+    actionsWatcher,
+    /tar --no-same-owner -xzf "\$runtime_archive" -C "\$release_incoming"/,
   );
 });
 

@@ -18,6 +18,10 @@ prepare and restore-test backups without approval, installs the tested EasyPay
 gateway patch set on MetaView, then atomically approves that exact SHA and asks
 the watcher to activate HENU Kit. It never approves while the QuizCraft
 cutover blocker is open or when preparation, mock, or gateway gates fail.
+
+Set HENUKIT_RETAINED_RELEASE_OWNER_UID only when the exact healthy rollback
+release predates the root-owned release boundary. The command then runs the
+reviewed ownership adopter in preflight and execute modes before approval.
 EOF
 }
 
@@ -58,6 +62,8 @@ release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
 trust_anchor="${HENUKIT_TRUST_ANCHOR:-/}"
 epay_ssh_target="${HENUKIT_EPAY_GATEWAY_SSH_TARGET:-root@metaview.top}"
 epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
+retained_release_owner_uid="${HENUKIT_RETAINED_RELEASE_OWNER_UID:-}"
+retained_release_adopter="${HENUKIT_RETAINED_RELEASE_ADOPTER:-/usr/local/sbin/adopt-henukit-degraded-baseline}"
 
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be 40 lowercase hexadecimal characters"
 if [[ "$release_source" == "local" ]]; then
@@ -76,6 +82,12 @@ fi
 [[ "$epay_ssh_target" =~ ^[A-Za-z0-9_.@-]+$ ]] || die "HENUKIT_EPAY_GATEWAY_SSH_TARGET contains unsupported characters"
 [[ "$epay_gateway_dir" =~ ^/[A-Za-z0-9_./-]+$ && "$epay_gateway_dir" != "/" ]] ||
   die "HENUKIT_EPAY_GATEWAY_DIR must be a specific absolute path"
+if [[ -n "$retained_release_owner_uid" ]]; then
+  [[ -z "$recovery_baseline_sha" ]] ||
+    die "HENUKIT_RETAINED_RELEASE_OWNER_UID is only valid for normal activation"
+  [[ "$retained_release_owner_uid" =~ ^[1-9][0-9]*$ ]] ||
+    die "HENUKIT_RETAINED_RELEASE_OWNER_UID must be a non-root numeric UID"
+fi
 [[ -x "$watcher" ]] || die "watcher is not executable: $watcher"
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
 command -v ssh >/dev/null 2>&1 || die "ssh is required"
@@ -124,6 +136,22 @@ trusted_nonwritable_directory_chain() {
     parent="$(dirname "$parent")"
   done
 }
+
+validate_trusted_helper() {
+  local path="$1" label="$2" mode owner
+  [[ "$path" == /* && -f "$path" && -x "$path" && ! -L "$path" ]] ||
+    die "$label must be an executable absolute regular non-symlink file"
+  mode="$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")"
+  owner="$(stat -c '%u' "$path" 2>/dev/null || stat -f '%u' "$path")"
+  [[ "$owner" == "$(id -u)" ]] || die "$label must be owned by the release user"
+  (( (8#$mode & 8#022) == 0 )) || die "$label must not be group- or world-writable"
+  trusted_nonwritable_directory_chain "$(dirname "$path")" ||
+    die "$label parent chain is untrusted"
+}
+
+if [[ -n "$retained_release_owner_uid" ]]; then
+  validate_trusted_helper "$retained_release_adopter" "retained release ownership adopter"
+fi
 
 for directory in "$state_root" "$state_root/approvals" "$state_root/prepared"; do
   if [[ ! -e "$directory" ]]; then
@@ -292,6 +320,23 @@ if [[ "$resume_existing_approval" -eq 0 ]]; then
   "$watcher" "${watcher_args[@]}"
   [[ -s "$prepared" ]] || die "watcher did not prepare verified backup evidence for release $release_sha"
   validate_prepared_evidence
+fi
+
+if [[ -n "$retained_release_owner_uid" ]]; then
+  validate_private_file "$active" "active release marker"
+  previous_release_sha="$(tr -d '\r\n' < "$active")"
+  [[ "$previous_release_sha" =~ ^[0-9a-f]{40}$ && "$previous_release_sha" != "$release_sha" ]] ||
+    die "active release marker is not a distinct full lowercase Git SHA"
+  adoption_args=(
+    --sha "$previous_release_sha"
+    --candidate-sha "$release_sha"
+    --expected-owner-uid "$retained_release_owner_uid"
+  )
+  verify_release_current
+  "$retained_release_adopter" "${adoption_args[@]}" --preflight
+  verify_release_current
+  "$retained_release_adopter" "${adoption_args[@]}" --execute
+  verify_release_current
 fi
 
 release_dir="$release_root/$release_sha"

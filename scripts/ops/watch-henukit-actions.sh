@@ -1473,7 +1473,7 @@ deploy_release() {
   if [[ ! -d "$release_dir" ]]; then
     release_incoming="$(mktemp -d "$release_root/.${release_sha}.incoming.XXXXXX")"
     scratch_dirs+=("$release_incoming")
-    tar -xzf "$runtime_archive" -C "$release_incoming"
+    tar --no-same-owner -xzf "$runtime_archive" -C "$release_incoming"
     [[ "$(tr -d '[:space:]' < "$release_incoming/RELEASE_SHA")" == "$release_sha" ]] ||
       die "runtime RELEASE_SHA does not match the release source"
     [[ -x "$release_incoming/bin/deploy-henukit-artifact.sh" ]] ||
