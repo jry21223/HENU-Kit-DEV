@@ -97,7 +97,7 @@ export default function CareerPage() {
             <span className="mx-2">/</span>
             RADAR UNAVAILABLE
           </p>
-          <h1 className="mt-3 font-display text-2xl font-bold tracking-tight md:text-3xl">
+          <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
             求职雷达暂时不可用
           </h1>
           <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>

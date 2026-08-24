@@ -19,8 +19,8 @@ export default function SectionCareer() {
         <div>
           <SectionHeading index="05" en="WORK RADAR" title="求职雷达" />
           <p className="mt-6 max-w-md text-sm leading-7 text-ink/70">
-            别再一个招聘网站一个招聘网站地翻。让雷达替你扫描岗位，
-            按方向、技术栈和城市筛出更值得看的机会。
+            设好求职画像，雷达在后台替你过一遍受控的官方招聘来源，
+            按方向、技术栈和城市筛出更值得看的机会，并说明每条为什么命中。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {FEATURES.map((feature) => (

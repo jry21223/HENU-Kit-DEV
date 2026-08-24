@@ -130,7 +130,7 @@ function animateHits(
   pings.forEach((ping, index) => {
     const angle = TARGET_ANGLES[index] ?? 0;
     const offset = spinning
-      ? ((((angle - SWEEP_LEAD_DEG) % 360) + 360) % 360 / 360) * sweepSeconds
+      ? (((((angle - SWEEP_LEAD_DEG) % 360) + 360) % 360) / 360) * sweepSeconds
       : (index / Math.max(pings.length, 1)) * IDLE_BREATH_SECONDS;
 
     gsap.fromTo(
@@ -235,7 +235,10 @@ export default function WorkRadar({
   );
 
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    // 装饰用示意表盘整块对辅助技术隐藏（DESIGN_SYSTEM 第 13 节：装饰图使用空
+    // alt）。aria-hidden 必须落在最外层：表头那行 WORK RADAR / WR-01 · SCHEMATIC
+    // 是 <svg> 的兄弟节点，只隐藏 <svg> 会把装饰性徽标念给读屏用户。
+    <div ref={rootRef} className={cn("relative", className)} aria-hidden={schematic || undefined}>
       <div
         className="relative overflow-hidden border border-ink/70 bg-paper"
         style={{
@@ -255,14 +258,19 @@ export default function WorkRadar({
           <svg
             viewBox="0 0 560 560"
             className="block h-auto w-full"
-            // 装饰用示意表盘对辅助技术隐藏（DESIGN_SYSTEM 第 13 节：装饰图使用空
-            // alt）；接了真实任务的表盘才播报状态。
             {...(schematic
-              ? { "aria-hidden": true }
+              ? {}
               : { role: "img", "aria-label": `求职雷达状态：${dialStatusLabel(dialStatus)}` })}
           >
             <defs>
-              <linearGradient id={`${id}-sweep`} x1="280" y1="280" x2="495" y2="132" gradientUnits="userSpaceOnUse">
+              <linearGradient
+                id={`${id}-sweep`}
+                x1={CENTER}
+                y1={CENTER}
+                x2={SWEEP_END.x}
+                y2={SWEEP_END.y}
+                gradientUnits="userSpaceOnUse"
+              >
                 <stop offset="0" stopColor="#ff4d00" stopOpacity="0.96" />
                 <stop offset="0.55" stopColor="#ff4d00" stopOpacity="0.68" />
                 <stop offset="1" stopColor="#ff4d00" stopOpacity="0.08" />

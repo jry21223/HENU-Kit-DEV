@@ -426,17 +426,23 @@ test("the marketing radar is a schematic: labelled, aria-hidden, and lights noth
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-state="anonymous"]')).toBeVisible();
   await expect(page.getByText("SCHEMATIC")).toBeVisible();
-  // 装饰表盘对辅助技术隐藏，且不冒充一次带状态的真实扫描。
-  const dial = page.locator("[data-career-state='anonymous'] svg[aria-hidden='true']");
-  await expect(dial).toHaveCount(1);
+  // 整块装饰面板对辅助技术隐藏——包括表头那行 WORK RADAR / WR-01 · SCHEMATIC，
+  // 它是 <svg> 的兄弟节点，只给 <svg> 加 aria-hidden 盖不住它。
+  const panel = page.locator("[data-career-state='anonymous'] [aria-hidden='true']");
+  await expect(panel).toHaveCount(1);
+  await expect(panel.getByText("SCHEMATIC")).toHaveCount(1);
+  await expect(panel.locator("svg")).toHaveCount(1);
+  // 装饰表盘不冒充一次带状态的真实扫描。
   await expect(page.locator("svg[aria-label^='求职雷达状态']")).toHaveCount(0);
 });
 
-// 恢复 effect 曾经依赖 searches[0] 的对象身份，而父页面在窗口重新获得焦点时
-// 会重新拉取历史、每次返回新数组 —— 于是切回标签页就把正在进行的轮询整个重启，
-// 按钮闪回「正在恢复任务…」。这里断言：同一条任务的焦点刷新不再触发重新恢复。
-test("refocusing the tab does not restart polling for an unchanged running scan", async ({ page }) => {
+// 恢复 effect 曾经依赖 searches[0] 的对象身份，而父页面在窗口重新获得焦点时会
+// 重新拉取历史、每次返回新数组 —— 于是切回标签页就把已恢复的任务整个重新恢复
+// 一遍。用 completed 任务做探针：它的恢复路径必定读一次单条状态接口
+// (`/searches/{id}`)，且完成后轮询即停，没有后台轮询来污染计数。
+test("refocusing the tab does not re-restore an unchanged scan", async ({ page }) => {
   let statusReads = 0;
+  let listReads = 0;
   await mockSession(page);
   await page.route("**/api/v1/account/membership", async (route) => {
     await route.fulfill({
@@ -454,36 +460,36 @@ test("refocusing the tab does not restart polling for an unchanged running scan"
     statusReads += 1;
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ search: runningSearch, request_id: "req_search" }),
+      body: JSON.stringify({ search: completedSearch, request_id: "req_search" }),
     });
   });
   await page.route("**/api/v1/career/searches", async (route) => {
+    listReads += 1;
     // 每次都返回结构相同但对象身份全新的列表，模拟真实网关响应。
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ searches: [{ ...runningSearch }], request_id: "req_searches" }),
+      body: JSON.stringify({ searches: [{ ...completedSearch }], request_id: "req_searches" }),
     });
   });
 
   await page.goto("/career", { waitUntil: "domcontentloaded" });
-  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
-  const scanButton = page.getByRole("button", { name: "扫描进行中…" });
-  await expect(scanButton).toBeVisible();
-  const readsBeforeRefocus = statusReads;
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
+  await expect.poll(() => statusReads).toBeGreaterThan(0);
+  const statusReadsAfterFirstRestore = statusReads;
+  const listReadsBeforeRefocus = listReads;
 
   // 父页面在 visibilitychange / focus 时重新解析整页状态。
   for (let i = 0; i < 3; i += 1) {
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   }
-  await page.waitForTimeout(600);
 
-  // 面板保持在同一条进行中的任务上，按钮没有退回「正在恢复任务…」。
-  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
-  await expect(scanButton).toBeVisible();
+  // 先等到列表确实被重新拉取——这才证明焦点刷新真的落地了，而不是靠固定等待。
+  await expect.poll(() => listReads).toBeGreaterThan(listReadsBeforeRefocus);
+
+  // 刷新落地之后，恢复 effect 不应重跑：同一条任务的完整状态不会被再读一次。
+  expect(statusReads).toBe(statusReadsAfterFirstRestore);
   await expect(page.getByRole("button", { name: "正在恢复任务…" })).toHaveCount(0);
-  // 焦点刷新本身不应触发额外的单条状态读取（轮询自己的 4s 周期不在此窗口内）。
-  expect(statusReads).toBe(readsBeforeRefocus);
 });
 
 test("/career renders the ready view for a lifetime member with a complete profile", async ({ page }) => {
