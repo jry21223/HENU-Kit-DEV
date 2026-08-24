@@ -1924,6 +1924,8 @@ func oauthContinuationProductName(clientID string) (string, bool) {
 	switch clientID {
 	case "portal-gateway":
 		return "HENU Kit", true
+	case "console-gateway":
+		return "HENUKit Console", true
 	default:
 		return "", false
 	}

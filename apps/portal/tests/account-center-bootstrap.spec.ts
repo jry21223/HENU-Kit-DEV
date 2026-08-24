@@ -121,8 +121,12 @@ test("Account Center resumes a trusted Portal OAuth continuation after password 
     waitUntil: "networkidle",
   });
   expect(accountResponse?.headers()["referrer-policy"]).toBe("no-referrer");
-  expect(accountResponse?.headers()["content-security-policy"]).toContain(
+  const contentSecurityPolicy = accountResponse?.headers()["content-security-policy"];
+  expect(contentSecurityPolicy).toContain(
     "frame-ancestors 'none'"
+  );
+  expect(contentSecurityPolicy).toContain(
+    "form-action 'self' https://console.henukit.cn"
   );
   await expect(page.getByText("登录后继续前往 HENU Kit")).toBeVisible();
   await expect(page.getByText("伪造产品")).toHaveCount(0);

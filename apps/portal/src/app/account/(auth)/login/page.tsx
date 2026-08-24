@@ -507,7 +507,13 @@ function LoginForm() {
           </div>
         )}
 
-        <div className="mt-6 space-y-5">
+        <form
+          className="mt-6 space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
           {tab === "register" && (
             <Field
               id="reg-name"
@@ -598,16 +604,14 @@ function LoginForm() {
               autoComplete="new-password"
             />
           )}
-        </div>
-
-        <Button
-          type="button"
-          className="mt-8 w-full"
-          disabled={pending}
-          onClick={() => void submit()}
-        >
-          {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
-        </Button>
+          <Button
+            type="submit"
+            className="mt-8 w-full"
+            disabled={pending}
+          >
+            {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
+          </Button>
+        </form>
 
         <div className="mt-4 flex flex-col gap-2 font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/account/recover" className="hover:text-accent">
