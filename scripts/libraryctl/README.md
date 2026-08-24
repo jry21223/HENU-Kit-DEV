@@ -50,14 +50,6 @@ node scripts/libraryctl/libraryctl.mjs hash --root ./资料库 --apply
 | `export-web` | 遍历所有课程，生成可导入网页后台的 JSON manifest |
 | `hash` | 计算 SHA256 补全 materials.csv 缺失的 sha256 字段，并按哈希列出可能重复的资料 |
 
-### V2（规划中）
-
-| 命令 | 说明 |
-|---|---|
-| `scan` | 扫描资料库统计（课程数、资料数、未登记文件、可能重复） |
-| `normalize` | 规范文件命名（按 课程名_类型_年份_标题.扩展名 规则） |
-| `dedupe` | 按 SHA256 去重，重复文件移至 99_课程归档/01_重复文件/ |
-
 #### `hash` 细则
 
 | 行为 | 说明 |
@@ -70,6 +62,14 @@ node scripts/libraryctl/libraryctl.mjs hash --root ./资料库 --apply
 | 写回保护 | 表头出现 materials.csv 未定义的列时跳过写回并报错，避免静默丢列；写入走临时文件 + rename |
 
 输出中的 `possibleDuplicates` 按 SHA256 分组（含跨课程重复），可直接作为后续 `dedupe` 的输入。存在 error 时进程以退出码 1 结束。
+
+### V2（规划中）
+
+| 命令 | 说明 |
+|---|---|
+| `scan` | 扫描资料库统计（课程数、资料数、未登记文件、可能重复） |
+| `normalize` | 规范文件命名（按 课程名_类型_年份_标题.扩展名 规则） |
+| `dedupe` | 按 SHA256 去重，重复文件移至 99_课程归档/01_重复文件/ |
 
 ## 资料库结构
 
