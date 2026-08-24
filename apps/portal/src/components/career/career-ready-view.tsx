@@ -36,9 +36,14 @@ type ScanState =
   | { kind: "starting" }
   | { kind: "error"; message: string };
 
-/** 表盘状态映射：只反映服务端确认的任务状态，不自行编造进度。 */
+/**
+ * 表盘状态映射：只反映服务端确认的任务状态。
+ *
+ * starting / restoring 期间请求还在飞，服务端尚未确认任何状态——此时保持
+ * 待机，不能顺手写成「排队中」：恢复一条早已完成的任务也会经过 restoring。
+ */
 function radarStatusFor(scan: ScanState, poll: CareerScanPollState | null): WorkRadarStatus {
-  if (scan.kind === "starting" || scan.kind === "restoring") return "queued";
+  if (scan.kind === "starting" || scan.kind === "restoring") return "idle";
   if (!poll) return "idle";
   if (poll.kind === "completed") return "completed";
   if (poll.kind === "failed") return "failed";

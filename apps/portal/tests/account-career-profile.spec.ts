@@ -335,6 +335,15 @@ const completedSearch = {
   },
 };
 
+const runningSearch = {
+  id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+  status: "running",
+  stage: "crawling",
+  user_id: sessionUserID,
+  has_email: false,
+  created_at: "2026-08-23T10:00:00Z",
+};
+
 async function mockLifetimeCareer(
   page: Page,
   searches: Array<Record<string, unknown>> = []
@@ -398,17 +407,83 @@ test("the work radar dial reflects only server-confirmed scan facts", async ({ p
   await expect(dial.locator("[data-radar-ping]")).toHaveCount(3);
 });
 
-test("the marketing radar is labelled a schematic and claims no counts", async ({ page }) => {
+test("a running scan lights no targets, because the backend confirms no counts yet", async ({ page }) => {
+  await mockLifetimeCareer(page, [runningSearch]);
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
+
+  const dial = page.locator('svg[aria-label="求职雷达状态：扫描中"]');
+  await expect(dial).toBeVisible();
+  // 进行中后端只返回 stage，没有任何计数，表盘不得按进度估算点亮目标。
+  await expect(dial.locator("[data-radar-blip]")).toHaveCount(0);
+});
+
+test("the marketing radar is a schematic: labelled, aria-hidden, and lights nothing real", async ({ page }) => {
   await page.route("**/api/v1/session", async (route) => {
     await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) });
   });
 
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-state="anonymous"]')).toBeVisible();
-  await expect(page.locator('svg[aria-label="求职雷达示意图"]')).toBeVisible();
   await expect(page.getByText("SCHEMATIC")).toBeVisible();
-  // 读数区（SOURCES / JOBS FOUND / MATCHED）不得出现在示意表盘上。
-  await expect(page.getByText("JOBS FOUND")).toHaveCount(0);
+  // 装饰表盘对辅助技术隐藏，且不冒充一次带状态的真实扫描。
+  const dial = page.locator("[data-career-state='anonymous'] svg[aria-hidden='true']");
+  await expect(dial).toHaveCount(1);
+  await expect(page.locator("svg[aria-label^='求职雷达状态']")).toHaveCount(0);
+});
+
+// 恢复 effect 曾经依赖 searches[0] 的对象身份，而父页面在窗口重新获得焦点时
+// 会重新拉取历史、每次返回新数组 —— 于是切回标签页就把正在进行的轮询整个重启，
+// 按钮闪回「正在恢复任务…」。这里断言：同一条任务的焦点刷新不再触发重新恢复。
+test("refocusing the tab does not restart polling for an unchanged running scan", async ({ page }) => {
+  let statusReads = 0;
+  await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches/*", async (route) => {
+    statusReads += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ search: runningSearch, request_id: "req_search" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    // 每次都返回结构相同但对象身份全新的列表，模拟真实网关响应。
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [{ ...runningSearch }], request_id: "req_searches" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
+  const scanButton = page.getByRole("button", { name: "扫描进行中…" });
+  await expect(scanButton).toBeVisible();
+  const readsBeforeRefocus = statusReads;
+
+  // 父页面在 visibilitychange / focus 时重新解析整页状态。
+  for (let i = 0; i < 3; i += 1) {
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  }
+  await page.waitForTimeout(600);
+
+  // 面板保持在同一条进行中的任务上，按钮没有退回「正在恢复任务…」。
+  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
+  await expect(scanButton).toBeVisible();
+  await expect(page.getByRole("button", { name: "正在恢复任务…" })).toHaveCount(0);
+  // 焦点刷新本身不应触发额外的单条状态读取（轮询自己的 4s 周期不在此窗口内）。
+  expect(statusReads).toBe(readsBeforeRefocus);
 });
 
 test("/career renders the ready view for a lifetime member with a complete profile", async ({ page }) => {
