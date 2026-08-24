@@ -124,6 +124,13 @@ fi
 `,
   );
   executable(
+    join(bin, "adopt-retained-release"),
+    `#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'adopt-retained-release %s\n' "$*" >> "$FAKE_CALL_LOG"
+`,
+  );
+  executable(
     join(bin, "ssh"),
     `#!/usr/bin/env bash
 set -Eeuo pipefail
@@ -164,6 +171,7 @@ fi
       HENUKIT_ENV_FILE: envFile,
       GH_TOKEN_FILE: tokenFile,
       HENUKIT_WATCHER: watcher,
+      HENUKIT_RETAINED_RELEASE_ADOPTER: join(bin, "adopt-retained-release"),
     },
   };
 }
@@ -221,6 +229,34 @@ test("one command keeps the Account payment gates when its fixed-SHA artifacts c
   assert.equal((calls.match(/^gh run list/gm) ?? []).length, 0);
   assert.equal((calls.match(/gh api .*\/branches\//g) ?? []).length, 3);
   assert.match(calls, /ssh root@metaview\.top .*deploy-epay-gateway-patches\.sh.*--execute/);
+});
+
+test("normal activation audits an explicitly named historical release owner before approval", () => {
+  const setup = fixture();
+  setup.env.HENUKIT_RETAINED_RELEASE_OWNER_UID = "1002";
+  writeFileSync(
+    join(setup.state, "last-activated-sha"),
+    `${recoveryBaselineSha}\n`,
+    { mode: 0o600 },
+  );
+
+  execFileSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+  const adoption = new RegExp(
+    `adopt-retained-release --sha ${recoveryBaselineSha} `
+      + `--candidate-sha ${releaseSha} --expected-owner-uid 1002`,
+    "g",
+  );
+
+  assert.equal((calls.match(adoption) ?? []).length, 2);
+  assert.match(calls, /adopt-retained-release .*--preflight/);
+  assert.match(calls, /adopt-retained-release .*--execute/);
+  assert.ok(calls.indexOf("watcher --once") < calls.indexOf("adopt-retained-release"));
+  assert.ok(calls.lastIndexOf("adopt-retained-release") < calls.indexOf("deploy-epay-gateway-patches.sh"));
+  assert.ok(calls.lastIndexOf("adopt-retained-release") < calls.lastIndexOf("watcher --once"));
 });
 
 test("one command threads an explicit degraded-baseline recovery through both watcher passes", () => {
