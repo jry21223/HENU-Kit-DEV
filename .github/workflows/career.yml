@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - services/career-opportunities/**
+      - services/getwork-mcp/**
       - packages/api-contracts/openapi/career.yaml
       - .github/workflows/career.yml
   push:
     branches: [main]
     paths:
       - services/career-opportunities/**
+      - services/getwork-mcp/**
       - packages/api-contracts/openapi/career.yaml
       - .github/workflows/career.yml
 
@@ -97,3 +99,32 @@ jobs:
           go build -o /tmp/career ./cmd/server
       - name: Build image
         run: docker build -t henukit-career:${{ github.sha }} services/career-opportunities
+      - name: Verify pinned getWork MCP transport
+        env:
+          CAREER_GETWORK_MCP_SMOKE_TOKEN: github-actions-getwork-smoke-token-0000000000000000
+        run: |
+          set -euo pipefail
+          docker build -t henukit-getwork-mcp:${{ github.sha }} services/getwork-mcp
+          docker run -d --rm --name getwork-mcp-smoke -p 127.0.0.1:18100:8100 \
+            -e GETWORK_MCP_ACCESS_TOKEN="$CAREER_GETWORK_MCP_SMOKE_TOKEN" \
+            henukit-getwork-mcp:${{ github.sha }}
+          trap 'docker logs getwork-mcp-smoke || true; docker rm -f getwork-mcp-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            curl --fail --silent --show-error http://127.0.0.1:18100/healthz && break
+            if [ "$attempt" -eq 60 ]; then exit 1; fi
+            sleep 1
+          done
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"unauthorized-smoke","version":"1"}}}' \
+            http://127.0.0.1:18100/mcp)" = 401
+          cd services/career-opportunities
+          for attempt in 1 2 3; do
+            if CAREER_GETWORK_MCP_SMOKE_URL=http://127.0.0.1:18100/mcp \
+              CAREER_GETWORK_MCP_SMOKE_CRAWL=1 \
+              go test -count=1 -run '^TestGetWorkMCPProtocolSmoke$' .; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 5
+          done

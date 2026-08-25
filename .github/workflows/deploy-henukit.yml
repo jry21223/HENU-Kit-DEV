@@ -191,6 +191,45 @@ jobs:
             "$CONTEXT"
           test "$(docker image inspect "$IMAGE:$GITHUB_SHA" --format '{{.Os}}/{{.Architecture}}')" = "linux/amd64"
 
+      - name: Verify getWork MCP release image
+        if: matrix.name == 'getwork-mcp'
+        env:
+          GETWORK_MCP_SMOKE_TOKEN: github-actions-getwork-release-smoke-0000000000000000
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name getwork-mcp-release-smoke -p 127.0.0.1:18100:8100 \
+            -e GETWORK_MCP_ACCESS_TOKEN="$GETWORK_MCP_SMOKE_TOKEN" \
+            "${{ matrix.image }}:$GITHUB_SHA"
+          trap 'docker logs getwork-mcp-release-smoke || true; docker rm -f getwork-mcp-release-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            curl --fail --silent --show-error http://127.0.0.1:18100/healthz >/dev/null && break
+            if [ "$attempt" -eq 60 ]; then exit 1; fi
+            sleep 1
+          done
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"unauthorized-release-smoke","version":"1"}}}' \
+            http://127.0.0.1:18100/mcp)" = 401
+          mcp_call() {
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GETWORK_MCP_SMOKE_TOKEN" \
+              -H 'Accept: application/json, text/event-stream' \
+              -H 'Content-Type: application/json' \
+              --data "$1" http://127.0.0.1:18100/mcp
+          }
+          mcp_call '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | jq -e '.result.tools | map(.name) | sort == ["crawl_jobs","list_sources"]'
+          mcp_call '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_sources","arguments":{}}}' \
+            | jq -e '.result.content[] | select(.type=="text") | .text | fromjson | .sources | any(.key=="meituan")'
+          for attempt in 1 2 3; do
+            if mcp_call '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"crawl_jobs","arguments":{"source":"meituan","since_days":7}}}' \
+              | jq -e '.result.content[] | select(.type=="text") | .text | fromjson | .status == "ok"'; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 5
+          done
+
       - name: Export Docker image
         env:
           IMAGE: ${{ matrix.image }}

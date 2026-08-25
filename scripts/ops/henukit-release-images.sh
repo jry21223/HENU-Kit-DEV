@@ -22,6 +22,7 @@ release_names=(
   food-mcp
   library
   career-opportunities
+  getwork-mcp
   career-mcp
   portal-gateway
   quizcraft
@@ -42,6 +43,7 @@ release_images=(
   henukit-food-mcp
   henukit-library
   henukit-career-opportunities
+  henukit-getwork-mcp
   henukit-career-mcp
   henukit-portal-gateway
   henukit-quizcraft
@@ -62,6 +64,7 @@ release_services=(
   food-mcp
   library
   career-opportunities
+  getwork-mcp
   career-mcp
   portal-gateway
   quizcraft
@@ -75,6 +78,7 @@ release_roles=(
   baseline
   baseline
   baseline
+  conditional
   conditional
   conditional
   conditional
@@ -102,6 +106,7 @@ release_contexts=(
   services/food-mcp
   services/library
   services/career-opportunities
+  services/getwork-mcp
   services/career-mcp
   services/portal-gateway
   products/quizcraft/go-service
@@ -122,6 +127,7 @@ release_dockerfiles=(
   services/food-mcp/Dockerfile
   services/library/Dockerfile
   services/career-opportunities/Dockerfile
+  services/getwork-mcp/Dockerfile
   services/career-mcp/Dockerfile
   services/portal-gateway/Dockerfile
   products/quizcraft/go-service/Dockerfile
@@ -140,6 +146,7 @@ release_build_args=(
   ""
   ""
   $'NEXT_PUBLIC_PORTAL_GATEWAY_URL=\nNEXT_PUBLIC_PORTAL_GATEWAY_BASE_URL=/api\nNEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_CATALOG=1\nNEXT_PUBLIC_PORTAL_ENABLE_QUIZCRAFT_V2_READS=1'
+  ""
   ""
   ""
   ""

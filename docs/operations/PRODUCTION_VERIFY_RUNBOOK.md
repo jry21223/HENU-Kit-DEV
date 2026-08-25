@@ -89,7 +89,7 @@ docker system df 2>/dev/null | tee -a "$LOG"
 - §1.4：所有 `henukit-*` 运行镜像的 40 位 SHA 相同，且等于 `last-activated-sha`（postgres/redis/nginx 为固定 tag，不参与）。
 - §1.5：`docker ps` 全部 `Up`；带 healthcheck 的容器（postgres/redis/account-portfolio/notice/food/career-opportunities/library/portal-summary）显示 `healthy`。
 - §1.6：`df -h /` 可用空间 ≥ 1.5G（部署冗余），内存无持续 swap 抖动。
-- 17 个自建镜像名应与 `scripts/ops/henukit-release-images.sh` 的 `release_names` 一致（console、console-gateway、platform-core、platform-mail-worker、platform-smtp-provider、portal、portal-summary、portal-api、account-portfolio、notice、notice-worker、food、food-mcp、library、career-opportunities、career-mcp、portal-gateway）。
+- 19 个自建镜像名应与 `scripts/ops/henukit-release-images.sh` 的 `release_names` 一致（console、console-gateway、platform-core、platform-mail-worker、platform-smtp-provider、portal、portal-summary、portal-api、account-portfolio、notice、notice-worker、food、food-mcp、library、career-opportunities、getwork-mcp、career-mcp、portal-gateway、quizcraft）。
 
 **证据记录**：把 1.1–1.6 原始输出复制进本文件同目录的核验回执（或直接引用 `$LOG`），并在回执写：实际容器数 / 实际 SHA / 是否有 unhealthy 容器 / 磁盘余量。
 
@@ -485,7 +485,7 @@ echo "日志文件: $LOG" | tee -a "$LOG"
 
 | 节 | 检查项 | 结果 | 证据（行号/输出摘要） | 备注 |
 |---|---|---|---|---|
-| §1 | 容器清单 / 镜像 SHA / 健康 / 磁盘 | 通过/失败/待人工 | | 期望 21 容器、18 镜像同 SHA（含 quizcraft） |
+| §1 | 容器清单 / 镜像 SHA / 健康 / 磁盘 | 通过/失败/待人工 | | 期望 22 容器、19 镜像同 SHA（含 getwork-mcp 与 quizcraft） |
 | §2 | env 键矩阵 / compose 契约 | 通过/失败/待人工 | | 重点：prebuilt vs release 契约是否被生产采用 |
 | §3 | 证书 6 域 / nginx -t / vhost | 通过/失败/待人工 | | study/quiz/account 子域未落地属预期 |
 | §4 | 路由 smoke 矩阵 | 通过/失败/待人工 | | /quiz/、/study-api/healthz 必须最终 404 |
@@ -510,7 +510,7 @@ echo "日志文件: $LOG" | tee -a "$LOG"
 
 | # | 待服务器回答的问题 | 对应节 | 仓库侧已知事实 |
 |---|---|---|---|
-| 1 | 实际运行服务数与镜像 SHA 是否与 `last-activated-sha` 一致 | §1 | 仓库只知 compose 定义 21 服务/18 镜像 |
+| 1 | 实际运行服务数与镜像 SHA 是否与 `last-activated-sha` 一致 | §1 | 仓库只知 compose 定义 22 服务/19 镜像 |
 | 2 | `/opt/henukit/.env.henukit` 是否仍残留 `STUDY_LEGACY_API_URL`/`STUDY_LEGACY_ADMIN_TOKEN`（仅用于清理盘点） | §2 | ADR-0037 已移除 Library legacy adapter；此二键不再决定 Library 启动，也不得重新加入 prebuilt 强制契约 |
 | 3 | 生产是否采用 prebuilt `:?` 契约；`ACCOUNT_PORTFOLIO_*`/`LIBRARY_OSS_*`/`LIBRARY_DOWNLOAD_*`/`QUIZCRAFT_CORE_URL`/`CAREER_DATABASE_URL` 是否真实配置 | §2 | prebuilt 强制这些键而 repo env 未设 → 生产要么不用 prebuilt、要么服务器 env 与 repo 严重不一致 |
 | 4 | study 库 `courses`/`materials` 线上行数与最近更新、写方是否还在 | §5/§9 | 表结构来自 GORM AutoMigrate（无 SQL 迁移），行数/写方仓库不可知 |

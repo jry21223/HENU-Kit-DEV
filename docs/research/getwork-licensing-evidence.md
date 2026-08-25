@@ -1,10 +1,12 @@
 # `RyaoVen/getWork` licensing evidence
 
-Checked: 2026-08-13 (Asia/Shanghai)
+Checked: 2026-08-13; authorization update: 2026-08-26 (Asia/Shanghai)
 
 ## Practical conclusion
 
-Do not copy, vendor, modify, or redistribute `getWork` code or other repository material in HENU-Kit yet. The repository shows an MIT **intent signal**, but it does not currently contain the linked license text or another complete, explicit reusable grant. Continue only with evaluation, source attribution, and independently written design work while asking the owner to add a root license.
+The repository still lacks a complete public license grant. On 2026-08-26, however, Jerry reported the upstream owner's direct authorization for this HENU-Kit use: **“你直接接去用”**. HENU-Kit may therefore run the exact authorized upstream revision as an internal job-source MCP under that direct permission, while keeping the commit and archive digest pinned and retaining attribution.
+
+This is project-specific permission reported by the user, not a claim that the public repository is generally MIT-licensed. Do not silently move to another upstream revision or broaden redistribution without rechecking authorization and license terms.
 
 This is a conservative project-risk interpretation: a bare README label does not supply the license text, scope, conditions, or copyright notice that HENU-Kit would need to preserve. A standard root license removes that ambiguity.
 
@@ -28,7 +30,7 @@ The observations below are pinned to the default branch HEAD at the time checked
 
 ## Resolution requested from upstream
 
-Preferred resolution: the owner adds the standard MIT text as `LICENSE` at the repository root, with an appropriate copyright line, and confirms it covers the repository contents. Re-check the exact commit before reuse and retain the resulting license and notices in any HENU-Kit copy or derivative.
+The preferred public resolution remains for the owner to add the standard MIT text as `LICENSE`. Until then, HENU-Kit binds its integration to the directly authorized revision and records the user-reported permission above.
 
 ### Owner request
 

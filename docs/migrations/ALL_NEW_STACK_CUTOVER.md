@@ -20,7 +20,7 @@
 - [x] 修 README `deploy-study.yml` 漂移；修现状文档 console GO / 20 服务 / 开关名 / library fail-closed
 - [ ] `henukit.modules.yaml`：`platform_worker` → `platform-mail-worker`（platform-core 内，status active）；补录 8 个活跃服务（account-portfolio、notice、notice-worker、food、library、career-opportunities、portal-summary、food-mcp、career-mcp）；`food_rankings` owner 改 `food`
 - [ ] 执行规格 `henukit-console-executable-spec.md`：重写 Delivery Status Current 行（Console Gateway 已交付并生产验证 08-03、六模块真实接线、materials OSS 已交付）；Planned 只留未交付项
-- [ ] `engineering-release-spec.md` §6 镜像清单改为以 `scripts/ops/henukit-release-images.sh`（18 镜像，含 quizcraft）为权威
+- [ ] `engineering-release-spec.md` §6 镜像清单改为以 `scripts/ops/henukit-release-images.sh`（19 镜像，含 getwork-mcp 与 quizcraft）为权威
 - [ ] CONTEXT-MAP.md：Notice 移入 Current contexts；根 README「美食榜单是 Portal 内模块」改为独立 Food 服务
 - [ ] 服务器核验回填：运行清单/SHA、`/opt/henukit/.env.henukit` 的 `STUDY_LEGACY_API_URL`、study 库数据量、quizcraft 库表结构、account 域部署
 - [ ] 顺手清理：`apps/admin`（仅 dist 无源码）、根 `docker-compose.yml`（废弃标注或删除）、`.gitignore` 残留行
@@ -75,7 +75,7 @@
 
 1. **接线补齐（以服务器 `/opt/henukit/.env.henukit` 为准——repo 的 `.env.henukit.prod` 已落后，`henukit-local-deploy.md` §7 记录 2026-08-16 已补 career 等变量，需把服务器最新 env 同步回 repo 示例并核对 prebuilt `:?` 强制变量契约）**：
    - 缺失项核对：`ACCOUNT_PORTFOLIO_*`（**硬必须**——VIP 在用 + EasyPay 是当前支付通道，首次 8-to-9 cutover 未执行）、`LIBRARY_OSS_*`/`LIBRARY_DOWNLOAD_*`（library OSS 下载未接线）、`FOOD_MCP_ACCESS_TOKEN`（food-mcp 未接线）、`NOTICE_DELIVERY_*`、`QUIZZFCRAFT_CORE_URL`（暗命令）、`PORTAL_ENABLE_QUIZCRAFT_*`、`STUDY_LEGACY_*`（library 启动必需）
-   - 逐项确认 20 服务（17 自建镜像：9 baseline + 8 conditional）在生产 compose 中真实启动且 ready；健康检查覆盖补齐
+   - 逐项确认 22 服务（19 自建镜像：9 baseline + 10 conditional）在生产 compose 中真实启动且 ready；健康检查覆盖补齐
 2. **CI 补齐**：food-mcp、career-mcp 当前无任何 workflow；前端烘焙 flag（`VITE_QUIZCRAFT_GO_WRITES` 等）与网关开关不一致问题一并修
 3. **域名/证书矩阵**：henukit.cn（已有）、console.henukit.cn（GO 08-03，剩真实邮箱登录 Smoke + 观察窗口清理）、study.henukit.cn / quiz.henukit.cn / account.henukit.cn（**均无 vhost 未落地**，新子域需先过边界批准）、`/console-api/` 观察期路由清理、`/mcp/` 路由缺仓库模板（补 nginx 模板）
 4. **数据迁移入口**：quizcraft 库需先由 go-service 迁移建表（compose 无迁移入口是刻意设计，但 M1 前必须确认生产库状态）；platform-core 迁移（000017/000018 等）执行；资料激活/OSS 管线；**新栈种子入口缺失**——`scripts/seed` 只指向 legacy `services/api/cmd/seed` 与 `import-materials`，M2 需补新栈种子工具；portal-api 的 portal 库迁移只有 up 无 down（补 down 或注明不可回滚）

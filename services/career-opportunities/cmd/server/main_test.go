@@ -3,13 +3,65 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	career "henukit.dev/career"
 )
+
+func TestBuildWorkUsesAuthorizedGetWorkMCP(t *testing.T) {
+	mcpServer := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "getwork-test", Version: "0.1.0"}, nil)
+	mcpsdk.AddTool(mcpServer, &mcpsdk.Tool{Name: "list_sources"}, func(context.Context, *mcpsdk.CallToolRequest, struct{}) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "sources": []map[string]any{{"key": "meituan"}}}, nil
+	})
+	type crawlInput struct {
+		Source    string `json:"source"`
+		SinceDays int    `json:"since_days"`
+	}
+	mcpsdk.AddTool(mcpServer, &mcpsdk.Tool{Name: "crawl_jobs"}, func(_ context.Context, _ *mcpsdk.CallToolRequest, input crawlInput) (*mcpsdk.CallToolResult, any, error) {
+		if input.Source != "meituan" {
+			return nil, nil, fmt.Errorf("unexpected source %q", input.Source)
+		}
+		return nil, map[string]any{
+			"status": "ok", "source": "meituan", "fetched_at": "2026-08-26T00:00:00Z",
+			"jobs": []map[string]any{{
+				"title": "Go 后端实习生", "company": "美团", "source": "meituan", "location": "北京",
+				"job_type": "实习", "description": "Go 后端开发", "apply_url": "https://zhaopin.meituan.com/job/1",
+			}},
+		}, nil
+	})
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return mcpServer }, nil)
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer getwork-test-access-token-32-bytes" {
+			http.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		handler.ServeHTTP(writer, request)
+	}))
+	defer upstream.Close()
+
+	t.Setenv("CAREER_GETWORK_MCP_URL", upstream.URL+"/mcp")
+	t.Setenv("CAREER_GETWORK_MCP_ACCESS_TOKEN", "getwork-test-access-token-32-bytes")
+	t.Setenv("CAREER_GETWORK_SOURCE_ALLOWLIST", "meituan")
+	t.Setenv("CAREER_GETWORK_SINCE_DAYS", "7")
+	t.Setenv("CAREER_SOURCE_ALLOWLIST", "")
+	work, err := buildWork()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := work(context.Background(), map[string]any{"target_roles": "后端", "tech_stack": "Go", "locations": "北京", "job_type": "daily_intern"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SourceCount != 1 || result.JobCount != 1 || result.MatchedCount != 1 {
+		t.Fatalf("MCP result = %+v", result)
+	}
+}
 
 func TestBuildWorkEnablesAuthorizedOfficialSource(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

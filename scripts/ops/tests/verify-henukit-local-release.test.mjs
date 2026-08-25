@@ -41,6 +41,7 @@ const images = [
   "henukit-food-mcp",
   "henukit-library",
   "henukit-career-opportunities",
+  "henukit-getwork-mcp",
   "henukit-career-mcp",
   "henukit-portal-gateway",
   "henukit-quizcraft",

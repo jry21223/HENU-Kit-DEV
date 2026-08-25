@@ -74,6 +74,7 @@ test("CI builds the primary HENU runtime without legacy Study or standalone Quiz
     "henukit-food-mcp",
     "henukit-library",
     "henukit-career-opportunities",
+    "henukit-getwork-mcp",
     "henukit-career-mcp",
     "henukit-portal-gateway",
     "henukit-quizcraft",
@@ -94,6 +95,13 @@ test("CI builds the primary HENU runtime without legacy Study or standalone Quiz
       .split("\n"),
     expectedImages,
   );
+});
+
+test("release artifacts are blocked on the pinned read-only getWork MCP smoke", () => {
+  assert.match(workflow, /Verify getWork MCP release image/);
+  assert.match(workflow, /matrix\.name == 'getwork-mcp'/);
+  assert.match(workflow, /sort == \["crawl_jobs","list_sources"\]/);
+  assert.match(workflow, /"source":"meituan","since_days":7/);
 });
 
 test("CI runs the Account Portfolio browser behavior spec", () => {
@@ -347,6 +355,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "CAREER_DATABASE_URL",
       "CAREER_CLIENT_SECRET",
       "CAREER_SOURCE_ALLOWLIST",
+      "CAREER_GETWORK_SOURCE_ALLOWLIST",
+      "GETWORK_MCP_ACCESS_TOKEN",
       "CAREER_AI_BASE_URL",
       "CAREER_AI_API_KEY",
       "CAREER_AI_MODEL",
@@ -455,6 +465,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-food",
     "henukit-food-mcp",
     "henukit-career-opportunities",
+    "henukit-getwork-mcp",
     "henukit-career-mcp",
     "henukit-library",
     "henukit-quizcraft",
@@ -530,6 +541,16 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["career-opportunities"].environment.CAREER_SOURCE_ALLOWLIST,
     "test-required-value",
     "production Career must require an explicit authorized source allowlist",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.CAREER_GETWORK_MCP_URL,
+    "http://getwork-mcp:8100/mcp",
+    "production Career must consume the internal getWork MCP endpoint",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.CAREER_GETWORK_MCP_ACCESS_TOKEN,
+    config.services["getwork-mcp"].environment.GETWORK_MCP_ACCESS_TOKEN,
+    "Career and getWork MCP must receive the same dedicated bearer token",
   );
   assert.equal(
     config.services["career-opportunities"].environment.PLATFORM_CORE_CAREER_DIGEST_URL,

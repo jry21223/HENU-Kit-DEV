@@ -44,6 +44,7 @@
 38. [`0039-library-canonical-material-types-and-owner-only-activation.md`](./0039-library-canonical-material-types-and-owner-only-activation.md) — 对齐公开资料 canonical 类型、教材授权、OSS 证据与 Library-only 激活边界。
 39. [`0040-career-resume-suification-command.md`](./0040-career-resume-suification-command.md) — Portal Gateway 的单条可撤销 Career Resume Suification 命令、幂等重放与独立明文传输门禁。
 40. [`0041-root-owned-actions-release-extraction.md`](./0041-root-owned-actions-release-extraction.md) — Actions runtime 解包统一 root 所有权，并以显式历史 UID 审计接管一次健康回滚基线（不放宽 ADR-0030）。
+41. [`0042-getwork-mcp-as-career-job-source.md`](./0042-getwork-mcp-as-career-job-source.md) — 直接运行已授权且锁定版本的 getWork MCP，Career 仅通过官方 SDK 调用岗位工具，继续自有匹配、持久化和邮件链。
 
 ## 使用规则
 

@@ -302,6 +302,27 @@ services:
     expose:
       - "8099"
 
+  # Authorized upstream getWork MCP: internal job-fact source for the Career
+  # worker. It is not published to the host and its mutable/login/mail tools are
+  # never exposed through the HENU browser contract.
+  getwork-mcp:
+    profiles: ["getwork"]
+    build:
+      context: ./services/getwork-mcp
+    environment:
+      GETWORK_MCP_HOST: 0.0.0.0
+      GETWORK_MCP_PORT: 8100
+      GETWORK_MCP_ACCESS_TOKEN: ${GETWORK_MCP_ACCESS_TOKEN:-}
+    expose:
+      - "8100"
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2))['ok'] is True"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
   # Career Opportunities owns the Work Radar async search core (#392): the
   # Portal Gateway signs the verified actor in; the worker drives queued
   # searches to completion. Fails closed without credentials.
@@ -319,6 +340,10 @@ services:
       CAREER_SERVICE_SECRET: ${CAREER_CLIENT_SECRET:-replace-career-service-secret-32bytes!!}
       CAREER_SOURCE_ALLOWLIST: ${CAREER_SOURCE_ALLOWLIST:-}
       CAREER_MEITUAN_API_URL: ${CAREER_MEITUAN_API_URL:-https://zhaopin.meituan.com/api/official/job/getJobList}
+      CAREER_GETWORK_MCP_URL: ${CAREER_GETWORK_MCP_URL:-}
+      CAREER_GETWORK_MCP_ACCESS_TOKEN: ${GETWORK_MCP_ACCESS_TOKEN:-}
+      CAREER_GETWORK_SOURCE_ALLOWLIST: ${CAREER_GETWORK_SOURCE_ALLOWLIST:-}
+      CAREER_GETWORK_SINCE_DAYS: ${CAREER_GETWORK_SINCE_DAYS:-7}
       PLATFORM_CORE_CAREER_DIGEST_URL: ${PLATFORM_CORE_CAREER_DIGEST_URL:-}
       PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID: ${PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID:-}
       PLATFORM_CORE_CAREER_DIGEST_KEY_ID: ${PLATFORM_CORE_CAREER_DIGEST_KEY_ID:-}
@@ -343,6 +368,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      getwork-mcp:
+        condition: service_healthy
+        required: false
       platform-core:
         condition: service_started
     expose:

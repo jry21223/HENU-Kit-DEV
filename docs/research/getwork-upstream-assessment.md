@@ -8,11 +8,11 @@ Date checked: 2026-08-13 (Asia/Shanghai)
 - It is a personal job-search MCP server, not a recruitment-management product: the documented flow crawls campus/internship postings, lets an agent match them against a resume profile, renders a briefing, and sends it by SMTP ([README](https://github.com/RyaoVen/getWork/blob/master/README.md)).
 - The default configuration currently contains 18 sources using dynamic-browser and direct-platform strategies ([`config/companies.yaml`](https://github.com/RyaoVen/getWork/blob/master/config/companies.yaml)).
 - The complete history is a one-day implementation burst on 2026-08-11, with no tagged release and no published GitHub release ([commit history](https://github.com/RyaoVen/getWork/commits/master/), [releases](https://github.com/RyaoVen/getWork/releases)). There is no repository CI workflow or conventional unit-test suite; validation is supplied as executable smoke/E2E scripts ([`scripts/smoke_test.py`](https://github.com/RyaoVen/getWork/blob/master/scripts/smoke_test.py), [`scripts/e2e_local.py`](https://github.com/RyaoVen/getWork/blob/master/scripts/e2e_local.py), [`scripts/e2e_real.py`](https://github.com/RyaoVen/getWork/blob/master/scripts/e2e_real.py)).
-- The README says MIT, but the repository currently has no `LICENSE` file and GitHub reports no detected license. Reuse or redistribution should wait for an actual license grant in the repository.
+- The README says MIT, but the repository currently has no `LICENSE` file and GitHub reports no detected license. On 2026-08-26 Jerry reported direct authorization from the owner (“你直接接去用”) for this HENU-Kit integration. That project-specific permission allows the pinned internal use; it is not a general public-license claim.
 
 ## Runtime and behavior
 
-The process is a stdio-only MCP server launched with `uv run python -m getwork`; there is no HTTP service, user authentication, authorization, tenant model, database, or scheduler ([`.mcp.json`](https://github.com/RyaoVen/getWork/blob/master/.mcp.json), [`getwork/__main__.py`](https://github.com/RyaoVen/getWork/blob/master/getwork/__main__.py)).
+The documented process launches over stdio with `uv run python -m getwork`. Its pinned MCP SDK also exposes the same server as Streamable HTTP, but the upstream repository does not supply deployment authentication, a tenant model, database, or scheduler ([`.mcp.json`](https://github.com/RyaoVen/getWork/blob/master/.mcp.json), [`getwork/__main__.py`](https://github.com/RyaoVen/getWork/blob/master/getwork/__main__.py)).
 
 It exposes seven tools in [`getwork/server.py`](https://github.com/RyaoVen/getWork/blob/master/getwork/server.py):
 
@@ -44,13 +44,13 @@ The upstream is suitable as a prototype or source of adapters, but not as a dire
 
 ## Recommended HENUKit integration shape
 
-Treat job discovery as a new owner capability (for example, `Career Opportunities`), not as a raw LangBot plugin and not as browser-to-MCP access.
+Use the authorized upstream MCP as an internal Career job source, not as a raw LangBot plugin and not as browser-to-MCP access.
 
 The smallest credible first slice is read-only:
 
-1. Fork or vendor only the normalized job model, source registry, and selected public-source crawlers after the license is resolved.
-2. Run them in a bounded worker/service with an allowlisted source registry, egress restrictions, quotas, source health, timestamps, provenance, deduplication, and durable snapshots.
-3. Expose a versioned owner API such as `GET /api/v1/opportunities` or a static assistant adapter such as `career.search_jobs`; do not expose `add_source`, `login`, arbitrary SMTP, filesystem paths, or raw Playwright controls.
+1. Pin and checksum the directly authorized upstream revision instead of copying its crawler implementations into Career.
+2. Run its existing MCP server on the private Compose network with one deployment-owned bearer credential and an allowlisted source registry.
+3. Let Career call only `list_sources` and `crawl_jobs` through the official Go MCP SDK; do not expose `add_source`, `login`, arbitrary SMTP, filesystem paths, or raw Playwright controls.
 4. Let Portal Gateway derive the actor and preferences from HENUKit-owned state. LangBot receives only typed search inputs and normalized results, never resume files, email credentials, cookies, or reusable assertions.
 5. Render results through the finite HENUKit assistant-card/action contract with fixed trusted application URLs. Email/digest delivery, saved profiles, authenticated sources, and automated application flows should be separate, consented tickets.
 
