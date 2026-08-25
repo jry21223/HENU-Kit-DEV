@@ -5,7 +5,7 @@ const operations = {
   accounts: [{ id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", display_name: "张老师", email: "very.long.operator.identity@henu.edu.cn", email_verified: true, status: "active", authorization_revision: 1, created_at: "2026-07-19T00:00:00Z", grants: [{ role_code: "operations-operator", scope: { kind: "platform" } }] }],
   sessions: [{ id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", display_name: "张老师", email: "very.long.operator.identity@henu.edu.cn", kind: "core", last_seen_at: "2026-07-19T00:00:00Z", expires_at: "2026-07-19T01:00:00Z" }],
   mail: { pending: 1, processing: 0, retry_due: 0, accepted: 0, delivered: 2, failed: 0, dead_letters: 0 },
-  inbox_items: [{ id: "371f1c6f-7b10-4c92-91a2-b39bf5af5302", source_product_code: "quizcraft", source_resource_type: "submission", source_resource_id: "submission-7", priority: "normal", status: "open", version: 1, created_at: "2026-07-19T00:00:00Z", updated_at: "2026-07-19T00:00:00Z" }],
+  inbox_items: [{ id: "371f1c6f-7b10-4c92-91a2-b39bf5af5302", source_product_code: "quizcraft", source_resource_type: "submission", source_resource_id: "submission-7", priority: "normal", status: "open", version: 2, created_at: "2026-07-19T00:00:00Z", updated_at: "2026-07-19T00:00:00Z" }],
   audit: [{ request_id: "req_operations_browser", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", display_name: "张老师", email: "very.long.operator.identity@henu.edu.cn", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "permission_granted", created_at: "2026-07-19T00:00:00Z" }],
   dependencies: { postgres: "ready", redis: "ready" }, generated_at: "2026-07-19T00:00:00Z",
 };
@@ -33,6 +33,10 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByLabel("角色代码")).toHaveValue("operations-operator");
     await expect(page.getByText("张老师").first()).toBeVisible();
     await expect(page.getByText("very.long.operator.identity@henu.edu.cn").first()).toBeVisible();
+    await expect(page.getByText("练习服务 / submission", { exact: true })).toBeVisible();
+    await expect(page.getByText("submission-7 · 待处理 · 版本 2", { exact: true })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/\bv2\b/i);
+    await expect(page.locator("body")).not.toContainText(/QuizCraft/i);
     await expect(page.getByText(/171f1c6f-7b10/)).toHaveCount(0);
     await page.getByRole("button", { name: "撤销登录" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
@@ -119,10 +123,10 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByText(/未设置姓名 · operator@henu.edu.cn/).first()).toBeVisible();
     await expect(page.getByText(/2026/).first()).toBeVisible();
     await expect(page.getByText("允许 · platform.operations.read")).toBeVisible();
-    await expect(page.getByText("拒绝 · quizcraft.attempt.write")).toBeVisible();
+    await expect(page.getByText("拒绝 · 练习服务 · 作答写入")).toBeVisible();
     // 目标（产品/资源维度）与原因映射；未知原因码兜底为「其他原因」并保留原码小字。
     await expect(page.getByText(/目标 平台/)).toBeVisible();
-    await expect(page.getByText(/目标 资源 \/ quizcraft \/ attempt \/ attempt-9/)).toBeVisible();
+    await expect(page.getByText(/目标 资源 \/ 练习服务 \/ attempt \/ attempt-9/)).toBeVisible();
     await expect(page.getByText(/目标 产品 \/ notice/)).toBeVisible();
     await expect(page.getByText("原因：权限授予")).toBeVisible();
     await expect(page.getByText("原因：会话已过期")).toBeVisible();
@@ -130,6 +134,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     // 已删除账户的审计行不消失：同一行仍渲染完整字段。
     await expect(page.getByText(/未设置姓名 · deleted.operator@henu.edu.cn.*目标 资源/)).toBeVisible();
     await expect(page.getByText(/用户 #5302/)).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(/QuizCraft/i);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
