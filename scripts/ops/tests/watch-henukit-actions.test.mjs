@@ -176,6 +176,7 @@ function fixture({
   runConclusion = "success",
   runStatus = "completed",
   legacyRuntimePresent = false,
+  activationFreeKiB = 8 * 1024 * 1024,
 } = {}) {
   // macOS exposes its temporary directory through /var, which is a symlink.
   // The production trust-root check deliberately rejects symlinked parents, so
@@ -468,6 +469,15 @@ exit 0
   );
 
   writeExecutable(
+    join(bin, "df"),
+    `#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf '/dev/fake 16777216 8388608 %s 50%% /\n' "$FAKE_ACTIVATION_FREE_KIB"
+`,
+  );
+
+  writeExecutable(
     join(bin, "docker"),
     `#!/usr/bin/env bash
 set -Eeuo pipefail
@@ -708,6 +718,7 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       FAKE_ACTIVE_FILE: active,
+      FAKE_ACTIVATION_FREE_KIB: String(activationFreeKiB),
       FAKE_ACCOUNT_PORTFOLIO_SCHEMA_PRESENT: accountPortfolioSchemaPresent ? "t" : "f",
       FAKE_BAD_ACCOUNT_BOUNDARY: badAccountBoundary ? "1" : "0",
       FAKE_BAD_CHECKSUM: badChecksum ? "1" : "0",
@@ -817,6 +828,36 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
   execFileSync(script, ["--once"], { env: setup.env });
   const secondCalls = readFileSync(setup.log, "utf8");
   assert.equal((secondCalls.match(/^deploy /gm) ?? []).length, 1);
+});
+
+test("activation preserves its approval when disk headroom is below the production floor", () => {
+  const setup = fixture({ activationFreeKiB: 3 * 1024 * 1024 });
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /at least 4096 MiB.*approval remains unconsumed/i);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+  assert.match(calls, /pg_dump/);
+  assert.doesNotMatch(calls, /docker load|^deploy /m);
+});
+
+test("activation configuration cannot lower the production disk floor", () => {
+  const setup = fixture();
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: { ...setup.env, HENUKIT_MIN_ACTIVATION_FREE_MIB: "1024" },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /cannot lower the 4096 MiB production floor/i);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
 });
 
 test("one-shot accepts the SHA-bound OAuth continuation gate receipt", () => {

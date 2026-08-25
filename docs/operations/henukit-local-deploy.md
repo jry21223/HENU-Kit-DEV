@@ -23,7 +23,7 @@ WSL ──ssh henu-prod(修正KEX)──> 生产 8.146.200.82:22222 ──rsync 
 3. **直连 SSH 到生产会被中间设备干扰 KEX**（卡在 `expecting SSH2_MSG_KEX_ECDH_REPLY`），必须用 `KexAlgorithms diffie-hellman-group14-sha256`。
 4. **生产 `.env.henukit` 必须包含全部 compose 必填变量**，新增服务（career/food-mcp）需要手动补 env + 建数据库。
 5. **WSL git checkout 权限是 775**，会触发 verify 的 `trusted file must not be group- or world-writable`；构建前需 `chmod 755`（且 `henukit-materials-sync.sh` 在 git 里是 644，不能 chmod）。
-6. **生产磁盘紧张**：部署前检查 `df -h /`，必要时清理旧 bundle/release。
+6. **生产磁盘紧张**：getWork MCP 的浏览器运行时使单个镜像解压后约 1 GB。部署前必须检查 `df -h /`，保留至少 5 GiB 可用空间，必要时清理未被容器引用的旧 SHA 镜像和可重新下载的 Actions staging。
 
 ---
 
@@ -33,14 +33,14 @@ WSL ──ssh henu-prod(修正KEX)──> 生产 8.146.200.82:22222 ──rsync 
 
 ```bash
 ssh quizcraft-prod 'df -h / | tail -1'
-# 需要 ≥1.5G 可用；不足时清理（见第五节）
+# 需要 ≥5 GiB 可用；watcher 会在消费批准前强制检查 4096 MiB 底线
 ```
 
 ### 1.2 生产 inventory 版本
 
 ```bash
 ssh quizcraft-prod '/usr/local/sbin/henukit-release-images.sh --records | wc -l'
-# 必须 = 18。若 <18，从本地提取新 inventory 覆盖（见第六节）
+# 必须 = 19。若 <19，从目标 SHA 的 runtime 产物提取新 inventory 覆盖（见第六节）
 ```
 
 ### 1.3 生产 env 必填变量
@@ -206,6 +206,7 @@ docker run --rm \
 | `no healthy fixed-SHA rollback release is ready` | career 角色必须 conditional；生产 inventory 更新到 19 镜像 |
 | `unexpected artifact file henukit-career-opportunities-...` | 生产 inventory 旧（14 镜像），更新（第六节） |
 | `an approval already exists for release ...` | `ssh quizcraft-prod "rm -f /var/lib/henukit-actions-watch/approvals/<sha>"` |
+| `activation requires at least 4096 MiB free` | 批准尚未消费；清理至少 5 GiB 可用空间后重新走显式批准 |
 | 磁盘满 `No space left on device` | 清理（第五节） |
 
 ---
