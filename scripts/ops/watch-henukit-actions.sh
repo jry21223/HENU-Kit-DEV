@@ -27,6 +27,7 @@ Optional configuration:
   HENUKIT_STATE_ROOT     Watcher state and lock (default: /var/lib/henukit-actions-watch)
   HENUKIT_POLL_SECONDS   Watch interval (default: 60)
   HENUKIT_ACTIVE_RELEASE_ATTEMPTS Readiness attempts per activation (default: 30)
+  HENUKIT_MIN_ACTIVATION_FREE_MIB Minimum free space before approval consumption (default: 4096)
   HENUKIT_PUBLIC_BASE_URL Public smoke-test base URL
   HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE Active role receiving Account Console permissions
   HENUKIT_PLATFORM_MIGRATIONS Additional comma-separated reviewed Platform Core migrations
@@ -78,6 +79,7 @@ backup_root="${HENUKIT_BACKUP_ROOT:-/opt/henukit-backups}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
 poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
 active_release_attempts="${HENUKIT_ACTIVE_RELEASE_ATTEMPTS:-30}"
+minimum_activation_free_mib="${HENUKIT_MIN_ACTIVATION_FREE_MIB:-4096}"
 public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
 account_public_origin="https://henukit.cn"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
@@ -122,6 +124,10 @@ conditional_images=()
 [[ "$poll_seconds" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_POLL_SECONDS must be a positive integer"
 [[ "$active_release_attempts" =~ ^[1-9][0-9]*$ ]] ||
   die "HENUKIT_ACTIVE_RELEASE_ATTEMPTS must be a positive integer"
+[[ "$minimum_activation_free_mib" =~ ^[1-9][0-9]*$ ]] ||
+  die "HENUKIT_MIN_ACTIVATION_FREE_MIB must be a positive integer"
+((minimum_activation_free_mib >= 4096)) ||
+  die "HENUKIT_MIN_ACTIVATION_FREE_MIB cannot lower the 4096 MiB production floor"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
 [[ "$account_operator_role" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] ||
@@ -129,6 +135,7 @@ conditional_images=()
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
 command -v cmp >/dev/null 2>&1 || die "cmp is required"
 command -v docker >/dev/null 2>&1 || die "docker is required"
+command -v df >/dev/null 2>&1 || die "df is required"
 command -v flock >/dev/null 2>&1 || die "flock is required"
 command -v jq >/dev/null 2>&1 || die "jq is required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
@@ -995,6 +1002,17 @@ consume_approval() {
   chmod 0400 "$consumed"
 }
 
+require_activation_disk_headroom() {
+  local available_kib required_kib
+  available_kib="$(df -Pk "$staging_root" | awk 'NR == 2 { print $4 }')"
+  [[ "$available_kib" =~ ^[0-9]+$ ]] ||
+    die "could not determine activation disk headroom for $staging_root"
+  required_kib=$((minimum_activation_free_mib * 1024))
+  ((available_kib >= required_kib)) ||
+    die "activation requires at least ${minimum_activation_free_mib} MiB free on the artifact filesystem; approval remains unconsumed"
+  log "activation disk headroom verified: $((available_kib / 1024)) MiB free"
+}
+
 github_branch_head() {
   gh api "repos/$repo/branches/$branch" --jq '.commit.sha'
 }
@@ -1577,6 +1595,7 @@ deploy_release() {
     ensure_degraded_recovery_audit \
       "$release_sha" "$previous_sha" authorized authorized "$prepared_backup_file"
   fi
+  require_activation_disk_headroom
   consume_approval "$release_sha"
   for image in "${load_images[@]}"; do
     log "loading ${image}:${release_sha}"

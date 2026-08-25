@@ -205,10 +205,13 @@ runbook `henukit-local-deploy.md` and the one-command wrapper
    reports `an approval already exists for release <sha>`, remove
    `/var/lib/henukit-actions-watch/approvals/<sha>` on production before
    retrying.
-6. **Production disk fills fast.** The release bundle is ~240 MB and backups
-   accumulate. Before activation check `df -h /`; clean old
+6. **Production disk fills fast.** The browser-bearing getWork image is about
+   1 GB after extraction, in addition to the remaining release images and
+   backups. Keep at least 5 GiB free before activation. The watcher enforces a
+   4096 MiB floor before consuming the exact-SHA approval. Before activation
+   check `df -h /`; clean old unreferenced fixed-SHA images and
    `/opt/henukit-incoming/henukit-release-<old-sha>` bundles and pre-current
-   release directories when under ~1.5 GB free, and re-point
+   release directories when under 5 GiB free, and re-point
    `/opt/henukit/current` to the active baseline if it dangles.
 
 ### Exact degraded-baseline recovery
