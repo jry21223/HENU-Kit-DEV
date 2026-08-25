@@ -29,7 +29,7 @@ Optional configuration:
   HENUKIT_ACTIVE_RELEASE_ATTEMPTS Readiness attempts per activation (default: 30)
   HENUKIT_PUBLIC_BASE_URL Public smoke-test base URL
   HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE Active role receiving Account Console permissions
-  HENUKIT_PLATFORM_MIGRATIONS Comma-separated reviewed Platform Core migrations
+  HENUKIT_PLATFORM_MIGRATIONS Additional comma-separated reviewed Platform Core migrations
   HENUKIT_PLATFORM_CORE_CONTAINER Platform Core container name
   HENUKIT_IMAGE_INVENTORY Trusted canonical image inventory beside this script
   HENUKIT_LOCAL_ARTIFACT_VERIFIER Trusted signed-artifact verifier beside this script
@@ -87,6 +87,21 @@ notice_container="${HENUKIT_NOTICE_CONTAINER:-henukit-notice-1}"
 food_container="${HENUKIT_FOOD_CONTAINER:-henukit-food-1}"
 library_container="${HENUKIT_LIBRARY_CONTAINER:-henukit-library-1}"
 migration="${HENUKIT_PLATFORM_MIGRATIONS:-${HENUKIT_PLATFORM_MIGRATION:-}}"
+required_platform_migrations=(
+  000019_career_digest_mail.up.sql
+  000020_mail_outbox_allow_bulk_priority.up.sql
+)
+migration_candidates=()
+if [[ -n "$migration" ]]; then
+  IFS=',' read -r -a migration_candidates <<<"$migration"
+fi
+migration_candidates+=("${required_platform_migrations[@]}")
+sorted_migration_candidates=()
+while IFS= read -r migration_name; do
+  sorted_migration_candidates+=("$migration_name")
+done < <(printf '%s\n' "${migration_candidates[@]}" | LC_ALL=C sort -u)
+migration_candidates=("${sorted_migration_candidates[@]}")
+migration="$(IFS=,; printf '%s' "${migration_candidates[*]}")"
 account_operator_role="${HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 image_inventory="${HENUKIT_IMAGE_INVENTORY:-$script_dir/henukit-release-images.sh}"
@@ -232,6 +247,7 @@ verify_production_data_boundary() {
   local easypay_base_url easypay_notify_url easypay_return_url
   local career_sources career_ai_base career_ai_key career_ai_model career_ai_insecure career_suify_ai_insecure career_digest_secret
   local career_digest_client career_digest_key normalized_secret normalized_ai
+  local getwork_sources getwork_token normalized_getwork_token
   portal_api_mode="$(environment_value PORTAL_API_MODE)"
   portal_allow_mock="$(environment_value NEXT_PUBLIC_PORTAL_ALLOW_MOCK)"
   [[ "$portal_api_mode" == "live" ]] ||
@@ -260,6 +276,8 @@ verify_production_data_boundary() {
   career_digest_client="$(environment_value PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID)"
   career_digest_key="$(environment_value PLATFORM_CORE_CAREER_DIGEST_KEY_ID)"
   career_digest_secret="$(environment_value PLATFORM_CORE_CAREER_DIGEST_SECRET)"
+  getwork_sources="$(environment_value CAREER_GETWORK_SOURCE_ALLOWLIST)"
+  getwork_token="$(environment_value GETWORK_MCP_ACCESS_TOKEN)"
   [[ "$career_sources" == "official.meituan" ]] || die "CAREER_SOURCE_ALLOWLIST must enable only official.meituan"
   if [[ "$career_ai_base" == "http://125.46.96.207:30000/v1" ]]; then
     [[ "$career_ai_insecure" == "1" ]] || die "the approved plaintext Career LLM requires CAREER_ALLOW_INSECURE_AI_HTTP=1"
@@ -285,6 +303,13 @@ verify_production_data_boundary() {
     die "Career digest secret contains a deployment placeholder"
   [[ ! "$normalized_secret" =~ (replace|example|change-me|changeme|test-secret|for-test|test-only) ]] ||
     die "Career digest secret contains a deployment placeholder"
+  [[ "$getwork_sources" =~ ^[a-z0-9][a-z0-9._-]*(,[a-z0-9][a-z0-9._-]*)*$ ]] ||
+    die "CAREER_GETWORK_SOURCE_ALLOWLIST is missing or invalid"
+  [[ ${#getwork_token} -ge 32 && "$getwork_token" != *[[:space:]]* ]] ||
+    die "getWork MCP access token is missing or invalid"
+  normalized_getwork_token="$(printf '%s' "$getwork_token" | tr '[:upper:]' '[:lower:]')"
+  [[ ! "$normalized_getwork_token" =~ (replace|example|change-me|changeme|test-secret|for-test|test-only) ]] ||
+    die "getWork MCP access token contains a deployment placeholder"
 }
 
 verify_account_boundary_manifest() {

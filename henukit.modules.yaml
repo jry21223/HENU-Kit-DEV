@@ -216,6 +216,16 @@ modules:
     deploy_unit: career-mcp
     status: active
 
+  - id: getwork_mcp
+    kind: python_service
+    current_path: services/getwork-mcp
+    target_path: services/getwork-mcp
+    owner: career
+    deploy_unit: getwork-mcp
+    status: active
+    notes:
+      - 授权并固定提交的上游 getWork MCP，仅作为 Career 内部岗位来源
+
   - id: deploy_webhook
     kind: deployment_service
     current_path: services/deploy-webhook

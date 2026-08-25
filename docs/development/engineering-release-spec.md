@@ -75,7 +75,7 @@ Python 格式/静态检查、Pytest、FastAPI Smoke、React Lint/Type/Build、�
 
 ## 6. Artifact 与版本
 
-同一 Commit SHA 可构建的镜像清单以 `scripts/ops/henukit-release-images.sh` 为权威：共 17 个镜像（9 个 baseline + 8 个 conditional，含 `henukit-platform-mail-worker`），不含 study/quiz 镜像。本清单以 `scripts/ops/henukit-release-images.sh` 为准。
+同一 Commit SHA 可构建的镜像清单以 `scripts/ops/henukit-release-images.sh` 为权威：共 19 个镜像（9 个 baseline + 10 个 conditional，含 `henukit-platform-mail-worker`、`henukit-getwork-mcp` 和容器化 `quizcraft` Go core），不含退役的 Study/standalone Quiz 镜像。本清单以 `scripts/ops/henukit-release-images.sh` 为准。
 
 > 历史规划：早期规划还列出 `henukit-platform-worker`、`henukit-study-*`、`henukit-quiz-api-legacy` 等镜像；这些单元当前不再由 HENU Kit 主运行时构建，不进入发布清单。
 

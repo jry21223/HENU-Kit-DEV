@@ -40,6 +40,7 @@ const releaseImages = [
   "henukit-food-mcp",
   "henukit-library",
   "henukit-career-opportunities",
+  "henukit-getwork-mcp",
   "henukit-career-mcp",
   "henukit-portal-gateway",
   "henukit-quizcraft",
@@ -95,7 +96,7 @@ function writeLocalArtifacts(root) {
   writeFileSync(join(runtimeTree, "RELEASE_SHA"), `${releaseSha}\n`);
   writeFileSync(
     join(runtimeTree, "docker-compose.henukit.release.yml"),
-    "services:\n  portal-summary:\n  account-portfolio:\n  notice:\n  notice-worker:\n  food:\n  library:\n  quizcraft:\n",
+    "services:\n  portal-summary:\n  account-portfolio:\n  notice:\n  notice-worker:\n  food:\n  library:\n  getwork-mcp:\n  quizcraft:\n",
   );
   writeFileSync(
     join(runtimeTree, "release-gates", "account-production-boundary.env"),
@@ -170,6 +171,8 @@ function fixture({
   careerAllowInsecureAIHTTP = false,
   careerSuifyAllowInsecureAIHTTP = false,
   careerDigestSecret = "fixture-career-digest-random-credential-48bytes",
+  getWorkToken = "fixture-getwork-mcp-random-credential-48bytes",
+  getWorkSources = "meituan",
   runConclusion = "success",
   runStatus = "completed",
   legacyRuntimePresent = false,
@@ -213,7 +216,7 @@ function fixture({
   chmodSync(token, 0o600);
   writeFileSync(
     envFile,
-    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nCAREER_SOURCE_ALLOWLIST=official.meituan\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nCAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=${careerSuifyAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
+    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nCAREER_SOURCE_ALLOWLIST=official.meituan\nCAREER_GETWORK_SOURCE_ALLOWLIST=${getWorkSources}\nGETWORK_MCP_ACCESS_TOKEN=${getWorkToken}\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nCAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=${careerSuifyAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
   );
   writeFileSync(rollbackEnvFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(log, "");
@@ -244,6 +247,7 @@ images=(
   henukit-notice-worker
   henukit-food
   henukit-library
+  henukit-getwork-mcp
   henukit-portal-gateway
 )
 case "\${1:-}" in
@@ -253,7 +257,7 @@ case "\${1:-}" in
     printf '%s\\n' henukit-console henukit-console-gateway henukit-platform-core henukit-platform-mail-worker henukit-platform-smtp-provider henukit-portal henukit-portal-summary henukit-portal-api henukit-portal-gateway
     ;;
   --conditional-services)
-    printf '%s\\n' $'account-portfolio\\thenukit-account-portfolio' $'notice\\thenukit-notice' $'notice-worker\\thenukit-notice-worker' $'food\\thenukit-food' $'library\\thenukit-library'
+    printf '%s\\n' $'account-portfolio\\thenukit-account-portfolio' $'notice\\thenukit-notice' $'notice-worker\\thenukit-notice-worker' $'food\\thenukit-food' $'library\\thenukit-library' $'getwork-mcp\\thenukit-getwork-mcp'
     ;;
   *) exit 64 ;;
 esac
@@ -369,6 +373,7 @@ images=(
   henukit-notice-worker
   henukit-food
   henukit-library
+  henukit-getwork-mcp
   henukit-portal-gateway
 )
 for image in "\${images[@]}"; do
@@ -397,7 +402,7 @@ runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
 mkdir -p "$runtime_artifact" "$runtime_tree/bin" "$runtime_tree/release-gates" "$runtime_tree/materials-runtime"
 printf '%s\\n' "$FAKE_RELEASE_SHA" > "$runtime_tree/RELEASE_SHA"
-printf 'services:\\n  portal-summary:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n  library:\\n  quizcraft:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
+printf 'services:\\n  portal-summary:\\n  account-portfolio:\\n  notice:\\n  notice-worker:\\n  food:\\n  library:\\n  getwork-mcp:\\n  quizcraft:\\n' > "$runtime_tree/docker-compose.henukit.release.yml"
 if [[ "$FAKE_CANDIDATE_MATERIALS_DIFFER" == "1" ]]; then
   printf 'different-candidate-materials\\n' > "$runtime_tree/materials-runtime/marker"
 else
@@ -485,7 +490,7 @@ elif [[ "$1" == "ps" ]]; then
       printf 'henukit-account-portfolio:%s\\n' "$sha"
     fi
     if [[ "$sha" == "$FAKE_RELEASE_SHA" ]]; then
-      printf 'henukit-notice:%s\\nhenukit-notice-worker:%s\\nhenukit-food:%s\\nhenukit-library:%s\\n' "$sha" "$sha" "$sha" "$sha"
+      printf 'henukit-notice:%s\\nhenukit-notice-worker:%s\\nhenukit-food:%s\\nhenukit-library:%s\\nhenukit-getwork-mcp:%s\\n' "$sha" "$sha" "$sha" "$sha" "$sha"
     fi
     if [[ -e "$FAKE_MIXED_RUNTIME" ]]; then
       printf 'henukit-future-owner:%s\\n' "$FAKE_RELEASE_SHA"
@@ -776,6 +781,7 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
 
 test("one-shot downloads, verifies, backs up, and deploys one successful main artifact set", () => {
   const setup = fixture();
+  setup.env.HENUKIT_PLATFORM_MIGRATIONS = "000021_future_reviewed.up.sql";
 
   const output = execFileSync(script, ["--once"], {
     encoding: "utf8",
@@ -788,9 +794,13 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 14);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 15);
   assert.match(calls, /docker exec henukit-portal-summary-1 .*verify-summary/);
   assert.match(calls, /deploy .*releases.*henukit\.env/);
+  assert.match(
+    calls,
+    /deploy .*000019_career_digest_mail\.up\.sql,000020_mail_outbox_allow_bulk_priority\.up\.sql,000021_future_reviewed\.up\.sql/,
+  );
   assert.match(calls, /grant-account-operator-role/);
   assert.match(calls, /operations-operator/);
   assert.match(calls, /curl .*https:\/\/example\.test\/api\/v1\/healthz/);
@@ -1125,7 +1135,7 @@ test("a signed local artifact set uses the same backup, exact-SHA approval, and 
   });
   calls = readFileSync(setup.log, "utf8");
   assert.match(activated, /activated and deterministic smoke checks passed/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 14);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 15);
   assert.match(calls, /docker exec henukit-portal-summary-1 .*verify-summary/);
   assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
 });
@@ -1795,7 +1805,7 @@ test("first Account Portfolio rollout accepts a legacy eight-image release and r
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
   assert.match(calls, /docker exec henukit-postgres-1 .*pg_dump.*account_portfolio/);
-  assert.equal((calls.match(/docker load/g) ?? []).length, 14);
+  assert.equal((calls.match(/docker load/g) ?? []).length, 15);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), releaseSha);
 });
 
@@ -1933,11 +1943,12 @@ test("one-shot accepts the Suification plaintext exception only for the exact ap
   assert.doesNotMatch(readFileSync(httpsWithException.log, "utf8"), /pg_dump|docker load|^deploy /m);
 });
 
-test("one-shot refuses Career LLM and digest placeholder credentials", () => {
+test("one-shot refuses Career LLM, digest, and getWork MCP placeholder credentials", () => {
   for (const options of [
     { careerAIKey: "replace-career-ai-key-32bytes-minimum" },
     { careerDigestSecret: "replace-career-digest-secret-32bytes-minimum" },
     { careerDigestSecret: "local-career-digest-secret-32bytes-only!" },
+    { getWorkToken: "replace-getwork-mcp-access-token-32chars!!" },
   ]) {
     const setup = fixture(options);
     const result = spawnSync(script, ["--once"], {

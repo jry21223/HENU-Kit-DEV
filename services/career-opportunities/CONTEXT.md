@@ -12,6 +12,10 @@ _Avoid_: Guaranteed vacancy, scraped job, application
 The current collection of Job Opportunities that anyone may browse and search without a Membership Entitlement.
 _Avoid_: Free trial, member inventory, complete market
 
+**Job Source MCP**:
+An operator-configured internal MCP that contributes source-attributed Job Opportunity facts. It does not own user identity, Career Profiles, Opportunity Matches, email delivery, or application actions.
+_Avoid_: Career backend, HENU login, email agent, browser plugin
+
 **Career Profile**:
 A user's structured directions, skills, locations, job type, availability, and matching keywords. It is not a resume file or a Platform Core identity profile.
 _Avoid_: Resume, account profile, prompt
