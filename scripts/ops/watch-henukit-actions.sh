@@ -252,9 +252,9 @@ environment_value() {
 verify_production_data_boundary() {
   local portal_api_mode portal_allow_mock easypay_enabled easypay_pid easypay_key
   local easypay_base_url easypay_notify_url easypay_return_url
-  local career_sources career_ai_base career_ai_key career_ai_model career_ai_insecure career_suify_ai_insecure career_digest_secret
+  local career_ai_base career_ai_key career_ai_model career_ai_insecure career_suify_ai_insecure career_digest_secret
   local career_digest_client career_digest_key normalized_secret normalized_ai
-  local getwork_sources getwork_token normalized_getwork_token
+  local getwork_token normalized_getwork_token
   portal_api_mode="$(environment_value PORTAL_API_MODE)"
   portal_allow_mock="$(environment_value NEXT_PUBLIC_PORTAL_ALLOW_MOCK)"
   [[ "$portal_api_mode" == "live" ]] ||
@@ -274,7 +274,6 @@ verify_production_data_boundary() {
   [[ "$easypay_base_url" == "https://metaview.top/epay" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL must use the production MetaView EasyPay gateway"
   [[ "$easypay_notify_url" == "https://henukit.cn/api/v1/payment-providers/easypay/notifications" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL must use the exact public callback ingress"
   [[ "$easypay_return_url" == "https://henukit.cn/account/membership" ]] || die "ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL must use the public membership route"
-  career_sources="$(environment_value CAREER_SOURCE_ALLOWLIST)"
   career_ai_base="$(environment_value CAREER_AI_BASE_URL)"
   career_ai_key="$(environment_value CAREER_AI_API_KEY)"
   career_ai_model="$(environment_value CAREER_AI_MODEL)"
@@ -283,9 +282,7 @@ verify_production_data_boundary() {
   career_digest_client="$(environment_value PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID)"
   career_digest_key="$(environment_value PLATFORM_CORE_CAREER_DIGEST_KEY_ID)"
   career_digest_secret="$(environment_value PLATFORM_CORE_CAREER_DIGEST_SECRET)"
-  getwork_sources="$(environment_value CAREER_GETWORK_SOURCE_ALLOWLIST)"
   getwork_token="$(environment_value GETWORK_MCP_ACCESS_TOKEN)"
-  [[ "$career_sources" == "official.meituan" ]] || die "CAREER_SOURCE_ALLOWLIST must enable only official.meituan"
   if [[ "$career_ai_base" == "http://125.46.96.207:30000/v1" ]]; then
     [[ "$career_ai_insecure" == "1" ]] || die "the approved plaintext Career LLM requires CAREER_ALLOW_INSECURE_AI_HTTP=1"
     [[ -z "$career_suify_ai_insecure" || "$career_suify_ai_insecure" == "0" || "$career_suify_ai_insecure" == "1" ]] ||
@@ -310,8 +307,6 @@ verify_production_data_boundary() {
     die "Career digest secret contains a deployment placeholder"
   [[ ! "$normalized_secret" =~ (replace|example|change-me|changeme|test-secret|for-test|test-only) ]] ||
     die "Career digest secret contains a deployment placeholder"
-  [[ "$getwork_sources" =~ ^[a-z0-9][a-z0-9._-]*(,[a-z0-9][a-z0-9._-]*)*$ ]] ||
-    die "CAREER_GETWORK_SOURCE_ALLOWLIST is missing or invalid"
   [[ ${#getwork_token} -ge 32 && "$getwork_token" != *[[:space:]]* ]] ||
     die "getWork MCP access token is missing or invalid"
   normalized_getwork_token="$(printf '%s' "$getwork_token" | tr '[:upper:]' '[:lower:]')"

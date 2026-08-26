@@ -395,7 +395,7 @@ func digestTopJobs(payload any, top int) []DigestJob {
 	}
 	order := make([]int, 0, len(result.Jobs))
 	for index := range result.Jobs {
-		if result.Jobs[index].MatchScore >= 50 {
+		if careerJobIsRelevant(result.Jobs[index]) {
 			order = append(order, index)
 		}
 	}

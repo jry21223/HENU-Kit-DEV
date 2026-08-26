@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -34,7 +36,7 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 			"fetched_at": "2026-08-25T00:00:00Z",
 			"count":      1,
 			"jobs": []map[string]any{{
-				"title": "Go 后端开发实习生", "company": "美团校招", "source": "meituan",
+				"title": "Go 后端开发实习生", "company": "美团校招", "source": "spoofed-upstream-key",
 				"location": "北京", "job_type": "实习", "description": "负责后端服务开发",
 				"requirement": "熟悉 Go 和 PostgreSQL", "apply_url": "https://zhaopin.meituan.com/job/1",
 				"publish_date": "2026-08-24",
@@ -52,11 +54,10 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 	t.Cleanup(upstream.Close)
 
 	work, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
-		Endpoint:     upstream.URL + "/mcp",
-		AccessToken:  "getwork-test-token-0000000000000000",
-		AllowSources: []string{"meituan"},
-		SinceDays:    7,
-		HTTPClient:   upstream.Client(),
+		Endpoint:    upstream.URL + "/mcp",
+		AccessToken: "getwork-test-token-0000000000000000",
+		SinceDays:   7,
+		HTTPClient:  upstream.Client(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -108,10 +109,7 @@ func TestDecodeGetWorkToolResultAcceptsUpstreamTextJSON(t *testing.T) {
 func TestGetWorkMCPRejectsDeploymentPlaceholderToken(t *testing.T) {
 	for _, token := range []string{"short", "replace-getwork-mcp-access-token-32chars!!"} {
 		_, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
-			Endpoint:     "http://127.0.0.1:18100/mcp",
-			AccessToken:  token,
-			AllowSources: []string{"meituan"},
-			SinceDays:    7,
+			Endpoint: "http://127.0.0.1:18100/mcp", AccessToken: token, SinceDays: 7,
 		})
 		if err == nil || !strings.Contains(err.Error(), "access token") {
 			t.Fatalf("token %q error = %v", token, err)
@@ -135,7 +133,7 @@ func TestGetWorkMCPKeepsSuccessfulSourcesWhenOneSourceFails(t *testing.T) {
 	t.Cleanup(upstream.Close)
 
 	work, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
-		Endpoint: upstream.URL + "/mcp", AccessToken: "degraded-source-test-token-000000000000", AllowSources: []string{"meituan", "tencent"}, SinceDays: 7,
+		Endpoint: upstream.URL + "/mcp", AccessToken: "degraded-source-test-token-000000000000", SinceDays: 7,
 		HTTPClient: upstream.Client(),
 	})
 	if err != nil {
@@ -154,6 +152,51 @@ func TestGetWorkMCPKeepsSuccessfulSourcesWhenOneSourceFails(t *testing.T) {
 	}
 }
 
+func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
+	sources := []string{"alibaba", "baidu", "beike", "bytedance", "ctrip", "dewu"}
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "getwork-test", Version: "0.1.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_sources"}, func(context.Context, *mcpsdk.CallToolRequest, struct{}) (*mcpsdk.CallToolResult, any, error) {
+		listed := make([]map[string]any, 0, len(sources))
+		for _, source := range sources {
+			listed = append(listed, map[string]any{"key": source})
+		}
+		return nil, map[string]any{"status": "ok", "sources": listed}, nil
+	})
+	var active atomic.Int32
+	var maximum atomic.Int32
+	var calls atomic.Int32
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "crawl_jobs"}, func(_ context.Context, _ *mcpsdk.CallToolRequest, input upstreamCrawlInput) (*mcpsdk.CallToolResult, any, error) {
+		current := active.Add(1)
+		defer active.Add(-1)
+		calls.Add(1)
+		for observed := maximum.Load(); current > observed && !maximum.CompareAndSwap(observed, current); observed = maximum.Load() {
+		}
+		time.Sleep(50 * time.Millisecond)
+		return nil, map[string]any{"status": "ok", "source": input.Source, "jobs": []map[string]any{}}, nil
+	})
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	upstream := httptest.NewServer(handler)
+	t.Cleanup(upstream.Close)
+
+	work, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
+		Endpoint: upstream.URL + "/mcp", AccessToken: "bounded-concurrency-test-token-000000000", SinceDays: 7,
+		HTTPClient: upstream.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := work(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SourceCount != len(sources) || calls.Load() != int32(len(sources)) {
+		t.Fatalf("source_count=%d calls=%d, want %d", result.SourceCount, calls.Load(), len(sources))
+	}
+	if maximum.Load() <= 1 || maximum.Load() > 4 {
+		t.Fatalf("maximum concurrent crawls = %d, want 2..4", maximum.Load())
+	}
+}
+
 func TestGetWorkMCPRefusesHTTPRedirectsBeforeSendingBearerToken(t *testing.T) {
 	attackerAuthorization := make(chan string, 1)
 	attacker := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -167,7 +210,7 @@ func TestGetWorkMCPRefusesHTTPRedirectsBeforeSendingBearerToken(t *testing.T) {
 	t.Cleanup(redirect.Close)
 
 	_, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
-		Endpoint: redirect.URL + "/mcp", AccessToken: "redirect-safety-test-token-00000000000", AllowSources: []string{"meituan"}, SinceDays: 7,
+		Endpoint: redirect.URL + "/mcp", AccessToken: "redirect-safety-test-token-00000000000", SinceDays: 7,
 		HTTPClient: redirect.Client(),
 	})
 	if err == nil {
@@ -199,17 +242,34 @@ func TestGetWorkMCPJobTypeFilteringKeepsUnknownUpstreamFamilies(t *testing.T) {
 	}
 }
 
-func TestGetWorkMCPApplyURLRequiresApprovedHTTPSHost(t *testing.T) {
+func TestGetWorkMCPApplyURLAcceptsEveryConfiguredSourceOfficialHTTPSHost(t *testing.T) {
 	for _, testCase := range []struct {
 		source string
 		url    string
 		want   bool
 	}{
+		{source: "alibaba", url: "https://campus-talent.alibaba.com/campus/position/1", want: true},
+		{source: "baidu", url: "https://talent.baidu.com/jobs/1", want: true},
+		{source: "beike", url: "https://campus.ke.com/jobs/1", want: true},
+		{source: "ctrip", url: "https://job.ctrip.com/jobs/1", want: true},
+		{source: "dewu", url: "https://campus.dewu.com/jobs/1", want: true},
+		{source: "didi", url: "https://app.mokahr.com/jobs/1", want: true},
+		{source: "jd", url: "https://campus.jd.com/jobs/1", want: true},
+		{source: "kuaishou", url: "https://zhaopin.kuaishou.cn/jobs/1", want: true},
 		{source: "meituan", url: "https://zhaopin.meituan.com/web/position/detail?id=1", want: true},
+		{source: "netease", url: "https://hr.163.com/jobs/1", want: true},
+		{source: "pdd", url: "https://careers.pddglobalhr.com/jobs/1", want: true},
 		{source: "meituan", url: "http://zhaopin.meituan.com/web/position/detail?id=1", want: false},
-		{source: "meituan", url: "https://example.test/phishing", want: false},
+		{source: "bytedance", url: "https://jobs.bytedance.com/campus/position/1", want: true},
 		{source: "tencent", url: "https://join.qq.com/post.html?id=1", want: true},
-		{source: "unknown", url: "https://zhaopin.meituan.com/web/position/detail?id=1", want: false},
+		{source: "tencentmusic", url: "https://join.tencentmusic.com/jobs/1", want: true},
+		{source: "tongcheng", url: "https://mhr.ly.com/jobs/1", want: true},
+		{source: "vipshop", url: "https://app-tc.mokahr.com/jobs/1", want: true},
+		{source: "xfusion", url: "https://career.xfusion.com/jobs/1", want: true},
+		{source: "xiaohongshu", url: "https://job.xiaohongshu.com/jobs/1", want: true},
+		{source: "unknown", url: "https://jobs.example.test/position/1", want: false},
+		{source: "bytedance", url: "https://user@jobs.bytedance.com/campus/position/1", want: false},
+		{source: "bytedance", url: "https://jobs.bytedance.com:8443/campus/position/1", want: false},
 	} {
 		if got := approvedGetWorkApplyURL(testCase.source, testCase.url); got != testCase.want {
 			t.Fatalf("approvedGetWorkApplyURL(%q, %q) = %t, want %t", testCase.source, testCase.url, got, testCase.want)
@@ -217,11 +277,62 @@ func TestGetWorkMCPApplyURLRequiresApprovedHTTPSHost(t *testing.T) {
 	}
 }
 
-func TestGetWorkMCPRejectsSourceWithoutApplyURLPolicy(t *testing.T) {
-	_, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
-		Endpoint: "http://127.0.0.1:18100/mcp", AccessToken: "source-policy-test-token-0000000000000", AllowSources: []string{"unknown"}, SinceDays: 7,
+func TestGetWorkMCPRejectsConfiguredSourceWithoutFixedHostPolicy(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "getwork-test", Version: "0.1.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_sources"}, func(context.Context, *mcpsdk.CallToolRequest, struct{}) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "sources": []map[string]any{{"key": "unknown"}}}, nil
 	})
-	if err == nil || !strings.Contains(err.Error(), "apply URL policy") {
-		t.Fatalf("error = %v", err)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "crawl_jobs"}, func(context.Context, *mcpsdk.CallToolRequest, upstreamCrawlInput) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "jobs": []map[string]any{}}, nil
+	})
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	upstream := httptest.NewServer(handler)
+	t.Cleanup(upstream.Close)
+
+	_, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
+		Endpoint: upstream.URL + "/mcp", AccessToken: "unknown-source-policy-test-token-00000000", SinceDays: 7,
+		HTTPClient: upstream.Client(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "no fixed upstream apply URL policy") {
+		t.Fatalf("unknown source policy error = %v", err)
+	}
+}
+
+func TestGetWorkMCPCanonicalizesOnlyPinnedXiaohongshuHTTPFallback(t *testing.T) {
+	if got := canonicalGetWorkApplyURL("xiaohongshu", "http://job.xiaohongshu.com/campus"); got != "https://job.xiaohongshu.com/campus" {
+		t.Fatalf("canonical Xiaohongshu URL = %q", got)
+	}
+	for _, testCase := range []struct {
+		source string
+		url    string
+	}{
+		{source: "meituan", url: "http://zhaopin.meituan.com/jobs/1"},
+		{source: "xiaohongshu", url: "http://evil.example/jobs/1"},
+		{source: "xiaohongshu", url: "http://user@job.xiaohongshu.com/jobs/1"},
+		{source: "xiaohongshu", url: "http://job.xiaohongshu.com:8080/jobs/1"},
+	} {
+		if got := canonicalGetWorkApplyURL(testCase.source, testCase.url); got != testCase.url {
+			t.Fatalf("canonicalGetWorkApplyURL(%q, %q) = %q", testCase.source, testCase.url, got)
+		}
+	}
+}
+
+func TestGetWorkMCPBoundsPersistedJobsAfterStableRelevanceSorting(t *testing.T) {
+	jobs := make([]Job, 0, maxGetWorkResultJobs+2)
+	for index := 0; index < maxGetWorkResultJobs+2; index++ {
+		jobs = append(jobs, Job{
+			SourceKey: "getwork.meituan", Title: fmt.Sprintf("岗位 %03d", index),
+			MatchScore: index % 101, MatchReasons: []string{"匹配技术栈 Go"},
+		})
+	}
+	bounded, matched, retained := boundedGetWorkJobs(jobs)
+	if len(bounded) != maxGetWorkResultJobs || matched != maxGetWorkResultJobs {
+		t.Fatalf("bounded jobs=%d matched=%d", len(bounded), matched)
+	}
+	if bounded[0].MatchScore != 100 || bounded[len(bounded)-1].MatchScore != 1 {
+		t.Fatalf("bounded score range = %d..%d", bounded[0].MatchScore, bounded[len(bounded)-1].MatchScore)
+	}
+	if retained["getwork.meituan"] != maxGetWorkResultJobs {
+		t.Fatalf("retained by source = %v", retained)
 	}
 }

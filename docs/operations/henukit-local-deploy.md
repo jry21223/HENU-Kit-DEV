@@ -294,7 +294,6 @@ FOOD_POST_READ_KEY_ID=food-post-read-key
 FOOD_MCP_ACCESS_TOKEN=mcp-$(openssl rand -hex 16)
 CAREER_MCP_ACCESS_TOKEN=mcp-$(openssl rand -hex 16)
 GETWORK_MCP_ACCESS_TOKEN=getwork-mcp-$(openssl rand -hex 24)
-CAREER_GETWORK_SOURCE_ALLOWLIST=meituan
 CAREER_GETWORK_SINCE_DAYS=7
 PORTAL_DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PORTAL_VERSION=<sha前12位>

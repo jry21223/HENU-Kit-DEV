@@ -50,10 +50,12 @@ cd services/career-opportunities && go test -count=1 -run GetWork -v .
 
 | 验收点 | 用例 |
 |---|---|
-| 空 allowlist = 生产安全关闭态（0 来源，正常完成空结果） | `TestGetWorkEmptyAllowlistYieldsNoJobs` |
-| allowlist 门控（未授权来源不执行） | `TestGetWorkAllowlistGatesSources` |
-| 单来源超时/失败降级，成功来源结果保留 | `TestGetWorkSingleSourceFailureDegrades` |
-| **全部已授权来源失败则任务失败，不把空结果伪装为成功** | `TestGetWorkAllSourcesFailedReturnsError` |
+| 空直连注册表 = 本地/降级关闭态（0 来源） | `TestGetWorkEmptyRegistryYieldsNoJobs` |
+| 无来源白名单，每个已注册直连来源都执行 | `TestGetWorkRunsEveryRegisteredSource` |
+| MCP 使用全部发现来源，最多 4 路并发 | `TestGetWorkMCPScansAllSourcesWithBoundedConcurrency` |
+| 单来源超时/失败降级，已响应来源结果保留 | `TestGetWorkMCPKeepsSuccessfulSourcesWhenOneSourceFails` |
+| 结果按相关度稳定排序并最多持久化 200 个 | `TestGetWorkMCPBoundsPersistedJobsAfterStableRelevanceSorting` |
+| **全部已配置来源失败则任务失败，不把空结果伪装为成功** | `TestGetWorkAllSourcesFailedFailsSearch` |
 
 ### 1.2.1 后端 · 简历上传 AI 提取（上传 → 识别 → 回填）
 
@@ -175,19 +177,22 @@ DeliversThroughMailWorker` / `TestCareerDigestEnqueueIsIdempotentPerSearch`
 
 ## 5. 发布守门（发布前必读）
 
-### 5.1 source allowlist 授权状态
+### 5.1 getWork MCP 全来源运行状态
 
-- **生产启用**：`CAREER_SOURCE_ALLOWLIST=official.meituan` 注册独立编写的美团
-  官方校招接口适配器；浏览器不能新增来源、URL 或选择器。
-- 未注册的 allowlist key 会令服务启动失败，避免健康服务静默返回 0 来源。
-- 空 allowlist 仅保留为本地开发和事故 kill switch；正式发布的 prebuilt
-  Compose 要求该变量非空。
+- **生产启用**：Career 通过内网 MCP endpoint 连接锁定版本的 getWork，
+  启动时调用 `list_sources` 发现它配置的全部来源。
+- 不设置来源白名单；所有发现到的来源都以最多 4 路并发扫描，
+  并保留每个来源的已响应/暂不可用、抓取数和未展示数。整体扫描最长 6 分钟，
+  按相关度最多保留 200 个岗位。
+- 未知来源缺少固定官方 HTTPS 投递域名策略时会令服务启动失败，
+  避免将上游返回的任意 URL 暴露给用户。
 - 已启用来源全部失败时搜索进入稳定失败态，不把上游故障伪装成“0 岗位”。
 
 ### 5.2 kill switch
 
-**allowlist 即 kill switch**：生产突发问题时清空 allowlist（配置为空数组/空
-map）即停掉全部来源，无需改代码、无需新开关。空 allowlist 是安全默认值。
+**MCP 连接即边界**：本地/降级环境不配置 MCP endpoint 和 token 时，
+Career 运行空的直连来源注册表。生产 Compose 必须同时提供内网 endpoint
+和强 token；不通过白名单局部关闭某个来源。
 
 ### 5.3 邮件与失败恢复守门
 

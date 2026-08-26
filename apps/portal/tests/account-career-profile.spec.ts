@@ -509,6 +509,42 @@ test("the work radar dial reflects only server-confirmed scan facts", async ({ p
   await expect(dial.locator("[data-radar-ping]")).toHaveCount(3);
 });
 
+test("completed scans expose every source outcome and keep low-score jobs inspectable", async ({ page }) => {
+  const inspectableSearch = {
+    ...completedSearch,
+    result: {
+      source_count: 2,
+      job_count: 2,
+      matched_count: 1,
+      summary: "已扫描 2 个来源，发现 2 个岗位，1 个相关岗位",
+      sources: [
+        { key: "getwork.meituan", status: "success", found: 2, fetched: 3, rejected: 1 },
+        { key: "getwork.tencent", status: "failed", found: 0 },
+      ],
+      jobs: [
+        { source_key: "getwork.meituan", company: "美团", title: "AI 工具开发实习生", location: "北京", url: "https://jobs.example.test/1", match_score: 24, match_reasons: ["匹配技术栈 Go、MCP"] },
+        { source_key: "getwork.meituan", company: "美团", title: "其他岗位", location: "", url: "https://jobs.example.test/2", match_score: 0, match_reasons: [] },
+      ],
+    },
+  };
+  await mockLifetimeCareer(page, [inspectableSearch]);
+
+  await page.goto(`/career?search=${inspectableSearch.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
+  await expect(page.getByText("AI 工具开发实习生")).toBeVisible();
+  await expect(page.getByText("其他岗位")).toBeVisible();
+  await expect(page.getByText("meituan")).toBeVisible();
+  await expect(page.getByText("已响应 · 可展示 2 / 抓取 3 / 未展示 1")).toBeVisible();
+  await expect(page.getByText("tencent")).toBeVisible();
+  await expect(page.getByText("暂时不可用")).toBeVisible();
+
+  await page.goto("/career/history", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("2 个来源 · 2 个岗位")).toBeVisible();
+  await expect(page.getByText("来源：meituan 已响应(2)；tencent 暂不可用")).toBeVisible();
+  await expect(page.getByText("岗位预览（最多 3 个）")).toBeVisible();
+  await expect(page.getByRole("link", { name: "AI 工具开发实习生 · 美团 · 相关度 24" })).toBeVisible();
+});
+
 test("the marketing radar is labelled a schematic and claims no counts", async ({ page }) => {
   await page.route("**/api/v1/session", async (route) => {
     await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) });
