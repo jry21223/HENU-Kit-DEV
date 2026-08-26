@@ -446,6 +446,15 @@ const completedSearch = {
   },
 };
 
+const runningSearch = {
+  id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+  status: "running",
+  stage: "crawling",
+  user_id: sessionUserID,
+  has_email: false,
+  created_at: "2026-08-23T10:00:00Z",
+};
+
 async function mockLifetimeCareer(
   page: Page,
   searches: Array<Record<string, unknown>> = []
@@ -509,17 +518,191 @@ test("the work radar dial reflects only server-confirmed scan facts", async ({ p
   await expect(dial.locator("[data-radar-ping]")).toHaveCount(3);
 });
 
-test("the marketing radar is labelled a schematic and claims no counts", async ({ page }) => {
+test("a running scan echoes the sweep but confirms no hits", async ({ page }) => {
+  await mockLifetimeCareer(page, [runningSearch]);
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
+
+  const dial = page.locator('svg[aria-label="求职雷达状态：扫描中"]');
+  await expect(dial).toBeVisible();
+  // 光束一圈 3.2s；等它扫过几个标记，回波才有可采样的差异。
+  await expect
+    .poll(async () =>
+      dial.evaluate((svg) =>
+        [...svg.querySelectorAll("[data-radar-echo]")].filter(
+          (g) => Number(getComputedStyle(g).opacity) > 0.25
+        ).length
+      )
+    )
+    .toBeGreaterThan(0);
+
+  // 进行中后端只返回 stage、没有任何计数：命中呼吸的三件套一个都不能出现，
+  // 否则表盘就在暗示已经找到岗位。
+  await expect(dial.locator("[data-radar-blip]")).toHaveCount(0);
+  await expect(dial.locator("[data-radar-ping]")).toHaveCount(0);
+  await expect(dial.locator("[data-radar-lock]")).toHaveCount(0);
+
+  // 但光束扫过标记时要有回波——只动透明度，不涂主题橙。
+  await expect(dial.locator("[data-radar-echo]")).toHaveCount(8);
+  const accentMarkers = await dial.evaluate((svg) =>
+    [...svg.querySelectorAll("[data-radar-echo] circle")].filter(
+      (c) => getComputedStyle(c).fill === "rgb(255, 77, 0)"
+    ).length
+  );
+  expect(accentMarkers).toBe(0);
+
+  // 回波必须真的在动。只断言标记存在是空转的：把 animateEcho 整个删掉，
+  // 上面那些断言照样通过。这里采样实际透明度——静止值是 0.2，光束刚扫过的
+  // 那几个会被提亮，因此必须既有高于静止值的，也不能全都一样。
+  const opacities = await dial.evaluate((svg) =>
+    [...svg.querySelectorAll("[data-radar-echo]")].map((g) =>
+      Number(getComputedStyle(g).opacity)
+    )
+  );
+  expect(opacities.some((o) => o > 0.25)).toBe(true);
+  expect(new Set(opacities.map((o) => o.toFixed(2))).size).toBeGreaterThan(1);
+});
+
+// 扫描跑完的瞬间，表盘要把「回波」整套换成「命中」整套：回波标记清零、命中
+// 三件套按服务端确认的 matched_count 出现，且回波动过的 inline opacity 不能留
+// 残值（GSAP 写的是 style.opacity，JSX 上是 SVG 属性，两者打架会卡住）。
+test("a finishing scan swaps the echo for confirmed hits", async ({ page }) => {
+  let statusReads = 0;
+  await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches/*", async (route) => {
+    statusReads += 1;
+    // 首次恢复仍是进行中，下一次轮询翻成完成，触发真实的状态切换。
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        search: statusReads >= 2 ? { ...completedSearch, id: runningSearch.id } : runningSearch,
+        request_id: "req_search",
+      }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [runningSearch], request_id: "req_searches" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
+  await expect(page.locator("[data-radar-echo]")).toHaveCount(8);
+  await expect(page.locator("[data-radar-blip]")).toHaveCount(0);
+
+  // 轮询周期 4s；等它把任务推到完成。
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible({ timeout: 15000 });
+
+  // 两套语汇互斥：回波清零，命中三件套按 matched_count === 3 出现。
+  await expect(page.locator("[data-radar-echo]")).toHaveCount(0);
+  await expect(page.locator("[data-radar-blip]")).toHaveCount(3);
+  await expect(page.locator("[data-radar-lock]")).toHaveCount(1);
+
+  // 回波留下的 inline opacity 必须已被清掉：命中的满亮、其余落回静止值。
+  const dial = page.locator('svg[aria-label="求职雷达状态：已完成"]');
+  await expect
+    .poll(async () =>
+      dial.evaluate((svg) =>
+        [...svg.querySelectorAll("g")]
+          .filter((g) => g.querySelector("circle[r='5.5'], circle[r='4.5']"))
+          .map((g) => Number(getComputedStyle(g).opacity).toFixed(2))
+          .join(",")
+      )
+    )
+    .toBe("1.00,1.00,1.00,0.20,0.20,0.20,0.20,0.20");
+});
+
+test("the marketing radar is a schematic: labelled, aria-hidden, and lights nothing real", async ({ page }) => {
   await page.route("**/api/v1/session", async (route) => {
     await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) });
   });
 
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-state="anonymous"]')).toBeVisible();
-  await expect(page.locator('svg[aria-label="求职雷达示意图"]')).toBeVisible();
   await expect(page.getByText("SCHEMATIC")).toBeVisible();
-  // 读数区（SOURCES / JOBS FOUND / MATCHED）不得出现在示意表盘上。
-  await expect(page.getByText("JOBS FOUND")).toHaveCount(0);
+  // 整块装饰面板对辅助技术隐藏——包括表头那行 WORK RADAR / WR-01 · SCHEMATIC，
+  // 它是 <svg> 的兄弟节点，只给 <svg> 加 aria-hidden 盖不住它。
+  const panel = page.locator("[data-career-state='anonymous'] [aria-hidden='true']");
+  await expect(panel).toHaveCount(1);
+  await expect(panel.getByText("SCHEMATIC")).toHaveCount(1);
+  await expect(panel.locator("svg")).toHaveCount(1);
+  // 装饰表盘不冒充一次带状态的真实扫描。
+  await expect(page.locator("svg[aria-label^='求职雷达状态']")).toHaveCount(0);
+});
+
+// 恢复 effect 曾经依赖 searches[0] 的对象身份，而父页面在窗口重新获得焦点时会
+// 重新拉取历史、每次返回新数组 —— 于是切回标签页就把已恢复的任务整个重新恢复
+// 一遍。用 completed 任务做探针：它的恢复路径必定读一次单条状态接口
+// (`/searches/{id}`)，且完成后轮询即停，没有后台轮询来污染计数。
+test("refocusing the tab does not re-restore an unchanged scan", async ({ page }) => {
+  let statusReads = 0;
+  let listReads = 0;
+  await mockSession(page);
+  await page.route("**/api/v1/account/membership", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ data: { plan: "lifetime", lifetime: true }, request_id: "req_membership" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches/*", async (route) => {
+    statusReads += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ search: completedSearch, request_id: "req_search" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    listReads += 1;
+    // 每次都返回结构相同但对象身份全新的列表，模拟真实网关响应。
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ searches: [{ ...completedSearch }], request_id: "req_searches" }),
+    });
+  });
+
+  await page.goto("/career", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
+  await expect.poll(() => statusReads).toBeGreaterThan(0);
+  const statusReadsAfterFirstRestore = statusReads;
+  const listReadsBeforeRefocus = listReads;
+
+  // 父页面在 visibilitychange / focus 时重新解析整页状态。逐轮触发并等到列表
+  // 确实被重新拉取，用真实信号代替固定等待。
+  //
+  // 走满两轮是有意的：listReads 在请求「到达」时自增，早于它要守的那个恢复
+  // effect；只观察一轮的话，断言可能赶在 React 重渲染之前就跑完了。等到第二
+  // 轮的请求发出，第一轮的重渲染与 effect 必然已经结束。
+  for (let round = 0; round < 2; round += 1) {
+    const listReadsBeforeRound = listReads;
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => listReads).toBeGreaterThan(listReadsBeforeRound);
+  }
+  expect(listReads).toBeGreaterThan(listReadsBeforeRefocus);
+
+  // 刷新落地之后，恢复 effect 不应重跑：同一条任务的完整状态不会被再读一次。
+  expect(statusReads).toBe(statusReadsAfterFirstRestore);
+  await expect(page.getByRole("button", { name: "正在恢复任务…" })).toHaveCount(0);
 });
 
 test("/career renders the ready view for a lifetime member with a complete profile", async ({ page }) => {

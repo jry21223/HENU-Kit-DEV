@@ -201,9 +201,21 @@ map）即停掉全部来源，无需改代码、无需新开关。空 allowlist 
 - reduced-motion：雷达动画（`work-radar.tsx`，模块内唯一的表盘组件）以
   `(prefers-reduced-motion: no-preference)` 门控，reduced-motion 用户看到静态
   展示：光束不转、命中呼吸的涟漪圈保持 `opacity=0`、目标点保持墨色。
-- 表盘读数只渲染服务端确认过的数字，未知一律显示「—」；`schematic` 模式
-  （首页 05 区块、未登录介绍页）表头标 `SCHEMATIC` 且完全不渲染读数区，
-  装饰表盘不会被读成真实扫描结果。
+- 表盘不渲染任何读数：准确计数只由任务状态区（`career-scan-status-panel.tsx`）
+  给出，避免两处数字打架。表盘点亮的目标点数只在 completed 时取服务端确认的
+  `result.matched_count`（超过表盘容量即截断——它是刻度盘不是计数器）。
+- 表盘上「命中」与「回波」是两套互不混用的语汇，因为后端在 queued / running
+  期间只返回 `stage`、不返回任何计数：
+  - **命中呼吸**（主题橙涟漪 + 目标点点亮 + 锁定环）在真实任务上只出现于
+    completed，对应服务端确认过的 `result.matched_count`；示意表盘也走这套
+    语汇（全部点亮），但它标着 `SCHEMATIC` 且对辅助技术隐藏，不是真实任务；
+  - **扫描回波**（仅墨色标记随光束短暂提亮再落回，无涟漪、无橙色、无锁定环）
+    在 queued / running 时出现，表达的是「光束扫过空网格」，不暗示任何命中。
+  两套语汇互斥由组件里单一的 `markerMode` 判别式保证，不会同时出现。回归见
+  `a running scan echoes the sweep but confirms no hits`（含回波确实在动的采样
+  断言）与 `a finishing scan swaps the echo for confirmed hits`。
+- `schematic` 模式（首页 05 区块、未登录介绍页）表头标 `SCHEMATIC`，并对辅助
+  技术 `aria-hidden`，装饰表盘不会被读成一次真实扫描。
 - 状态机/四态/权限门文案均经单元测试覆盖；生产模式失败不静默回退 mock
   （`gateway.test.ts`）。
 

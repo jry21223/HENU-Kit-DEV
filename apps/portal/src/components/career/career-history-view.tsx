@@ -107,7 +107,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           <span className="mx-2">/</span>
           HISTORY UNAVAILABLE
         </p>
-        <h1 className="mt-3 font-display text-2xl font-bold tracking-tight md:text-3xl">
+        <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
           扫描历史暂时不可用
         </h1>
         <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>
