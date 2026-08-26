@@ -98,16 +98,15 @@ func main() {
 	}
 }
 
-// buildWork turns the operator-owned allowlist into the exact registered
-// official sources. Unknown keys fail startup instead of producing a healthy
-// service that can only return empty results.
+// buildWork uses every source advertised by the pinned read-only getWork MCP.
+// Source selection is not an operator or browser input; the fixed upstream
+// configuration and Career's HTTPS apply-URL policies remain the boundary.
 func buildWork() (career.WorkFunc, error) {
 	mcpEndpoint := strings.TrimSpace(os.Getenv("CAREER_GETWORK_MCP_URL"))
 	mcpToken := strings.TrimSpace(os.Getenv("CAREER_GETWORK_MCP_ACCESS_TOKEN"))
-	mcpSources := strings.TrimSpace(os.Getenv("CAREER_GETWORK_SOURCE_ALLOWLIST"))
-	if mcpEndpoint != "" || mcpToken != "" || mcpSources != "" {
-		if mcpEndpoint == "" || mcpToken == "" || mcpSources == "" {
-			return nil, errors.New("career getWork MCP endpoint, token and source allowlist must be configured together")
+	if mcpEndpoint != "" || mcpToken != "" {
+		if mcpEndpoint == "" || mcpToken == "" {
+			return nil, errors.New("career getWork MCP endpoint and token must be configured together")
 		}
 		sinceDays := 7
 		if rawSince := strings.TrimSpace(os.Getenv("CAREER_GETWORK_SINCE_DAYS")); rawSince != "" {
@@ -120,7 +119,7 @@ func buildWork() (career.WorkFunc, error) {
 		probeContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		work, err := career.NewGetWorkMCPWork(probeContext, career.GetWorkMCPConfig{
-			Endpoint: mcpEndpoint, AccessToken: mcpToken, AllowSources: splitCommaSeparated(mcpSources),
+			Endpoint: mcpEndpoint, AccessToken: mcpToken,
 			SinceDays: sinceDays, HTTPClient: &http.Client{Timeout: 65 * time.Second},
 		})
 		if err != nil {
@@ -128,45 +127,7 @@ func buildWork() (career.WorkFunc, error) {
 		}
 		return work, nil
 	}
-	raw := strings.TrimSpace(os.Getenv("CAREER_SOURCE_ALLOWLIST"))
-	if raw == "" {
-		return career.NewGetWorkWork(career.GetWorkConfig{}), nil
-	}
-	allowlist := map[string]bool{}
-	for _, value := range strings.Split(raw, ",") {
-		key := strings.TrimSpace(value)
-		if key == "" {
-			continue
-		}
-		if key != career.MeituanSourceKey {
-			return nil, fmt.Errorf("CAREER_SOURCE_ALLOWLIST contains unsupported source %q", key)
-		}
-		allowlist[key] = true
-	}
-	if len(allowlist) == 0 {
-		return career.NewGetWorkWork(career.GetWorkConfig{}), nil
-	}
-	meituan, err := career.NewMeituanSource(
-		strings.TrimSpace(os.Getenv("CAREER_MEITUAN_API_URL")),
-		&http.Client{Timeout: 20 * time.Second},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return career.NewGetWorkWork(career.GetWorkConfig{
-		AllowSources: allowlist,
-		Sources:      []career.Source{meituan},
-	}), nil
-}
-
-func splitCommaSeparated(raw string) []string {
-	values := make([]string, 0)
-	for _, value := range strings.Split(raw, ",") {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			values = append(values, trimmed)
-		}
-	}
-	return values
+	return career.NewGetWorkWork(career.GetWorkConfig{}), nil
 }
 
 // buildExtractor wires the resume AI extraction seam from the operator's

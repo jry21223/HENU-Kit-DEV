@@ -325,7 +325,9 @@ func TestWorkerAdvancesSearchToCompleted(t *testing.T) {
 				Location: "北京市", URL: "https://zhaopin.meituan.com/jobs/1",
 				Description: strings.Repeat("internal duty ", 2_000), Requirements: []string{strings.Repeat("internal requirement ", 2_000)},
 				MatchScore: 90, MatchReasons: []string{"匹配目标岗位 后端开发"},
-			}}},
+			}}, "sources": map[string]any{
+				"official.meituan": map[string]any{"status": "success", "found": 1, "fetched": 1, "rejected": 0},
+			}},
 			SourceCount: 1, JobCount: 1, MatchedCount: 1,
 			Summary: "已扫描 1 个来源，发现 1 个岗位，1 个推荐",
 		}, nil
@@ -390,8 +392,11 @@ func TestWorkerAdvancesSearchToCompleted(t *testing.T) {
 	if !ok {
 		t.Fatalf("completed history row has no durable result: %v", historySearch)
 	}
-	if historyResult["job_count"] != float64(1) || len(historyResult["jobs"].([]any)) != 0 {
-		t.Fatalf("history must carry bounded result counts without full jobs: %v", historyResult)
+	if historyResult["job_count"] != float64(1) || len(historyResult["jobs"].([]any)) != 1 {
+		t.Fatalf("history must carry counts and a bounded ranked job preview: %v", historyResult)
+	}
+	if len(historyResult["sources"].([]any)) != 1 {
+		t.Fatalf("history must carry source outcomes: %v", historyResult)
 	}
 }
 
@@ -698,11 +703,11 @@ func digestWork() career.WorkFunc {
 		return career.WorkResult{
 			Payload: map[string]any{"jobs": []career.Job{
 				{SourceKey: "fake.a", Company: "测试公司", Title: "后端开发实习生", Location: "郑州", URL: "https://example.test/jobs/1", MatchScore: 90, MatchReasons: []string{"匹配目标岗位 后端开发"}},
-				{SourceKey: "fake.b", Company: "内推科技", Title: "前端实习生", Location: "远程", URL: "https://example.test/jobs/2", MatchScore: 70, MatchReasons: nil},
+				{SourceKey: "fake.b", Company: "内推科技", Title: "前端实习生", Location: "远程", URL: "https://example.test/jobs/2", MatchScore: 70, MatchReasons: []string{"匹配技术栈 React"}},
 				{SourceKey: "fake.a", Company: "测试公司", Title: "数据实习生", Location: "郑州", URL: "https://example.test/jobs/3", MatchScore: 40, MatchReasons: nil},
 			}},
 			SourceCount: 2, JobCount: 3, MatchedCount: 2,
-			Summary: "已扫描 2 个来源，发现 3 个岗位，2 个推荐",
+			Summary: "已扫描 2 个来源，发现 3 个岗位，2 个相关岗位",
 		}, nil
 	}
 }
@@ -728,7 +733,7 @@ func TestCompletedSearchEnqueuesDigestWhenNotificationsEnabled(t *testing.T) {
 	if digest.UserID != actorA || digest.SearchID != id || digest.SourceCount != 2 || digest.JobCount != 3 || digest.MatchedCount != 2 {
 		t.Fatalf("unexpected digest request: %+v", digest)
 	}
-	if digest.Summary != "已扫描 2 个来源，发现 3 个岗位，2 个推荐" || digest.CompletedAt == "" {
+	if digest.Summary != "已扫描 2 个来源，发现 3 个岗位，2 个相关岗位" || digest.CompletedAt == "" {
 		t.Fatalf("digest summary/time missing: %+v", digest)
 	}
 	if digest.CareerURL != "https://portal.henukit.cn/career?search="+id {

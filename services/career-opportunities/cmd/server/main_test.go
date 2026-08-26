@@ -47,9 +47,7 @@ func TestBuildWorkUsesAuthorizedGetWorkMCP(t *testing.T) {
 
 	t.Setenv("CAREER_GETWORK_MCP_URL", upstream.URL+"/mcp")
 	t.Setenv("CAREER_GETWORK_MCP_ACCESS_TOKEN", "getwork-test-access-token-32-bytes")
-	t.Setenv("CAREER_GETWORK_SOURCE_ALLOWLIST", "meituan")
 	t.Setenv("CAREER_GETWORK_SINCE_DAYS", "7")
-	t.Setenv("CAREER_SOURCE_ALLOWLIST", "")
 	work, err := buildWork()
 	if err != nil {
 		t.Fatal(err)
@@ -60,40 +58,6 @@ func TestBuildWorkUsesAuthorizedGetWorkMCP(t *testing.T) {
 	}
 	if result.SourceCount != 1 || result.JobCount != 1 || result.MatchedCount != 1 {
 		t.Fatalf("MCP result = %+v", result)
-	}
-}
-
-func TestBuildWorkEnablesAuthorizedOfficialSource(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"message":"成功","data":{"page":{"totalPage":1},"list":[{"jobUnionId":"job-1","name":"后端开发实习生","cityList":[{"name":"北京市"}],"jobDuty":"Go 服务研发","jobRequirement":"熟悉 Go"}]}}`))
-	}))
-	defer server.Close()
-
-	t.Setenv("CAREER_SOURCE_ALLOWLIST", "official.meituan")
-	t.Setenv("CAREER_MEITUAN_API_URL", server.URL)
-	work, err := buildWork()
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := work(context.Background(), map[string]any{
-		"target_roles": "后端开发",
-		"tech_stack":   "Go",
-		"locations":    "北京",
-		"job_type":     "daily_intern",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.SourceCount != 1 || result.JobCount != 1 || result.MatchedCount != 1 {
-		t.Fatalf("result = %+v, want one real matched job from one source", result)
-	}
-}
-
-func TestBuildWorkRejectsUnknownAuthorizedSource(t *testing.T) {
-	t.Setenv("CAREER_SOURCE_ALLOWLIST", "official.unknown")
-	if _, err := buildWork(); err == nil {
-		t.Fatal("unknown allowlisted source was silently accepted")
 	}
 }
 

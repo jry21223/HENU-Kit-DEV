@@ -474,17 +474,33 @@ components:
           $ref: "#/components/schemas/CareerSearchResult"
     CareerSearchResult:
       type: object
-      required: [source_count, job_count, matched_count, summary, jobs]
+      required: [source_count, job_count, matched_count, summary, sources, jobs]
       properties:
         source_count: { type: integer, minimum: 0 }
         job_count: { type: integer, minimum: 0 }
         matched_count: { type: integer, minimum: 0 }
         summary: { type: string }
+        sources:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/CareerSourceScan"
         jobs:
           type: array
           maxItems: 200
           items:
             $ref: "#/components/schemas/CareerJob"
+    CareerSourceScan:
+      type: object
+      required: [key, status, found]
+      properties:
+        key: { type: string }
+        status:
+          type: string
+          enum: [success, failed]
+        found: { type: integer, minimum: 0 }
+        fetched: { type: integer, minimum: 0 }
+        rejected: { type: integer, minimum: 0 }
     CareerJob:
       type: object
       required: [source_key, company, title, location, url, match_score, match_reasons]

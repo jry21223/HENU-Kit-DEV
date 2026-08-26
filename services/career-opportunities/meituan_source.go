@@ -58,7 +58,7 @@ func NewMeituanSource(endpoint string, client *http.Client) (*MeituanSource, err
 
 func (source *MeituanSource) Key() string { return MeituanSourceKey }
 
-type meituanProfile struct {
+type careerMatchProfile struct {
 	TargetRoles string `json:"target_roles"`
 	TechStack   string `json:"tech_stack"`
 	Locations   string `json:"locations"`
@@ -93,7 +93,7 @@ func (source *MeituanSource) Fetch(ctx context.Context, profile any) ([]Job, err
 	if err != nil {
 		return nil, errors.New("career profile cannot be encoded")
 	}
-	var frozen meituanProfile
+	var frozen careerMatchProfile
 	if err := json.Unmarshal(profileJSON, &frozen); err != nil {
 		return nil, errors.New("career profile cannot be decoded")
 	}
@@ -116,7 +116,7 @@ func (source *MeituanSource) Fetch(ctx context.Context, profile any) ([]Job, err
 	return jobs, nil
 }
 
-func (source *MeituanSource) fetchPage(ctx context.Context, profile meituanProfile, page int) (meituanResponse, error) {
+func (source *MeituanSource) fetchPage(ctx context.Context, profile careerMatchProfile, page int) (meituanResponse, error) {
 	body := map[string]any{
 		"page":         map[string]int{"pageNo": page, "pageSize": meituanPageSize},
 		"jobShareType": "1",
@@ -158,7 +158,7 @@ func (source *MeituanSource) fetchPage(ctx context.Context, profile meituanProfi
 	return result, nil
 }
 
-func (source *MeituanSource) normalizeJob(item meituanJob, profile meituanProfile) (Job, bool) {
+func (source *MeituanSource) normalizeJob(item meituanJob, profile careerMatchProfile) (Job, bool) {
 	title := strings.TrimSpace(item.Name)
 	id := strings.TrimSpace(item.JobUnionID)
 	if title == "" || id == "" {
@@ -182,7 +182,7 @@ func (source *MeituanSource) normalizeJob(item meituanJob, profile meituanProfil
 	if !meituanJobTypeMatches(profile.JobType, jobType) {
 		return Job{}, false
 	}
-	score, reasons := scoreMeituanJob(title, item.JobDuty, item.JobRequirement, location, jobType, profile)
+	score, reasons := scoreCareerJob(title, item.JobDuty, item.JobRequirement, location, jobType, profile)
 	publishedAt := ""
 	if item.RefreshTime > 0 {
 		publishedAt = time.UnixMilli(item.RefreshTime).UTC().Format(time.RFC3339)
@@ -229,7 +229,7 @@ func meituanJobTypeMatches(profileType, jobType string) bool {
 	}
 }
 
-func scoreMeituanJob(title, description, requirement, location, jobType string, profile meituanProfile) (int, []string) {
+func scoreCareerJob(title, description, requirement, location, jobType string, profile careerMatchProfile) (int, []string) {
 	text := strings.ToLower(strings.Join([]string{title, description, requirement}, " "))
 	score := 0
 	reasons := make([]string, 0, 4)

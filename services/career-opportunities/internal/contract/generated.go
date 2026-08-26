@@ -1,4 +1,4 @@
-// Code generated from career.yaml (SHA256 312601b5c462ef13a31665f0929ef63fbcf09dca06afe3d0779938675883c587); DO NOT EDIT.
+// Code generated from career.yaml (SHA256 a0a864bdd3d9be82205b03da866721f1413a70c8e92343f558ed4604c6022807); DO NOT EDIT.
 package contract
 
 const (

@@ -354,8 +354,6 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "FOOD_SUMMARY_KEY_ID",
       "CAREER_DATABASE_URL",
       "CAREER_CLIENT_SECRET",
-      "CAREER_SOURCE_ALLOWLIST",
-      "CAREER_GETWORK_SOURCE_ALLOWLIST",
       "GETWORK_MCP_ACCESS_TOKEN",
       "CAREER_AI_BASE_URL",
       "CAREER_AI_API_KEY",
@@ -539,8 +537,13 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["career-opportunities"].environment.CAREER_SOURCE_ALLOWLIST,
-    "test-required-value",
-    "production Career must require an explicit authorized source allowlist",
+    undefined,
+    "production Career must not select a subset of the pinned MCP sources",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.CAREER_GETWORK_SOURCE_ALLOWLIST,
+    undefined,
+    "production Career must discover every pinned MCP source",
   );
   assert.equal(
     config.services["career-opportunities"].environment.CAREER_GETWORK_MCP_URL,

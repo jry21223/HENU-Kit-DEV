@@ -16,13 +16,10 @@ func TestGetWorkMCPProtocolSmoke(t *testing.T) {
 	if endpoint == "" || token == "" {
 		t.Skip("getWork MCP smoke endpoint is not configured")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	work, err := NewGetWorkMCPWork(ctx, GetWorkMCPConfig{
-		Endpoint:     endpoint,
-		AccessToken:  token,
-		AllowSources: []string{"meituan"},
-		SinceDays:    7,
+		Endpoint: endpoint, AccessToken: token, SinceDays: 7,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +36,8 @@ func TestGetWorkMCPProtocolSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.SourceCount != 1 {
-		t.Fatalf("source count = %d", result.SourceCount)
+	if result.SourceCount != 18 {
+		t.Fatalf("source count = %d, want every pinned upstream source", result.SourceCount)
 	}
 	if os.Getenv("CAREER_GETWORK_MCP_EXPECT_JOBS") == "1" && result.JobCount == 0 {
 		t.Fatal("real getWork MCP crawl returned no normalized jobs")

@@ -580,7 +580,16 @@ export interface CareerSearchResult {
   job_count: number;
   matched_count: number;
   summary: string;
+  sources: CareerSourceScan[];
   jobs: CareerJob[];
+}
+
+export interface CareerSourceScan {
+  key: string;
+  status: "success" | "failed";
+  found: number;
+  fetched?: number;
+  rejected?: number;
 }
 
 export interface CareerSearch {

@@ -194,6 +194,32 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                     ? ` · ${careerDigestStatusLabel(search)}`
                     : ""}
                 </p>
+                {search.result ? (
+                  <div className="mt-1 text-xs leading-5 text-ink/55">
+                    <p>{search.result.source_count} 个来源 · {search.result.job_count} 个岗位</p>
+                    {search.result.sources?.length ? (
+                      <p className="mt-1">
+                        来源：{search.result.sources.map((source) =>
+                          `${source.key.replace(/^getwork\./, "")} ${source.status === "success" ? `已响应(${source.found})` : "暂不可用"}`
+                        ).join("；")}
+                      </p>
+                    ) : null}
+                    {search.result.jobs.length ? (
+                      <div className="mt-2">
+                        <p className="font-mono text-[10px] tracking-wider text-ink/40">岗位预览（最多 3 个）</p>
+                        <ul className="mt-1 space-y-1">
+                          {search.result.jobs.map((job) => (
+                            <li key={`${job.source_key}:${job.url}`}>
+                              <a href={job.url} target="_blank" rel="noreferrer" className="hover:text-accent hover:underline">
+                                {job.title} · {job.company} · 相关度 {job.match_score}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {search.status === "failed" ? (
                   <p className="mt-1 text-xs leading-5 text-ink/50">
                     {careerScanFailedMessage()}。可在扫描页重新发起。

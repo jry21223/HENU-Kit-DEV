@@ -172,7 +172,6 @@ function fixture({
   careerSuifyAllowInsecureAIHTTP = false,
   careerDigestSecret = "fixture-career-digest-random-credential-48bytes",
   getWorkToken = "fixture-getwork-mcp-random-credential-48bytes",
-  getWorkSources = "meituan",
   runConclusion = "success",
   runStatus = "completed",
   legacyRuntimePresent = false,
@@ -217,7 +216,7 @@ function fixture({
   chmodSync(token, 0o600);
   writeFileSync(
     envFile,
-    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nCAREER_SOURCE_ALLOWLIST=official.meituan\nCAREER_GETWORK_SOURCE_ALLOWLIST=${getWorkSources}\nGETWORK_MCP_ACCESS_TOKEN=${getWorkToken}\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nCAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=${careerSuifyAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
+    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nGETWORK_MCP_ACCESS_TOKEN=${getWorkToken}\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nCAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=${careerSuifyAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
   );
   writeFileSync(rollbackEnvFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(log, "");

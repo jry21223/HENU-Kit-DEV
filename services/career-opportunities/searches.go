@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,11 +42,20 @@ type searchWire struct {
 }
 
 type searchResultWire struct {
-	SourceCount  int          `json:"source_count"`
-	JobCount     int          `json:"job_count"`
-	MatchedCount int          `json:"matched_count"`
-	Summary      string       `json:"summary"`
-	Jobs         []browserJob `json:"jobs"`
+	SourceCount  int                `json:"source_count"`
+	JobCount     int                `json:"job_count"`
+	MatchedCount int                `json:"matched_count"`
+	Summary      string             `json:"summary"`
+	Sources      []searchSourceWire `json:"sources"`
+	Jobs         []browserJob       `json:"jobs"`
+}
+
+type searchSourceWire struct {
+	Key      string `json:"key"`
+	Status   string `json:"status"`
+	Found    int    `json:"found"`
+	Fetched  int    `json:"fetched,omitempty"`
+	Rejected int    `json:"rejected,omitempty"`
 }
 
 // browserJob is the intentional display contract. Full duties and
@@ -214,7 +224,7 @@ func (h *service) listSearches(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.database.Query(r.Context(), `
 		SELECT s.id,s.status,COALESCE(s.stage,''),s.email_sent_at,COALESCE(d.status,''),s.created_at,
 		       COALESCE(r.source_count,0),COALESCE(r.job_count,0),
-		       COALESCE(r.matched_count,0),COALESCE(r.summary,''),r.search_id IS NOT NULL
+		       COALESCE(r.matched_count,0),COALESCE(r.summary,''),COALESCE(r.payload,'{}'::jsonb),r.search_id IS NOT NULL
 		FROM career_searches s
 		LEFT JOIN career_search_results r ON r.search_id=s.id
 		LEFT JOIN career_digest_deliveries d ON d.search_id=s.id
@@ -232,8 +242,9 @@ func (h *service) listSearches(w http.ResponseWriter, r *http.Request) {
 		var createdAt time.Time
 		var sourceCount, jobCount, matchedCount int
 		var summary string
+		var payload []byte
 		var hasResult bool
-		if err := rows.Scan(&item.ID, &item.Status, &stage, &emailSentAt, &item.DigestStatus, &createdAt, &sourceCount, &jobCount, &matchedCount, &summary, &hasResult); err != nil {
+		if err := rows.Scan(&item.ID, &item.Status, &stage, &emailSentAt, &item.DigestStatus, &createdAt, &sourceCount, &jobCount, &matchedCount, &summary, &payload, &hasResult); err != nil {
 			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "career searches are unavailable")
 			return
 		}
@@ -242,9 +253,13 @@ func (h *service) listSearches(w http.ResponseWriter, r *http.Request) {
 		item.HasEmail = emailSentAt != nil
 		item.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		if hasResult {
-			item.Result = &searchResultWire{
-				SourceCount: sourceCount, JobCount: jobCount, MatchedCount: matchedCount,
-				Summary: summary, Jobs: []browserJob{},
+			item.Result, err = decodeSearchResult(payload, sourceCount, jobCount, matchedCount, summary)
+			if err != nil {
+				writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "career searches are unavailable")
+				return
+			}
+			if len(item.Result.Jobs) > 3 {
+				item.Result.Jobs = item.Result.Jobs[:3]
 			}
 		}
 		searches = append(searches, item)
@@ -330,14 +345,21 @@ func (h *service) querySearch(r *http.Request, id, userID string) (searchWire, b
 	return item, true, nil
 }
 
-func decodeSearchResult(payload []byte, sourceCount, jobCount, matchedCount int, summary string) (*searchResultWire, error) {
+func decodeSearchResult(payload []byte, sourceCount, jobCount, _ int, _ string) (*searchResultWire, error) {
 	var stored struct {
-		Jobs []Job `json:"jobs"`
+		Jobs    []Job `json:"jobs"`
+		Sources map[string]struct {
+			Status   string `json:"status"`
+			Found    int    `json:"found"`
+			Fetched  int    `json:"fetched"`
+			Rejected int    `json:"rejected"`
+		} `json:"sources"`
 	}
 	if err := json.Unmarshal(payload, &stored); err != nil {
 		return nil, err
 	}
 	jobs := make([]browserJob, 0, len(stored.Jobs))
+	matchedCount := 0
 	for _, job := range stored.Jobs {
 		reasons := job.MatchReasons
 		if reasons == nil {
@@ -348,9 +370,35 @@ func decodeSearchResult(payload []byte, sourceCount, jobCount, matchedCount int,
 			Location: job.Location, JobType: job.JobType, URL: job.URL,
 			PublishedAt: job.PublishedAt, MatchScore: job.MatchScore, MatchReasons: reasons,
 		})
+		if careerJobIsRelevant(job) {
+			matchedCount++
+		}
 	}
+	sort.SliceStable(jobs, func(left, right int) bool {
+		return jobs[left].MatchScore > jobs[right].MatchScore
+	})
+	sourceKeys := make([]string, 0, len(stored.Sources))
+	for key := range stored.Sources {
+		sourceKeys = append(sourceKeys, key)
+	}
+	sort.Strings(sourceKeys)
+	sources := make([]searchSourceWire, 0, len(sourceKeys))
+	succeeded := 0
+	for _, key := range sourceKeys {
+		state := stored.Sources[key]
+		if state.Status == "success" {
+			succeeded++
+		}
+		sources = append(sources, searchSourceWire{
+			Key: key, Status: state.Status, Found: state.Found, Fetched: state.Fetched, Rejected: state.Rejected,
+		})
+	}
+	if len(sources) == 0 {
+		succeeded = sourceCount
+	}
+	summary := careerScanSummary(sourceCount, succeeded, jobCount, matchedCount)
 	return &searchResultWire{
 		SourceCount: sourceCount, JobCount: jobCount, MatchedCount: matchedCount,
-		Summary: summary, Jobs: jobs,
+		Summary: summary, Sources: sources, Jobs: jobs,
 	}, nil
 }

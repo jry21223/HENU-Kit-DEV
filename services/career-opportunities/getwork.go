@@ -3,7 +3,6 @@ package career
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"time"
 )
@@ -26,11 +25,11 @@ type Job struct {
 	MatchReasons []string `json:"match_reasons"` // stable, displayable
 }
 
-// Source is the opportunity-source decoupling seam. Every implementation must
-// be independently registered and explicitly allowlisted by the operator. A
-// source accepts the frozen profile snapshot, never shared per-user config.
+// Source is the opportunity-source decoupling seam. Every implementation is
+// independently registered by the operator. A source accepts the frozen
+// profile snapshot, never shared per-user config.
 type Source interface {
-	// Key is the stable allowlist key (e.g. "getwork.liepin").
+	// Key is the stable source key (e.g. "official.meituan").
 	Key() string
 	// Fetch crawls and matches one frozen profile snapshot, returning
 	// structured jobs. A failing source returns an error; the adapter catches
@@ -38,39 +37,23 @@ type Source interface {
 	Fetch(ctx context.Context, profile any) ([]Job, error)
 }
 
-// GetWorkConfig builds the Work seam from a source allowlist. Only source keys
-// present in the allowlist are ever consulted; the browser can never add a
-// source, URL, selector, or platform config. An empty allowlist is the safe
-// default and yields zero jobs when the emergency kill switch is active.
+// GetWorkConfig builds the legacy direct-source Work seam. Every registered
+// source is enabled; the browser can never add a source, URL, selector, or
+// platform config. An empty registry yields zero jobs for local/degraded use.
 type GetWorkConfig struct {
-	// AllowSources is the set of authorized source keys. A nil/empty set runs
-	// no source at all (production-safe off state).
-	AllowSources map[string]bool
-	// Sources is the registry the worker draws from. Sources not in
-	// AllowSources are ignored even if present here.
+	// Sources is the operator-owned registry the worker draws from.
 	Sources []Source
 }
 
-// NewGetWorkWork returns a WorkFunc that runs every allowlisted source against
+// NewGetWorkWork returns a WorkFunc that runs every registered source against
 // the frozen profile snapshot and aggregates a single authoritative result. It
 // degrades per source: one source timing out or failing never discards the
 // already-successful sources.
 func NewGetWorkWork(config GetWorkConfig) WorkFunc {
-	byKey := map[string]Source{}
-	for _, source := range config.Sources {
-		byKey[source.Key()] = source
-	}
-	enabled := make([]Source, 0, len(config.AllowSources))
-	for key := range config.AllowSources {
-		if source, ok := byKey[key]; ok {
-			enabled = append(enabled, source)
-		} else {
-			log.Printf("career: allowlisted source %q has no registered implementation; skipping", key)
-		}
-	}
+	enabled := append([]Source(nil), config.Sources...)
 	return func(ctx context.Context, profile any) (WorkResult, error) {
 		if len(enabled) == 0 {
-			// Production-safe off state: no authorized source is enabled, so a
+			// Local/degraded off state: no registered source is enabled, so a
 			// search completes with an empty result rather than failing.
 			return WorkResult{Payload: map[string]any{"jobs": []Job{}, "sources": map[string]any{}}, SourceCount: 0, JobCount: 0, MatchedCount: 0, Summary: "暂无可用的岗位来源"}, nil
 		}
@@ -88,27 +71,27 @@ func NewGetWorkWork(config GetWorkConfig) WorkFunc {
 			sourceState[source.Key()] = map[string]any{"status": "success", "found": len(jobs)}
 			succeeded++
 			for _, job := range jobs {
-				if job.MatchScore >= 50 {
+				if careerJobIsRelevant(job) {
 					matched++
 				}
 			}
 			all = append(all, jobs...)
 		}
 		if succeeded == 0 {
-			return WorkResult{}, errors.New("all authorized career sources failed")
+			return WorkResult{}, errors.New("all configured career sources failed")
 		}
 		return WorkResult{
 			Payload:      map[string]any{"jobs": all, "sources": sourceState},
 			SourceCount:  len(enabled),
 			JobCount:     len(all),
 			MatchedCount: matched,
-			Summary:      fmt.Sprintf("已扫描 %d 个来源，发现 %d 个岗位，%d 个推荐", len(enabled), len(all), matched),
+			Summary:      careerScanSummary(len(enabled), succeeded, len(all), matched),
 		}, nil
 	}
 }
 
-// fakeSource is test-only: deterministic, allowlist-gated, no network or
-// shared config.
+// fakeSource is test-only: deterministic, registry-gated, no network or shared
+// config.
 type fakeSource struct {
 	key string
 }
