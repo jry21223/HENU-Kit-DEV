@@ -18,3 +18,10 @@ adds only the production transport boundary:
 
 Career calls only `list_sources` and `crawl_jobs`. It does not expose or reuse
 upstream `login`, `add_source`, `render_briefing`, or `send_email`.
+
+Production runs this browser-bearing image on the WSL Job Source MCP node under
+ADR-0043. The HENUKit host runs only the small Career-image relay that bridges
+its loopback SSH endpoint into the private Compose network; there is no public
+MCP listener and no production-local crawler fallback. See
+[`deploy/README.md`](deploy/README.md) for the exact trust, supervision,
+preflight, reconnect, and rollback contract.

@@ -323,6 +323,27 @@ services:
       retries: 12
       start_period: 10s
 
+  # Host-network relay for the remote Job Source MCP (ADR-0043). The actual
+  # browser crawler stays on WSL; this small process exposes only the SSH
+  # tunnel's loopback endpoint to the private Docker host gateway.
+  getwork-mcp-relay:
+    profiles: ["getwork-remote"]
+    build:
+      context: ./services/career-opportunities
+    entrypoint: ["/career-mcp-relay"]
+    network_mode: host
+    environment:
+      GETWORK_RELAY_ADDR: ${GETWORK_RELAY_ADDR:-127.0.0.1:18101}
+      GETWORK_RELAY_UPSTREAM_URL: ${GETWORK_RELAY_UPSTREAM_URL:-http://127.0.0.1:18100}
+      GETWORK_RELAY_HEALTH_ADDR: ${GETWORK_RELAY_HEALTH_ADDR:-127.0.0.1:18100}
+    healthcheck:
+      test: ["CMD", "/career-mcp-relay-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
   # Career Opportunities owns the Work Radar async search core (#392): the
   # Portal Gateway signs the verified actor in; the worker drives queued
   # searches to completion. Fails closed without credentials.
@@ -330,6 +351,8 @@ services:
     build:
       context: ./services/career-opportunities
     mem_limit: 256m
+    extra_hosts:
+      - "getwork-mcp-relay:host-gateway"
     environment:
       GOMEMLIMIT: 192MiB
       CAREER_ADDR: ${CAREER_ADDR:-:8097}
@@ -366,6 +389,9 @@ services:
       redis:
         condition: service_healthy
       getwork-mcp:
+        condition: service_healthy
+        required: false
+      getwork-mcp-relay:
         condition: service_healthy
         required: false
       platform-core:

@@ -580,6 +580,7 @@ active_release_matches() {
       grep -Fqx "${conditional_images[$index]}:${release_sha}" <<<"$running" || return 1
     fi
   done
+  getwork_relay_matches "$release_sha" || return 1
   # A previous release is not exact when a partial candidate switch left any
   # additional HENU image on a different SHA. This prevents rollback from
   # treating a mixed runtime as an already-healthy previous release.
@@ -618,6 +619,7 @@ degraded_baseline_matches() {
       [[ "$actual_image" == "${conditional_images[$index]}:${release_sha}" ]] || return 1
     fi
   done
+  getwork_relay_matches "$release_sha" || return 1
 }
 
 validate_degraded_baseline_authority() {
@@ -648,6 +650,162 @@ release_has_service() {
   local compose_file="$release_root/$release_sha/docker-compose.henukit.release.yml"
   [[ -r "$compose_file" ]] || return 2
   grep -Eq "^[[:space:]]{2}${service_name}:[[:space:]]*$" "$compose_file"
+}
+
+getwork_relay_matches() {
+  local release_sha="$1"
+  local state actual_image network_mode expected_bridge relay_environment
+  if release_has_service "$release_sha" "getwork-mcp-relay"; then
+    state=0
+  else
+    state=$?
+  fi
+  case "$state" in
+    0)
+      actual_image="$(docker inspect --format '{{.Config.Image}}' henukit-getwork-mcp-relay-1 2>/dev/null)" || return 1
+      [[ "$actual_image" == "henukit-career-opportunities:${release_sha}" ]] || return 1
+      network_mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' henukit-getwork-mcp-relay-1 2>/dev/null)" ||
+        return 1
+      [[ "$network_mode" == host ]] || return 1
+      expected_bridge="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null)" ||
+        return 1
+      [[ "$expected_bridge" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+      relay_environment="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' henukit-getwork-mcp-relay-1 2>/dev/null)" ||
+        return 1
+      [[ "$(grep -Fxc "GETWORK_RELAY_ADDR=${expected_bridge}:18101" <<<"$relay_environment")" -eq 1 ]] ||
+        return 1
+      [[ "$(grep -Fxc 'GETWORK_RELAY_UPSTREAM_URL=http://127.0.0.1:18100' <<<"$relay_environment")" -eq 1 ]] ||
+        return 1
+      ! docker ps -a --filter 'name=^/henukit-getwork-mcp-1$' --format '{{.Names}}' |
+        grep -q . || return 1
+      ss -ltnH | awk -v endpoint="${expected_bridge}:18101" '$4 == endpoint { found = 1 } END { exit !found }'
+      getwork_relay_ingress_is_restricted || return 1
+      ;;
+    1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+configure_getwork_relay_ingress() {
+  local release_sha="$1"
+  local state bridge_address henu_subnet input_chain output_chain iptables_bin
+  if release_has_service "$release_sha" "getwork-mcp-relay"; then
+    state=0
+  else
+    state=$?
+  fi
+  [[ "$state" -eq 0 ]] || {
+    [[ "$state" -eq 1 || "$state" -eq 2 ]]
+    return
+  }
+  iptables_bin="$(command -v iptables)" || return 1
+  bridge_address="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')" ||
+    return 1
+  henu_subnet="$(docker network inspect henukit_default --format '{{(index .IPAM.Config 0).Subnet}}')" ||
+    return 1
+  [[ "$bridge_address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ &&
+     "$henu_subnet" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]] || return 1
+  input_chain=HENUKIT-GETWORK-INGRESS
+  output_chain=HENUKIT-GETWORK-OUTPUT
+  "$iptables_bin" -N "$input_chain" 2>/dev/null || true
+  "$iptables_bin" -F "$input_chain"
+  "$iptables_bin" -A "$input_chain" -s "$henu_subnet" -j ACCEPT
+  "$iptables_bin" -A "$input_chain" -s "${bridge_address}/32" -j ACCEPT
+  "$iptables_bin" -A "$input_chain" -j REJECT
+  while "$iptables_bin" -C INPUT -d "${bridge_address}/32" -p tcp --dport 18101 -j "$input_chain" 2>/dev/null; do
+    "$iptables_bin" -D INPUT -d "${bridge_address}/32" -p tcp --dport 18101 -j "$input_chain"
+  done
+  "$iptables_bin" -I INPUT 1 -d "${bridge_address}/32" -p tcp --dport 18101 -j "$input_chain"
+
+  "$iptables_bin" -N "$output_chain" 2>/dev/null || true
+  "$iptables_bin" -F "$output_chain"
+  "$iptables_bin" -A "$output_chain" -m owner --uid-owner 0 -j ACCEPT
+  "$iptables_bin" -A "$output_chain" -j REJECT
+  while "$iptables_bin" -C OUTPUT -d "${bridge_address}/32" -p tcp --dport 18101 -j "$output_chain" 2>/dev/null; do
+    "$iptables_bin" -D OUTPUT -d "${bridge_address}/32" -p tcp --dport 18101 -j "$output_chain"
+  done
+  "$iptables_bin" -I OUTPUT 1 -d "${bridge_address}/32" -p tcp --dport 18101 -j "$output_chain"
+  getwork_relay_ingress_is_restricted
+}
+
+getwork_relay_ingress_is_restricted() {
+  local bridge_address henu_subnet input_jump output_jump
+  bridge_address="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null)" ||
+    return 1
+  henu_subnet="$(docker network inspect henukit_default --format '{{(index .IPAM.Config 0).Subnet}}' 2>/dev/null)" ||
+    return 1
+  input_jump="-A INPUT -d ${bridge_address}/32 -p tcp -m tcp --dport 18101 -j HENUKIT-GETWORK-INGRESS"
+  output_jump="-A OUTPUT -d ${bridge_address}/32 -p tcp -m tcp --dport 18101 -j HENUKIT-GETWORK-OUTPUT"
+  [[ "$(iptables -S INPUT | awk '/^-A / { print; exit }')" == "$input_jump" ]] || return 1
+  [[ "$(iptables -S OUTPUT | awk '/^-A / { print; exit }')" == "$output_jump" ]] || return 1
+  [[ "$(iptables -S HENUKIT-GETWORK-INGRESS | grep -c '^-A ')" -eq 3 ]] || return 1
+  iptables -C HENUKIT-GETWORK-INGRESS -s "$henu_subnet" -j ACCEPT || return 1
+  iptables -C HENUKIT-GETWORK-INGRESS -s "${bridge_address}/32" -j ACCEPT || return 1
+  iptables -C HENUKIT-GETWORK-INGRESS -j REJECT || return 1
+  [[ "$(iptables -S HENUKIT-GETWORK-OUTPUT | grep -c '^-A ')" -eq 2 ]] || return 1
+  iptables -C HENUKIT-GETWORK-OUTPUT -m owner --uid-owner 0 -j ACCEPT || return 1
+  iptables -C HENUKIT-GETWORK-OUTPUT -j REJECT
+}
+
+getwork_relay_contract_is_live() (
+  local release_sha="$1"
+  local state expected_bridge token unauthorized tools_response_file sources_response_file
+  if release_has_service "$release_sha" "getwork-mcp-relay"; then
+    state=0
+  else
+    state=$?
+  fi
+  case "$state" in
+    1) return 0 ;;
+    0) ;;
+    *) return 1 ;;
+  esac
+  expected_bridge="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null)" ||
+    return 1
+  token="$(environment_value GETWORK_MCP_ACCESS_TOKEN)"
+  [[ ${#token} -ge 32 && "$token" != *[[:space:]]* ]] || return 1
+  unauthorized="$(curl --max-time 5 --noproxy '*' --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --request POST --header 'Content-Type: application/json' \
+    --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+    "http://${expected_bridge}:18101/mcp")" || return 1
+  [[ "$unauthorized" == 401 ]] || return 1
+  tools_response_file="$(mktemp "$state_root/.getwork-tools.XXXXXX")"
+  sources_response_file="$(mktemp "$state_root/.getwork-sources.XXXXXX")"
+  chmod 0600 "$tools_response_file" "$sources_response_file"
+  trap 'rm -f -- "$tools_response_file" "$sources_response_file"' EXIT
+  printf 'Authorization: Bearer %s\n' "$token" |
+    curl --header @- --max-time 15 --max-filesize 1048576 --noproxy '*' \
+    --fail --silent --show-error --output "$tools_response_file" \
+    --request POST --header 'Content-Type: application/json' \
+    --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+    "http://${expected_bridge}:18101/mcp" || return 1
+  jq -e '.result.tools | map(.name) | sort == ["crawl_jobs","list_sources"]' \
+    "$tools_response_file" >/dev/null || return 1
+  printf 'Authorization: Bearer %s\n' "$token" |
+    curl --header @- --max-time 15 --max-filesize 1048576 --noproxy '*' \
+    --fail --silent --show-error --output "$sources_response_file" \
+    --request POST --header 'Content-Type: application/json' \
+    --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_sources","arguments":{}}}' \
+    "http://${expected_bridge}:18101/mcp" || return 1
+  jq -e '
+    [.result.content[] | select(.type == "text") | .text | fromjson | .sources[].key] | sort
+    == ["alibaba","baidu","beike","bytedance","ctrip","dewu","didi","jd","kuaishou","meituan","netease","pdd","tencent","tencentmusic","tongcheng","vipshop","xfusion","xiaohongshu"]
+  ' "$sources_response_file" >/dev/null
+)
+
+getwork_relay_is_healthy() {
+  local release_sha="$1"
+  local state
+  if release_has_service "$release_sha" "getwork-mcp-relay"; then
+    state=0
+  else
+    state=$?
+  fi
+  case "$state" in
+    0) container_is_healthy henukit-getwork-mcp-relay-1 ;;
+    1) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 release_uses_account_portfolio() {
@@ -748,6 +906,8 @@ verify_active_release() {
       esac
     fi
   done
+  getwork_relay_is_healthy "$release_sha" || return 1
+  getwork_relay_contract_is_live "$release_sha" || return 1
   if release_has_service "$release_sha" "portal-summary"; then
     container_is_healthy "henukit-portal-summary-1" || return 1
     docker exec henukit-portal-summary-1 /usr/local/bin/portal-summary verify-summary >/dev/null || return 1
@@ -1471,6 +1631,10 @@ deploy_release() {
     die "approved pending release $pending_approved_release_sha must finish or be withdrawn before release $release_sha"
   fi
 
+  if [[ -r "$release_root/$release_sha/docker-compose.henukit.release.yml" ]]; then
+    configure_getwork_relay_ingress "$release_sha" ||
+      die "active release relay ingress could not be restricted to the HENUKit network"
+  fi
   if active_release_matches "$release_sha"; then
     activation_record=""
     if [[ -f "$state_root/last-activated-sha" ]]; then
@@ -1591,6 +1755,8 @@ deploy_release() {
       "$release_sha" "$previous_sha" authorized authorized "$prepared_backup_file"
   fi
   require_activation_disk_headroom
+  configure_getwork_relay_ingress "$release_sha" ||
+    die "candidate relay ingress could not be restricted to the HENUKit network"
   consume_approval "$release_sha"
   for image in "${load_images[@]}"; do
     log "loading ${image}:${release_sha}"

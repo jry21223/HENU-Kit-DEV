@@ -211,8 +211,12 @@ func validGetWorkMCPEndpoint(value string) (string, error) {
 	if address := net.ParseIP(host); address != nil {
 		loopback = address.IsLoopback()
 	}
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && (loopback || host == "getwork-mcp")) {
-		return "", errors.New("getWork MCP endpoint must use HTTPS, loopback, or the internal getwork-mcp service")
+	privateRelay := strings.EqualFold(host, "getwork-mcp-relay")
+	if privateRelay && parsed.String() != "http://getwork-mcp-relay:18101/mcp" {
+		return "", errors.New("getWork MCP private relay endpoint must use the reviewed host and port")
+	}
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && (loopback || host == "getwork-mcp" || privateRelay)) {
+		return "", errors.New("getWork MCP endpoint must use HTTPS, loopback, or an internal deployment endpoint")
 	}
 	return parsed.String(), nil
 }
