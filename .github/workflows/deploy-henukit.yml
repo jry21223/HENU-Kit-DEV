@@ -45,7 +45,9 @@ jobs:
               scripts/ops/tests/verify-henukit-local-release.test.mjs \
               scripts/ops/tests/build-henukit-release-local.test.mjs \
               scripts/ops/tests/deploy-henukit-release-from-wsl.test.mjs \
-              scripts/ops/tests/activate-henukit-release.test.mjs
+              scripts/ops/tests/activate-henukit-release.test.mjs \
+              scripts/ops/tests/getwork-node-rollback.test.mjs \
+              scripts/ops/tests/getwork-wsl-node-contract.test.mjs
 
             # The watcher fixture launches many short-lived fake runtimes. Run
             # it without cross-file test load so scheduling cannot turn a

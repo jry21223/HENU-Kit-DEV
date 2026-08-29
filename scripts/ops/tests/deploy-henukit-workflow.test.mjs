@@ -8,6 +8,10 @@ const workflow = readFileSync(
   new URL("../../../.github/workflows/deploy-henukit.yml", import.meta.url),
   "utf8",
 );
+const careerWorkflow = readFileSync(
+  new URL("../../../.github/workflows/career.yml", import.meta.url),
+  "utf8",
+);
 const rootPackage = JSON.parse(
   readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
 );
@@ -102,6 +106,11 @@ test("release artifacts are blocked on the pinned read-only getWork MCP smoke", 
   assert.match(workflow, /matrix\.name == 'getwork-mcp'/);
   assert.match(workflow, /sort == \["crawl_jobs","list_sources"\]/);
   assert.match(workflow, /"source":"meituan","since_days":7/);
+  assert.match(workflow, /scripts\/ops\/tests\/getwork-node-rollback\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/getwork-wsl-node-contract\.test\.mjs/);
+  assert.match(careerWorkflow, /python3 -m unittest services\/getwork-mcp\/deploy\/test_verify_node\.py/);
+  assert.match(actionsWatcher, /getwork_relay_matches "\$release_sha"/);
+  assert.match(actionsWatcher, /getwork_relay_is_healthy "\$release_sha"/);
 });
 
 test("CI runs the Account Portfolio browser behavior spec", () => {
@@ -354,7 +363,9 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "FOOD_SUMMARY_KEY_ID",
       "CAREER_DATABASE_URL",
       "CAREER_CLIENT_SECRET",
+      "CAREER_GETWORK_MCP_URL",
       "GETWORK_MCP_ACCESS_TOKEN",
+      "GETWORK_RELAY_ADDR",
       "CAREER_AI_BASE_URL",
       "CAREER_AI_API_KEY",
       "CAREER_AI_MODEL",
@@ -430,6 +441,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
             ACCOUNT_PORTFOLIO_DATABASE_URL: "postgres://test",
             QUIZCRAFT_CORE_URL: "http://quizcraft:10089",
             CAREER_DATABASE_URL: "postgres://test",
+            CAREER_GETWORK_MCP_URL: "http://getwork-mcp-relay:18101/mcp",
+            GETWORK_RELAY_ADDR: "172.17.0.1:18101",
             RELEASE_SHA: releaseSha,
             STUDY_DATABASE_URL: "postgres://test",
             ...overrides,
@@ -463,7 +476,6 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "henukit-food",
     "henukit-food-mcp",
     "henukit-career-opportunities",
-    "henukit-getwork-mcp",
     "henukit-career-mcp",
     "henukit-library",
     "henukit-quizcraft",
@@ -547,13 +559,60 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["career-opportunities"].environment.CAREER_GETWORK_MCP_URL,
-    "http://getwork-mcp:8100/mcp",
-    "production Career must consume the internal getWork MCP endpoint",
+    "http://getwork-mcp-relay:18101/mcp",
+    "production Career must consume the host-private SSH relay endpoint",
+  );
+  assert.deepEqual(
+    config.services["career-opportunities"].extra_hosts,
+    ["getwork-mcp-relay=host-gateway"],
+    "Career must resolve the production-private relay on the Docker host",
   );
   assert.equal(
-    config.services["career-opportunities"].environment.CAREER_GETWORK_MCP_ACCESS_TOKEN,
-    config.services["getwork-mcp"].environment.GETWORK_MCP_ACCESS_TOKEN,
-    "Career and getWork MCP must receive the same dedicated bearer token",
+    config.services["career-opportunities"].depends_on["getwork-mcp-relay"].condition,
+    "service_healthy",
+    "Career must wait for the private relay rather than a local browser crawler",
+  );
+  assert.equal(
+    config.services["career-opportunities"].depends_on["getwork-mcp"],
+    undefined,
+    "production Career must not require the browser-bearing local crawler",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].image,
+    `henukit-career-opportunities:${releaseSha}`,
+    "the relay reuses the small Career image instead of the browser crawler image",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].network_mode,
+    "host",
+    "the relay must bridge host loopback to the private Docker gateway without publishing a port",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].restart,
+    "no",
+    "production relay must not auto-start before the watcher restores ingress firewall rules",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_ADDR,
+    "172.17.0.1:18101",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_UPSTREAM_URL,
+    "http://127.0.0.1:18100",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_HEALTH_ADDR,
+    "127.0.0.1:18100",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].ports,
+    undefined,
+    "the relay must not publish a host port",
+  );
+  assert.equal(
+    config.services["getwork-mcp"],
+    undefined,
+    "the browser-bearing local crawler must not be part of the production runtime",
   );
   assert.equal(
     config.services["career-opportunities"].environment.PLATFORM_CORE_CAREER_DIGEST_URL,
@@ -774,7 +833,7 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.match(
     runtimePackager,
-    /config --no-interpolate --no-path-resolution > "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
+    /config --format json --no-interpolate --no-path-resolution[\s\S]*del\(\.services\[\][\s\S]*docker compose -f - config --no-interpolate --no-path-resolution[\s\S]*> "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
   );
   assert.match(runtimePackager, /deploy-henukit-artifact\.sh/);
   assert.match(runtimePackager, /watch-henukit-actions\.sh/);

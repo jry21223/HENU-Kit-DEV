@@ -11,11 +11,18 @@ import (
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"henukit.dev/career/internal/mcprelay"
 )
 
 type upstreamCrawlInput struct {
 	Source    string `json:"source"`
 	SinceDays int    `json:"since_days"`
+}
+
+type getWorkRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function getWorkRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }
 
 func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
@@ -52,12 +59,26 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 		handler.ServeHTTP(writer, request)
 	}))
 	t.Cleanup(upstream.Close)
+	relayHandler, err := mcprelay.NewWithTransport(
+		"http://127.0.0.1:18100",
+		getWorkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			cloned := request.Clone(request.Context())
+			cloned.URL.Scheme = "http"
+			cloned.URL.Host = strings.TrimPrefix(upstream.URL, "http://")
+			return http.DefaultTransport.RoundTrip(cloned)
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay := httptest.NewServer(relayHandler)
+	t.Cleanup(relay.Close)
 
 	work, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
-		Endpoint:    upstream.URL + "/mcp",
+		Endpoint:    relay.URL + "/mcp",
 		AccessToken: "getwork-test-token-0000000000000000",
 		SinceDays:   7,
-		HTTPClient:  upstream.Client(),
+		HTTPClient:  relay.Client(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -113,6 +134,28 @@ func TestGetWorkMCPRejectsDeploymentPlaceholderToken(t *testing.T) {
 		})
 		if err == nil || !strings.Contains(err.Error(), "access token") {
 			t.Fatalf("token %q error = %v", token, err)
+		}
+	}
+}
+
+func TestGetWorkMCPAcceptsTheProductionPrivateRelayEndpoint(t *testing.T) {
+	endpoint, err := validGetWorkMCPEndpoint("http://getwork-mcp-relay:18101/mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if endpoint != "http://getwork-mcp-relay:18101/mcp" {
+		t.Fatalf("endpoint = %q", endpoint)
+	}
+}
+
+func TestGetWorkMCPRejectsPrivateRelayEndpointsThatCouldLeakTheBearer(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://getwork-mcp-relay/mcp",
+		"http://getwork-mcp-relay:18102/mcp",
+		"http://getwork-mcp-relay:18101/healthz",
+	} {
+		if _, err := validGetWorkMCPEndpoint(endpoint); err == nil {
+			t.Fatalf("endpoint %q was accepted", endpoint)
 		}
 	}
 }

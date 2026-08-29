@@ -71,6 +71,7 @@ command -v docker >/dev/null 2>&1 || die "Docker is required"
 command -v node >/dev/null 2>&1 || die "node is required for production-boundary validation"
 command -v git >/dev/null 2>&1 || die "git is required for the fixed-SHA source snapshot"
 command -v tar >/dev/null 2>&1 || die "tar is required for the fixed-SHA source snapshot"
+command -v jq >/dev/null 2>&1 || die "jq is required for the fixed-SHA Compose contract"
 
 archive="henukit-runtime-${release_sha}.tar.gz"
 [[ ! -e "$output_dir/$archive" && ! -e "$output_dir/${archive}.sha256" ]] ||
@@ -104,6 +105,7 @@ install -d \
   "$runtime/migrations/career" \
   "$runtime/migrations/portal" \
   "$runtime/release-gates" \
+  "$runtime/getwork-node-deploy" \
   "$runtime/materials-runtime/bin" \
   "$runtime/materials-runtime/libexec" \
   "$runtime/materials-runtime/systemd"
@@ -113,7 +115,10 @@ install -m 0444 "$oauth_gate_receipt" \
 docker compose \
   -f "$source_root/docker-compose.henukit.yml" \
   -f "$source_root/docker-compose.henukit.prebuilt.yml" \
-  config --no-interpolate --no-path-resolution > "$runtime/docker-compose.henukit.release.yml"
+  config --format json --no-interpolate --no-path-resolution \
+  | jq 'del(.services[] | select(((.profiles // []) | length) > 0))' \
+  | docker compose -f - config --no-interpolate --no-path-resolution \
+  > "$runtime/docker-compose.henukit.release.yml"
 
 cp "$source_root/infra/nginx/henukit.conf.example" "$runtime/infra/nginx/"
 cp "$source_root/infra/systemd/henukit-actions-watch.service" "$runtime/infra/systemd/"
@@ -123,6 +128,7 @@ cp "$source_root"/services/account-portfolio/db/migrations/*.up.sql "$runtime/mi
 cp "$source_root"/services/notice/db/migrations/*.up.sql "$runtime/migrations/notice/"
 cp "$source_root"/services/food/db/migrations/*.up.sql "$runtime/migrations/food/"
 cp "$source_root"/services/library/db/migrations/*.up.sql "$runtime/migrations/library/"
+cp -a "$source_root"/services/getwork-mcp/deploy/. "$runtime/getwork-node-deploy/"
 cp "$source_root"/services/career-opportunities/db/migrations/*.up.sql "$runtime/migrations/career/"
 # Portal API keeps a MySQL variant beside PostgreSQL; production only runs the
 # PostgreSQL migration stream.

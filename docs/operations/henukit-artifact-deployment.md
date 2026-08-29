@@ -214,6 +214,54 @@ runbook `henukit-local-deploy.md` and the one-command wrapper
    release directories when under 5 GiB free, and re-point
    `/opt/henukit/current` to the active baseline if it dangles.
 
+### Remote Job Source MCP on WSL
+
+ADR-0043 moves only the browser-bearing Job Source MCP execution to the
+always-on WSL2 node. Career identity, task claims, matching, persistence,
+history, and digest delivery stay on production. The complete getWork image
+remains a signed release artifact, but production Compose runs the small
+`getwork-mcp-relay` process from the Career image instead of starting that
+browser image locally. Career uses the stable `getwork-mcp-relay` hostname;
+the watcher pins that name to the Docker host gateway and installs verified
+INPUT/OUTPUT rules so only the HENUKit Compose subnet and the root verifier can
+reach port 18101.
+
+Follow `services/getwork-mcp/deploy/README.md` and execute deployment code only
+from the signature-verified, root-owned runtime extraction. The WSL verifier
+must prove WSL2/ext4, signed archive-to-image identity, approved tunnel/host
+fingerprints, normalized no-login account state, root-owned secrets and exact
+units, live container/firewall hardening, active crawler and tunnel units,
+strict bounded MCP responses, exactly `list_sources` plus `crawl_jobs`, one
+real crawl, and all 18 configured sources.
+The production host accepts only a dedicated key restricted to
+`127.0.0.1:18100`; never copy a production root private key to WSL and never
+publish the MCP or relay on a public address.
+
+Before activation, also require:
+
+1. the implementation and ADR are merged into the freshly fetched current
+   `origin/main`, with required Career and release-contract CI green;
+2. the formal 4096 MiB production free-disk hard floor, a healthy retained rollback
+   release, and verified configuration/database backups;
+3. the existing getWork bearer token installed on WSL without logging it;
+4. the approved production host key in WSL `known_hosts`, and the new public
+   key installed with the exact forwarding-only options from the deployment
+   runbook;
+5. `CAREER_GETWORK_MCP_URL`, `GETWORK_RELAY_ADDR`, and
+   `GETWORK_RELAY_UPSTREAM_URL` added to the root-owned production environment
+   while every unrelated byte, owner, group, mode, and symlink state is
+   preserved;
+6. the private relay health check succeeds through the live SSH tunnel before
+   Career is restarted.
+
+Acceptance stops and restarts only the WSL tunnel unit, proves the relay changes
+from unavailable back to healthy without a production-local crawler, then runs
+one real actor-scoped Career scan. Record all source states and at least one
+normalized official Job Opportunity when upstream data is available. On any
+mandatory failure, stop the tunnel and use the existing fixed-SHA rollback plus
+the verified environment backup; do not delete images, releases, accounts,
+keys, databases, or volumes as an improvised rollback.
+
 ### Exact degraded-baseline recovery
 
 The default activation still requires a healthy retained fixed-SHA rollback
@@ -403,7 +451,7 @@ It deploys only the newest completed, successful `push` run of
 6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
    Core's owner-defined command to grant all eight Account Console permissions,
    bump the role revision, and append an immutable grant audit;
-7. verifies all nineteen running image tags, Account Portfolio health, and the public health routes, rolling
+7. verifies every image-backed service present in the fixed-SHA Compose contract, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
 
@@ -486,11 +534,16 @@ only when that baseline's already-extracted
 `docker-compose.henukit.release.yml` explicitly lacks `account-portfolio`; it
 still requires all nine images and a healthy Account Portfolio container for
 the candidate. This prevents a partially broken new release from being treated
-as a legacy baseline. Current releases carry nineteen images: the nine above plus
+as a legacy baseline. Current release bundles carry nineteen images: the nine above plus
 `notice`, `notice-worker`, `food`, `library`, `food-mcp` (ADR-0033),
 `career-opportunities` (#392), `getwork-mcp` (ADR-0042), `career-mcp` (ADR-0034), and
 `quizcraft` (方案 2 containerized Go core, `products/quizcraft/go-service`) (see
 `notice-food-production-onboarding.md` and `henukit-local-deploy.md`).
+Under ADR-0043 the `getwork-mcp` artifact is installed on the WSL Job Source
+node, while production Compose runs `getwork-mcp-relay` from the small Career
+image and does not run the browser-bearing image. Runtime checks therefore
+follow the exact services in the rendered Compose contract rather than
+requiring every artifact image to have a local production container.
 `career-opportunities`, `getwork-mcp`, `career-mcp`, and `quizcraft` are intentionally `conditional` inventory
 roles, not `baseline` roles: baseline roles are required from every retained
 rollback release, so adding them as baseline would make older fourteen-image
@@ -547,7 +600,7 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all nineteen fixed-SHA images, grants the eight
+`000017` and `000018`, loads all nineteen fixed-SHA images and deploys every service in the fixed-SHA Compose contract, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
@@ -638,7 +691,7 @@ requires a new explicit approval before the failed SHA can be attempted again.
 
 The process polls every 60 seconds by default and uses a kernel `flock` to
 prevent overlapping deployments; the lock is released even after a crash or
-power loss. A release already active on all nineteen image tags is an idempotent
+power loss. A release already active on every image-backed service in its rendered Compose contract is an idempotent
 health-checked no-op. During the one-time 8-to-9 transition, the explicitly
 legacy eight-image baseline remains a valid rollback target. A failed check exits the process, and Systemd retries it
 after 30 seconds. Activation or public verification failure invokes the

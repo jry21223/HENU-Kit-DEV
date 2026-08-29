@@ -73,6 +73,22 @@ test("the materials mount stays an explicit bind when runtime packaging disables
   );
 });
 
+test("the no-interpolate production contract removes every profiled crawler service", () => {
+  const rendered = execFileSync(
+    "bash",
+    [
+      "-ceu",
+      `docker compose -f docker-compose.henukit.yml -f docker-compose.henukit.prebuilt.yml \
+        config --format json --no-interpolate --no-path-resolution \
+        | jq 'del(.services[] | select(((.profiles // []) | length) > 0))'`,
+    ],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  const contract = JSON.parse(rendered);
+  assert.equal(contract.services["getwork-mcp"], undefined);
+  assert.equal(contract.services["getwork-mcp-relay"].profiles, undefined);
+});
+
 test("runtime binaries omit VCS metadata so unchanged materials remain rollback-compatible", () => {
   const source = readFileSync(packagerSource, "utf8");
   const buildLines = source.split("\n").filter((line) => line.trim().startsWith("go build "));
@@ -160,7 +176,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   const docker = join(binDirectory, "docker");
   writeFileSync(
     docker,
-    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then printf 'services:\\n  portal:\\n    image: henukit-portal:test\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nhost_output=\nsource_root=\nwhile [[ $# -gt 0 ]]; do\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/host-out\" ]]; then host_output=\"${2%:/host-out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/src:ro\" ]]; then source_root=\"${2%:/src:ro}\"; fi\n  shift\ndone\n[[ -n \"$output\" && -n \"$host_output\" && -n \"$source_root\" ]]\nif [[ -e \"$source_root/services/deploy-webhook/injected.go\" ]]; then printf 'ignored source injection reached Docker\\n' >&2; exit 91; fi\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\nprintf '#!/bin/sh\\nexit 0\\n' > \"$host_output/food-sanitize-post-image\"\nchmod 0755 \"$host_output/food-sanitize-post-image\"\n",
+    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then printf '{\"services\":{\"portal\":{\"image\":\"henukit-portal:test\"}}}\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nhost_output=\nsource_root=\nwhile [[ $# -gt 0 ]]; do\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/host-out\" ]]; then host_output=\"${2%:/host-out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/src:ro\" ]]; then source_root=\"${2%:/src:ro}\"; fi\n  shift\ndone\n[[ -n \"$output\" && -n \"$host_output\" && -n \"$source_root\" ]]\nif [[ -e \"$source_root/services/deploy-webhook/injected.go\" ]]; then printf 'ignored source injection reached Docker\\n' >&2; exit 91; fi\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\nprintf '#!/bin/sh\\nexit 0\\n' > \"$host_output/food-sanitize-post-image\"\nchmod 0755 \"$host_output/food-sanitize-post-image\"\n",
     { mode: 0o755 },
   );
   chmodSync(docker, 0o755);
@@ -190,6 +206,9 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./bin/food-sanitize-post-image",
     "./bin/import-legacy-portal-food-images.mjs",
     "./docker-compose.henukit.release.yml",
+    "./getwork-node-deploy/install_node.sh",
+    "./getwork-node-deploy/install_production_tunnel_account.sh",
+    "./getwork-node-deploy/verify_node.py",
     "./release-gates/account-production-boundary.env",
     "./release-gates/oauth-continuation.env",
     "./materials-runtime/install.sh",
