@@ -182,15 +182,21 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   chmodSync(docker, 0o755);
 
   try {
-    execFileSync(packager, [
-      "--sha", releaseSha,
-      "--output-dir", outputDirectory,
-      "--oauth-gate-receipt", oauthGateReceipt,
-    ], {
-      cwd: checkout,
-      env: { ...process.env, PATH: `${binDirectory}:${process.env.PATH}` },
-      stdio: "pipe",
-    });
+    try {
+      execFileSync(packager, [
+        "--sha", releaseSha,
+        "--output-dir", outputDirectory,
+        "--oauth-gate-receipt", oauthGateReceipt,
+      ], {
+        cwd: checkout,
+        env: { ...process.env, PATH: `${binDirectory}:${process.env.PATH}` },
+        stdio: "pipe",
+      });
+    } catch (error) {
+      assert.fail(
+        `runtime packager failed\nstdout:\n${error.stdout?.toString() ?? ""}\nstderr:\n${error.stderr?.toString() ?? ""}`,
+      );
+    }
 
   assert.equal(existsSync(runtimeArchive), true);
   assert.equal(existsSync(`${runtimeArchive}.sha256`), true);
