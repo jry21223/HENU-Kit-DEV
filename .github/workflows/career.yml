@@ -97,6 +97,12 @@ jobs:
           go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
           go test -race -count=1 ./...
           go build -o /tmp/career ./cmd/server
+      - name: Verify WSL Job Source MCP node contract
+        run: |
+          python3 -m unittest services/getwork-mcp/deploy/test_verify_node.py
+          python3 -m py_compile \
+            services/getwork-mcp/deploy/verify_node.py \
+            services/getwork-mcp/deploy/test_verify_node.py
       - name: Build image
         run: docker build -t henukit-career:${{ github.sha }} services/career-opportunities
       - name: Verify pinned getWork MCP transport

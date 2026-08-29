@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+network=henukit-getwork-egress
+subnet=172.30.250.0/24
+bridge=henukit-getwork0
+chain=HENUKIT-GETWORK-EGRESS
+
+[[ "${EUID}" -eq 0 ]] || {
+  echo "henukit-getwork-egress must run as root" >&2
+  exit 1
+}
+
+if docker network inspect "$network" >/dev/null 2>&1; then
+  [[ "$(docker network inspect "$network" --format '{{(index .IPAM.Config 0).Subnet}}')" == "$subnet" ]]
+  [[ "$(docker network inspect "$network" --format '{{index .Options "com.docker.network.bridge.name"}}')" == "$bridge" ]]
+else
+  docker network create --driver bridge --ipv6=false --subnet "$subnet" \
+    --opt "com.docker.network.bridge.name=$bridge" "$network" >/dev/null
+fi
+[[ "$(docker network inspect "$network" --format '{{.EnableIPv6}}')" == false ]]
+
+iptables_bin="$(command -v iptables)"
+blocked_destinations=(
+  0.0.0.0/8
+  10.0.0.0/8
+  100.64.0.0/10
+  127.0.0.0/8
+  169.254.0.0/16
+  172.16.0.0/12
+  192.168.0.0/16
+  224.0.0.0/4
+  240.0.0.0/4
+)
+"$iptables_bin" -N "$chain" 2>/dev/null || true
+"$iptables_bin" -F "$chain"
+"$iptables_bin" -A "$chain" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+for destination in "${blocked_destinations[@]}"; do
+  while "$iptables_bin" -C DOCKER-USER -s "$subnet" -d "$destination" -j REJECT 2>/dev/null; do
+    "$iptables_bin" -D DOCKER-USER -s "$subnet" -d "$destination" -j REJECT
+  done
+  "$iptables_bin" -A "$chain" -d "$destination" -j REJECT
+done
+"$iptables_bin" -A "$chain" -j RETURN
+while "$iptables_bin" -C DOCKER-USER -s "$subnet" -j "$chain" 2>/dev/null; do
+  "$iptables_bin" -D DOCKER-USER -s "$subnet" -j "$chain"
+done
+"$iptables_bin" -I DOCKER-USER 1 -s "$subnet" -j "$chain"

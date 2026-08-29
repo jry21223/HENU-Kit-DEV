@@ -38,6 +38,12 @@ per-source allowlist. Each result keeps its source status and only accepts
 official HTTPS application URLs for that source. One scan has a six-minute
 deadline and persists at most the top 200 jobs by explainable relevance.
 
+ADR-0043 places the browser-bearing MCP on the WSL Job Source node. Production
+Career reaches it through a forwarding-only SSH tunnel and a host-private relay
+at the operator-configured `CAREER_GETWORK_MCP_URL`. The relay exposes only
+`/mcp` and `/healthz`; tunnel loss returns a stable unavailable response and
+never starts a local crawler fallback.
+
 The older direct-source registry remains available for local/degraded tests.
 Every source explicitly registered in code is enabled; an empty registry runs
 no direct source.

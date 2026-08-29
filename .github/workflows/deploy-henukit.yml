@@ -41,11 +41,18 @@ jobs:
               scripts/ops/tests/henukit-release-images.test.mjs \
               scripts/ops/tests/import-henukit-materials-preflight.test.mjs \
               scripts/ops/tests/materials-study-migration.test.mjs \
-              scripts/ops/tests/package-henukit-runtime.test.mjs \
               scripts/ops/tests/verify-henukit-local-release.test.mjs \
               scripts/ops/tests/build-henukit-release-local.test.mjs \
               scripts/ops/tests/deploy-henukit-release-from-wsl.test.mjs \
-              scripts/ops/tests/activate-henukit-release.test.mjs
+              scripts/ops/tests/activate-henukit-release.test.mjs \
+              scripts/ops/tests/getwork-node-rollback.test.mjs \
+              scripts/ops/tests/getwork-wsl-node-contract.test.mjs
+
+            # Runtime packaging creates a temporary Git checkout and validates
+            # it is clean. Keep it isolated from cross-file fixtures that also
+            # create and mutate temporary repositories.
+            node --test --test-concurrency=1 \
+              scripts/ops/tests/package-henukit-runtime.test.mjs
 
             # The watcher fixture launches many short-lived fake runtimes. Run
             # it without cross-file test load so scheduling cannot turn a

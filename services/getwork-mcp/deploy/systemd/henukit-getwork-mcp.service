@@ -1,0 +1,21 @@
+[Unit]
+Description=HENUKit Job Source MCP crawler on WSL
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/henukit-getwork/node.env
+ExecStartPre=/usr/bin/docker image inspect henukit-getwork-mcp:${HENUKIT_GETWORK_RELEASE_SHA}
+ExecStartPre=/usr/local/libexec/henukit-getwork-egress
+ExecStartPre=-/usr/bin/docker rm henukit-getwork-mcp
+ExecStart=/usr/bin/docker run --rm --name henukit-getwork-mcp --pull never --user 65532:65532 --read-only --network henukit-getwork-egress --memory ${HENUKIT_GETWORK_MEMORY_LIMIT} --pids-limit 1024 --shm-size 1g --cap-drop ALL --security-opt no-new-privileges --publish 127.0.0.1:8100:8100 --env-file /etc/henukit-getwork/mcp.env --tmpfs /tmp:rw,nosuid,nodev,size=1g --tmpfs /opt/getwork/data:rw,nosuid,nodev,noexec,size=512m henukit-getwork-mcp:${HENUKIT_GETWORK_RELEASE_SHA}
+ExecStop=/usr/bin/docker stop --time 20 henukit-getwork-mcp
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
