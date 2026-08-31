@@ -1,8 +1,11 @@
 package career
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -218,7 +221,22 @@ func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
 		return nil, map[string]any{"status": "ok", "source": input.Source, "jobs": []map[string]any{}}, nil
 	})
 	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
-	upstream := httptest.NewServer(handler)
+	var initializeCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read MCP request: %v", err)
+			return
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		var envelope struct {
+			Method string `json:"method"`
+		}
+		if json.Unmarshal(body, &envelope) == nil && envelope.Method == "initialize" {
+			initializeCalls.Add(1)
+		}
+		handler.ServeHTTP(writer, request)
+	}))
 	t.Cleanup(upstream.Close)
 
 	work, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
@@ -237,6 +255,9 @@ func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
 	}
 	if maximum.Load() <= 1 || maximum.Load() > 4 {
 		t.Fatalf("maximum concurrent crawls = %d, want 2..4", maximum.Load())
+	}
+	if initializeCalls.Load() != 2 {
+		t.Fatalf("MCP initialize calls = %d, want one startup probe plus one shared scan session", initializeCalls.Load())
 	}
 }
 
