@@ -31,6 +31,7 @@ PINNED_SOURCES = (
     "tongcheng", "vipshop", "xfusion", "xiaohongshu",
 )
 UNIT_NAMES = ("henukit-getwork-mcp.service", "henukit-getwork-tunnel.service")
+REPOSITORY_URL = "https://github.com/jry21223/HENU-Kit-DEV.git"
 
 
 class Config(NamedTuple):
@@ -47,6 +48,9 @@ class Config(NamedTuple):
     manifest_file: pathlib.Path
     signature_file: pathlib.Path
     allowed_signers_file: pathlib.Path
+    provenance_mode: str = "ssh-signature"
+    attestation_file: pathlib.Path | None = None
+    gh_file: pathlib.Path = pathlib.Path("/usr/bin/gh")
 
 
 class SecureFile(NamedTuple):
@@ -68,6 +72,7 @@ class Evidence(NamedTuple):
 
 
 class Probe(Protocol):
+    def current_main_sha(self) -> str: ...
     def osrelease(self) -> str: ...
     def machine(self) -> str: ...
     def root_fstype(self) -> str: ...
@@ -82,6 +87,13 @@ class Probe(Protocol):
     def known_host_fingerprints(self, path: pathlib.Path, host: str, port: int) -> list[str]: ...
     def signed_manifest_valid(
         self, manifest: pathlib.Path, signature: pathlib.Path, allowed_signers: pathlib.Path
+    ) -> bool: ...
+    def actions_attestation_valid(
+        self,
+        manifest: pathlib.Path,
+        attestation: pathlib.Path,
+        gh_file: pathlib.Path,
+        release_sha: str,
     ) -> bool: ...
     def archive_sha256(self, path: pathlib.Path) -> str: ...
     def archive_image_id(self, path: pathlib.Path) -> str: ...
@@ -181,6 +193,8 @@ def _require_file(
 def verify(config: Config, probe: Probe) -> Evidence:
     if not re.fullmatch(r"[0-9a-f]{40}", config.release_sha):
         raise VerificationError("release SHA must be 40 lowercase hexadecimal characters")
+    if probe.current_main_sha() != config.release_sha:
+        raise VerificationError("release SHA is not the freshly fetched current origin/main")
     if "microsoft" not in probe.osrelease().lower():
         raise VerificationError("Job Source MCP node must run on WSL2")
     if probe.machine() != "x86_64" or probe.root_fstype() != "ext4":
@@ -196,11 +210,17 @@ def verify(config: Config, probe: Probe) -> Evidence:
         "HENUKIT_GETWORK_TUNNEL_TARGET", "HENUKIT_GETWORK_TUNNEL_PORT",
         "HENUKIT_GETWORK_MCP_UNIT_SHA256", "HENUKIT_GETWORK_TUNNEL_UNIT_SHA256",
         "HENUKIT_GETWORK_EGRESS_SHA256",
+        "HENUKIT_GETWORK_PROVENANCE_MODE",
     }
     if set(node_env) != required:
         raise VerificationError("node env keys do not match the reviewed contract")
     if node_env["HENUKIT_GETWORK_RELEASE_SHA"] != config.release_sha:
         raise VerificationError("node env release SHA does not match")
+    if (
+        config.provenance_mode not in {"ssh-signature", "github-actions"}
+        or node_env["HENUKIT_GETWORK_PROVENANCE_MODE"] != config.provenance_mode
+    ):
+        raise VerificationError("node env provenance mode does not match")
     expected_image_id = node_env["HENUKIT_GETWORK_IMAGE_ID"]
     expected_archive_sha = node_env["HENUKIT_GETWORK_ARCHIVE_SHA256"]
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_image_id):
@@ -290,13 +310,26 @@ def verify(config: Config, probe: Probe) -> Evidence:
     if not probe.egress_policy_live():
         raise VerificationError("live crawler egress policy is not hardened")
 
-    manifest = _require_file(probe, config.manifest_file, 0o400, "signed release manifest")
-    _require_file(probe, config.signature_file, 0o400, "release manifest signature")
-    _require_file(probe, config.allowed_signers_file, 0o644, "release allowed signers")
-    if not probe.signed_manifest_valid(
-        config.manifest_file, config.signature_file, config.allowed_signers_file
-    ):
-        raise VerificationError("release manifest signature is invalid")
+    manifest = _require_file(probe, config.manifest_file, 0o400, "release manifest")
+    if config.provenance_mode == "ssh-signature":
+        _require_file(probe, config.signature_file, 0o400, "release manifest signature")
+        _require_file(probe, config.allowed_signers_file, 0o644, "release allowed signers")
+        if not probe.signed_manifest_valid(
+            config.manifest_file, config.signature_file, config.allowed_signers_file
+        ):
+            raise VerificationError("release manifest signature is invalid")
+    else:
+        if config.attestation_file is None:
+            raise VerificationError("GitHub Actions attestation path is missing")
+        _require_file(probe, config.attestation_file, 0o400, "Actions attestation")
+        _require_file(probe, config.gh_file, 0o755, "GitHub CLI")
+        if not probe.actions_attestation_valid(
+            config.manifest_file,
+            config.attestation_file,
+            config.gh_file,
+            config.release_sha,
+        ):
+            raise VerificationError("GitHub Actions attestation is invalid")
     _require_file(probe, config.artifact_file, 0o400, "getWork image archive")
     archive_sha = probe.archive_sha256(config.artifact_file)
     if archive_sha != expected_archive_sha:
@@ -305,16 +338,29 @@ def verify(config: Config, probe: Probe) -> Evidence:
         f"artifact_sha256={archive_sha}  {config.artifact_file.name}"
     )
     manifest_lines = manifest.contents.splitlines()
-    if (
-        manifest_lines.count("format=henukit-local-release-v1") != 1
-        or manifest_lines.count(f"release_sha={config.release_sha}") != 1
-        or manifest_lines.count("source_ref=refs/heads/main") != 1
-        or manifest_lines.count("builder_platform=linux/amd64") != 1
-        or manifest_lines.count("signer=henukit-release") != 1
-        or manifest_lines.count("signature_namespace=henukit-release") != 1
-        or manifest_lines.count(archive_record) != 1
-    ):
-        raise VerificationError("signed release manifest does not bind the getWork archive")
+    common_manifest_lines = (
+        manifest_lines.count(f"release_sha={config.release_sha}") == 1
+        and manifest_lines.count("source_ref=refs/heads/main") == 1
+        and manifest_lines.count("builder_platform=linux/amd64") == 1
+        and manifest_lines.count(archive_record) == 1
+    )
+    if config.provenance_mode == "ssh-signature":
+        provenance_lines = (
+            manifest_lines.count("format=henukit-local-release-v1") == 1
+            and manifest_lines.count("signer=henukit-release") == 1
+            and manifest_lines.count("signature_namespace=henukit-release") == 1
+        )
+    else:
+        provenance_lines = (
+            manifest_lines.count("format=henukit-getwork-actions-release-v1") == 1
+            and manifest_lines.count("source_repository=jry21223/HENU-Kit-DEV") == 1
+            and manifest_lines.count(
+                "signer_workflow=.github/workflows/deploy-henukit.yml"
+            )
+            == 1
+        )
+    if not common_manifest_lines or not provenance_lines:
+        raise VerificationError("release manifest does not bind the getWork archive")
 
     image = f"henukit-getwork-mcp:{config.release_sha}"
     platform = probe.docker_platform(image)
@@ -327,7 +373,9 @@ def verify(config: Config, probe: Probe) -> Evidence:
     ):
         raise VerificationError("getWork image identity or platform does not match")
     if not probe.runtime_hardened(image_id):
-        raise VerificationError("live crawler runtime is not the signed hardened image")
+        raise VerificationError(
+            "live crawler runtime is not the provenance-verified hardened image"
+        )
 
     health = probe.health()
     if health.get("ok") is not True or health.get("upstream") != "RyaoVen/getWork@2c7800d":
@@ -342,6 +390,8 @@ def verify(config: Config, probe: Probe) -> Evidence:
     crawl = probe.crawl(token, crawl_source)
     if crawl.get("status") != "ok" or crawl.get("source") not in (None, crawl_source):
         raise VerificationError("real crawl_jobs preflight failed")
+    if probe.current_main_sha() != config.release_sha:
+        raise VerificationError("origin/main changed during node verification")
 
     return Evidence(image, image_id, platform, archive_sha, len(sources), tools, crawl_source)
 
@@ -356,6 +406,39 @@ class RealProbe:
 
     def osrelease(self) -> str:
         return self._command("uname", "-r")
+
+    def current_main_sha(self) -> str:
+        environment = {
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/var/empty",
+            "XDG_CONFIG_HOME": "/var/empty",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        result = subprocess.run(
+            (
+                "/usr/bin/git",
+                "-c",
+                "credential.helper=",
+                "-c",
+                "protocol.allow=never",
+                "-c",
+                "protocol.https.allow=always",
+                "ls-remote",
+                "--exit-code",
+                REPOSITORY_URL,
+                "refs/heads/main",
+            ),
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+            cwd="/",
+            timeout=60,
+        )
+        return result.stdout.split(maxsplit=1)[0]
 
     def machine(self) -> str:
         return self._command("uname", "-m")
@@ -481,6 +564,48 @@ class RealProbe:
             text=True,
         )
         return result.returncode == 0
+
+    def actions_attestation_valid(
+        self,
+        manifest: pathlib.Path,
+        attestation: pathlib.Path,
+        gh_file: pathlib.Path,
+        release_sha: str,
+    ) -> bool:
+        environment = dict(os.environ)
+        environment.pop("GH_TOKEN", None)
+        environment.pop("GITHUB_TOKEN", None)
+        environment.update({"GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"})
+        result = subprocess.run(
+            (
+                str(gh_file),
+                "attestation",
+                "verify",
+                str(manifest),
+                "--repo",
+                "jry21223/HENU-Kit-DEV",
+                "--bundle",
+                str(attestation),
+                "--signer-workflow",
+                "jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml",
+                "--source-ref",
+                "refs/heads/main",
+                "--source-digest",
+                release_sha,
+                "--deny-self-hosted-runners",
+                "--format",
+                "json",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            return False
+        decoded = json.loads(result.stdout)
+        return isinstance(decoded, list) and len(decoded) == 1
 
     def archive_sha256(self, path: pathlib.Path) -> str:
         digest = hashlib.sha256()
@@ -677,19 +802,49 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--installed-egress-file", type=pathlib.Path, default=pathlib.Path("/usr/local/libexec/henukit-getwork-egress"))
     parser.add_argument("--trust-file", type=pathlib.Path, default=pathlib.Path("/etc/henukit-getwork/trust.env"))
     parser.add_argument("--allowed-signers-file", type=pathlib.Path, default=pathlib.Path("/etc/henukit-getwork/release-signers"))
+    parser.add_argument(
+        "--provenance-mode",
+        choices=("ssh-signature", "github-actions"),
+        default="ssh-signature",
+    )
+    parser.add_argument("--actions-attestation-file", type=pathlib.Path)
+    parser.add_argument("--gh-file", type=pathlib.Path, default=pathlib.Path("/usr/bin/gh"))
     parser.add_argument("--manifest-file", type=pathlib.Path)
     parser.add_argument("--signature-file", type=pathlib.Path)
     options = parser.parse_args(arguments)
     source_units = pathlib.Path(__file__).resolve().parent / "systemd"
-    manifest_file = options.manifest_file or options.artifact_file.parent / f"henukit-release-{options.sha}.manifest"
+    default_manifest = (
+        f"henukit-getwork-actions-{options.sha}.manifest"
+        if options.provenance_mode == "github-actions"
+        else f"henukit-release-{options.sha}.manifest"
+    )
+    manifest_file = options.manifest_file or options.artifact_file.parent / default_manifest
     signature_file = options.signature_file or manifest_file.with_name(manifest_file.name + ".sig")
+    attestation_file = options.actions_attestation_file
+    if options.provenance_mode == "github-actions" and attestation_file is None:
+        attestation_file = options.artifact_file.parent / f"henukit-getwork-actions-{options.sha}.attestation.json"
     try:
-        evidence = verify(Config(
-            options.sha, options.token_file, options.node_env_file, options.private_key_file,
-            options.known_hosts_file, options.artifact_file, source_units, options.installed_unit_dir,
-            options.installed_egress_file,
-            options.trust_file, manifest_file, signature_file, options.allowed_signers_file,
-        ), RealProbe())
+        evidence = verify(
+            Config(
+                release_sha=options.sha,
+                token_file=options.token_file,
+                node_env_file=options.node_env_file,
+                private_key_file=options.private_key_file,
+                known_hosts_file=options.known_hosts_file,
+                artifact_file=options.artifact_file,
+                source_unit_dir=source_units,
+                installed_unit_dir=options.installed_unit_dir,
+                installed_egress_file=options.installed_egress_file,
+                trust_file=options.trust_file,
+                manifest_file=manifest_file,
+                signature_file=signature_file,
+                allowed_signers_file=options.allowed_signers_file,
+                provenance_mode=options.provenance_mode,
+                attestation_file=attestation_file,
+                gh_file=options.gh_file,
+            ),
+            RealProbe(),
+        )
     except (VerificationError, OSError, subprocess.SubprocessError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
         print(f"verification failed: {error}", file=sys.stderr)
         return 1

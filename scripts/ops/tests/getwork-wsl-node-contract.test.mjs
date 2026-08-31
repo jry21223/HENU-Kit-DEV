@@ -51,6 +51,47 @@ test("deployment instructions preserve a remote-forward-only production account"
   assert.match(runbook, /root private key.*never.*WSL/is);
   assert.match(runbook, /verify_node\.py/);
   assert.match(runbook, /rollback/i);
+  assert.match(runbook, /GitHub Actions attestation/);
+  assert.match(runbook, /sudo timeout 60s env -u GH_TOKEN -u GITHUB_TOKEN \/usr\/bin\/gh attestation verify/);
+  assert.match(runbook, /--repo jry21223\/HENU-Kit-DEV/);
+  assert.match(
+    runbook,
+    /--signer-workflow jry21223\/HENU-Kit-DEV\/\.github\/workflows\/deploy-henukit\.yml/,
+  );
+  assert.match(runbook, /--source-ref refs\/heads\/main/);
+  assert.match(runbook, /--source-digest "\$release_sha"/);
+  assert.match(runbook, /--deny-self-hosted-runners/);
+  assert.match(runbook, /--actions-attestation/);
+  assert.match(
+    runbook,
+    /\/usr\/bin\/git[\s\S]*ls-remote --exit-code https:\/\/github\.com\/jry21223\/HENU-Kit-DEV\.git refs\/heads\/main/,
+  );
+  assert.match(runbook, /env -i PATH=\/usr\/bin:\/bin[\s\S]*GIT_CONFIG_NOSYSTEM=1[\s\S]*GIT_CONFIG_GLOBAL=\/dev\/null/);
+  assert.match(runbook, /test "\$current_main_sha" = "\$release_sha"/);
+  assert.match(
+    runbook,
+    /gh run view "\$run_id"[\s\S]*conclusion[\s\S]*headSha[\s\S]*status[\s\S]*workflowName/,
+  );
+  for (const artifact of [
+    "henukit-getwork-mcp-",
+    "henukit-runtime-",
+    "henukit-getwork-actions-provenance-",
+  ]) {
+    assert.match(
+      runbook,
+      new RegExp(`gh run download "\\$run_id"[\\s\\S]*--name "${artifact}`),
+    );
+  }
+  for (const input of ["node.env", "mcp.env", "id_ed25519", "known_hosts"]) {
+    assert.match(
+      runbook,
+      new RegExp(`install -o root -g root -m 0400[\\s\\S]*"\\$stage/${input.replaceAll(".", "\\.")}"`),
+    );
+  }
+  assert.match(
+    runbook,
+    /verify_node\.py[\s\S]*--provenance-mode github-actions[\s\S]*--actions-attestation-file/,
+  );
 });
 
 test("deployment includes idempotent install, rollback, reconnect, and production account gates", () => {
@@ -113,4 +154,49 @@ test("deployment includes idempotent install, rollback, reconnect, and productio
   assert.ok(preauthDrain < authenticatedDrain && authenticatedDrain < authenticatedProof);
   assert.ok(authenticatedProof < keyActivation);
   assert.match(production, /prior LoginGraceTime must be between 1 and 300 seconds/);
+});
+
+test("the WSL installer accepts only an exact-main GitHub Actions attestation or the existing local signer", () => {
+  const install = readFileSync(new URL("install_node.sh", deployRoot), "utf8");
+
+  assert.match(install, /--actions-attestation/);
+  assert.match(install, /actions_repository=jry21223\/HENU-Kit-DEV/);
+  assert.match(
+    install,
+    /actions_signer_workflow=jry21223\/HENU-Kit-DEV\/\.github\/workflows\/deploy-henukit\.yml/,
+  );
+  assert.match(install, /actions_source_ref=refs\/heads\/main/);
+  assert.match(install, /gh_bin=\/usr\/bin\/gh/);
+  assert.match(install, /trusted_root_file "\$gh_bin"/);
+  assert.match(
+    install,
+    /while :; do[\s\S]*stat -c %u "\$current"[\s\S]*"\$current" == \/[\s\S]*break/,
+  );
+  assert.match(
+    install,
+    /"\$gh_bin" attestation verify "\$stage_dir\/\$manifest"/,
+  );
+  assert.match(install, /--repo "\$actions_repository"/);
+  assert.match(install, /--bundle "\$stage_dir\/\$actions_attestation"/);
+  assert.match(install, /--signer-workflow "\$actions_signer_workflow"/);
+  assert.match(install, /--source-ref "\$actions_source_ref"/);
+  assert.match(install, /--source-digest "\$release_sha"/);
+  assert.match(install, /--deny-self-hosted-runners/);
+  assert.match(install, /env -u GH_TOKEN -u GITHUB_TOKEN/);
+  assert.match(install, /current_main_sha/);
+  assert.match(install, /github\.com\/jry21223\/HENU-Kit-DEV\.git/);
+  assert.match(
+    install,
+    /env -i PATH=\/usr\/bin:\/bin HOME=\/var\/empty XDG_CONFIG_HOME=\/var\/empty[\s\S]*GIT_CONFIG_NOSYSTEM=1[\s\S]*GIT_CONFIG_GLOBAL=\/dev\/null/,
+  );
+  assert.equal(
+    (install.match(/assert_current_main/g) ?? []).length,
+    3,
+    "current main is checked before provenance work and again before activation",
+  );
+  assert.match(install, /format=henukit-getwork-actions-release-v1/);
+  assert.match(install, /source_repository=\$\{actions_repository\}/);
+  assert.match(install, /signer_workflow=\.github\/workflows\/deploy-henukit\.yml/);
+  assert.match(install, /choose exactly one release provenance mode/);
+  assert.match(install, /ssh-keygen -Y verify/);
 });

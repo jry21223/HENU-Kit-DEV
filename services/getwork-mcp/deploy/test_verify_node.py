@@ -1,9 +1,12 @@
 import importlib.util
 import hashlib
 import io
+import os
 import pathlib
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = pathlib.Path(__file__).with_name("verify_node.py")
@@ -14,6 +17,9 @@ SPEC.loader.exec_module(verify_node)
 
 
 class HealthyNodeProbe:
+    def current_main_sha(self):
+        return "a" * 40
+
     def osrelease(self):
         return "6.6.87.2-microsoft-standard-WSL2"
 
@@ -89,6 +95,7 @@ class HealthyNodeProbe:
                 + "\nHENUKIT_GETWORK_EGRESS_SHA256="
                 + hashlib.sha256(b"egress-helper").hexdigest()
                 + "\n"
+                "HENUKIT_GETWORK_PROVENANCE_MODE=ssh-signature\n"
                 "HENUKIT_GETWORK_MEMORY_LIMIT=4g\n"
                 "HENUKIT_GETWORK_TUNNEL_TARGET=henukit-getwork-tunnel@8.146.200.82\n"
                 "HENUKIT_GETWORK_TUNNEL_PORT=22222\n"
@@ -178,7 +185,67 @@ class WrongSourcesProbe(HealthyNodeProbe):
         return [f"source-{index}" for index in range(18)]
 
 
+class StaleMainProbe(HealthyNodeProbe):
+    def current_main_sha(self):
+        return "f" * 40
+
+
+class HealthyActionsProbe(HealthyNodeProbe):
+    def secure_file(self, path):
+        if path == pathlib.Path("/etc/henukit-getwork/node.env"):
+            item = super().secure_file(path)
+            return item._replace(
+                contents=item.contents.replace(
+                    "HENUKIT_GETWORK_PROVENANCE_MODE=ssh-signature\n",
+                    "HENUKIT_GETWORK_PROVENANCE_MODE=github-actions\n",
+                )
+            )
+        if path.name.endswith(".manifest"):
+            return verify_node.SecureFile(
+                True,
+                False,
+                0,
+                0o400,
+                "format=henukit-getwork-actions-release-v1\n"
+                f"release_sha={'a' * 40}\n"
+                "source_repository=jry21223/HENU-Kit-DEV\n"
+                "source_ref=refs/heads/main\n"
+                "signer_workflow=.github/workflows/deploy-henukit.yml\n"
+                "builder_platform=linux/amd64\n"
+                f"artifact_sha256={'c' * 64}  henukit-getwork-mcp-{'a' * 40}.docker.tar.gz\n",
+            )
+        if path.name.endswith(".attestation.json"):
+            return verify_node.SecureFile(True, False, 0, 0o400, "attestation")
+        if path == pathlib.Path("/usr/bin/gh"):
+            return verify_node.SecureFile(True, False, 0, 0o755, "github-cli")
+        return super().secure_file(path)
+
+    def actions_attestation_valid(self, manifest, attestation, gh_file, release_sha):
+        self.actions_attestation = (manifest, attestation, gh_file, release_sha)
+        return True
+
+
 class VerifyNodeTests(unittest.TestCase):
+    def test_historical_main_release_is_rejected(self):
+        config = verify_node.Config(
+            release_sha="a" * 40,
+            token_file=pathlib.Path("/etc/henukit-getwork/mcp.env"),
+            node_env_file=pathlib.Path("/etc/henukit-getwork/node.env"),
+            private_key_file=pathlib.Path("/etc/henukit-getwork/tunnel/id_ed25519"),
+            known_hosts_file=pathlib.Path("/etc/henukit-getwork/tunnel/known_hosts"),
+            artifact_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-getwork-mcp-{'a' * 40}.docker.tar.gz"),
+            source_unit_dir=pathlib.Path("/checkout/services/getwork-mcp/deploy/systemd"),
+            installed_unit_dir=pathlib.Path("/etc/systemd/system"),
+            installed_egress_file=pathlib.Path("/usr/local/libexec/henukit-getwork-egress"),
+            trust_file=pathlib.Path("/etc/henukit-getwork/trust.env"),
+            manifest_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-release-{'a' * 40}.manifest"),
+            signature_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-release-{'a' * 40}.manifest.sig"),
+            allowed_signers_file=pathlib.Path("/etc/henukit-getwork/release-signers"),
+        )
+
+        with self.assertRaisesRegex(verify_node.VerificationError, "current origin/main"):
+            verify_node.verify(config, StaleMainProbe())
+
     def test_rpc_envelope_rejects_wrong_id_error_and_malformed_shapes(self):
         valid = {"jsonrpc": "2.0", "id": 3, "result": {"content": []}}
         self.assertEqual(verify_node._rpc_result(valid, 3), {"content": []})
@@ -246,6 +313,32 @@ class VerifyNodeTests(unittest.TestCase):
         self.assertEqual(evidence.crawl_source, "alibaba")
         self.assertNotIn("deployment-owned-getwork-token", repr(evidence))
 
+    def test_healthy_actions_node_reverifies_the_exact_main_attestation(self):
+        probe = HealthyActionsProbe()
+        config = verify_node.Config(
+            release_sha="a" * 40,
+            token_file=pathlib.Path("/etc/henukit-getwork/mcp.env"),
+            node_env_file=pathlib.Path("/etc/henukit-getwork/node.env"),
+            private_key_file=pathlib.Path("/etc/henukit-getwork/tunnel/id_ed25519"),
+            known_hosts_file=pathlib.Path("/etc/henukit-getwork/tunnel/known_hosts"),
+            artifact_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-getwork-mcp-{'a' * 40}.docker.tar.gz"),
+            source_unit_dir=pathlib.Path("/checkout/services/getwork-mcp/deploy/systemd"),
+            installed_unit_dir=pathlib.Path("/etc/systemd/system"),
+            installed_egress_file=pathlib.Path("/usr/local/libexec/henukit-getwork-egress"),
+            trust_file=pathlib.Path("/etc/henukit-getwork/trust.env"),
+            manifest_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-getwork-actions-{'a' * 40}.manifest"),
+            signature_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-release-{'a' * 40}.manifest.sig"),
+            allowed_signers_file=pathlib.Path("/etc/henukit-getwork/release-signers"),
+            provenance_mode="github-actions",
+            attestation_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-getwork-actions-{'a' * 40}.attestation.json"),
+            gh_file=pathlib.Path("/usr/bin/gh"),
+        )
+
+        evidence = verify_node.verify(config, probe)
+
+        self.assertEqual(evidence.source_count, 18)
+        self.assertEqual(probe.actions_attestation[-1], "a" * 40)
+
     def test_eighteen_unapproved_source_keys_do_not_pass_as_the_pinned_set(self):
         config = verify_node.Config(
             release_sha="a" * 40,
@@ -278,6 +371,47 @@ class VerifyNodeTests(unittest.TestCase):
 
             self.assertTrue(token_file.symlink)
             self.assertEqual(token_file.contents, "")
+
+    def test_actions_verification_does_not_inherit_github_tokens(self):
+        completed = subprocess.CompletedProcess([], 0, stdout="[{}]", stderr="")
+        with mock.patch.dict(
+            os.environ,
+            {"GH_TOKEN": "must-not-leak", "GITHUB_TOKEN": "must-not-leak"},
+        ), mock.patch.object(verify_node.subprocess, "run", return_value=completed) as run:
+            valid = verify_node.RealProbe().actions_attestation_valid(
+                pathlib.Path("/release.manifest"),
+                pathlib.Path("/release.attestation.json"),
+                pathlib.Path("/usr/bin/gh"),
+                "a" * 40,
+            )
+
+        self.assertTrue(valid)
+        environment = run.call_args.kwargs["env"]
+        self.assertNotIn("GH_TOKEN", environment)
+        self.assertNotIn("GITHUB_TOKEN", environment)
+        self.assertEqual(environment["GH_PROMPT_DISABLED"], "1")
+
+    def test_current_main_lookup_ignores_inherited_git_rewrites(self):
+        completed = subprocess.CompletedProcess(
+            [], 0, stdout=f"{'a' * 40}\trefs/heads/main\n", stderr=""
+        )
+        injected = {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "url.file:///tmp/attacker/.insteadOf",
+            "GIT_CONFIG_VALUE_0": "https://github.com/jry21223/HENU-Kit-DEV.git",
+            "GIT_EXEC_PATH": "/tmp/attacker",
+        }
+        with mock.patch.dict(os.environ, injected), mock.patch.object(
+            verify_node.subprocess, "run", return_value=completed
+        ) as run:
+            current = verify_node.RealProbe().current_main_sha()
+
+        self.assertEqual(current, "a" * 40)
+        environment = run.call_args.kwargs["env"]
+        self.assertTrue(set(injected).isdisjoint(environment))
+        self.assertEqual(run.call_args.args[0][0], "/usr/bin/git")
+        self.assertEqual(run.call_args.kwargs["cwd"], "/")
+        self.assertIn("protocol.allow=never", run.call_args.args[0])
 
     def test_tampered_installed_unit_fails_closed(self):
         probe = HealthyNodeProbe()

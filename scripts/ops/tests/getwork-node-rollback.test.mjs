@@ -131,7 +131,7 @@ test("installer rejects an untrusted staging ancestry before loading Docker", ()
   const fixture = mkdtempSync(join(tmpdir(), "getwork-install-fail-"));
   const bin = join(fixture, "bin");
   mkdirSync(bin);
-  for (const command of ["docker", "iptables", "jq", "ssh-keygen", "systemctl", "tar"]) {
+  for (const command of ["docker", "git", "iptables", "jq", "ssh-keygen", "systemctl", "tar", "timeout"]) {
     executable(join(bin, command), "printf invoked >> /fixture/invoked\nexit 91\n");
   }
   const setup = [
@@ -402,7 +402,7 @@ test("successful key promotion drains authenticated account processes first", ()
   assert.match(result.stdout, /installed remote-forward-only account/);
 });
 
-test("signed node installer succeeds on an idempotent second run", () => {
+test("local-signed and Actions node installers both succeed idempotently", () => {
   const fixture = mkdtempSync(join(tmpdir(), "getwork-install-twice-"));
   const stage = join(fixture, "stage-source");
   const runtime = join(fixture, "runtime-source");
@@ -418,6 +418,8 @@ test("signed node installer succeeds on an idempotent second run", () => {
   const imageName = `henukit-getwork-mcp-${releaseSha}.docker.tar.gz`;
   const runtimeName = `henukit-runtime-${releaseSha}.tar.gz`;
   const manifestName = `henukit-release-${releaseSha}.manifest`;
+  const actionsManifestName = `henukit-getwork-actions-${releaseSha}.manifest`;
+  const actionsAttestationName = `henukit-getwork-actions-${releaseSha}.attestation.json`;
   const runtimeDeploy = join(runtime, "getwork-node-deploy");
   cpSync(deployAssets, runtimeDeploy, { recursive: true });
   writeFileSync(join(runtime, "RELEASE_SHA"), releaseSha + "\n");
@@ -449,6 +451,18 @@ test("signed node installer succeeds on an idempotent second run", () => {
     "",
   ].join("\n"));
   writeFileSync(join(stage, manifestName + ".sig"), "fixture-signature\n");
+  writeFileSync(join(stage, actionsManifestName), [
+    "format=henukit-getwork-actions-release-v1",
+    `release_sha=${releaseSha}`,
+    "source_repository=jry21223/HENU-Kit-DEV",
+    "source_ref=refs/heads/main",
+    "signer_workflow=.github/workflows/deploy-henukit.yml",
+    "builder_platform=linux/amd64",
+    `artifact_sha256=${imageDigest}  ${imageName}`,
+    `artifact_sha256=${runtimeDigest}  ${runtimeName}`,
+    "",
+  ].join("\n"));
+  writeFileSync(join(stage, actionsAttestationName), "fixture-attestation\n");
   writeFileSync(join(stage, "node.env"), [
     "HENUKIT_GETWORK_MEMORY_LIMIT=4g",
     "HENUKIT_GETWORK_TUNNEL_TARGET=henukit-getwork-tunnel@production.example",
@@ -468,6 +482,8 @@ test("signed node installer succeeds on an idempotent second run", () => {
     runtimeName + ".sha256",
     manifestName,
     manifestName + ".sig",
+    actionsManifestName,
+    actionsAttestationName,
     "node.env",
     "mcp.env",
     "id_ed25519",
@@ -491,7 +507,19 @@ test("signed node installer succeeds on an idempotent second run", () => {
     "exit 1",
     "",
   ].join("\n"));
-  executable(join(bin, "jq"), `cat >/dev/null\nprintf '${imageConfig}\\n'\n`);
+  executable(join(bin, "jq"), [
+    "if [[ \"$*\" == *\"invalid verification count\"* ]]; then printf 'ok\\n'; exit 0; fi",
+    "cat >/dev/null",
+    `printf '${imageConfig}\\n'`,
+    "",
+  ].join("\n"));
+  const git = join(fixture, "git");
+  executable(git, [
+    `printf '${releaseSha}\\trefs/heads/main\\n'`,
+    "",
+  ].join("\n"));
+  const gh = join(fixture, "gh");
+  executable(gh, "printf '[{}]\\n'\n");
   executable(join(bin, "docker"), [
     "case \"${1:-} ${2:-}\" in",
     "  'load --input') exit 0 ;;",
@@ -533,6 +561,8 @@ test("signed node installer succeeds on an idempotent second run", () => {
   const setup = [
     "trap 'echo \"fixture setup failed at line $LINENO: $BASH_COMMAND\" >&2' ERR",
     "install -d -o root -g root -m 0755 /trusted /trusted-stage /trusted-inputs /usr/local/libexec",
+    "install -o root -g root -m 0755 /fixture/git /usr/bin/git",
+    "install -o root -g root -m 0755 /fixture/gh /usr/bin/gh",
     "install -o root -g root -m 0755 /source/install_node.sh /trusted/install_node.sh",
     "cp -a /fixture/stage-source/. /trusted-stage/",
     "chown -R root:root /trusted-stage",
@@ -541,9 +571,14 @@ test("signed node installer succeeds on an idempotent second run", () => {
     `command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --allowed-signers /trusted-inputs/allowed-signers --trust-file /trusted-inputs/trust.env)`,
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/first.out",
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/second.out",
+    `actions_command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --actions-attestation /trusted-stage/${actionsAttestationName} --trust-file /trusted-inputs/trust.env)`,
+    "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${actions_command[@]}\" | tee /fixture/actions-first.out",
+    "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${actions_command[@]}\" | tee /fixture/actions-second.out",
     "test -s /fixture/first.out",
     "test -s /fixture/second.out",
-    "test \"$(find /var/lib/henukit-getwork-backups -mindepth 1 -maxdepth 1 -type d | wc -l)\" -eq 2",
+    "test -s /fixture/actions-first.out",
+    "test -s /fixture/actions-second.out",
+    "test \"$(find /var/lib/henukit-getwork-backups -mindepth 1 -maxdepth 1 -type d | wc -l)\" -eq 4",
     "test \"$(getent passwd henukit-getwork-tunnel | cut -d: -f6)\" = /var/lib/henukit-getwork-tunnel",
     "test \"$(getent shadow henukit-getwork-tunnel | cut -d: -f2)\" = NP",
     "",
@@ -553,8 +588,10 @@ test("signed node installer succeeds on an idempotent second run", () => {
     "--volume", installer + ":/source/install_node.sh:ro",
     "--volume", fixture + ":/fixture",
     "debian:bookworm-slim", "bash", "-ceu", setup,
-  ], { encoding: "utf8", timeout: 30_000 });
+  ], { encoding: "utf8", timeout: 120_000 });
   assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
   assert.match(readFileSync(join(fixture, "first.out"), "utf8"), /installed henukit-getwork-mcp/);
   assert.match(readFileSync(join(fixture, "second.out"), "utf8"), /installed henukit-getwork-mcp/);
+  assert.match(readFileSync(join(fixture, "actions-first.out"), "utf8"), /verified github-actions provenance/);
+  assert.match(readFileSync(join(fixture, "actions-second.out"), "utf8"), /verified github-actions provenance/);
 });

@@ -32,7 +32,7 @@ test("the local builder is WSL-only and locks every artifact to the current clea
   assert.match(source, /done < <\("\$build_inventory" --field "\$name" build_args\)/);
   assert.match(
     source,
-    /git -C "\$repo_root" archive --format=tar "\$release_sha" \| tar -xf - -C "\$source_root"/,
+    /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha" \|[\s\S]*tar -xf - -C "\$source_root"/,
   );
   assert.match(source, /build_args\+=\(--build-arg "\$argument"\)/);
   assert.match(source, /docker build[\s\S]*"\$\{build_args\[@\]\}"/);

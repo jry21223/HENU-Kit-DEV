@@ -5,7 +5,16 @@ program=install_node
 release_sha=""
 stage_dir=""
 allowed_signers=""
+actions_attestation=""
 trust_file=""
+provenance_mode=""
+actions_repository=jry21223/HENU-Kit-DEV
+actions_repository_url=https://github.com/jry21223/HENU-Kit-DEV.git
+actions_signer_workflow=jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml
+actions_source_ref=refs/heads/main
+gh_bin=/usr/bin/gh
+git_bin=/usr/bin/git
+timeout_bin=/usr/bin/timeout
 backup_dir=""
 trusted_work=""
 node_env_tmp=""
@@ -29,11 +38,30 @@ die() {
 trusted_root_chain() {
   local current="$1"
   [[ "$current" == /* ]] || return 1
-  while [[ "$current" != / ]]; do
+  while :; do
     [[ ! -L "$current" && "$(stat -c %u "$current")" == 0 ]] || return 1
     (( (8#$(stat -c %a "$current") & 8#022) == 0 )) || return 1
+    [[ "$current" == / ]] && break
     current="$(dirname "$current")"
   done
+}
+
+current_main_sha() {
+  cd /
+  env -i PATH=/usr/bin:/bin HOME=/var/empty XDG_CONFIG_HOME=/var/empty \
+    GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_SYSTEM=/dev/null \
+    GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 \
+    "$timeout_bin" 60s "$git_bin" \
+      -c credential.helper= -c protocol.allow=never -c protocol.https.allow=always \
+      ls-remote --exit-code "$actions_repository_url" "$actions_source_ref" |
+    awk 'NR == 1 { print $1 }'
+}
+
+assert_current_main() {
+  local remote_sha
+  remote_sha="$(current_main_sha)" || die "could not resolve current origin/main"
+  [[ "$remote_sha" == "$release_sha" ]] ||
+    die "release SHA is not the freshly fetched current origin/main"
 }
 
 trusted_root_file() {
@@ -86,9 +114,10 @@ while [[ $# -gt 0 ]]; do
     --sha) release_sha="${2:-}"; shift 2 ;;
     --stage-dir) stage_dir="${2:-}"; shift 2 ;;
     --allowed-signers) allowed_signers="${2:-}"; shift 2 ;;
+    --actions-attestation) actions_attestation="${2:-}"; shift 2 ;;
     --trust-file) trust_file="${2:-}"; shift 2 ;;
     *)
-      die "usage: $program --sha <40-hex-main-sha> --stage-dir <root-stage> --allowed-signers <root-trust> --trust-file <approved-fingerprints>"
+      die "usage: $program --sha <40-hex-main-sha> --stage-dir <root-stage> (--allowed-signers <root-trust> | --actions-attestation <root-bundle>) --trust-file <approved-fingerprints>"
       ;;
   esac
 done
@@ -97,24 +126,45 @@ done
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "invalid release SHA"
 self_path="$(readlink -f "${BASH_SOURCE[0]}")"
 trusted_root_file "$self_path" ||
-  die "installer must execute from a root-owned signature-verified runtime"
+  die "installer must execute from a root-owned provenance-verified runtime"
 for command in docker iptables jq ssh-keygen systemctl tar; do
   command -v "$command" >/dev/null || die "required command is missing: $command"
 done
 [[ "$stage_dir" == /* && -d "$stage_dir" && ! -L "$stage_dir" ]] ||
   die "invalid stage directory"
 trusted_root_chain "$stage_dir" || die "stage directory ancestry is not root-trusted"
-trusted_root_file "$allowed_signers" || die "allowed-signers file is not root-trusted"
+trusted_root_file "$git_bin" || die "Git must be a root-trusted OS binary"
+trusted_root_file "$timeout_bin" || die "timeout must be a root-trusted OS binary"
 trusted_root_file "$trust_file" || die "fingerprint trust file is not root-trusted"
+if [[ -n "$allowed_signers" && -z "$actions_attestation" ]]; then
+  provenance_mode=ssh-signature
+  trusted_root_file "$allowed_signers" || die "allowed-signers file is not root-trusted"
+elif [[ -z "$allowed_signers" && -n "$actions_attestation" ]]; then
+  provenance_mode=github-actions
+  trusted_root_file "$gh_bin" || die "GitHub CLI must be a root-trusted OS binary"
+else
+  die "choose exactly one release provenance mode"
+fi
+assert_current_main
 
 image_archive="henukit-getwork-mcp-${release_sha}.docker.tar.gz"
 runtime_archive="henukit-runtime-${release_sha}.tar.gz"
-manifest="henukit-release-${release_sha}.manifest"
-signature="${manifest}.sig"
+if [[ "$provenance_mode" == ssh-signature ]]; then
+  manifest="henukit-release-${release_sha}.manifest"
+  signature="${manifest}.sig"
+  provenance_inputs=("$manifest" "$signature")
+else
+  manifest="henukit-getwork-actions-${release_sha}.manifest"
+  expected_attestation="henukit-getwork-actions-${release_sha}.attestation.json"
+  [[ "$actions_attestation" == "$stage_dir/$expected_attestation" ]] ||
+    die "Actions attestation must use the exact staged path"
+  actions_attestation="$expected_attestation"
+  provenance_inputs=("$manifest" "$actions_attestation")
+fi
 input_names=(
   "$image_archive" "${image_archive}.sha256"
   "$runtime_archive" "${runtime_archive}.sha256"
-  "$manifest" "$signature"
+  "${provenance_inputs[@]}"
   node.env mcp.env id_ed25519 known_hosts
 )
 for name in "${input_names[@]}"; do
@@ -134,17 +184,39 @@ signer="${HENUKIT_RELEASE_SIGNER:-henukit-release}"
 namespace="${HENUKIT_RELEASE_SIGNATURE_NAMESPACE:-henukit-release}"
 [[ "$signer" =~ ^[A-Za-z0-9_.@-]+$ && "$namespace" =~ ^[A-Za-z0-9_.@-]+$ ]] ||
   die "release signature identity is invalid"
-ssh-keygen -Y verify -f "$allowed_signers" -I "$signer" -n "$namespace" \
-  -s "$stage_dir/$signature" < "$stage_dir/$manifest" >/dev/null ||
-  die "signed release manifest verification failed"
-[[ "$(grep -Fxc 'format=henukit-local-release-v1' "$stage_dir/$manifest")" -eq 1 ]]
-[[ "$(grep -Fxc "release_sha=${release_sha}" "$stage_dir/$manifest")" -eq 1 ]]
-[[ "$(grep -Fxc 'source_ref=refs/heads/main' "$stage_dir/$manifest")" -eq 1 ]]
-[[ "$(grep -Fxc 'builder_platform=linux/amd64' "$stage_dir/$manifest")" -eq 1 ]]
-[[ "$(grep -Fxc "signer=${signer}" "$stage_dir/$manifest")" -eq 1 ]]
-[[ "$(grep -Fxc "signature_namespace=${namespace}" "$stage_dir/$manifest")" -eq 1 ]]
+if [[ "$provenance_mode" == ssh-signature ]]; then
+  ssh-keygen -Y verify -f "$allowed_signers" -I "$signer" -n "$namespace" \
+    -s "$stage_dir/$signature" < "$stage_dir/$manifest" >/dev/null ||
+    die "signed release manifest verification failed"
+  [[ "$(grep -Fxc 'format=henukit-local-release-v1' "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc "release_sha=${release_sha}" "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc 'source_ref=refs/heads/main' "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc 'builder_platform=linux/amd64' "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc "signer=${signer}" "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc "signature_namespace=${namespace}" "$stage_dir/$manifest")" -eq 1 ]]
+else
+  actions_verification="$trusted_work/actions-verification.json"
+  "$timeout_bin" 60s env -u GH_TOKEN -u GITHUB_TOKEN GH_PROMPT_DISABLED=1 NO_COLOR=1 \
+    "$gh_bin" attestation verify "$stage_dir/$manifest" \
+    --repo "$actions_repository" \
+    --bundle "$stage_dir/$actions_attestation" \
+    --signer-workflow "$actions_signer_workflow" \
+    --source-ref "$actions_source_ref" \
+    --source-digest "$release_sha" \
+    --deny-self-hosted-runners \
+    --format json > "$actions_verification" ||
+    die "GitHub Actions attestation verification failed"
+  [[ "$(jq -er 'if type == "array" and length == 1 then "ok" else error("invalid verification count") end' "$actions_verification")" == ok ]] ||
+    die "GitHub Actions attestation verification result is ambiguous"
+  [[ "$(grep -Fxc 'format=henukit-getwork-actions-release-v1' "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc "release_sha=${release_sha}" "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc "source_repository=${actions_repository}" "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc "source_ref=${actions_source_ref}" "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc 'signer_workflow=.github/workflows/deploy-henukit.yml' "$stage_dir/$manifest")" -eq 1 ]]
+  [[ "$(grep -Fxc 'builder_platform=linux/amd64' "$stage_dir/$manifest")" -eq 1 ]]
+fi
 
-verify_signed_artifact() {
+verify_provenance_artifact() {
   local name="$1"
   local digest recorded_digest recorded_name
   digest="$(sha256sum "$stage_dir/$name" | awk '{print $1}')"
@@ -155,11 +227,11 @@ verify_signed_artifact() {
   [[ "$recorded_digest" == "$digest" && "$recorded_name" == "$name" ]] ||
     die "checksum does not name the exact artifact: $name"
   [[ "$(grep -Fxc "artifact_sha256=${digest}  ${name}" "$stage_dir/$manifest")" -eq 1 ]] ||
-    die "artifact is absent from the signed release manifest: $name"
+    die "artifact is absent from the provenance-verified release manifest: $name"
   printf '%s' "$digest"
 }
-archive_sha="$(verify_signed_artifact "$image_archive")"
-runtime_sha="$(verify_signed_artifact "$runtime_archive")"
+archive_sha="$(verify_provenance_artifact "$image_archive")"
+runtime_sha="$(verify_provenance_artifact "$runtime_archive")"
 [[ -n "$runtime_sha" ]]
 
 if tar -tzf "$stage_dir/$runtime_archive" |
@@ -231,7 +303,7 @@ image="henukit-getwork-mcp:${release_sha}"
   die "loaded image is not linux/amd64"
 image_id="$(docker image inspect "$image" --format '{{.Id}}')"
 [[ "$image_id" == "$archive_image_id" ]] ||
-  die "loaded image ID does not match the signed image archive"
+  die "loaded image ID does not match the provenance-verified image archive"
 
 if getent passwd henukit-getwork-tunnel >/dev/null; then
   account_was_present=1
@@ -319,13 +391,21 @@ chmod 0600 "$backup_root/latest"
 install -d -o root -g henukit-getwork-tunnel -m 0750 \
   /etc/henukit-getwork /etc/henukit-getwork/tunnel
 install -d -o root -g root -m 0700 /var/lib/henukit-getwork-artifacts
-install -o root -g root -m 0644 "$allowed_signers" /etc/henukit-getwork/release-signers
+if [[ "$provenance_mode" == ssh-signature ]]; then
+  install -o root -g root -m 0644 "$allowed_signers" /etc/henukit-getwork/release-signers
+fi
 install -o root -g root -m 0600 "$trust_file" /etc/henukit-getwork/trust.env
 install -o root -g root -m 0600 "$stage_dir/mcp.env" /etc/henukit-getwork/mcp.env
 install -o root -g root -m 0600 "$stage_dir/id_ed25519" /etc/henukit-getwork/tunnel/id_ed25519
 install -o root -g henukit-getwork-tunnel -m 0640 \
   "$stage_dir/known_hosts" /etc/henukit-getwork/tunnel/known_hosts
-for artifact in "$image_archive" "$manifest" "$signature"; do
+provenance_artifacts=("$manifest")
+if [[ "$provenance_mode" == ssh-signature ]]; then
+  provenance_artifacts+=("$signature")
+else
+  provenance_artifacts+=("$actions_attestation")
+fi
+for artifact in "$image_archive" "${provenance_artifacts[@]}"; do
   install -o root -g root -m 0400 "$stage_dir/$artifact" \
     "/var/lib/henukit-getwork-artifacts/$artifact"
 done
@@ -345,6 +425,7 @@ node_env_tmp="$(mktemp)"
   printf 'HENUKIT_GETWORK_RELEASE_SHA=%s\n' "$release_sha"
   printf 'HENUKIT_GETWORK_IMAGE_ID=%s\n' "$image_id"
   printf 'HENUKIT_GETWORK_ARCHIVE_SHA256=%s\n' "$archive_sha"
+  printf 'HENUKIT_GETWORK_PROVENANCE_MODE=%s\n' "$provenance_mode"
   printf 'HENUKIT_GETWORK_MCP_UNIT_SHA256=%s\n' \
     "$(sha256sum "$installed_deploy/systemd/henukit-getwork-mcp.service" | awk '{print $1}')"
   printf 'HENUKIT_GETWORK_TUNNEL_UNIT_SHA256=%s\n' \
@@ -364,8 +445,9 @@ install -o root -g root -m 0644 "$installed_deploy/systemd/henukit-getwork-tunne
   /etc/systemd/system/henukit-getwork-tunnel.service
 
 systemctl daemon-reload
+assert_current_main
 systemctl enable henukit-getwork-mcp.service henukit-getwork-tunnel.service >/dev/null
 systemctl restart henukit-getwork-mcp.service
 systemctl restart henukit-getwork-tunnel.service
 committed=1
-echo "installed ${image} from signed manifest; rollback backup: ${backup_dir}"
+echo "installed ${image} from verified ${provenance_mode} provenance; rollback backup: ${backup_dir}"
