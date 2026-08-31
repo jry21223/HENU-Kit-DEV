@@ -66,6 +66,8 @@ test("deployment instructions preserve a remote-forward-only production account"
   );
   assert.match(runbook, /--deny-self-hosted-runners/);
   assert.match(runbook, /--actions-attestation/);
+  assert.match(runbook, /--actions-custom-trusted-root/);
+  assert.match(runbook, /--custom-trusted-root/);
   assert.match(
     runbook,
     /\/usr\/bin\/git[\s\S]*ls-remote --exit-code https:\/\/github\.com\/jry21223\/HENU-Kit-DEV\.git refs\/heads\/main/,
@@ -86,7 +88,7 @@ test("deployment instructions preserve a remote-forward-only production account"
       new RegExp(`gh run download "\\$run_id"[\\s\\S]*--name "${artifact}`),
     );
   }
-  for (const input of ["node.env", "mcp.env", "id_ed25519", "known_hosts"]) {
+  for (const input of ["node.env", "mcp.env", "id_ed25519", "known_hosts", "trusted_root.jsonl"]) {
     assert.match(
       runbook,
       new RegExp(`install -o root -g root -m 0400[\\s\\S]*"\\$stage/${input.replaceAll(".", "\\.")}"`),
@@ -94,7 +96,7 @@ test("deployment instructions preserve a remote-forward-only production account"
   }
   assert.match(
     runbook,
-    /verify_node\.py[\s\S]*--provenance-mode github-actions[\s\S]*--actions-attestation-file/,
+    /verify_node\.py[\s\S]*--provenance-mode github-actions[\s\S]*--actions-attestation-file[\s\S]*--actions-custom-trusted-root-file/,
   );
 });
 
@@ -164,6 +166,7 @@ test("the WSL installer accepts only an exact-main GitHub Actions attestation or
   const install = readFileSync(new URL("install_node.sh", deployRoot), "utf8");
 
   assert.match(install, /--actions-attestation/);
+  assert.match(install, /--actions-custom-trusted-root/);
   assert.match(install, /actions_repository=jry21223\/HENU-Kit-DEV/);
   assert.match(
     install,
@@ -180,6 +183,7 @@ test("the WSL installer accepts only an exact-main GitHub Actions attestation or
     install,
     /"\$gh_bin" attestation verify "\$stage_dir\/\$manifest"/,
   );
+  assert.match(install, /--custom-trusted-root "\$actions_custom_trusted_root"/);
   assert.match(install, /--repo "\$actions_repository"/);
   assert.match(install, /--bundle "\$stage_dir\/\$actions_attestation"/);
   assert.match(install, /--signer-workflow "\$actions_signer_workflow"/);

@@ -216,13 +216,30 @@ class HealthyActionsProbe(HealthyNodeProbe):
             )
         if path.name.endswith(".attestation.json"):
             return verify_node.SecureFile(True, False, 0, 0o400, "attestation")
+        if path.name == "trusted_root.jsonl":
+            return verify_node.SecureFile(True, False, 0, 0o400, "trusted-root")
+        if path == pathlib.Path("/etc/henukit-getwork/trust.env"):
+            item = super().secure_file(path)
+            return item._replace(
+                contents=item.contents
+                + "HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256="
+                + hashlib.sha256(b"trusted-root").hexdigest()
+                + "\n"
+            )
         if path == pathlib.Path("/usr/bin/gh"):
             return verify_node.SecureFile(True, False, 0, 0o755, "github-cli")
         return super().secure_file(path)
 
-    def actions_attestation_valid(self, manifest, attestation, gh_file, release_sha):
-        self.actions_attestation = (manifest, attestation, gh_file, release_sha)
+    def actions_attestation_valid(self, manifest, attestation, gh_file, release_sha, custom_trusted_root):
+        self.actions_attestation = (manifest, attestation, gh_file, release_sha, custom_trusted_root)
         return True
+
+
+class TamperedActionsTrustedRootProbe(HealthyActionsProbe):
+    def secure_file(self, path):
+        if path.name == "trusted_root.jsonl":
+            return verify_node.SecureFile(True, False, 0, 0o400, "tampered-root")
+        return super().secure_file(path)
 
 
 class VerifyNodeTests(unittest.TestCase):
@@ -332,12 +349,25 @@ class VerifyNodeTests(unittest.TestCase):
             provenance_mode="github-actions",
             attestation_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-getwork-actions-{'a' * 40}.attestation.json"),
             gh_file=pathlib.Path("/usr/bin/gh"),
+            actions_custom_trusted_root_file=pathlib.Path("/etc/henukit-getwork/trusted_root.jsonl"),
         )
 
         evidence = verify_node.verify(config, probe)
 
         self.assertEqual(evidence.source_count, 18)
-        self.assertEqual(probe.actions_attestation[-1], "a" * 40)
+        self.assertEqual(probe.actions_attestation[-2], "a" * 40)
+        self.assertEqual(
+            probe.actions_attestation[-1],
+            pathlib.Path("/etc/henukit-getwork/trusted_root.jsonl"),
+        )
+
+        with self.assertRaisesRegex(verify_node.VerificationError, "custom trusted root path"):
+            verify_node.verify(
+                config._replace(actions_custom_trusted_root_file=None),
+                HealthyActionsProbe(),
+            )
+        with self.assertRaisesRegex(verify_node.VerificationError, "trusted-root digest"):
+            verify_node.verify(config, TamperedActionsTrustedRootProbe())
 
     def test_eighteen_unapproved_source_keys_do_not_pass_as_the_pinned_set(self):
         config = verify_node.Config(
@@ -383,6 +413,7 @@ class VerifyNodeTests(unittest.TestCase):
                 pathlib.Path("/release.attestation.json"),
                 pathlib.Path("/usr/bin/gh"),
                 "a" * 40,
+                pathlib.Path("/etc/henukit-getwork/trusted_root.jsonl"),
             )
 
         self.assertTrue(valid)
@@ -392,6 +423,14 @@ class VerifyNodeTests(unittest.TestCase):
         self.assertEqual(environment["GH_PROMPT_DISABLED"], "1")
         self.assertIn(
             verify_node.ACTIONS_PREDICATE_TYPE,
+            run.call_args.args[0],
+        )
+        self.assertIn(
+            "--custom-trusted-root",
+            run.call_args.args[0],
+        )
+        self.assertIn(
+            "/etc/henukit-getwork/trusted_root.jsonl",
             run.call_args.args[0],
         )
 

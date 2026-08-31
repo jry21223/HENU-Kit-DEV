@@ -6,6 +6,8 @@ release_sha=""
 stage_dir=""
 allowed_signers=""
 actions_attestation=""
+actions_custom_trusted_root=""
+actions_custom_trusted_root_name="trusted_root.jsonl"
 trust_file=""
 provenance_mode=""
 actions_repository=jry21223/HENU-Kit-DEV
@@ -116,9 +118,10 @@ while [[ $# -gt 0 ]]; do
     --stage-dir) stage_dir="${2:-}"; shift 2 ;;
     --allowed-signers) allowed_signers="${2:-}"; shift 2 ;;
     --actions-attestation) actions_attestation="${2:-}"; shift 2 ;;
+    --actions-custom-trusted-root) actions_custom_trusted_root="${2:-}"; shift 2 ;;
     --trust-file) trust_file="${2:-}"; shift 2 ;;
     *)
-      die "usage: $program --sha <40-hex-main-sha> --stage-dir <root-stage> (--allowed-signers <root-trust> | --actions-attestation <root-bundle>) --trust-file <approved-fingerprints>"
+      die "usage: $program --sha <40-hex-main-sha> --stage-dir <root-stage> (--allowed-signers <root-trust> | --actions-attestation <root-bundle> --actions-custom-trusted-root <trusted_root.jsonl>) --trust-file <approved-fingerprints>"
       ;;
   esac
 done
@@ -159,6 +162,8 @@ else
   expected_attestation="henukit-getwork-actions-${release_sha}.attestation.json"
   [[ "$actions_attestation" == "$stage_dir/$expected_attestation" ]] ||
     die "Actions attestation must use the exact staged path"
+  [[ "$actions_custom_trusted_root" == "$stage_dir/$actions_custom_trusted_root_name" ]] ||
+    die "Actions custom trusted root must use the exact staged path"
   actions_attestation="$expected_attestation"
   provenance_inputs=("$manifest" "$actions_attestation")
 fi
@@ -168,6 +173,9 @@ input_names=(
   "${provenance_inputs[@]}"
   node.env mcp.env id_ed25519 known_hosts
 )
+if [[ "$provenance_mode" == github-actions ]]; then
+  input_names+=("$actions_custom_trusted_root_name")
+fi
 for name in "${input_names[@]}"; do
   trusted_root_file "$stage_dir/$name" || die "staged input is not root-trusted: $name"
 done
@@ -180,6 +188,9 @@ for name in "${input_names[@]}"; do
   install -o root -g root -m 0400 "$stage_dir/$name" "$trusted_work/input/$name"
 done
 stage_dir="$trusted_work/input"
+if [[ "$provenance_mode" == github-actions ]]; then
+  actions_custom_trusted_root="$stage_dir/$actions_custom_trusted_root_name"
+fi
 
 signer="${HENUKIT_RELEASE_SIGNER:-henukit-release}"
 namespace="${HENUKIT_RELEASE_SIGNATURE_NAMESPACE:-henukit-release}"
@@ -206,6 +217,7 @@ else
     --source-digest "$release_sha" \
     --predicate-type "$actions_predicate_type" \
     --deny-self-hosted-runners \
+    --custom-trusted-root "$actions_custom_trusted_root" \
     --format json > "$actions_verification" ||
     die "GitHub Actions attestation verification failed"
   [[ "$(jq -er 'if type == "array" and length == 1 then "ok" else error("invalid verification count") end' "$actions_verification")" == ok ]] ||
@@ -282,8 +294,20 @@ unset token normalized_token
 
 approved_key_fingerprint="$(read_exact_env "$trust_file" HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT)"
 approved_host_fingerprint="$(read_exact_env "$trust_file" HENUKIT_GETWORK_HOST_KEY_FINGERPRINT)"
-[[ "$(grep -Evc '^(HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT|HENUKIT_GETWORK_HOST_KEY_FINGERPRINT)=' "$trust_file")" -eq 0 ]] ||
-  die "fingerprint trust file contains unreviewed keys"
+if [[ "$provenance_mode" == github-actions ]]; then
+  approved_trusted_root_sha256="$(read_exact_env "$trust_file" HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256)"
+  [[ "$approved_trusted_root_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    die "Sigstore trusted-root digest is invalid"
+  [[ "$(grep -Evc '^(HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT|HENUKIT_GETWORK_HOST_KEY_FINGERPRINT|HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256)=' "$trust_file")" -eq 0 ]] ||
+    die "fingerprint trust file contains unreviewed keys"
+else
+  [[ "$(grep -Evc '^(HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT|HENUKIT_GETWORK_HOST_KEY_FINGERPRINT)=' "$trust_file")" -eq 0 ]] ||
+    die "fingerprint trust file contains unreviewed keys"
+fi
+if [[ "$provenance_mode" == github-actions &&
+      "$(sha256sum "$actions_custom_trusted_root" | awk '{print $1}')" != "$approved_trusted_root_sha256" ]]; then
+  die "Sigstore trusted-root digest is not approved"
+fi
 ssh-keygen -y -f "$stage_dir/id_ed25519" > "$trusted_work/tunnel.pub"
 private_fingerprint="$(ssh-keygen -lf "$trusted_work/tunnel.pub" -E sha256 | awk '{print $2}')"
 [[ "$private_fingerprint" == "$approved_key_fingerprint" ]] ||
@@ -401,6 +425,10 @@ install -o root -g root -m 0600 "$stage_dir/mcp.env" /etc/henukit-getwork/mcp.en
 install -o root -g root -m 0600 "$stage_dir/id_ed25519" /etc/henukit-getwork/tunnel/id_ed25519
 install -o root -g henukit-getwork-tunnel -m 0640 \
   "$stage_dir/known_hosts" /etc/henukit-getwork/tunnel/known_hosts
+if [[ "$provenance_mode" == github-actions ]]; then
+  install -o root -g root -m 0400 "$stage_dir/$actions_custom_trusted_root_name" \
+    /etc/henukit-getwork/trusted_root.jsonl
+fi
 provenance_artifacts=("$manifest")
 if [[ "$provenance_mode" == ssh-signature ]]; then
   provenance_artifacts+=("$signature")
