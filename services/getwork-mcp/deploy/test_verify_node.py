@@ -1,9 +1,11 @@
 import importlib.util
 import hashlib
 import io
+import json
 import os
 import pathlib
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest import mock
@@ -133,8 +135,8 @@ class HealthyNodeProbe:
     def archive_sha256(self, path):
         return "c" * 64
 
-    def archive_image_id(self, path):
-        return "sha256:" + "b" * 64
+    def image_matches_archive(self, image, path):
+        return image == f"henukit-getwork-mcp:{'a' * 40}"
 
     def runtime_hardened(self, expected_image_id):
         return expected_image_id == "sha256:" + "b" * 64
@@ -419,6 +421,77 @@ class VerifyNodeTests(unittest.TestCase):
             self.assertTrue(token_file.symlink)
             self.assertEqual(token_file.contents, "")
 
+    def test_real_probe_binds_oci_manifest_config_and_rootfs_layers(self):
+        release_sha = "a" * 40
+        image = f"henukit-getwork-mcp:{release_sha}"
+        layer_contents = b"fixture-layer\n"
+        layer_digest = hashlib.sha256(layer_contents).hexdigest()
+        layer_id = f"sha256:{layer_digest}"
+        image_config = {
+            "architecture": "amd64",
+            "os": "linux",
+            "config": {"User": "65532:65532", "Env": ["FIXTURE=1"]},
+            "rootfs": {"type": "layers", "diff_ids": [layer_id]},
+        }
+        config_contents = json.dumps(image_config, separators=(",", ":")).encode()
+        config_digest = hashlib.sha256(config_contents).hexdigest()
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            config_name = f"blobs/sha256/{config_digest}"
+            layer_name = f"blobs/sha256/{layer_digest}"
+            (root / "blobs" / "sha256").mkdir(parents=True)
+            (root / config_name).write_bytes(config_contents)
+            (root / layer_name).write_bytes(layer_contents)
+            (root / "manifest.json").write_text(
+                json.dumps([{
+                    "Config": config_name,
+                    "RepoTags": [image],
+                    "Layers": [layer_name],
+                }]),
+                encoding="utf-8",
+            )
+            archive_path = root / "image.docker.tar.gz"
+            with tarfile.open(archive_path, mode="w:gz") as archive:
+                archive.add(root / "manifest.json", arcname="manifest.json")
+                archive.add(root / config_name, arcname=config_name)
+                archive.add(root / layer_name, arcname=layer_name)
+
+            probe = verify_node.RealProbe()
+
+            def docker_inspect(*args):
+                if "{{json .Config}}" in args:
+                    return '{"Env":["FIXTURE=1"],"User":"65532:65532"}'
+                if "{{json .RootFS.Layers}}" in args:
+                    return json.dumps([layer_id])
+                raise AssertionError(args)
+
+            with mock.patch.object(probe, "_command", side_effect=docker_inspect):
+                self.assertTrue(probe.image_matches_archive(image, archive_path))
+
+            different_layer_contents = b"different-fixture-layer\n"
+            different_layer_digest = hashlib.sha256(different_layer_contents).hexdigest()
+            different_layer_name = f"blobs/sha256/{different_layer_digest}"
+            (root / different_layer_name).write_bytes(different_layer_contents)
+            (root / "manifest.json").write_text(
+                json.dumps([{
+                    "Config": config_name,
+                    "RepoTags": [image],
+                    "Layers": [different_layer_name],
+                }]),
+                encoding="utf-8",
+            )
+            mismatched_archive_path = root / "mismatched-image.docker.tar.gz"
+            with tarfile.open(mismatched_archive_path, mode="w:gz") as archive:
+                archive.add(root / "manifest.json", arcname="manifest.json")
+                archive.add(root / config_name, arcname=config_name)
+                archive.add(root / different_layer_name, arcname=different_layer_name)
+
+            with mock.patch.object(probe, "_command", side_effect=docker_inspect):
+                self.assertFalse(
+                    probe.image_matches_archive(image, mismatched_archive_path)
+                )
+
     def test_actions_verification_does_not_inherit_github_tokens(self):
         completed = subprocess.CompletedProcess([], 0, stdout="[{}]", stderr="")
         with mock.patch.dict(
@@ -517,9 +590,7 @@ class VerifyNodeTests(unittest.TestCase):
                 with self.assertRaises(verify_node.VerificationError):
                     verify_node.verify(config, probe)
 
-    def test_mismatched_live_container_image_fails_closed(self):
-        probe = HealthyNodeProbe()
-        probe.runtime_hardened = lambda *_: False
+    def test_mismatched_live_container_or_archive_image_fails_closed(self):
         config = verify_node.Config(
             release_sha="a" * 40,
             token_file=pathlib.Path("/etc/henukit-getwork/mcp.env"),
@@ -535,8 +606,12 @@ class VerifyNodeTests(unittest.TestCase):
             signature_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-release-{'a' * 40}.manifest.sig"),
             allowed_signers_file=pathlib.Path("/etc/henukit-getwork/release-signers"),
         )
-        with self.assertRaises(verify_node.VerificationError):
-            verify_node.verify(config, probe)
+        for method in ("runtime_hardened", "image_matches_archive"):
+            probe = HealthyNodeProbe()
+            setattr(probe, method, lambda *_: False)
+            with self.subTest(method=method):
+                with self.assertRaises(verify_node.VerificationError):
+                    verify_node.verify(config, probe)
 
 
 if __name__ == "__main__":

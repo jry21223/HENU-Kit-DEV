@@ -361,7 +361,7 @@ else
   die "invalid image manifest config reference"
 fi
 if [[ "$archive_format" == oci ]]; then
-  archive_layers="$(jq -er '
+  archive_layers="$(jq -cer '
     if length == 1 and (.[0].Layers | type == "array") then
       .[0].Layers | map(
         if type == "string" and test("^blobs/sha256/[0-9a-f]{64}$") then

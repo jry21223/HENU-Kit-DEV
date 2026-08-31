@@ -425,11 +425,14 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   cpSync(deployAssets, runtimeDeploy, { recursive: true });
   writeFileSync(join(runtime, "RELEASE_SHA"), releaseSha + "\n");
   mkdirSync(join(imageFixture, "blobs", "sha256"), { recursive: true });
+  const imageLayerContents = "layer-tar-fixture\n";
+  const imageLayerDigest = createHash("sha256").update(imageLayerContents).digest("hex");
+  writeFileSync(join(imageFixture, "blobs", "sha256", imageLayerDigest), imageLayerContents);
   const imageConfigContents = JSON.stringify({
     architecture: "amd64",
     os: "linux",
     config: {},
-    rootfs: { type: "layers", diff_ids: [] },
+    rootfs: { type: "layers", diff_ids: [`sha256:${imageLayerDigest}`] },
     history: [],
   });
   writeFileSync(join(imageFixture, "blobs", "sha256", "config"), imageConfigContents);
@@ -443,7 +446,11 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
       digest: `sha256:${imageConfigDigest}`,
       size: Buffer.byteLength(imageConfigContents),
     },
-    layers: [],
+    layers: [{
+      mediaType: "application/vnd.oci.image.layer.v1.tar",
+      digest: `sha256:${imageLayerDigest}`,
+      size: Buffer.byteLength(imageLayerContents),
+    }],
   });
   writeFileSync(join(imageFixture, "blobs", "sha256", "manifest"), ociManifestContents);
   const imageManifestDigest = sha256(join(imageFixture, "blobs", "sha256", "manifest"));
@@ -457,7 +464,11 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   );
   writeFileSync(
     join(imageFixture, "manifest.json"),
-    JSON.stringify([{ Config: imageConfig, RepoTags: [`henukit-getwork-mcp:${releaseSha}`], Layers: [] }]),
+    JSON.stringify([{
+      Config: imageConfig,
+      RepoTags: [`henukit-getwork-mcp:${releaseSha}`],
+      Layers: [`blobs/sha256/${imageLayerDigest}`],
+    }]),
   );
   writeFileSync(join(imageFixture, "oci-layout"), JSON.stringify({ imageLayoutVersion: "1.0.0" }));
   writeFileSync(
@@ -568,7 +579,12 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   executable(join(bin, "jq"), [
     "if [[ \"$*\" == *\"invalid verification count\"* ]]; then printf 'ok\\n'; exit 0; fi",
     "if [[ \"$*\" == *\"invalid image manifest tag\"* ]]; then cat >/dev/null; printf 'ok\\n'; exit 0; fi",
-    "if [[ \"$*\" == *\"invalid OCI image manifest\"* ]]; then cat >/dev/null; printf '[]\\n'; exit 0; fi",
+    `if [[ "$*" == *"invalid OCI image manifest"* ]]; then`,
+    "  cat >/dev/null",
+    `  if [[ "$*" == -cer* ]]; then printf '["sha256:${imageLayerDigest}"]\\n';`,
+    `  else printf '[\\n  "sha256:${imageLayerDigest}"\\n]\\n'; fi`,
+    "  exit 0",
+    "fi",
     "if [[ \"$*\" == *\".config\"* ]]; then cat >/dev/null; printf '{}\\n'; exit 0; fi",
     "if [[ \"$*\" == *\"-S -ce .\"* ]]; then cat >/dev/null; printf '{}\\n'; exit 0; fi",
     "cat >/dev/null",
@@ -588,7 +604,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "  'image inspect')",
     "    if [[ \"$*\" == *Architecture* ]]; then printf 'linux/amd64\\n';",
     "    elif [[ \"$*\" == *Config* ]]; then printf '{}\\n';",
-    "    elif [[ \"$*\" == *RootFS.Layers* ]]; then printf '[]\\n';",
+    `    elif [[ "$*" == *RootFS.Layers* ]]; then printf '["sha256:${imageLayerDigest}"]\\n';`,
     "    else printf 'sha256:${IMAGE_ID}\\n'; fi",
     "    exit 0",
     "    ;;",

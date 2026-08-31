@@ -102,7 +102,7 @@ class Probe(Protocol):
         custom_trusted_root: pathlib.Path,
     ) -> bool: ...
     def archive_sha256(self, path: pathlib.Path) -> str: ...
-    def archive_image_id(self, path: pathlib.Path) -> str: ...
+    def image_matches_archive(self, image: str, path: pathlib.Path) -> bool: ...
     def runtime_hardened(self, expected_image_id: str) -> bool: ...
     def egress_policy_live(self) -> bool: ...
     def service_active(self, name: str) -> bool: ...
@@ -437,11 +437,10 @@ def verify(config: Config, probe: Probe) -> Evidence:
     image = f"henukit-getwork-mcp:{config.release_sha}"
     platform = probe.docker_platform(image)
     image_id = probe.docker_image_id(image)
-    archive_image_id = probe.archive_image_id(config.artifact_file)
     if (
         platform != "linux/amd64"
         or image_id != expected_image_id
-        or image_id != archive_image_id
+        or not probe.image_matches_archive(image, config.artifact_file)
     ):
         raise VerificationError("getWork image identity or platform does not match")
     if not probe.runtime_hardened(image_id):
@@ -693,21 +692,97 @@ class RealProbe:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def archive_image_id(self, path: pathlib.Path) -> str:
-        with tarfile.open(path, mode="r:gz") as archive:
-            member = archive.getmember("manifest.json")
-            if not member.isfile() or member.size > 1024 * 1024:
-                return ""
-            extracted = archive.extractfile(member)
-            if extracted is None:
-                return ""
-            decoded = json.load(extracted)
-        if not isinstance(decoded, list) or len(decoded) != 1 or not isinstance(decoded[0], dict):
-            return ""
-        config_name = decoded[0].get("Config")
-        if not isinstance(config_name, str) or re.fullmatch(r"[0-9a-f]{64}\.json", config_name) is None:
-            return ""
-        return "sha256:" + config_name.removesuffix(".json")
+    def image_matches_archive(self, image: str, path: pathlib.Path) -> bool:
+        try:
+            with tarfile.open(path, mode="r:gz") as archive:
+                manifest_member = archive.getmember("manifest.json")
+                if not manifest_member.isfile() or manifest_member.size > 1024 * 1024:
+                    return False
+                extracted_manifest = archive.extractfile(manifest_member)
+                if extracted_manifest is None:
+                    return False
+                decoded = json.load(extracted_manifest)
+                if (
+                    not isinstance(decoded, list)
+                    or len(decoded) != 1
+                    or not isinstance(decoded[0], dict)
+                ):
+                    return False
+                record = decoded[0]
+                tags = record.get("RepoTags")
+                config_name = record.get("Config")
+                layer_names = record.get("Layers")
+                if (
+                    not isinstance(tags, list)
+                    or image not in tags
+                    or not isinstance(config_name, str)
+                    or not isinstance(layer_names, list)
+                ):
+                    return False
+
+                legacy_match = re.fullmatch(r"([0-9a-f]{64})\.json", config_name)
+                if legacy_match is not None:
+                    return self.docker_image_id(image) == f"sha256:{legacy_match.group(1)}"
+
+                if re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", config_name) is None:
+                    return False
+                if any(
+                    not isinstance(name, str)
+                    or re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", name) is None
+                    for name in layer_names
+                ):
+                    return False
+                manifest_layers = [
+                    f"sha256:{name.rsplit('/', maxsplit=1)[1]}" for name in layer_names
+                ]
+                config_member = archive.getmember(config_name)
+                if not config_member.isfile() or config_member.size > 4 * 1024 * 1024:
+                    return False
+                if any(not archive.getmember(name).isfile() for name in layer_names):
+                    return False
+                extracted_config = archive.extractfile(config_member)
+                if extracted_config is None:
+                    return False
+                archive_config = json.load(extracted_config)
+        except (KeyError, OSError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError):
+            return False
+
+        if not isinstance(archive_config, dict):
+            return False
+        runtime_config = archive_config.get("config")
+        rootfs = archive_config.get("rootfs")
+        if (
+            not isinstance(runtime_config, dict)
+            or not isinstance(rootfs, dict)
+            or rootfs.get("type") != "layers"
+        ):
+            return False
+        archive_layers = rootfs.get("diff_ids")
+        if (
+            not isinstance(archive_layers, list)
+            or len(archive_layers) != len(layer_names)
+            or archive_layers != manifest_layers
+            or any(
+                not isinstance(layer, str)
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", layer) is None
+                for layer in archive_layers
+            )
+        ):
+            return False
+        try:
+            loaded_config = json.loads(
+                self._command(
+                    "docker", "image", "inspect", image, "--format", "{{json .Config}}"
+                )
+            )
+            loaded_layers = json.loads(
+                self._command(
+                    "docker", "image", "inspect", image, "--format", "{{json .RootFS.Layers}}"
+                )
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return False
+        return loaded_config == runtime_config and loaded_layers == archive_layers
 
     def runtime_hardened(self, expected_image_id: str) -> bool:
         decoded = json.loads(self._command("docker", "inspect", "henukit-getwork-mcp"))
