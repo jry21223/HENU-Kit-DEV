@@ -107,6 +107,11 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 		if err != nil {
 			return WorkResult{}, err
 		}
+		session, err := connect(scanContext)
+		if err != nil {
+			return WorkResult{}, fmt.Errorf("connect getWork MCP: %w", err)
+		}
+		defer session.Close()
 		type sourceTask struct {
 			index  int
 			source string
@@ -128,16 +133,10 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 			go func() {
 				defer workers.Done()
 				for task := range tasks {
-					session, connectErr := connect(scanContext)
-					if connectErr != nil {
-						results[task.index].err = fmt.Errorf("connect getWork MCP: %w", connectErr)
-						continue
-					}
 					var crawl getWorkMCPCrawl
 					callErr := callGetWorkTool(scanContext, session, "crawl_jobs", map[string]any{
 						"source": task.source, "since_days": config.SinceDays,
 					}, &crawl)
-					_ = session.Close()
 					results[task.index] = sourceResult{crawl: crawl, err: callErr}
 				}
 			}()
