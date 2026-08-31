@@ -445,6 +445,9 @@ It deploys only the newest completed, successful `push` run of
 
 1. downloads the exact full-SHA artifact set with `gh`;
 2. rejects missing, duplicate, unexpected, or checksum-invalid files;
+   the exact-SHA getWork WSL manifest and attestation bundle are the one
+   documented exception: the production-only cache discards that pair because
+   WSL verifies it independently;
 3. verifies the runtime `RELEASE_SHA` and its exact-SHA Account production
    boundary manifest. The manifest follows Account's local import graph,
    rejects user-reachable Portal/Gateway fixtures and fake-success sources,

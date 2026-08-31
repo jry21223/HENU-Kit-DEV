@@ -406,6 +406,13 @@ expected_name() {
        "$candidate" == "henukit-release-${release_sha}.manifest.sig" ) ]]
 }
 
+is_getwork_provenance_file() {
+  local candidate="$1"
+  local release_sha="$2"
+  [[ "$candidate" == "henukit-getwork-actions-${release_sha}.manifest" ||
+     "$candidate" == "henukit-getwork-actions-${release_sha}.attestation.json" ]]
+}
+
 verify_artifact_dir() {
   local artifact_dir="$1"
   local release_sha="$2"
@@ -491,6 +498,14 @@ download_artifacts() {
 
   while IFS= read -r -d '' file; do
     base="$(basename "$file")"
+    # The WSL handoff has its own attested artifact pair. The production
+    # watcher downloads the complete run for the fixed-SHA Compose release,
+    # but does not consume that pair; remove only these two exact, known names
+    # before the ordinary production artifact contract is checked.
+    if is_getwork_provenance_file "$base" "$release_sha"; then
+      rm -f -- "$file"
+      continue
+    fi
     expected_name "$base" "$release_sha" || die "unexpected artifact file $base"
     target="$incoming/$base"
     if [[ "$file" != "$target" ]]; then
