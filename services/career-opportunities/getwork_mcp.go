@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -370,12 +371,20 @@ func callGetWorkToolHTTP(ctx context.Context, client *http.Client, endpoint, req
 }
 
 func getWorkMCPResponsePayloads(body []byte, contentType string) ([][]byte, error) {
-	if json.Valid(body) {
-		return [][]byte{body}, nil
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, errors.New("response Content-Type is invalid")
 	}
-	mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
-	if mediaType != "text/event-stream" {
-		return nil, errors.New("response is neither JSON nor an event stream")
+	switch strings.ToLower(mediaType) {
+	case "application/json":
+		if !json.Valid(body) {
+			return nil, errors.New("JSON response body is invalid")
+		}
+		return [][]byte{body}, nil
+	case "text/event-stream":
+		// Parsed below.
+	default:
+		return nil, errors.New("response Content-Type is not an MCP streamable HTTP type")
 	}
 	scanner := bufio.NewScanner(bytes.NewReader(body))
 	scanner.Buffer(make([]byte, 64*1024), maxGetWorkMCPResponseBytes+1)

@@ -143,6 +143,15 @@ func TestGetWorkMCPResponsePayloadsAcceptsBoundedEventStream(t *testing.T) {
 	}
 }
 
+func TestGetWorkMCPResponsePayloadsRejectsMislabeledJSON(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":"crawl-alibaba","result":{}}`)
+	for _, contentType := range []string{"", "text/plain", "text/html", "application/problem+json", "text/event-stream"} {
+		if _, err := getWorkMCPResponsePayloads(body, contentType); err == nil {
+			t.Fatalf("content type %q accepted an unframed JSON response", contentType)
+		}
+	}
+}
+
 func TestGetWorkMCPRejectsDeploymentPlaceholderToken(t *testing.T) {
 	for _, token := range []string{"short", "replace-getwork-mcp-access-token-32chars!!"} {
 		_, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
