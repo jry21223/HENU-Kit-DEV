@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 import urllib.request
 from typing import BinaryIO, NamedTuple, Protocol
@@ -890,8 +891,26 @@ class RealProbe:
         if token:
             request.add_header("Authorization", "Bearer " + token)
         deadline = time.monotonic() + total_seconds
-        with urllib.request.urlopen(request, timeout=min(30.0, total_seconds)) as response:
-            return _read_bounded_json(response, max_bytes, deadline)
+        results: list[dict[str, object]] = []
+        errors: list[BaseException] = []
+
+        def perform_request() -> None:
+            try:
+                with urllib.request.urlopen(request, timeout=total_seconds) as response:
+                    results.append(_read_bounded_json(response, max_bytes, deadline))
+            except BaseException as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=perform_request, daemon=True)
+        worker.start()
+        worker.join(total_seconds)
+        if worker.is_alive():
+            raise VerificationError("MCP request exceeded its total deadline")
+        if errors:
+            raise errors[0]
+        if len(results) != 1:
+            raise VerificationError("MCP request produced no result")
+        return results[0]
 
     def _call(self, token: str, request_id: int, name: str, arguments: dict[str, object]) -> dict[str, object]:
         envelope = self._json_request(

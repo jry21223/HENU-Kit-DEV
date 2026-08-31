@@ -7,6 +7,7 @@ import pathlib
 import subprocess
 import tarfile
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -321,6 +322,57 @@ class VerifyNodeTests(unittest.TestCase):
             verify_node._read_bounded_json(io.BytesIO(b"{}"), 32, 0)
         with self.assertRaises(verify_node.VerificationError):
             verify_node._read_bounded_json(io.BytesIO(b"[]"), 32, float("inf"))
+
+    def test_real_crawl_uses_the_full_bounded_response_timeout(self):
+        response = io.BytesIO(json.dumps({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps({"status": "ok", "jobs": []}),
+                }],
+            },
+        }).encode())
+
+        with mock.patch.object(
+            verify_node.urllib.request,
+            "urlopen",
+            return_value=response,
+        ) as urlopen:
+            result = verify_node.RealProbe().crawl("approved-token", "alibaba")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 420)
+
+    def test_real_request_enforces_a_wall_clock_total_deadline(self):
+        class SlowResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self, _size):
+                time.sleep(1)
+                return b""
+
+        started = time.monotonic()
+        with mock.patch.object(
+            verify_node.urllib.request,
+            "urlopen",
+            return_value=SlowResponse(),
+        ), self.assertRaisesRegex(
+            verify_node.VerificationError,
+            "total deadline",
+        ):
+            verify_node.RealProbe()._json_request(
+                "/healthz",
+                max_bytes=16384,
+                total_seconds=0.05,
+            )
+
+        self.assertLess(time.monotonic() - started, 0.5)
 
     def test_healthy_node_proves_the_complete_private_crawler_contract(self):
         probe = HealthyNodeProbe()
