@@ -24,6 +24,9 @@ const script = fileURLToPath(
   new URL("../watch-henukit-actions.sh", import.meta.url),
 );
 const releaseSha = "a".repeat(40);
+const localManifestDigest = createHash("sha256")
+  .update("verified-by-fixture\n")
+  .digest("hex");
 const releaseImages = [
   "henukit-console",
   "henukit-console-gateway",
@@ -175,8 +178,10 @@ function fixture({
   getWorkToken = "fixture-getwork-mcp-random-credential-48bytes",
   runConclusion = "success",
   runStatus = "completed",
+  runAttempt = 1,
   legacyRuntimePresent = false,
   activationFreeKiB = 8 * 1024 * 1024,
+  recoveryIdentity = `local:${localManifestDigest}`,
 } = {}) {
   // macOS exposes its temporary directory through /var, which is a symlink.
   // The production trust-root check deliberately rejects symlinked parents, so
@@ -208,10 +213,21 @@ function fixture({
     mkdirSync(directory);
   }
   mkdirSync(join(state, "approvals"));
+  mkdirSync(join(state, "prepared"));
   if (approved) {
     writeFileSync(join(state, "approvals", releaseSha), `${releaseSha}\n`, {
       mode: 0o600,
     });
+    writeFileSync(
+      join(state, "prepared", `${releaseSha}.artifact-source`),
+      `${recoveryIdentity}\n`,
+      { mode: 0o600 },
+    );
+    writeFileSync(
+      join(state, "prepared", `${releaseSha}.recovery-baseline`),
+      `${previousSha}\n`,
+      { mode: 0o600 },
+    );
   }
   writeFileSync(token, "test-read-only-token\n", { mode: 0o600 });
   chmodSync(token, 0o600);
@@ -340,8 +356,8 @@ if [[ "$1 $2" == "run list" ]]; then
   if [[ "$FAKE_NO_SUCCESS" == "1" ]]; then
     exit 0
   fi
-  printf '123\\t%s\\t%s\\t%s\\thttps://github.example/actions/runs/123\\n' \
-    "$FAKE_RUN_RELEASE_SHA" "$FAKE_RUN_STATUS" "$FAKE_RUN_CONCLUSION"
+  printf '123\\t%s\\t%s\\t%s\\t%s\\thttps://github.example/actions/runs/123\\n' \
+    "$FAKE_RUN_ATTEMPT" "$FAKE_RUN_RELEASE_SHA" "$FAKE_RUN_STATUS" "$FAKE_RUN_CONCLUSION"
   exit 0
 fi
 if [[ "$1" == "api" ]]; then
@@ -772,6 +788,7 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       FAKE_NO_SUCCESS: "0",
       FAKE_GH_MUST_NOT_RUN: "0",
       FAKE_RUN_CONCLUSION: runConclusion,
+      FAKE_RUN_ATTEMPT: String(runAttempt),
       FAKE_RUN_RELEASE_SHA: releaseSha,
       FAKE_RUN_STATUS: runStatus,
       FAKE_STATE_ROOT: state,
@@ -1551,6 +1568,99 @@ test("default activation still refuses a degraded rollback baseline", () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /no healthy fixed-SHA rollback release is ready/i);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+});
+
+test("explicit Actions recovery activates the newest successful main release", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failPreviousHealth: true,
+    materialsPathInitiallyEnabled: true,
+    previousSha,
+    recoveryIdentity: "actions:123:1",
+  });
+
+  const output = execFileSync(
+    script,
+    ["--once", "--recover-degraded-baseline", previousSha],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.match(output, /authorized degraded-baseline recovery/i);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), releaseSha);
+  assert.match(
+    readFileSync(
+      join(setup.state, "degraded-recoveries", `${releaseSha}.activated`),
+      "utf8",
+    ),
+    /status=activated/,
+  );
+  assert.equal(readFileSync(setup.materialsPathState, "utf8").trim(), "enabled");
+});
+
+test("Actions recovery rejects an approval bound to signed local artifacts", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failPreviousHealth: true,
+    previousSha,
+    recoveryIdentity: `local:${localManifestDigest}`,
+  });
+
+  const result = spawnSync(
+    script,
+    ["--once", "--recover-degraded-baseline", previousSha],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not bound to the selected artifact identity/i);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+});
+
+test("Actions recovery rejects an approval bound to an earlier run attempt", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failPreviousHealth: true,
+    previousSha,
+    recoveryIdentity: "actions:123:1",
+    runAttempt: 2,
+  });
+
+  const result = spawnSync(
+    script,
+    ["--once", "--recover-degraded-baseline", previousSha],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not bound to the selected artifact identity/i);
+  assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+});
+
+test("Actions recovery rejects an approval bound to a different degraded baseline", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failPreviousHealth: true,
+    previousSha,
+    recoveryIdentity: "actions:123:1",
+  });
+  writeFileSync(
+    join(setup.state, "prepared", `${releaseSha}.recovery-baseline`),
+    `${"d".repeat(40)}\n`,
+    { mode: 0o600 },
+  );
+
+  const result = spawnSync(
+    script,
+    ["--once", "--recover-degraded-baseline", previousSha],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not bound to baseline/i);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
 });
