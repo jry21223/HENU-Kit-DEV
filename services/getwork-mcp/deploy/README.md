@@ -114,6 +114,7 @@ sudo timeout 60s env -u GH_TOKEN -u GITHUB_TOKEN /usr/bin/gh attestation verify 
   --signer-workflow jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml \
   --source-ref refs/heads/main \
   --source-digest "$release_sha" \
+  --predicate-type https://github.com/jry21223/HENU-Kit-DEV/attestations/getwork-actions-release-v1 \
   --deny-self-hosted-runners \
   --format json >/dev/null
 image="henukit-getwork-mcp-${release_sha}.docker.tar.gz"

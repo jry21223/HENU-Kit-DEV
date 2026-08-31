@@ -390,6 +390,10 @@ class VerifyNodeTests(unittest.TestCase):
         self.assertNotIn("GH_TOKEN", environment)
         self.assertNotIn("GITHUB_TOKEN", environment)
         self.assertEqual(environment["GH_PROMPT_DISABLED"], "1")
+        self.assertIn(
+            verify_node.ACTIONS_PREDICATE_TYPE,
+            run.call_args.args[0],
+        )
 
     def test_current_main_lookup_ignores_inherited_git_rewrites(self):
         completed = subprocess.CompletedProcess(

@@ -60,6 +60,10 @@ test("deployment instructions preserve a remote-forward-only production account"
   );
   assert.match(runbook, /--source-ref refs\/heads\/main/);
   assert.match(runbook, /--source-digest "\$release_sha"/);
+  assert.match(
+    runbook,
+    /--predicate-type https:\/\/github\.com\/jry21223\/HENU-Kit-DEV\/attestations\/getwork-actions-release-v1/,
+  );
   assert.match(runbook, /--deny-self-hosted-runners/);
   assert.match(runbook, /--actions-attestation/);
   assert.match(
@@ -181,6 +185,11 @@ test("the WSL installer accepts only an exact-main GitHub Actions attestation or
   assert.match(install, /--signer-workflow "\$actions_signer_workflow"/);
   assert.match(install, /--source-ref "\$actions_source_ref"/);
   assert.match(install, /--source-digest "\$release_sha"/);
+  assert.match(
+    install,
+    /actions_predicate_type=https:\/\/github\.com\/jry21223\/HENU-Kit-DEV\/attestations\/getwork-actions-release-v1/,
+  );
+  assert.match(install, /--predicate-type "\$actions_predicate_type"/);
   assert.match(install, /--deny-self-hosted-runners/);
   assert.match(install, /env -u GH_TOKEN -u GITHUB_TOKEN/);
   assert.match(install, /current_main_sha/);

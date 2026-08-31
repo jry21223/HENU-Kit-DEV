@@ -331,6 +331,8 @@ jobs:
         uses: actions/attest@daf44fb950173508f38bd2406030372c1d1162b1 # v3
         with:
           subject-path: release/henukit-getwork-actions-${{ github.sha }}.manifest
+          predicate-type: https://github.com/jry21223/HENU-Kit-DEV/attestations/getwork-actions-release-v1
+          predicate: '{}'
 
       - name: Retain the offline Sigstore bundle
         run: |
