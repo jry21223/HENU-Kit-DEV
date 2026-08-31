@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync as run } from "node:child_process";
@@ -414,7 +415,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   mkdirSync(state);
 
   const releaseSha = "a".repeat(40);
-  const imageConfig = "d".repeat(64) + ".json";
+  const imageFixture = join(fixture, "oci-image");
   const imageName = `henukit-getwork-mcp-${releaseSha}.docker.tar.gz`;
   const runtimeName = `henukit-runtime-${releaseSha}.tar.gz`;
   const manifestName = `henukit-release-${releaseSha}.manifest`;
@@ -423,13 +424,54 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   const runtimeDeploy = join(runtime, "getwork-node-deploy");
   cpSync(deployAssets, runtimeDeploy, { recursive: true });
   writeFileSync(join(runtime, "RELEASE_SHA"), releaseSha + "\n");
-  writeFileSync(join(fixture, "manifest.json"), JSON.stringify([{ Config: imageConfig }]));
+  mkdirSync(join(imageFixture, "blobs", "sha256"), { recursive: true });
+  const imageConfigContents = "{}\n";
+  writeFileSync(join(imageFixture, "blobs", "sha256", "config"), imageConfigContents);
+  const imageConfigDigest = sha256(join(imageFixture, "blobs", "sha256", "config"));
+  const imageConfig = `blobs/sha256/${imageConfigDigest}`;
+  const ociManifestContents = JSON.stringify({
+    schemaVersion: 2,
+    mediaType: "application/vnd.oci.image.manifest.v1+json",
+    config: {
+      mediaType: "application/vnd.oci.image.config.v1+json",
+      digest: `sha256:${imageConfigDigest}`,
+      size: Buffer.byteLength(imageConfigContents),
+    },
+    layers: [],
+  });
+  writeFileSync(join(imageFixture, "blobs", "sha256", "manifest"), ociManifestContents);
+  const imageManifestDigest = sha256(join(imageFixture, "blobs", "sha256", "manifest"));
+  renameSync(
+    join(imageFixture, "blobs", "sha256", "config"),
+    join(imageFixture, "blobs", "sha256", imageConfigDigest),
+  );
+  renameSync(
+    join(imageFixture, "blobs", "sha256", "manifest"),
+    join(imageFixture, "blobs", "sha256", imageManifestDigest),
+  );
+  writeFileSync(
+    join(imageFixture, "manifest.json"),
+    JSON.stringify([{ Config: imageConfig, RepoTags: [`henukit-getwork-mcp:${releaseSha}`], Layers: [] }]),
+  );
+  writeFileSync(join(imageFixture, "oci-layout"), JSON.stringify({ imageLayoutVersion: "1.0.0" }));
+  writeFileSync(
+    join(imageFixture, "index.json"),
+    JSON.stringify({
+      schemaVersion: 2,
+      manifests: [{
+        mediaType: "application/vnd.oci.image.manifest.v1+json",
+        digest: `sha256:${imageManifestDigest}`,
+        size: Buffer.byteLength(ociManifestContents),
+      }],
+    }),
+  );
+  writeFileSync(join(imageFixture, "repositories"), "{}\n");
 
-  for (const [archive, cwd, entry] of [
-    [join(stage, imageName), fixture, "manifest.json"],
-    [join(stage, runtimeName), runtime, "."],
+  for (const [archive, cwd, entries] of [
+    [join(stage, imageName), imageFixture, ["manifest.json", "oci-layout", "index.json", "repositories", "blobs"]],
+    [join(stage, runtimeName), runtime, ["."]],
   ]) {
-    const tarResult = run("tar", ["-czf", archive, "-C", cwd, entry], {
+    const tarResult = run("tar", ["-czf", archive, "-C", cwd, ...entries], {
       encoding: "utf8",
       env: { ...process.env, COPYFILE_DISABLE: "1" },
     });
@@ -541,7 +583,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "esac",
     "exit 0",
     "",
-  ].join("\n").replace("${IMAGE_ID}", "d".repeat(64)));
+  ].join("\n").replace("${IMAGE_ID}", imageConfigDigest));
   executable(join(bin, "iptables"), "exit 0\n");
   executable(join(bin, "systemctl"), [
     "command=${1:-}; shift || true",

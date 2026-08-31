@@ -347,8 +347,14 @@ host_fingerprints="$(ssh-keygen -lf "$stage_dir/known_hosts" -E sha256 | awk '{p
   die "production host key fingerprint is not approved"
 
 archive_config="$(tar -xOzf "$stage_dir/$image_archive" manifest.json |
-  jq -er 'if length == 1 and (.[0].Config | test("^[0-9a-f]{64}\\.json$")) then .[0].Config else error("invalid image manifest") end')"
-archive_image_id="sha256:${archive_config%.json}"
+  jq -er 'if length == 1 and (.[0].Config | type == "string") then .[0].Config else error("invalid image manifest") end')"
+if [[ "$archive_config" =~ ^([0-9a-f]{64})\.json$ ]]; then
+  archive_image_id="sha256:${BASH_REMATCH[1]}"
+elif [[ "$archive_config" =~ ^blobs/sha256/([0-9a-f]{64})$ ]]; then
+  archive_image_id="sha256:${BASH_REMATCH[1]}"
+else
+  die "invalid image manifest config reference"
+fi
 docker load --input "$stage_dir/$image_archive" >/dev/null
 image="henukit-getwork-mcp:${release_sha}"
 [[ "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" == linux/amd64 ]] ||
