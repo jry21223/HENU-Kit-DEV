@@ -346,22 +346,56 @@ host_fingerprints="$(ssh-keygen -lf "$stage_dir/known_hosts" -E sha256 | awk '{p
    "$host_fingerprints" == "$approved_host_fingerprint" ]] ||
   die "production host key fingerprint is not approved"
 
-archive_config="$(tar -xOzf "$stage_dir/$image_archive" manifest.json |
-  jq -er 'if length == 1 and (.[0].Config | type == "string") then .[0].Config else error("invalid image manifest") end')"
+archive_manifest="$(tar -xOzf "$stage_dir/$image_archive" manifest.json)"
+archive_config="$(jq -er 'if length == 1 and (.[0].Config | type == "string") then .[0].Config else error("invalid image manifest") end' <<<"$archive_manifest")"
+[[ "$(jq -er --arg tag "henukit-getwork-mcp:${release_sha}" \
+  'if length == 1 and (.[0].RepoTags | type == "array" and index($tag) != null) then "ok" else error("invalid image manifest tag") end' \
+  <<<"$archive_manifest")" == ok ]] ||
+  die "image manifest tag does not match the release SHA"
+archive_format=legacy
 if [[ "$archive_config" =~ ^([0-9a-f]{64})\.json$ ]]; then
   archive_image_id="sha256:${BASH_REMATCH[1]}"
 elif [[ "$archive_config" =~ ^blobs/sha256/([0-9a-f]{64})$ ]]; then
-  archive_image_id="sha256:${BASH_REMATCH[1]}"
+  archive_format=oci
 else
   die "invalid image manifest config reference"
 fi
+if [[ "$archive_format" == oci ]]; then
+  archive_layers="$(jq -er '
+    if length == 1 and (.[0].Layers | type == "array") then
+      .[0].Layers | map(
+        if type == "string" and test("^blobs/sha256/[0-9a-f]{64}$") then
+          "sha256:\((split("/") | last))"
+        else
+          error("invalid OCI layer reference")
+        end
+      )
+    else
+      error("invalid OCI image manifest")
+    end' <<<"$archive_manifest")"
+fi
+archive_runtime_config="$(tar -xOzf "$stage_dir/$image_archive" "$archive_config" |
+  jq -S -ce 'if (.config | type) == "object" then .config else error("invalid image config") end')" ||
+  die "image config is invalid"
+archive_runtime_config_sha256="$(printf '%s\n' "$archive_runtime_config" | sha256sum | cut -d' ' -f1)"
 docker load --input "$stage_dir/$image_archive" >/dev/null
 image="henukit-getwork-mcp:${release_sha}"
 [[ "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" == linux/amd64 ]] ||
   die "loaded image is not linux/amd64"
 image_id="$(docker image inspect "$image" --format '{{.Id}}')"
-[[ "$image_id" == "$archive_image_id" ]] ||
-  die "loaded image ID does not match the provenance-verified image archive"
+loaded_runtime_config="$(docker image inspect "$image" --format '{{json .Config}}' | jq -S -ce .)" ||
+  die "loaded image config is invalid"
+loaded_runtime_config_sha256="$(printf '%s\n' "$loaded_runtime_config" | sha256sum | cut -d' ' -f1)"
+[[ "$loaded_runtime_config_sha256" == "$archive_runtime_config_sha256" ]] ||
+  die "loaded image config does not match the provenance-verified image archive"
+if [[ "$archive_format" == legacy ]]; then
+  [[ "$image_id" == "$archive_image_id" ]] ||
+    die "loaded image ID does not match the provenance-verified image archive"
+else
+  loaded_layers="$(docker image inspect "$image" --format '{{json .RootFS.Layers}}')"
+  [[ "$loaded_layers" == "$archive_layers" ]] ||
+    die "loaded OCI image layers do not match the provenance-verified image archive"
+fi
 
 if getent passwd henukit-getwork-tunnel >/dev/null; then
   account_was_present=1

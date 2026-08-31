@@ -425,7 +425,13 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   cpSync(deployAssets, runtimeDeploy, { recursive: true });
   writeFileSync(join(runtime, "RELEASE_SHA"), releaseSha + "\n");
   mkdirSync(join(imageFixture, "blobs", "sha256"), { recursive: true });
-  const imageConfigContents = "{}\n";
+  const imageConfigContents = JSON.stringify({
+    architecture: "amd64",
+    os: "linux",
+    config: {},
+    rootfs: { type: "layers", diff_ids: [] },
+    history: [],
+  });
   writeFileSync(join(imageFixture, "blobs", "sha256", "config"), imageConfigContents);
   const imageConfigDigest = sha256(join(imageFixture, "blobs", "sha256", "config"));
   const imageConfig = `blobs/sha256/${imageConfigDigest}`;
@@ -561,6 +567,10 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   ].join("\n"));
   executable(join(bin, "jq"), [
     "if [[ \"$*\" == *\"invalid verification count\"* ]]; then printf 'ok\\n'; exit 0; fi",
+    "if [[ \"$*\" == *\"invalid image manifest tag\"* ]]; then cat >/dev/null; printf 'ok\\n'; exit 0; fi",
+    "if [[ \"$*\" == *\"invalid OCI image manifest\"* ]]; then cat >/dev/null; printf '[]\\n'; exit 0; fi",
+    "if [[ \"$*\" == *\".config\"* ]]; then cat >/dev/null; printf '{}\\n'; exit 0; fi",
+    "if [[ \"$*\" == *\"-S -ce .\"* ]]; then cat >/dev/null; printf '{}\\n'; exit 0; fi",
     "cat >/dev/null",
     `printf '${imageConfig}\\n'`,
     "",
@@ -576,7 +586,10 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "case \"${1:-} ${2:-}\" in",
     "  'load --input') exit 0 ;;",
     "  'image inspect')",
-    "    if [[ \"$*\" == *Architecture* ]]; then printf 'linux/amd64\\n'; else printf 'sha256:${IMAGE_ID}\\n'; fi",
+    "    if [[ \"$*\" == *Architecture* ]]; then printf 'linux/amd64\\n';",
+    "    elif [[ \"$*\" == *Config* ]]; then printf '{}\\n';",
+    "    elif [[ \"$*\" == *RootFS.Layers* ]]; then printf '[]\\n';",
+    "    else printf 'sha256:${IMAGE_ID}\\n'; fi",
     "    exit 0",
     "    ;;",
     "  'network inspect') exit 1 ;;",
