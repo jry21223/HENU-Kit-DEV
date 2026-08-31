@@ -10,6 +10,7 @@ actions_custom_trusted_root=""
 actions_custom_trusted_root_name="trusted_root.jsonl"
 current_main_sha_file=""
 current_main_sha_file_name="main-ref.env"
+approved_current_main_ref_sha256=""
 trust_file=""
 provenance_mode=""
 actions_repository=jry21223/HENU-Kit-DEV
@@ -54,6 +55,8 @@ trusted_root_chain() {
 current_main_sha() {
   if [[ -n "$current_main_sha_file" ]]; then
     [[ -f "$current_main_sha_file" && ! -L "$current_main_sha_file" ]] || return 1
+    [[ -n "$approved_current_main_ref_sha256" &&
+       "$(sha256sum "$current_main_sha_file" | awk '{print $1}')" == "$approved_current_main_ref_sha256" ]] || return 1
     [[ "$(grep -Fxc 'format=henukit-current-main-ref-v1' "$current_main_sha_file")" -eq 1 ]] || return 1
     [[ "$(grep -Fxc "source_repository=${actions_repository}" "$current_main_sha_file")" -eq 1 ]] || return 1
     [[ "$(grep -Fxc "source_ref=${actions_source_ref}" "$current_main_sha_file")" -eq 1 ]] || return 1
@@ -163,6 +166,10 @@ elif [[ -z "$allowed_signers" && -n "$actions_attestation" ]]; then
     die "offline current-main proof must use the exact staged path"
   trusted_root_file "$current_main_sha_file" ||
     die "offline current-main proof is not root-trusted"
+  approved_current_main_ref_sha256="$(grep -E '^HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256=' "$trust_file" | cut -d= -f2-)"
+  [[ "$(grep -Ec '^HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256=' "$trust_file")" -eq 1 &&
+     "$approved_current_main_ref_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+    die "offline current-main proof digest is invalid"
 else
   [[ -z "$current_main_sha_file" ]] || die "offline current-main proof is only valid with GitHub Actions provenance"
   die "choose exactly one release provenance mode"
@@ -317,7 +324,7 @@ if [[ "$provenance_mode" == github-actions ]]; then
   approved_trusted_root_sha256="$(read_exact_env "$trust_file" HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256)"
   [[ "$approved_trusted_root_sha256" =~ ^[0-9a-f]{64}$ ]] ||
     die "Sigstore trusted-root digest is invalid"
-  [[ "$(grep -Evc '^(HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT|HENUKIT_GETWORK_HOST_KEY_FINGERPRINT|HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256)=' "$trust_file")" -eq 0 ]] ||
+  [[ "$(grep -Evc '^(HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT|HENUKIT_GETWORK_HOST_KEY_FINGERPRINT|HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256|HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256)=' "$trust_file")" -eq 0 ]] ||
     die "fingerprint trust file contains unreviewed keys"
 else
   [[ "$(grep -Evc '^(HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT|HENUKIT_GETWORK_HOST_KEY_FINGERPRINT)=' "$trust_file")" -eq 0 ]] ||

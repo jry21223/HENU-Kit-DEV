@@ -80,9 +80,11 @@ generated on a connected, trusted host with the same OS GitHub CLI
 (`gh attestation trusted-root`), transferred out of band, and checked for the
 expected SHA-256 before it is installed at mode `0400`. Record that digest as
 `HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256` in the root-owned `trust.env`
-alongside the two SSH fingerprints. The installer and verifier both require the
-digest to match the exact trusted-root bytes. It is the Sigstore trust root for
-this offline WSL verification; it is not a release artifact.
+alongside the two SSH fingerprints. Also record
+`HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256` for `main-ref.env`. The installer and
+verifier both require each digest to match the exact sidecar bytes. It is the
+Sigstore trust root for this offline WSL verification; it is not a release
+artifact.
 
 Before executing any release code as root, use the OS GitHub CLI to verify the
 GitHub Actions attestation and exact workflow identity, then bind both archive

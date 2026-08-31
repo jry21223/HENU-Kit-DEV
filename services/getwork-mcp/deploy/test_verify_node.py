@@ -192,6 +192,12 @@ class StaleMainProbe(HealthyNodeProbe):
 
 class HealthyActionsProbe(HealthyNodeProbe):
     def secure_file(self, path):
+        main_ref_contents = (
+            "format=henukit-current-main-ref-v1\n"
+            "source_repository=jry21223/HENU-Kit-DEV\n"
+            "source_ref=refs/heads/main\n"
+            f"release_sha={'a' * 40}\n"
+        )
         if path == pathlib.Path("/etc/henukit-getwork/node.env"):
             item = super().secure_file(path)
             return item._replace(
@@ -224,10 +230,7 @@ class HealthyActionsProbe(HealthyNodeProbe):
                 False,
                 0,
                 0o400,
-                "format=henukit-current-main-ref-v1\n"
-                "source_repository=jry21223/HENU-Kit-DEV\n"
-                "source_ref=refs/heads/main\n"
-                f"release_sha={'a' * 40}\n",
+                main_ref_contents,
             )
         if path == pathlib.Path("/etc/henukit-getwork/trust.env"):
             item = super().secure_file(path)
@@ -235,6 +238,8 @@ class HealthyActionsProbe(HealthyNodeProbe):
                 contents=item.contents
                 + "HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256="
                 + hashlib.sha256(b"trusted-root").hexdigest()
+                + "\nHENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256="
+                + hashlib.sha256(main_ref_contents.encode()).hexdigest()
                 + "\n"
             )
         if path == pathlib.Path("/usr/bin/gh"):

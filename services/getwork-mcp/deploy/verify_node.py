@@ -216,6 +216,14 @@ def _current_main_sha(config: Config, probe: Probe) -> str:
     proof = _require_file(
         probe, config.current_main_ref_file, 0o400, "offline current-main proof"
     )
+    trust_values = _env(
+        _require_file(probe, config.trust_file, 0o600, "fingerprint trust").contents
+    )
+    approved_digest = trust_values.get("HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", approved_digest):
+        raise VerificationError("offline current-main proof digest is invalid")
+    if hashlib.sha256(proof.contents.encode()).hexdigest() != approved_digest:
+        raise VerificationError("offline current-main proof digest is not approved")
     values = _main_ref(proof.contents)
     if set(values) != {"format", "source_repository", "source_ref", "release_sha"}:
         raise VerificationError("offline current-main proof keys do not match")
@@ -300,12 +308,17 @@ def verify(config: Config, probe: Probe) -> Evidence:
     }
     if config.provenance_mode == "github-actions":
         expected_trust_keys.add("HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256")
+        expected_trust_keys.add("HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256")
     if set(trust) != expected_trust_keys:
         raise VerificationError("fingerprint trust keys do not match the reviewed contract")
     if config.provenance_mode == "github-actions" and not re.fullmatch(
         r"[0-9a-f]{64}", trust["HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256"]
     ):
         raise VerificationError("Sigstore trusted-root digest is invalid")
+    if config.provenance_mode == "github-actions" and not re.fullmatch(
+        r"[0-9a-f]{64}", trust["HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256"]
+    ):
+        raise VerificationError("offline current-main proof digest is invalid")
     _require_file(probe, config.private_key_file, 0o600, "tunnel private key")
     if (
         probe.private_key_fingerprint(config.private_key_file)

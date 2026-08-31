@@ -569,6 +569,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT=SHA256:tunnel",
     "HENUKIT_GETWORK_HOST_KEY_FINGERPRINT=SHA256:host",
     `HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256=${sha256(join(stage, "trusted_root.jsonl"))}`,
+    `HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256=${sha256(join(stage, "main-ref.env"))}`,
     "",
   ].join("\n"));
   chmodSync(join(fixture, "allowed-signers"), 0o600);
