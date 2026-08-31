@@ -734,7 +734,9 @@ configure_getwork_relay_ingress() {
   "$iptables_bin" -N "$input_chain" 2>/dev/null || true
   "$iptables_bin" -F "$input_chain"
   "$iptables_bin" -A "$input_chain" -s "$henu_subnet" -j ACCEPT
-  "$iptables_bin" -A "$input_chain" -s "${bridge_address}/32" -j ACCEPT
+  # A host connection to its own Docker bridge traverses lo but may retain the
+  # primary host address as its source. OUTPUT still limits this path to root.
+  "$iptables_bin" -A "$input_chain" -i lo -j ACCEPT
   "$iptables_bin" -A "$input_chain" -j REJECT
   while "$iptables_bin" -C INPUT -d "${bridge_address}/32" -p tcp --dport 18101 -j "$input_chain" 2>/dev/null; do
     "$iptables_bin" -D INPUT -d "${bridge_address}/32" -p tcp --dport 18101 -j "$input_chain"
@@ -764,7 +766,7 @@ getwork_relay_ingress_is_restricted() {
   [[ "$(iptables -S OUTPUT | awk '/^-A / { print; exit }')" == "$output_jump" ]] || return 1
   [[ "$(iptables -S HENUKIT-GETWORK-INGRESS | grep -c '^-A ')" -eq 3 ]] || return 1
   iptables -C HENUKIT-GETWORK-INGRESS -s "$henu_subnet" -j ACCEPT || return 1
-  iptables -C HENUKIT-GETWORK-INGRESS -s "${bridge_address}/32" -j ACCEPT || return 1
+  iptables -C HENUKIT-GETWORK-INGRESS -i lo -j ACCEPT || return 1
   iptables -C HENUKIT-GETWORK-INGRESS -j REJECT || return 1
   [[ "$(iptables -S HENUKIT-GETWORK-OUTPUT | grep -c '^-A ')" -eq 2 ]] || return 1
   iptables -C HENUKIT-GETWORK-OUTPUT -m owner --uid-owner 0 -j ACCEPT || return 1
