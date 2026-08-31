@@ -1,10 +1,13 @@
 package career
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -107,11 +110,6 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 		if err != nil {
 			return WorkResult{}, err
 		}
-		session, err := connect(scanContext)
-		if err != nil {
-			return WorkResult{}, fmt.Errorf("connect getWork MCP: %w", err)
-		}
-		defer session.Close()
 		type sourceTask struct {
 			index  int
 			source string
@@ -134,7 +132,7 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 				defer workers.Done()
 				for task := range tasks {
 					var crawl getWorkMCPCrawl
-					callErr := callGetWorkTool(scanContext, session, "crawl_jobs", map[string]any{
+					callErr := callGetWorkToolHTTP(scanContext, &clientCopy, endpoint, "crawl-"+task.source, "crawl_jobs", map[string]any{
 						"source": task.source, "since_days": config.SinceDays,
 					}, &crawl)
 					results[task.index] = sourceResult{crawl: crawl, err: callErr}
@@ -288,6 +286,132 @@ func callGetWorkTool(ctx context.Context, session *mcpsdk.ClientSession, name st
 		return fmt.Errorf("getWork MCP tool %s failed", name)
 	}
 	return decodeGetWorkToolResult(name, result, target)
+}
+
+const maxGetWorkMCPResponseBytes = 8 << 20
+
+// callGetWorkToolHTTP uses the verified streamable-HTTP endpoint without
+// opening an additional long-lived MCP session for every source. The startup
+// SDK probe above still negotiates the protocol and verifies the exact tool and
+// source surface; independent bounded calls keep browser crawls from coupling
+// their transport lifetime across the restricted SSH relay.
+func callGetWorkToolHTTP(ctx context.Context, client *http.Client, endpoint, requestID, name string, arguments map[string]any, target any) error {
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"method":  "tools/call",
+		"params":  map[string]any{"name": name, "arguments": arguments},
+	})
+	if err != nil {
+		return fmt.Errorf("encode getWork MCP tool %s request: %w", name, err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("create getWork MCP tool %s request: %w", name, err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("send getWork MCP tool %s request: %w", name, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("getWork MCP tool %s returned HTTP %d", name, response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxGetWorkMCPResponseBytes+1))
+	if err != nil {
+		return fmt.Errorf("read getWork MCP tool %s response: %w", name, err)
+	}
+	if len(body) > maxGetWorkMCPResponseBytes {
+		return fmt.Errorf("getWork MCP tool %s response exceeds the bounded limit", name)
+	}
+	type responseEnvelope struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  json.RawMessage `json:"result"`
+		Error   *struct {
+			Code int `json:"code"`
+		} `json:"error"`
+	}
+	payloads, err := getWorkMCPResponsePayloads(body, response.Header.Get("Content-Type"))
+	if err != nil {
+		return fmt.Errorf("decode getWork MCP tool %s response: %w", name, err)
+	}
+	var envelope responseEnvelope
+	found := false
+	for _, candidate := range payloads {
+		var current responseEnvelope
+		var responseID string
+		if json.Unmarshal(candidate, &current) == nil && current.JSONRPC == "2.0" &&
+			json.Unmarshal(current.ID, &responseID) == nil && responseID == requestID {
+			envelope = current
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("getWork MCP tool %s response identity is invalid", name)
+	}
+	if envelope.Error != nil {
+		return fmt.Errorf("getWork MCP tool %s returned JSON-RPC error %d", name, envelope.Error.Code)
+	}
+	if len(envelope.Result) == 0 || string(envelope.Result) == "null" {
+		return fmt.Errorf("getWork MCP tool %s returned no result", name)
+	}
+	var result mcpsdk.CallToolResult
+	if err := json.Unmarshal(envelope.Result, &result); err != nil {
+		return fmt.Errorf("decode getWork MCP tool %s result: %w", name, err)
+	}
+	if result.IsError {
+		return fmt.Errorf("getWork MCP tool %s failed", name)
+	}
+	return decodeGetWorkToolResult(name, &result, target)
+}
+
+func getWorkMCPResponsePayloads(body []byte, contentType string) ([][]byte, error) {
+	if json.Valid(body) {
+		return [][]byte{body}, nil
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	if mediaType != "text/event-stream" {
+		return nil, errors.New("response is neither JSON nor an event stream")
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, 64*1024), maxGetWorkMCPResponseBytes+1)
+	payloads := make([][]byte, 0, 1)
+	var eventData strings.Builder
+	flush := func() {
+		if eventData.Len() == 0 {
+			return
+		}
+		candidate := []byte(eventData.String())
+		if json.Valid(candidate) {
+			payloads = append(payloads, append([]byte(nil), candidate...))
+		}
+		eventData.Reset()
+	}
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			if eventData.Len() > 0 {
+				eventData.WriteByte('\n')
+			}
+			eventData.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	flush()
+	if len(payloads) == 0 {
+		return nil, errors.New("event stream contains no JSON payload")
+	}
+	return payloads, nil
 }
 
 func decodeGetWorkToolResult(name string, result *mcpsdk.CallToolResult, target any) error {

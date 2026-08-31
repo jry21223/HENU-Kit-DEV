@@ -53,7 +53,9 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 			}},
 		}, nil
 	})
-	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer getwork-test-token-0000000000000000" {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
@@ -130,6 +132,17 @@ func TestDecodeGetWorkToolResultAcceptsUpstreamTextJSON(t *testing.T) {
 	}
 }
 
+func TestGetWorkMCPResponsePayloadsAcceptsBoundedEventStream(t *testing.T) {
+	body := []byte(": keepalive\r\n\r\nevent: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-alibaba\",\"result\":{}}\r\n\r\n")
+	payloads, err := getWorkMCPResponsePayloads(body, "text/event-stream; charset=utf-8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payloads) != 1 || string(payloads[0]) != `{"jsonrpc":"2.0","id":"crawl-alibaba","result":{}}` {
+		t.Fatalf("payloads = %q", payloads)
+	}
+}
+
 func TestGetWorkMCPRejectsDeploymentPlaceholderToken(t *testing.T) {
 	for _, token := range []string{"short", "replace-getwork-mcp-access-token-32chars!!"} {
 		_, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
@@ -174,7 +187,9 @@ func TestGetWorkMCPKeepsSuccessfulSourcesWhenOneSourceFails(t *testing.T) {
 		}
 		return nil, map[string]any{"status": "ok", "source": input.Source, "jobs": []map[string]any{}}, nil
 	})
-	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
 	upstream := httptest.NewServer(handler)
 	t.Cleanup(upstream.Close)
 
@@ -220,7 +235,9 @@ func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		return nil, map[string]any{"status": "ok", "source": input.Source, "jobs": []map[string]any{}}, nil
 	})
-	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
 	var initializeCalls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		body, err := io.ReadAll(request.Body)
@@ -256,8 +273,8 @@ func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
 	if maximum.Load() <= 1 || maximum.Load() > 4 {
 		t.Fatalf("maximum concurrent crawls = %d, want 2..4", maximum.Load())
 	}
-	if initializeCalls.Load() != 2 {
-		t.Fatalf("MCP initialize calls = %d, want one startup probe plus one shared scan session", initializeCalls.Load())
+	if initializeCalls.Load() != 0 {
+		t.Fatalf("MCP initialize calls = %d, want no stateful sessions against the stateless source", initializeCalls.Load())
 	}
 }
 
