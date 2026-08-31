@@ -36,7 +36,7 @@ function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function fixtureRun({ crawlerRemains = false, priorUnits = true } = {}) {
+function fixtureRun({ crawlerRemains = false, priorUnits = true, failRetainedDisable = false } = {}) {
   const fixture = mkdtempSync(join(tmpdir(), "getwork-rollback-"));
   const bin = join(fixture, "bin");
   mkdirSync(bin);
@@ -58,6 +58,8 @@ function fixtureRun({ crawlerRemains = false, priorUnits = true } = {}) {
   ].join("\n"));
   executable(join(bin, "systemctl"), [
     "printf 'systemctl %s\\n' \"$*\" >> /fixture/calls",
+    "if [[ \"$1\" == disable && \"${FAIL_MISSING_DISABLE:-0}\" == 1 ]]; then exit 5; fi",
+    "if [[ \"$1\" == disable && \"${FAIL_RETAINED_DISABLE:-0}\" == 1 ]]; then exit 6; fi",
     "case \"$1\" in",
     "  is-active) printf 'inactive\\n' ;;",
     "  show) printf '0\\n' ;;",
@@ -98,7 +100,10 @@ function fixtureRun({ crawlerRemains = false, priorUnits = true } = {}) {
     "",
   ].join("\n");
   const result = run("docker", [
-    "run", "--rm", "--env", "CRAWLER_REMAINS=" + (crawlerRemains ? "1" : "0"),
+    "run", "--rm",
+    "--env", "CRAWLER_REMAINS=" + (crawlerRemains ? "1" : "0"),
+    "--env", "FAIL_MISSING_DISABLE=" + (priorUnits ? "0" : "1"),
+    "--env", "FAIL_RETAINED_DISABLE=" + (failRetainedDisable ? "1" : "0"),
     "--volume", rollback + ":/source/rollback_node.sh:ro",
     "--volume", fixture + ":/fixture",
     "debian:bookworm-slim", "bash", "-ceu", setup,
@@ -121,11 +126,16 @@ test("rollback fails before moving trust files when the crawler remains", () => 
   assert.match(result.stderr, /crawler container remained/);
 });
 
-test("first-install rollback removes dangling enablement when no prior units exist", () => {
+test("first-install rollback tolerates systemd rejecting missing units", () => {
   const { result, calls } = fixtureRun({ priorUnits: false });
   assert.equal(result.status, 0, result.stderr);
   assert.match(calls, /systemctl disable henukit-getwork-mcp\.service/);
   assert.match(calls, /systemctl disable henukit-getwork-tunnel\.service/);
+});
+
+test("rollback fails when systemd cannot disable a restored unit", () => {
+  const { result } = fixtureRun({ failRetainedDisable: true });
+  assert.notEqual(result.status, 0);
 });
 
 test("installer rejects an untrusted staging ancestry before loading Docker", () => {
@@ -649,7 +659,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
 
   const setup = [
     "trap 'echo \"fixture setup failed at line $LINENO: $BASH_COMMAND\" >&2' ERR",
-    "install -d -o root -g root -m 0755 /trusted /trusted-stage /trusted-inputs /usr/local/libexec",
+    "install -d -o root -g root -m 0755 /trusted /trusted-stage /trusted-inputs",
     "install -o root -g root -m 0755 /fixture/git /usr/bin/git",
     "install -o root -g root -m 0755 /fixture/gh /usr/bin/gh",
     "install -o root -g root -m 0755 /source/install_node.sh /trusted/install_node.sh",
@@ -659,6 +669,15 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "install -o root -g root -m 0600 /fixture/trust.env /trusted-inputs/trust.env",
     "install -o root -g root -m 0600 /fixture/actions-trust.env /trusted-inputs/actions-trust.env",
     `command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --allowed-signers /trusted-inputs/allowed-signers --trust-file /trusted-inputs/trust.env)`,
+    "chmod 0777 /usr/local",
+    "set +e",
+    "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" >/fixture/untrusted-local.out 2>/fixture/untrusted-local.err",
+    "untrusted_status=$?",
+    "set -e",
+    "test \"$untrusted_status\" -ne 0",
+    "grep -Fq '/usr/local is not a trusted directory' /fixture/untrusted-local.err",
+    "test ! -e /usr/local/libexec",
+    "chmod 0755 /usr/local",
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/first.out",
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/second.out",
     `actions_command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --actions-attestation /trusted-stage/${actionsAttestationName} --actions-custom-trusted-root /trusted-stage/trusted_root.jsonl --current-main-sha-file /trusted-stage/main-ref.env --trust-file /trusted-inputs/actions-trust.env)`,
