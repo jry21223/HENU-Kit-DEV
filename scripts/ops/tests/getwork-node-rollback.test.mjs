@@ -463,6 +463,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "",
   ].join("\n"));
   writeFileSync(join(stage, actionsAttestationName), "fixture-attestation\n");
+  writeFileSync(join(stage, "trusted_root.jsonl"), "fixture-trusted-root\n");
   writeFileSync(join(stage, "node.env"), [
     "HENUKIT_GETWORK_MEMORY_LIMIT=4g",
     "HENUKIT_GETWORK_TUNNEL_TARGET=henukit-getwork-tunnel@production.example",
@@ -484,6 +485,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     manifestName + ".sig",
     actionsManifestName,
     actionsAttestationName,
+    "trusted_root.jsonl",
     "node.env",
     "mcp.env",
     "id_ed25519",
@@ -519,7 +521,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "",
   ].join("\n"));
   const gh = join(fixture, "gh");
-  executable(gh, "printf '[{}]\\n'\n");
+  executable(gh, "printf '%s\\n' \"$*\" >> /fixture/gh-calls\nprintf '[{}]\\n'\n");
   executable(join(bin, "docker"), [
     "case \"${1:-} ${2:-}\" in",
     "  'load --input') exit 0 ;;",
@@ -555,8 +557,15 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "HENUKIT_GETWORK_HOST_KEY_FINGERPRINT=SHA256:host",
     "",
   ].join("\n"));
+  writeFileSync(join(fixture, "actions-trust.env"), [
+    "HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT=SHA256:tunnel",
+    "HENUKIT_GETWORK_HOST_KEY_FINGERPRINT=SHA256:host",
+    `HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256=${sha256(join(stage, "trusted_root.jsonl"))}`,
+    "",
+  ].join("\n"));
   chmodSync(join(fixture, "allowed-signers"), 0o600);
   chmodSync(join(fixture, "trust.env"), 0o600);
+  chmodSync(join(fixture, "actions-trust.env"), 0o600);
 
   const setup = [
     "trap 'echo \"fixture setup failed at line $LINENO: $BASH_COMMAND\" >&2' ERR",
@@ -568,16 +577,19 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     "chown -R root:root /trusted-stage",
     "install -o root -g root -m 0600 /fixture/allowed-signers /trusted-inputs/allowed-signers",
     "install -o root -g root -m 0600 /fixture/trust.env /trusted-inputs/trust.env",
+    "install -o root -g root -m 0600 /fixture/actions-trust.env /trusted-inputs/actions-trust.env",
     `command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --allowed-signers /trusted-inputs/allowed-signers --trust-file /trusted-inputs/trust.env)`,
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/first.out",
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/second.out",
-    `actions_command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --actions-attestation /trusted-stage/${actionsAttestationName} --trust-file /trusted-inputs/trust.env)`,
+    `actions_command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --actions-attestation /trusted-stage/${actionsAttestationName} --actions-custom-trusted-root /trusted-stage/trusted_root.jsonl --trust-file /trusted-inputs/actions-trust.env)`,
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${actions_command[@]}\" | tee /fixture/actions-first.out",
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${actions_command[@]}\" | tee /fixture/actions-second.out",
     "test -s /fixture/first.out",
     "test -s /fixture/second.out",
     "test -s /fixture/actions-first.out",
     "test -s /fixture/actions-second.out",
+    "grep -Fq -- '--custom-trusted-root' /fixture/gh-calls",
+    "grep -Fq -- 'trusted_root.jsonl' /fixture/gh-calls",
     "test \"$(find /var/lib/henukit-getwork-backups -mindepth 1 -maxdepth 1 -type d | wc -l)\" -eq 4",
     "test \"$(getent passwd henukit-getwork-tunnel | cut -d: -f6)\" = /var/lib/henukit-getwork-tunnel",
     "test \"$(getent shadow henukit-getwork-tunnel | cut -d: -f2)\" = NP",

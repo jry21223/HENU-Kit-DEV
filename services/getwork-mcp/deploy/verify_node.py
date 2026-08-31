@@ -54,6 +54,7 @@ class Config(NamedTuple):
     provenance_mode: str = "ssh-signature"
     attestation_file: pathlib.Path | None = None
     gh_file: pathlib.Path = pathlib.Path("/usr/bin/gh")
+    actions_custom_trusted_root_file: pathlib.Path | None = None
 
 
 class SecureFile(NamedTuple):
@@ -97,6 +98,7 @@ class Probe(Protocol):
         attestation: pathlib.Path,
         gh_file: pathlib.Path,
         release_sha: str,
+        custom_trusted_root: pathlib.Path,
     ) -> bool: ...
     def archive_sha256(self, path: pathlib.Path) -> str: ...
     def archive_image_id(self, path: pathlib.Path) -> str: ...
@@ -258,11 +260,18 @@ def verify(config: Config, probe: Probe) -> Evidence:
     if not probe.account_contract("henukit-getwork-tunnel"):
         raise VerificationError("tunnel account does not match the no-login contract")
     trust = _env(_require_file(probe, config.trust_file, 0o600, "fingerprint trust").contents)
-    if set(trust) != {
+    expected_trust_keys = {
         "HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT",
         "HENUKIT_GETWORK_HOST_KEY_FINGERPRINT",
-    }:
+    }
+    if config.provenance_mode == "github-actions":
+        expected_trust_keys.add("HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256")
+    if set(trust) != expected_trust_keys:
         raise VerificationError("fingerprint trust keys do not match the reviewed contract")
+    if config.provenance_mode == "github-actions" and not re.fullmatch(
+        r"[0-9a-f]{64}", trust["HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256"]
+    ):
+        raise VerificationError("Sigstore trusted-root digest is invalid")
     _require_file(probe, config.private_key_file, 0o600, "tunnel private key")
     if (
         probe.private_key_fingerprint(config.private_key_file)
@@ -326,11 +335,24 @@ def verify(config: Config, probe: Probe) -> Evidence:
             raise VerificationError("GitHub Actions attestation path is missing")
         _require_file(probe, config.attestation_file, 0o400, "Actions attestation")
         _require_file(probe, config.gh_file, 0o755, "GitHub CLI")
+        if config.actions_custom_trusted_root_file is None:
+            raise VerificationError("Actions custom trusted root path is missing")
+        trusted_root = _require_file(
+            probe,
+            config.actions_custom_trusted_root_file,
+            0o400,
+            "Actions custom trusted root",
+        )
+        if hashlib.sha256(trusted_root.contents.encode()).hexdigest() != trust[
+            "HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256"
+        ]:
+            raise VerificationError("Sigstore trusted-root digest is not approved")
         if not probe.actions_attestation_valid(
             config.manifest_file,
             config.attestation_file,
             config.gh_file,
             config.release_sha,
+            config.actions_custom_trusted_root_file,
         ):
             raise VerificationError("GitHub Actions attestation is invalid")
     _require_file(probe, config.artifact_file, 0o400, "getWork image archive")
@@ -574,6 +596,7 @@ class RealProbe:
         attestation: pathlib.Path,
         gh_file: pathlib.Path,
         release_sha: str,
+        custom_trusted_root: pathlib.Path,
     ) -> bool:
         environment = dict(os.environ)
         environment.pop("GH_TOKEN", None)
@@ -598,6 +621,8 @@ class RealProbe:
                 "--predicate-type",
                 ACTIONS_PREDICATE_TYPE,
                 "--deny-self-hosted-runners",
+                "--custom-trusted-root",
+                str(custom_trusted_root),
                 "--format",
                 "json",
             ),
@@ -814,6 +839,7 @@ def main(arguments: list[str] | None = None) -> int:
     )
     parser.add_argument("--actions-attestation-file", type=pathlib.Path)
     parser.add_argument("--gh-file", type=pathlib.Path, default=pathlib.Path("/usr/bin/gh"))
+    parser.add_argument("--actions-custom-trusted-root-file", type=pathlib.Path)
     parser.add_argument("--manifest-file", type=pathlib.Path)
     parser.add_argument("--signature-file", type=pathlib.Path)
     options = parser.parse_args(arguments)
@@ -828,6 +854,9 @@ def main(arguments: list[str] | None = None) -> int:
     attestation_file = options.actions_attestation_file
     if options.provenance_mode == "github-actions" and attestation_file is None:
         attestation_file = options.artifact_file.parent / f"henukit-getwork-actions-{options.sha}.attestation.json"
+    custom_trusted_root_file = options.actions_custom_trusted_root_file
+    if options.provenance_mode == "github-actions" and custom_trusted_root_file is None:
+        custom_trusted_root_file = pathlib.Path("/etc/henukit-getwork/trusted_root.jsonl")
     try:
         evidence = verify(
             Config(
@@ -847,6 +876,7 @@ def main(arguments: list[str] | None = None) -> int:
                 provenance_mode=options.provenance_mode,
                 attestation_file=attestation_file,
                 gh_file=options.gh_file,
+                actions_custom_trusted_root_file=custom_trusted_root_file,
             ),
             RealProbe(),
         )
