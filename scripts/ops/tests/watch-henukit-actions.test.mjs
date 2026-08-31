@@ -160,6 +160,7 @@ function fixture({
   nonRootTrustRoot = "",
   incompletePreviousRelease = "",
   includeOAuthContinuationArtifact = true,
+  includeGetworkProvenanceArtifact = false,
   tamperOAuthContinuationArtifact = false,
   previousHasAccountPortfolio = true,
   previousSha = "b".repeat(40),
@@ -397,6 +398,12 @@ release_sha=$FAKE_RELEASE_SHA
 source_tree=cccccccccccccccccccccccccccccccccccccccc
 result=$([[ "$FAKE_TAMPER_OAUTH_CONTINUATION_ARTIFACT" == "1" ]] && printf fail || printf pass)
 EOF
+fi
+if [[ "$FAKE_INCLUDE_GETWORK_PROVENANCE_ARTIFACT" == "1" ]]; then
+  provenance_artifact="$dest/henukit-getwork-actions-provenance-$FAKE_RELEASE_SHA"
+  mkdir -p "$provenance_artifact"
+  printf 'getwork-manifest\n' > "$provenance_artifact/henukit-getwork-actions-$FAKE_RELEASE_SHA.manifest"
+  printf '{"bundle":true}\n' > "$provenance_artifact/henukit-getwork-actions-$FAKE_RELEASE_SHA.attestation.json"
 fi
 runtime_artifact="$dest/henukit-runtime-$FAKE_RELEASE_SHA"
 runtime_tree="$(mktemp -d "\${TMPDIR:-/tmp}/henukit-runtime-tree.XXXXXX")"
@@ -745,6 +752,7 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       FAKE_LIBRARY_HEALTH_ATTEMPTS: libraryHealthAttempts,
       FAKE_LEGACY_RUNTIME_PRESENT: legacyRuntimePresent ? "1" : "0",
       FAKE_INCLUDE_OAUTH_CONTINUATION_ARTIFACT: includeOAuthContinuationArtifact ? "1" : "0",
+      FAKE_INCLUDE_GETWORK_PROVENANCE_ARTIFACT: includeGetworkProvenanceArtifact ? "1" : "0",
       FAKE_TAMPER_OAUTH_CONTINUATION_ARTIFACT: tamperOAuthContinuationArtifact ? "1" : "0",
       FAKE_MISSING_LIBRARY_ARTIFACT: missingLibraryArtifact ? "1" : "0",
       FAKE_MISSING_MATERIALS_RUNNER_UNIT: missingMaterialsRunnerUnit ? "1" : "0",
@@ -861,6 +869,20 @@ test("activation configuration cannot lower the production disk floor", () => {
 
 test("one-shot accepts the SHA-bound OAuth continuation gate receipt", () => {
   const setup = fixture({ includeOAuthContinuationArtifact: true });
+
+  const output = execFileSync(script, ["--once"], {
+    encoding: "utf8",
+    env: setup.env,
+  });
+
+  assert.match(
+    output,
+    new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
+  );
+});
+
+test("one-shot ignores only the getWork provenance pair from the full Actions run", () => {
+  const setup = fixture({ includeGetworkProvenanceArtifact: true });
 
   const output = execFileSync(script, ["--once"], {
     encoding: "utf8",
