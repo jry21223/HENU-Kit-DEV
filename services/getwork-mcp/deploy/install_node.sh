@@ -12,6 +12,7 @@ actions_repository=jry21223/HENU-Kit-DEV
 actions_repository_url=https://github.com/jry21223/HENU-Kit-DEV.git
 actions_signer_workflow=jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml
 actions_source_ref=refs/heads/main
+actions_predicate_type=https://github.com/jry21223/HENU-Kit-DEV/attestations/getwork-actions-release-v1
 gh_bin=/usr/bin/gh
 git_bin=/usr/bin/git
 timeout_bin=/usr/bin/timeout
@@ -203,6 +204,7 @@ else
     --signer-workflow "$actions_signer_workflow" \
     --source-ref "$actions_source_ref" \
     --source-digest "$release_sha" \
+    --predicate-type "$actions_predicate_type" \
     --deny-self-hosted-runners \
     --format json > "$actions_verification" ||
     die "GitHub Actions attestation verification failed"

@@ -32,6 +32,9 @@ PINNED_SOURCES = (
 )
 UNIT_NAMES = ("henukit-getwork-mcp.service", "henukit-getwork-tunnel.service")
 REPOSITORY_URL = "https://github.com/jry21223/HENU-Kit-DEV.git"
+ACTIONS_PREDICATE_TYPE = (
+    "https://github.com/jry21223/HENU-Kit-DEV/attestations/getwork-actions-release-v1"
+)
 
 
 class Config(NamedTuple):
@@ -592,6 +595,8 @@ class RealProbe:
                 "refs/heads/main",
                 "--source-digest",
                 release_sha,
+                "--predicate-type",
+                ACTIONS_PREDICATE_TYPE,
                 "--deny-self-hosted-runners",
                 "--format",
                 "json",

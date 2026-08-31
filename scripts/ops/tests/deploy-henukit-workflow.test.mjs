@@ -139,6 +139,10 @@ test("main Actions builds publish an OIDC-attested getWork WSL handoff manifest"
     workflow,
     /subject-path: release\/henukit-getwork-actions-\$\{\{ github\.sha \}\}\.manifest/,
   );
+  assert.match(
+    workflow,
+    /predicate-type: https:\/\/github\.com\/jry21223\/HENU-Kit-DEV\/attestations\/getwork-actions-release-v1[\s\S]*predicate: '\{\}'/,
+  );
   assert.match(workflow, /steps\.attest-getwork\.outputs\.bundle-path/);
   assert.match(
     workflow,
