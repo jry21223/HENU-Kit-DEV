@@ -275,8 +275,30 @@ keys, databases, or volumes as an improvised rollback.
 The default activation still requires a healthy retained fixed-SHA rollback
 release. When production is already degraded and no healthy retained release
 exists, ADR-0030 permits one explicit recovery after the recovery-aware trust
-roots have been installed through the reviewed bootstrap below. Both preflight
-and execute name the exact current degraded SHA:
+roots have been installed through the reviewed bootstrap below. ADR-0044
+extends the same gates to the Actions source. For the newest
+completed successful GitHub Actions run that is still current `main`, invoke
+the production activation entry explicitly and name both exact SHAs:
+
+```bash
+sudo HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
+  GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
+  /usr/local/sbin/activate-henukit-release \
+  <full-current-main-sha> \
+  --recover-degraded-baseline <exact-current-degraded-sha> \
+  --execute
+```
+
+This is not watch mode: the activation entry rechecks the branch head and
+newest successful workflow before preparation and again before activation. The
+signed local-builder fallback instead carries the same exact baseline through
+the WSL transport; both preflight and execute name it:
+
+Before publishing approval, the activation entry binds the prepared evidence
+to the exact Actions run database ID plus run attempt, or the signed local
+manifest digest. Resume
+must match that immutable artifact identity, candidate SHA, and baseline SHA;
+changing source mode or rerunning the workflow requires new preparation.
 
 ```bash
 scripts/ops/deploy-henukit-release-from-wsl.sh \
@@ -304,7 +326,8 @@ publishes the terminal adoption audit.
 
 Use identical arguments with `--execute` only after preflight succeeds. The
 watcher rejects a healthy baseline, a mismatched current symlink or image set,
-an Actions-polled release, and missing backup or approval evidence. Candidate
+an inferred watch-mode recovery, a stale or unsuccessful Actions release, and
+missing backup or approval evidence. Candidate
 failure restores the exact known degraded state without reporting it healthy.
 Root-only records remain under
 `/var/lib/henukit-actions-watch/degraded-recoveries/`.

@@ -9,6 +9,8 @@ mode=""
 usage() {
   cat >&2 <<'EOF'
 usage: watch-henukit-actions.sh --once|--watch
+       watch-henukit-actions.sh --once \
+         --recover-degraded-baseline <full-current-sha>
        watch-henukit-actions.sh --local-artifacts <artifact-dir> --sha <full-main-sha>
        watch-henukit-actions.sh --local-artifacts <artifact-dir> --sha <full-main-sha> \
          --recover-degraded-baseline <full-current-sha>
@@ -52,6 +54,10 @@ local_release_sha=""
 recovery_baseline_sha=""
 if [[ $# -eq 1 && ( "$1" == "--once" || "$1" == "--watch" ) ]]; then
   mode="$1"
+elif [[ $# -eq 3 && "$1" == "--once" &&
+        "$2" == "--recover-degraded-baseline" ]]; then
+  mode="--once"
+  recovery_baseline_sha="$3"
 elif [[ $# -eq 4 && "$1" == "--local-artifacts" && "$3" == "--sha" ]]; then
   mode="--local-artifacts"
   local_artifact_dir="$2"
@@ -213,11 +219,14 @@ while IFS=$'\t' read -r service image; do
 done < <("$image_inventory" --conditional-services)
 [[ "${#images[@]}" -gt 0 && "${#load_images[@]}" -gt 0 && "${#base_images[@]}" -gt 0 ]] ||
   die "image inventory is incomplete"
+if [[ -n "$recovery_baseline_sha" ]]; then
+  [[ "$recovery_baseline_sha" =~ ^[0-9a-f]{40}$ ]] ||
+    die "--recover-degraded-baseline must be a full lowercase Git SHA"
+  [[ "$branch" == "main" ]] || die "degraded-baseline recovery may only activate main"
+fi
 if [[ "$mode" == "--local-artifacts" ]]; then
   [[ "$local_release_sha" =~ ^[0-9a-f]{40}$ ]] || die "--sha must be a full lowercase Git SHA"
   if [[ -n "$recovery_baseline_sha" ]]; then
-    [[ "$recovery_baseline_sha" =~ ^[0-9a-f]{40}$ ]] ||
-      die "--recover-degraded-baseline must be a full lowercase Git SHA"
     [[ "$recovery_baseline_sha" != "$local_release_sha" ]] ||
       die "recovery baseline and candidate SHA must differ"
   fi
@@ -1163,6 +1172,32 @@ release_is_approved() {
   [[ "$(tr -d '\r\n' < "$approval")" == "$release_sha" ]]
 }
 
+validate_recovery_source_binding() {
+  local release_sha="$1"
+  local expected_identity="$2"
+  local binding="$state_root/prepared/${release_sha}.artifact-source"
+  local binding_mode
+  trusted_root_file "$binding" "recovery artifact source binding"
+  binding_mode="$(file_mode "$binding")"
+  [[ "$binding_mode" == "600" || "$binding_mode" == "400" ]] ||
+    die "recovery artifact source binding must have mode 600 or 400"
+  [[ "$(tr -d '\r\n' < "$binding")" == "$expected_identity" ]] ||
+    die "recovery approval is not bound to the selected artifact identity"
+}
+
+validate_recovery_baseline_binding() {
+  local release_sha="$1"
+  local expected_baseline="$2"
+  local binding="$state_root/prepared/${release_sha}.recovery-baseline"
+  local binding_mode
+  trusted_root_file "$binding" "recovery baseline binding"
+  binding_mode="$(file_mode "$binding")"
+  [[ "$binding_mode" == "600" || "$binding_mode" == "400" ]] ||
+    die "recovery baseline binding must have mode 600 or 400"
+  [[ "$(tr -d '\r\n' < "$binding")" == "$expected_baseline" ]] ||
+    die "recovery approval is not bound to baseline $expected_baseline"
+}
+
 consume_approval() {
   local release_sha="$1"
   local approval="$state_root/approvals/$release_sha"
@@ -1637,10 +1672,14 @@ deploy_release() {
   local release_sha="$2"
   local run_url="$3"
   local artifact_override="${4:-}"
+  local run_attempt="${5:-}"
   local artifact_dir runtime_archive release_dir release_incoming
-  local image helper previous_sha activation_status activation_record
+  local image helper previous_sha activation_status activation_record artifact_identity
 
   [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release source returned an invalid SHA"
+  if [[ -n "$recovery_baseline_sha" && "$recovery_baseline_sha" == "$release_sha" ]]; then
+    die "recovery baseline and candidate SHA must differ"
+  fi
   if [[ -n "$pending_approved_release_sha" &&
         "$pending_approved_release_sha" != "$release_sha" ]]; then
     die "approved pending release $pending_approved_release_sha must finish or be withdrawn before release $release_sha"
@@ -1737,6 +1776,14 @@ deploy_release() {
   fi
 
   if [[ -n "$recovery_baseline_sha" ]]; then
+    if [[ -n "$artifact_override" ]]; then
+      artifact_identity="local:$(sha256sum "$artifact_dir/henukit-release-${release_sha}.manifest" | awk '{print $1}')"
+    else
+      [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || die "workflow run attempt is invalid"
+      artifact_identity="actions:${run_id}:${run_attempt}"
+    fi
+    validate_recovery_source_binding "$release_sha" "$artifact_identity"
+    validate_recovery_baseline_binding "$release_sha" "$recovery_baseline_sha"
     previous_sha="$recovery_baseline_sha"
     validate_degraded_baseline_authority "$previous_sha"
     degraded_baseline_matches "$previous_sha" ||
@@ -1899,7 +1946,7 @@ reconcile_pending_rollback_contract() {
 }
 
 check_once() {
-  local run_row run_id release_sha run_status run_conclusion run_url branch_head
+  local run_row run_id run_attempt release_sha run_status run_conclusion run_url branch_head
   reconcile_pending_rollback_contract
   [[ "$rollback_reconciliation_handled" == "0" ]] || return 0
   run_row="$(
@@ -1909,15 +1956,16 @@ check_once() {
       --branch "$branch" \
       --event push \
       --limit 20 \
-      --json databaseId,headSha,status,conclusion,url \
-      --jq 'first(.[]) | [(.databaseId|tostring),.headSha,.status,.conclusion,.url] | @tsv'
+      --json databaseId,attempt,headSha,status,conclusion,url \
+      --jq 'first(.[]) | [(.databaseId|tostring),(.attempt|tostring),.headSha,.status,.conclusion,.url] | @tsv'
   )"
   if [[ -z "$run_row" ]]; then
     log "no completed successful $workflow run found on $branch"
     return
   fi
-  IFS=$'\t' read -r run_id release_sha run_status run_conclusion run_url <<<"$run_row"
+  IFS=$'\t' read -r run_id run_attempt release_sha run_status run_conclusion run_url <<<"$run_row"
   [[ "$run_id" =~ ^[0-9]+$ ]] || die "GitHub returned an invalid workflow run id"
+  [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || die "GitHub returned an invalid workflow run attempt"
   if [[ "$run_status" != "completed" || "$run_conclusion" != "success" ]]; then
     log "latest $branch workflow run $run_id is not successfully completed; refusing stale artifacts"
     return
@@ -1928,7 +1976,7 @@ check_once() {
     log "successful run SHA is no longer current $branch; refusing stale artifacts"
     return
   fi
-  deploy_release "$run_id" "$release_sha" "$run_url"
+  deploy_release "$run_id" "$release_sha" "$run_url" "" "$run_attempt"
 }
 
 check_local_artifacts() {
