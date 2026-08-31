@@ -20,6 +20,23 @@ test("WSL runs the pinned crawler only on loopback under systemd", () => {
   assert.doesNotMatch(unit, /--privileged|0\.0\.0\.0:8100|--network host/);
 });
 
+test("the Docker bridge name fits the Linux interface-name limit", () => {
+  const egress = readFileSync(new URL("henukit-getwork-egress", deployRoot), "utf8");
+  const verifier = readFileSync(new URL("verify_node.py", deployRoot), "utf8");
+  const match = egress.match(/^bridge=([^\s]+)$/m);
+
+  assert.ok(match, "egress helper must declare one fixed bridge name");
+  assert.ok(
+    Buffer.byteLength(match[1], "utf8") <= 15,
+    `bridge name exceeds Linux IFNAMSIZ: ${match[1]}`,
+  );
+  assert.match(
+    verifier,
+    new RegExp(`com\\.docker\\.network\\.bridge\\.name.*${match[1]}`),
+    "runtime verifier must require the same bridge name",
+  );
+});
+
 test("WSL tunnel identity can only establish the reviewed reverse forward", () => {
   const unit = readFileSync(new URL("systemd/henukit-getwork-tunnel.service", deployRoot), "utf8");
 
