@@ -35,6 +35,7 @@ previous_account_password=""
 previous_account_groups=""
 previous_home_metadata=""
 account_state_captured=0
+libexec_created=0
 
 die() {
   echo "${program}: $*" >&2
@@ -122,6 +123,9 @@ cleanup() {
   fi
   if [[ -n "$trusted_work" && "$trusted_work" == /var/lib/henukit-getwork-install/* ]]; then
     rm -rf -- "$trusted_work"
+  fi
+  if [[ "$status" -ne 0 && "$libexec_created" -eq 1 ]]; then
+    rmdir /usr/local/libexec 2>/dev/null || true
   fi
   exit "$status"
 }
@@ -290,6 +294,16 @@ for asset in install_node.sh rollback_node.sh verify_node.py verify_reconnect.sh
   trusted_root_file "$asset_dir/$asset" || die "runtime deployment asset is untrusted: $asset"
 done
 rollback_helper="$asset_dir/rollback_node.sh"
+
+[[ -d /usr/local && ! -L /usr/local ]] && trusted_root_chain /usr/local ||
+  die "/usr/local is not a trusted directory"
+if [[ ! -e /usr/local/libexec && ! -L /usr/local/libexec ]]; then
+  install -d -o root -g root -m 0755 /usr/local/libexec
+  libexec_created=1
+fi
+[[ -d /usr/local/libexec && ! -L /usr/local/libexec ]] &&
+  trusted_root_chain /usr/local/libexec ||
+  die "/usr/local/libexec is not a trusted directory"
 
 read_exact_env() {
   local file="$1"
