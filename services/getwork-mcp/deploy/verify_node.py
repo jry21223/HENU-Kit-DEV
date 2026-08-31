@@ -843,7 +843,7 @@ class RealProbe:
             or len(configs) != 1
             or configs[0].get("Subnet") != "172.30.250.0/24"
             or not isinstance(options, dict)
-            or options.get("com.docker.network.bridge.name") != "henukit-getwork0"
+            or options.get("com.docker.network.bridge.name") != "henukit-gw0"
         ):
             return False
         docker_user = self._command("iptables", "-S", "DOCKER-USER").splitlines()

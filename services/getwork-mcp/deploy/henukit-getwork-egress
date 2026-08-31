@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 network=henukit-getwork-egress
 subnet=172.30.250.0/24
-bridge=henukit-getwork0
+bridge=henukit-gw0
 chain=HENUKIT-GETWORK-EGRESS
 
 [[ "${EUID}" -eq 0 ]] || {
