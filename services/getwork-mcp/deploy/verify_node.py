@@ -55,6 +55,7 @@ class Config(NamedTuple):
     attestation_file: pathlib.Path | None = None
     gh_file: pathlib.Path = pathlib.Path("/usr/bin/gh")
     actions_custom_trusted_root_file: pathlib.Path | None = None
+    current_main_ref_file: pathlib.Path | None = None
 
 
 class SecureFile(NamedTuple):
@@ -195,10 +196,43 @@ def _require_file(
     return item
 
 
+def _main_ref(contents: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in contents.splitlines():
+        if not line:
+            continue
+        key, separator, value = line.partition("=")
+        if not separator or not re.fullmatch(r"[a-z_]+", key) or key in values:
+            raise VerificationError("offline current-main proof is malformed")
+        values[key] = value
+    return values
+
+
+def _current_main_sha(config: Config, probe: Probe) -> str:
+    if config.provenance_mode != "github-actions":
+        return probe.current_main_sha()
+    if config.current_main_ref_file is None:
+        raise VerificationError("offline current-main proof path is missing")
+    proof = _require_file(
+        probe, config.current_main_ref_file, 0o400, "offline current-main proof"
+    )
+    values = _main_ref(proof.contents)
+    if set(values) != {"format", "source_repository", "source_ref", "release_sha"}:
+        raise VerificationError("offline current-main proof keys do not match")
+    if (
+        values["format"] != "henukit-current-main-ref-v1"
+        or values["source_repository"] != "jry21223/HENU-Kit-DEV"
+        or values["source_ref"] != "refs/heads/main"
+        or not re.fullmatch(r"[0-9a-f]{40}", values["release_sha"])
+    ):
+        raise VerificationError("offline current-main proof is invalid")
+    return values["release_sha"]
+
+
 def verify(config: Config, probe: Probe) -> Evidence:
     if not re.fullmatch(r"[0-9a-f]{40}", config.release_sha):
         raise VerificationError("release SHA must be 40 lowercase hexadecimal characters")
-    if probe.current_main_sha() != config.release_sha:
+    if _current_main_sha(config, probe) != config.release_sha:
         raise VerificationError("release SHA is not the freshly fetched current origin/main")
     if "microsoft" not in probe.osrelease().lower():
         raise VerificationError("Job Source MCP node must run on WSL2")
@@ -415,7 +449,7 @@ def verify(config: Config, probe: Probe) -> Evidence:
     crawl = probe.crawl(token, crawl_source)
     if crawl.get("status") != "ok" or crawl.get("source") not in (None, crawl_source):
         raise VerificationError("real crawl_jobs preflight failed")
-    if probe.current_main_sha() != config.release_sha:
+    if _current_main_sha(config, probe) != config.release_sha:
         raise VerificationError("origin/main changed during node verification")
 
     return Evidence(image, image_id, platform, archive_sha, len(sources), tools, crawl_source)
@@ -840,6 +874,7 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--actions-attestation-file", type=pathlib.Path)
     parser.add_argument("--gh-file", type=pathlib.Path, default=pathlib.Path("/usr/bin/gh"))
     parser.add_argument("--actions-custom-trusted-root-file", type=pathlib.Path)
+    parser.add_argument("--current-main-sha-file", type=pathlib.Path)
     parser.add_argument("--manifest-file", type=pathlib.Path)
     parser.add_argument("--signature-file", type=pathlib.Path)
     options = parser.parse_args(arguments)
@@ -857,6 +892,9 @@ def main(arguments: list[str] | None = None) -> int:
     custom_trusted_root_file = options.actions_custom_trusted_root_file
     if options.provenance_mode == "github-actions" and custom_trusted_root_file is None:
         custom_trusted_root_file = pathlib.Path("/etc/henukit-getwork/trusted_root.jsonl")
+    current_main_ref_file = options.current_main_sha_file
+    if options.provenance_mode == "github-actions" and current_main_ref_file is None:
+        current_main_ref_file = pathlib.Path("/etc/henukit-getwork/main-ref.env")
     try:
         evidence = verify(
             Config(
@@ -877,6 +915,7 @@ def main(arguments: list[str] | None = None) -> int:
                 attestation_file=attestation_file,
                 gh_file=options.gh_file,
                 actions_custom_trusted_root_file=custom_trusted_root_file,
+                current_main_ref_file=current_main_ref_file,
             ),
             RealProbe(),
         )

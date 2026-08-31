@@ -67,6 +67,7 @@ test("deployment instructions preserve a remote-forward-only production account"
   assert.match(runbook, /--deny-self-hosted-runners/);
   assert.match(runbook, /--actions-attestation/);
   assert.match(runbook, /--actions-custom-trusted-root/);
+  assert.match(runbook, /--current-main-sha-file/);
   assert.match(runbook, /--custom-trusted-root/);
   assert.match(
     runbook,
@@ -88,7 +89,7 @@ test("deployment instructions preserve a remote-forward-only production account"
       new RegExp(`gh run download "\\$run_id"[\\s\\S]*--name "${artifact}`),
     );
   }
-  for (const input of ["node.env", "mcp.env", "id_ed25519", "known_hosts", "trusted_root.jsonl"]) {
+  for (const input of ["node.env", "mcp.env", "id_ed25519", "known_hosts", "trusted_root.jsonl", "main-ref.env"]) {
     assert.match(
       runbook,
       new RegExp(`install -o root -g root -m 0400[\\s\\S]*"\\$stage/${input.replaceAll(".", "\\.")}"`),
@@ -96,7 +97,7 @@ test("deployment instructions preserve a remote-forward-only production account"
   }
   assert.match(
     runbook,
-    /verify_node\.py[\s\S]*--provenance-mode github-actions[\s\S]*--actions-attestation-file[\s\S]*--actions-custom-trusted-root-file/,
+    /verify_node\.py[\s\S]*--provenance-mode github-actions[\s\S]*--actions-attestation-file[\s\S]*--actions-custom-trusted-root-file[\s\S]*--current-main-sha-file/,
   );
 });
 
@@ -167,6 +168,7 @@ test("the WSL installer accepts only an exact-main GitHub Actions attestation or
 
   assert.match(install, /--actions-attestation/);
   assert.match(install, /--actions-custom-trusted-root/);
+  assert.match(install, /--current-main-sha-file/);
   assert.match(install, /actions_repository=jry21223\/HENU-Kit-DEV/);
   assert.match(
     install,

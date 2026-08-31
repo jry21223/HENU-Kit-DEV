@@ -67,9 +67,14 @@ Use one successful release-workflow run ID to download the exact
 `henukit-getwork-mcp-<sha>`, `henukit-runtime-<sha>`, and
 `henukit-getwork-actions-provenance-<sha>` artifacts. Copy their six files,
 plus `node.env`, `mcp.env`, the dedicated `id_ed25519`, and approved
-`known_hosts`, and a connected-host-generated `trusted_root.jsonl`, into one
+`known_hosts`, a connected-host-generated `trusted_root.jsonl`, and a
+connected-host-generated `main-ref.env` containing exactly
+`format=henukit-current-main-ref-v1`, `source_repository=jry21223/HENU-Kit-DEV`,
+`source_ref=refs/heads/main`, and the 40-character `release_sha`, into one
 root-owned non-symlink staging directory with a fully root-trusted ancestor
-chain. Install GitHub CLI from the OS package as the root-owned `/usr/bin/gh`; a
+chain. WSL cannot rely on a live GitHub connection, so this root-owned main-ref
+proof is checked at every install/verifier pass. Install GitHub CLI from the OS
+package as the root-owned `/usr/bin/gh`; a
 user-owned `gh` binary is not a trust root. The trusted-root file must be
 generated on a connected, trusted host with the same OS GitHub CLI
 (`gh attestation trusted-root`), transferred out of band, and checked for the
@@ -93,6 +98,7 @@ mcp_env_source="/root/henukit-getwork-inputs/mcp.env"
 tunnel_key_source="/root/henukit-getwork-inputs/id_ed25519"
 known_hosts_source="/root/henukit-getwork-inputs/known_hosts"
 trusted_root_source="/root/henukit-getwork-inputs/trusted_root.jsonl"
+main_ref_source="/root/henukit-getwork-inputs/main-ref.env"
 current_main_sha="$(cd / && env -i PATH=/usr/bin:/bin HOME=/var/empty XDG_CONFIG_HOME=/var/empty GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 /usr/bin/timeout 60s /usr/bin/git -c credential.helper= -c protocol.allow=never -c protocol.https.allow=always ls-remote --exit-code https://github.com/jry21223/HENU-Kit-DEV.git refs/heads/main | awk 'NR == 1 { print $1 }')"
 test "$current_main_sha" = "$release_sha"
 run_state="$(timeout 60s /usr/bin/gh run view "$run_id" --repo jry21223/HENU-Kit-DEV --json conclusion,headSha,status,workflowName --jq '[.headSha,.status,.conclusion,.workflowName] | join(" ")')"
@@ -115,6 +121,7 @@ sudo install -o root -g root -m 0400 "$mcp_env_source" "$stage/mcp.env"
 sudo install -o root -g root -m 0400 "$tunnel_key_source" "$stage/id_ed25519"
 sudo install -o root -g root -m 0400 "$known_hosts_source" "$stage/known_hosts"
 sudo install -o root -g root -m 0400 "$trusted_root_source" "$stage/trusted_root.jsonl"
+sudo install -o root -g root -m 0400 "$main_ref_source" "$stage/main-ref.env"
 manifest="$stage/henukit-getwork-actions-${release_sha}.manifest"
 attestation="$stage/henukit-getwork-actions-${release_sha}.attestation.json"
 sudo timeout 60s env -u GH_TOKEN -u GITHUB_TOKEN /usr/bin/gh attestation verify \
@@ -148,6 +155,7 @@ sudo "$verified_runtime/getwork-node-deploy/install_node.sh" \
   --stage-dir "$stage" \
   --actions-attestation "$attestation" \
   --actions-custom-trusted-root "$stage/trusted_root.jsonl" \
+  --current-main-sha-file "$stage/main-ref.env" \
   --trust-file /etc/henukit-getwork-bootstrap/trust.env
 ```
 
@@ -232,6 +240,7 @@ sudo "$verified_runtime/getwork-node-deploy/install_node.sh" \
          --provenance-mode github-actions \
          --actions-attestation-file "/var/lib/henukit-getwork-artifacts/henukit-getwork-actions-${release_sha}.attestation.json" \
          --actions-custom-trusted-root-file /etc/henukit-getwork/trusted_root.jsonl \
+         --current-main-sha-file /etc/henukit-getwork/main-ref.env \
          --manifest-file "/var/lib/henukit-getwork-artifacts/henukit-getwork-actions-${release_sha}.manifest"
    ```
 

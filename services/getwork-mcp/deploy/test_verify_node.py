@@ -218,6 +218,17 @@ class HealthyActionsProbe(HealthyNodeProbe):
             return verify_node.SecureFile(True, False, 0, 0o400, "attestation")
         if path.name == "trusted_root.jsonl":
             return verify_node.SecureFile(True, False, 0, 0o400, "trusted-root")
+        if path.name == "main-ref.env":
+            return verify_node.SecureFile(
+                True,
+                False,
+                0,
+                0o400,
+                "format=henukit-current-main-ref-v1\n"
+                "source_repository=jry21223/HENU-Kit-DEV\n"
+                "source_ref=refs/heads/main\n"
+                f"release_sha={'a' * 40}\n",
+            )
         if path == pathlib.Path("/etc/henukit-getwork/trust.env"):
             item = super().secure_file(path)
             return item._replace(
@@ -350,6 +361,7 @@ class VerifyNodeTests(unittest.TestCase):
             attestation_file=pathlib.Path(f"/var/lib/henukit-getwork-artifacts/henukit-getwork-actions-{'a' * 40}.attestation.json"),
             gh_file=pathlib.Path("/usr/bin/gh"),
             actions_custom_trusted_root_file=pathlib.Path("/etc/henukit-getwork/trusted_root.jsonl"),
+            current_main_ref_file=pathlib.Path("/etc/henukit-getwork/main-ref.env"),
         )
 
         evidence = verify_node.verify(config, probe)

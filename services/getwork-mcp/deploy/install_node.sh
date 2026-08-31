@@ -8,6 +8,8 @@ allowed_signers=""
 actions_attestation=""
 actions_custom_trusted_root=""
 actions_custom_trusted_root_name="trusted_root.jsonl"
+current_main_sha_file=""
+current_main_sha_file_name="main-ref.env"
 trust_file=""
 provenance_mode=""
 actions_repository=jry21223/HENU-Kit-DEV
@@ -50,6 +52,16 @@ trusted_root_chain() {
 }
 
 current_main_sha() {
+  if [[ -n "$current_main_sha_file" ]]; then
+    [[ -f "$current_main_sha_file" && ! -L "$current_main_sha_file" ]] || return 1
+    [[ "$(grep -Fxc 'format=henukit-current-main-ref-v1' "$current_main_sha_file")" -eq 1 ]] || return 1
+    [[ "$(grep -Fxc "source_repository=${actions_repository}" "$current_main_sha_file")" -eq 1 ]] || return 1
+    [[ "$(grep -Fxc "source_ref=${actions_source_ref}" "$current_main_sha_file")" -eq 1 ]] || return 1
+    [[ "$(grep -Ec '^release_sha=[0-9a-f]{40}$' "$current_main_sha_file")" -eq 1 ]] || return 1
+    [[ "$(grep -Evc '^(format|source_repository|source_ref|release_sha)=' "$current_main_sha_file")" -eq 0 ]] || return 1
+    sed -n 's/^release_sha=//p' "$current_main_sha_file"
+    return 0
+  fi
   cd /
   env -i PATH=/usr/bin:/bin HOME=/var/empty XDG_CONFIG_HOME=/var/empty \
     GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_SYSTEM=/dev/null \
@@ -119,9 +131,10 @@ while [[ $# -gt 0 ]]; do
     --allowed-signers) allowed_signers="${2:-}"; shift 2 ;;
     --actions-attestation) actions_attestation="${2:-}"; shift 2 ;;
     --actions-custom-trusted-root) actions_custom_trusted_root="${2:-}"; shift 2 ;;
+    --current-main-sha-file) current_main_sha_file="${2:-}"; shift 2 ;;
     --trust-file) trust_file="${2:-}"; shift 2 ;;
     *)
-      die "usage: $program --sha <40-hex-main-sha> --stage-dir <root-stage> (--allowed-signers <root-trust> | --actions-attestation <root-bundle> --actions-custom-trusted-root <trusted_root.jsonl>) --trust-file <approved-fingerprints>"
+      die "usage: $program --sha <40-hex-main-sha> --stage-dir <root-stage> (--allowed-signers <root-trust> | --actions-attestation <root-bundle> --actions-custom-trusted-root <trusted_root.jsonl> --current-main-sha-file <main-ref.env>) --trust-file <approved-fingerprints>"
       ;;
   esac
 done
@@ -146,7 +159,12 @@ if [[ -n "$allowed_signers" && -z "$actions_attestation" ]]; then
 elif [[ -z "$allowed_signers" && -n "$actions_attestation" ]]; then
   provenance_mode=github-actions
   trusted_root_file "$gh_bin" || die "GitHub CLI must be a root-trusted OS binary"
+  [[ "$current_main_sha_file" == "$stage_dir/$current_main_sha_file_name" ]] ||
+    die "offline current-main proof must use the exact staged path"
+  trusted_root_file "$current_main_sha_file" ||
+    die "offline current-main proof is not root-trusted"
 else
+  [[ -z "$current_main_sha_file" ]] || die "offline current-main proof is only valid with GitHub Actions provenance"
   die "choose exactly one release provenance mode"
 fi
 assert_current_main
@@ -174,7 +192,7 @@ input_names=(
   node.env mcp.env id_ed25519 known_hosts
 )
 if [[ "$provenance_mode" == github-actions ]]; then
-  input_names+=("$actions_custom_trusted_root_name")
+  input_names+=("$actions_custom_trusted_root_name" "$current_main_sha_file_name")
 fi
 for name in "${input_names[@]}"; do
   trusted_root_file "$stage_dir/$name" || die "staged input is not root-trusted: $name"
@@ -190,6 +208,7 @@ done
 stage_dir="$trusted_work/input"
 if [[ "$provenance_mode" == github-actions ]]; then
   actions_custom_trusted_root="$stage_dir/$actions_custom_trusted_root_name"
+  current_main_sha_file="$stage_dir/$current_main_sha_file_name"
 fi
 
 signer="${HENUKIT_RELEASE_SIGNER:-henukit-release}"
@@ -428,6 +447,8 @@ install -o root -g henukit-getwork-tunnel -m 0640 \
 if [[ "$provenance_mode" == github-actions ]]; then
   install -o root -g root -m 0400 "$stage_dir/$actions_custom_trusted_root_name" \
     /etc/henukit-getwork/trusted_root.jsonl
+  install -o root -g root -m 0400 "$stage_dir/$current_main_sha_file_name" \
+    /etc/henukit-getwork/main-ref.env
 fi
 provenance_artifacts=("$manifest")
 if [[ "$provenance_mode" == ssh-signature ]]; then

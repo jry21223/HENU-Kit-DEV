@@ -464,6 +464,13 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
   ].join("\n"));
   writeFileSync(join(stage, actionsAttestationName), "fixture-attestation\n");
   writeFileSync(join(stage, "trusted_root.jsonl"), "fixture-trusted-root\n");
+  writeFileSync(join(stage, "main-ref.env"), [
+    "format=henukit-current-main-ref-v1",
+    "source_repository=jry21223/HENU-Kit-DEV",
+    "source_ref=refs/heads/main",
+    `release_sha=${releaseSha}`,
+    "",
+  ].join("\n"));
   writeFileSync(join(stage, "node.env"), [
     "HENUKIT_GETWORK_MEMORY_LIMIT=4g",
     "HENUKIT_GETWORK_TUNNEL_TARGET=henukit-getwork-tunnel@production.example",
@@ -486,6 +493,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     actionsManifestName,
     actionsAttestationName,
     "trusted_root.jsonl",
+    "main-ref.env",
     "node.env",
     "mcp.env",
     "id_ed25519",
@@ -581,7 +589,7 @@ test("local-signed and Actions node installers both succeed idempotently", () =>
     `command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --allowed-signers /trusted-inputs/allowed-signers --trust-file /trusted-inputs/trust.env)`,
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/first.out",
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${command[@]}\" | tee /fixture/second.out",
-    `actions_command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --actions-attestation /trusted-stage/${actionsAttestationName} --actions-custom-trusted-root /trusted-stage/trusted_root.jsonl --trust-file /trusted-inputs/actions-trust.env)`,
+    `actions_command=(/trusted/install_node.sh --sha ${releaseSha} --stage-dir /trusted-stage --actions-attestation /trusted-stage/${actionsAttestationName} --actions-custom-trusted-root /trusted-stage/trusted_root.jsonl --current-main-sha-file /trusted-stage/main-ref.env --trust-file /trusted-inputs/actions-trust.env)`,
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${actions_command[@]}\" | tee /fixture/actions-first.out",
     "PATH=/fixture/bin:/usr/sbin:/usr/bin:/sbin:/bin \"${actions_command[@]}\" | tee /fixture/actions-second.out",
     "test -s /fixture/first.out",
