@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Verify artifact and runtime boundaries
         run: |
           set -euo pipefail
@@ -45,6 +45,7 @@ jobs:
               scripts/ops/tests/build-henukit-release-local.test.mjs \
               scripts/ops/tests/deploy-henukit-release-from-wsl.test.mjs \
               scripts/ops/tests/activate-henukit-release.test.mjs \
+              scripts/ops/tests/getwork-actions-provenance.test.mjs \
               scripts/ops/tests/getwork-node-rollback.test.mjs \
               scripts/ops/tests/getwork-wsl-node-contract.test.mjs
 
@@ -70,10 +71,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@11.9.0 --activate
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -103,15 +104,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@11.9.0 --activate
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: 1.25.x
           cache-dependency-path: |
@@ -129,7 +130,7 @@ jobs:
             --sha "$GITHUB_SHA" \
             --output "release-gates/oauth-continuation-${GITHUB_SHA}.env"
       - name: Upload SHA-bound OAuth continuation gate receipt
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: henukit-oauth-continuation-gate-${{ github.sha }}
           path: release-gates/oauth-continuation-${{ github.sha }}.env
@@ -144,7 +145,7 @@ jobs:
     outputs:
       matrix: ${{ steps.inventory.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: inventory
         name: Read canonical image inventory
         run: echo "matrix=$(scripts/ops/henukit-release-images.sh --github-matrix)" >> "$GITHUB_OUTPUT"
@@ -158,10 +159,10 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.release-image-matrix.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download SHA-bound OAuth continuation gate receipt
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: henukit-oauth-continuation-gate-${{ github.sha }}
           path: release-gates
@@ -182,7 +183,8 @@ jobs:
           set -euo pipefail
           source_root="$(mktemp -d)"
           trap 'rm -rf -- "$source_root"' EXIT
-          git archive --format=tar "$GITHUB_SHA" | tar -xf - -C "$source_root"
+          git -c tar.umask=0022 archive --format=tar "$GITHUB_SHA" |
+            tar -xf - -C "$source_root"
           cd "$source_root"
           args=()
           while IFS= read -r arg; do
@@ -250,7 +252,7 @@ jobs:
           sha256sum "${IMAGE}-${GITHUB_SHA}.docker.tar.gz" > "${IMAGE}-${GITHUB_SHA}.docker.tar.gz.sha256"
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.image }}-${{ github.sha }}
           path: |-
@@ -266,10 +268,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download SHA-bound OAuth continuation gate receipt
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: henukit-oauth-continuation-gate-${{ github.sha }}
           path: release-gates
@@ -282,7 +284,7 @@ jobs:
             --oauth-gate-receipt "release-gates/oauth-continuation-${GITHUB_SHA}.env"
 
       - name: Upload runtime artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: henukit-runtime-${{ github.sha }}
           path: |-
@@ -291,3 +293,57 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+  attest-getwork-wsl-release:
+    name: attest-getwork-wsl-release
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [build-image, package-runtime]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download exact-SHA getWork image
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: henukit-getwork-mcp-${{ github.sha }}
+          path: release
+
+      - name: Download exact-SHA runtime
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: henukit-runtime-${{ github.sha }}
+          path: release
+
+      - name: Build getWork WSL handoff manifest
+        run: |
+          scripts/ops/create-getwork-actions-manifest.sh \
+            --sha "$GITHUB_SHA" \
+            --artifact-dir release \
+            --output "release/henukit-getwork-actions-${GITHUB_SHA}.manifest"
+
+      - id: attest-getwork
+        name: Attest getWork WSL handoff manifest
+        uses: actions/attest@daf44fb950173508f38bd2406030372c1d1162b1 # v3
+        with:
+          subject-path: release/henukit-getwork-actions-${{ github.sha }}.manifest
+
+      - name: Retain the offline Sigstore bundle
+        run: |
+          install -m 0444 \
+            "${{ steps.attest-getwork.outputs.bundle-path }}" \
+            "release/henukit-getwork-actions-${GITHUB_SHA}.attestation.json"
+
+      - name: Upload attested getWork WSL handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: henukit-getwork-actions-provenance-${{ github.sha }}
+          path: |-
+            release/henukit-getwork-actions-${{ github.sha }}.manifest
+            release/henukit-getwork-actions-${{ github.sha }}.attestation.json
+          if-no-files-found: error
+          retention-days: 14

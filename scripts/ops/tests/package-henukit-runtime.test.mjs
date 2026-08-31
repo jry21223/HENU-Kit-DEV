@@ -98,6 +98,14 @@ test("runtime binaries omit VCS metadata so unchanged materials remain rollback-
   }
 });
 
+test("runtime packaging fixes Git archive modes for root-trusted deployment assets", () => {
+  const source = readFileSync(packagerSource, "utf8");
+  assert.match(
+    source,
+    /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha"/,
+  );
+});
+
 test("runtime packaging rejects a receipt when tracked source changes", () => {
   const source = createCleanSourceCheckout();
   const { checkout, releaseSha, sourceTree } = source;
@@ -182,15 +190,22 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   chmodSync(docker, 0o755);
 
   try {
-    execFileSync(packager, [
+    const packaged = spawnSync(packager, [
       "--sha", releaseSha,
       "--output-dir", outputDirectory,
       "--oauth-gate-receipt", oauthGateReceipt,
     ], {
       cwd: checkout,
-      env: { ...process.env, PATH: `${binDirectory}:${process.env.PATH}` },
-      stdio: "pipe",
+      env: {
+        ...process.env,
+        PATH: `${binDirectory}:${process.env.PATH}`,
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "tar.umask",
+        GIT_CONFIG_VALUE_0: "0002",
+      },
+      encoding: "utf8",
     });
+    assert.equal(packaged.status, 0, packaged.stderr);
 
   assert.equal(existsSync(runtimeArchive), true);
   assert.equal(existsSync(`${runtimeArchive}.sha256`), true);
@@ -225,6 +240,18 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   ]) {
     assert.match(files, new RegExp(`^${file.replaceAll(".", "\\.").replaceAll("/", "\\/")}$`, "m"));
   }
+  const getworkInstallerMode = execFileSync(
+    "tar",
+    ["-tvzf", runtimeArchive, "./getwork-node-deploy/install_node.sh"],
+    { encoding: "utf8" },
+  )
+    .trim()
+    .split(/\s+/)[0];
+  assert.equal(
+    getworkInstallerMode,
+    "-rwxr-xr-x",
+    "the root installer must not inherit Git archive's group-writable default",
+  );
   assert.doesNotMatch(files, /convert-henukit-slides|import-henukit-materials|migrations\/study/);
   const materialsChecksums = execFileSync(
     "tar",

@@ -226,9 +226,17 @@ the watcher pins that name to the Docker host gateway and installs verified
 INPUT/OUTPUT rules so only the HENUKit Compose subnet and the root verifier can
 reach port 18101.
 
-Follow `services/getwork-mcp/deploy/README.md` and execute deployment code only
-from the signature-verified, root-owned runtime extraction. The WSL verifier
-must prove WSL2/ext4, signed archive-to-image identity, approved tunnel/host
+Follow `services/getwork-mcp/deploy/README.md`. Prefer the exact-`main` GitHub
+Actions getWork handoff: verify its attested manifest with the root-owned OS
+GitHub CLI before extracting or executing the runtime, then pass the same
+attestation bundle to the installer so the node verifier repeats the pinned
+repository, workflow, ref, source-SHA, and GitHub-hosted-runner checks. The
+selected workflow run must be completed successfully at that SHA, and a fresh
+remote `main` lookup must still equal it before installation and activation. The
+SSH-signed local-builder handoff remains a mutually exclusive fallback. Execute
+deployment code only from that provenance-verified, root-owned runtime
+extraction. The WSL verifier must prove WSL2/ext4, archive-to-image identity,
+approved tunnel/host
 fingerprints, normalized no-login account state, root-owned secrets and exact
 units, live container/firewall hardening, active crawler and tunnel units,
 strict bounded MCP responses, exactly `list_sources` plus `crawl_jobs`, one

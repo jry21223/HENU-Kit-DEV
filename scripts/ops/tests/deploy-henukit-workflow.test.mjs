@@ -113,6 +113,48 @@ test("release artifacts are blocked on the pinned read-only getWork MCP smoke", 
   assert.match(actionsWatcher, /getwork_relay_is_healthy "\$release_sha"/);
 });
 
+test("main Actions builds publish an OIDC-attested getWork WSL handoff manifest", () => {
+  assert.match(
+    workflow,
+    /attest-getwork-wsl-release:[\s\S]*if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/,
+  );
+  assert.match(
+    workflow,
+    /attest-getwork-wsl-release:[\s\S]*needs: \[build-image, package-runtime\]/,
+  );
+  assert.match(
+    workflow,
+    /attest-getwork-wsl-release:[\s\S]*permissions:[\s\S]*contents: read[\s\S]*id-token: write[\s\S]*attestations: write/,
+  );
+  assert.match(
+    workflow,
+    /name: henukit-getwork-mcp-\$\{\{ github\.sha \}\}[\s\S]*name: henukit-runtime-\$\{\{ github\.sha \}\}/,
+  );
+  assert.match(workflow, /scripts\/ops\/create-getwork-actions-manifest\.sh/);
+  assert.match(
+    workflow,
+    /uses: actions\/attest@daf44fb950173508f38bd2406030372c1d1162b1 # v3/,
+  );
+  assert.match(
+    workflow,
+    /subject-path: release\/henukit-getwork-actions-\$\{\{ github\.sha \}\}\.manifest/,
+  );
+  assert.match(workflow, /steps\.attest-getwork\.outputs\.bundle-path/);
+  assert.match(
+    workflow,
+    /henukit-getwork-actions-\$\{\{ github\.sha \}\}\.attestation\.json/,
+  );
+  assert.match(
+    workflow,
+    /scripts\/ops\/tests\/getwork-actions-provenance\.test\.mjs/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /uses: actions\/[a-z-]+@v\d/,
+    "release workflow Actions must be pinned to immutable commit SHAs",
+  );
+});
+
 test("CI runs the Account Portfolio browser behavior spec", () => {
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:account/);
 });
@@ -132,12 +174,12 @@ test("release artifacts are blocked on the cumulative cross-product OAuth journe
     /package-runtime:[\s\S]*needs: \[validate-release-contract, oauth-continuation\]/,
   );
   assert.match(workflow, /oauth-continuation-release-gate\.sh run[\s\S]*--sha "\$GITHUB_SHA"/);
-  assert.match(workflow, /actions\/upload-artifact@v4[\s\S]*henukit-oauth-continuation-gate-/);
-  assert.match(workflow, /actions\/download-artifact@v4[\s\S]*henukit-oauth-continuation-gate-/);
+  assert.match(workflow, /actions\/upload-artifact@[0-9a-f]{40} # v4[\s\S]*henukit-oauth-continuation-gate-/);
+  assert.match(workflow, /actions\/download-artifact@[0-9a-f]{40} # v4[\s\S]*henukit-oauth-continuation-gate-/);
   assert.match(workflow, /oauth-continuation-release-gate\.sh verify/);
   assert.match(
     workflow,
-    /Build fixed-SHA image[\s\S]*git archive --format=tar "\$GITHUB_SHA"[\s\S]*cd "\$source_root"[\s\S]*docker build/,
+    /Build fixed-SHA image[\s\S]*git -c tar\.umask=0022 archive --format=tar "\$GITHUB_SHA"[\s\S]*cd "\$source_root"[\s\S]*docker build/,
   );
   assert.match(workflow, /scripts\/ops\/tests\/oauth-continuation-release-gate\.test\.mjs/);
   for (const builder of [localBuilder, quickBuilder]) {
@@ -150,7 +192,7 @@ test("release artifacts are blocked on the cumulative cross-product OAuth journe
     );
     assert.match(
       builder,
-      /git -C "\$repo_root" archive --format=tar "\$release_sha" \| tar -xf - -C "\$source_root"/,
+      /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha" \|[\s\S]*tar -xf - -C "\$source_root"/,
     );
     assert.ok(
       builder.indexOf('archive --format=tar "$release_sha"') <
@@ -172,7 +214,7 @@ test("release artifacts are blocked on the cumulative cross-product OAuth journe
   assert.match(oauthGate, /release_sha=%s/);
   assert.match(oauthGate, /source_tree=%s/);
   assert.match(runtimePackager, /oauth-continuation-release-gate\.sh/);
-  assert.match(runtimePackager, /git -C "\$repo_root" archive --format=tar "\$release_sha"/);
+  assert.match(runtimePackager, /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha"/);
   assert.match(runtimePackager, /release-gates\/oauth-continuation\.env/);
 });
 
