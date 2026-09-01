@@ -53,11 +53,46 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 			}},
 		}, nil
 	})
-	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
+	var crawlProtocolChecks atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer getwork-test-token-0000000000000000" {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read MCP request: %v", err)
+			return
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		var envelope struct {
+			Method string `json:"method"`
+			Params struct {
+				Name string         `json:"name"`
+				Meta map[string]any `json:"_meta"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(body, &envelope) == nil && envelope.Method == "tools/call" && envelope.Params.Name == "crawl_jobs" {
+			headerVersion := request.Header.Get("MCP-Protocol-Version")
+			metaVersion, _ := envelope.Params.Meta[mcpsdk.MetaKeyProtocolVersion].(string)
+			if headerVersion == "" || (headerVersion >= "2026-07-28" && headerVersion != metaVersion) {
+				t.Errorf("crawl protocol version header = %q, meta = %q", headerVersion, metaVersion)
+			}
+			if headerVersion >= "2026-07-28" {
+				if request.Header.Get("MCP-Method") != "tools/call" || request.Header.Get("MCP-Name") != "crawl_jobs" {
+					t.Errorf("crawl standard headers: method = %q, name = %q", request.Header.Get("MCP-Method"), request.Header.Get("MCP-Name"))
+				}
+				if _, ok := envelope.Params.Meta[mcpsdk.MetaKeyClientInfo].(map[string]any); !ok {
+					t.Errorf("crawl client info meta = %#v", envelope.Params.Meta[mcpsdk.MetaKeyClientInfo])
+				}
+				if _, ok := envelope.Params.Meta[mcpsdk.MetaKeyClientCapabilities].(map[string]any); !ok {
+					t.Errorf("crawl client capabilities meta = %#v", envelope.Params.Meta[mcpsdk.MetaKeyClientCapabilities])
+				}
+			}
+			crawlProtocolChecks.Add(1)
 		}
 		handler.ServeHTTP(writer, request)
 	}))
@@ -115,6 +150,9 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 	if mismatched.JobCount != 0 || mismatched.MatchedCount != 0 {
 		t.Fatalf("job type mismatch result = %+v", mismatched)
 	}
+	if crawlProtocolChecks.Load() != 2 {
+		t.Fatalf("crawl protocol checks = %d, want 2", crawlProtocolChecks.Load())
+	}
 }
 
 func TestDecodeGetWorkToolResultAcceptsUpstreamTextJSON(t *testing.T) {
@@ -127,6 +165,213 @@ func TestDecodeGetWorkToolResultAcceptsUpstreamTextJSON(t *testing.T) {
 	}
 	if decoded.Status != "ok" || len(decoded.Sources) != 1 || decoded.Sources[0].Key != "meituan" {
 		t.Fatalf("decoded = %+v", decoded)
+	}
+}
+
+func TestGetWorkMCPHeaderAnnotationBoundary(t *testing.T) {
+	plain := map[string]any{"type": "object", "properties": map[string]any{"source": map[string]any{"type": "string"}}}
+	annotated := map[string]any{"type": "object", "properties": map[string]any{"source": map[string]any{"type": "string", "x-mcp-header": "Source"}}}
+	if getWorkMCPHasHeaderAnnotation(plain) {
+		t.Fatal("plain crawl schema was treated as header-annotated")
+	}
+	if !getWorkMCPHasHeaderAnnotation(annotated) {
+		t.Fatal("x-mcp-header crawl schema was accepted")
+	}
+}
+
+func TestGetWorkMCPResponsePayloadsAcceptsBoundedEventStream(t *testing.T) {
+	body := []byte(": keepalive\r\n\r\nevent: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-alibaba\",\"result\":{}}\r\n\r\n")
+	payloads, err := getWorkMCPResponsePayloads(body, "text/event-stream; charset=utf-8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payloads) != 1 || string(payloads[0]) != `{"jsonrpc":"2.0","id":"crawl-alibaba","result":{}}` {
+		t.Fatalf("payloads = %q", payloads)
+	}
+}
+
+func TestCallGetWorkToolHTTPRejectsTruncatedEventStream(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-meituan\",\"result\":{}}\n"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	var target getWorkMCPCrawl
+	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	if err == nil || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("truncated event stream error = %v", err)
+	}
+}
+
+func TestGetWorkMCPResponsePayloadsRejectsMislabeledJSON(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":"crawl-alibaba","result":{}}`)
+	for _, contentType := range []string{"", "text/plain", "text/html", "application/problem+json", "text/event-stream"} {
+		if _, err := getWorkMCPResponsePayloads(body, contentType); err == nil {
+			t.Fatalf("content type %q accepted an unframed JSON response", contentType)
+		}
+	}
+}
+
+func TestCallGetWorkToolHTTPRejectsResponseOverBoundedLimit(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(strings.Repeat("x", maxGetWorkMCPResponseBytes+1)))
+	}))
+	t.Cleanup(upstream.Close)
+
+	var target getWorkMCPCrawl
+	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	if err == nil || !strings.Contains(err.Error(), "bounded limit") {
+		t.Fatalf("oversized response error = %v", err)
+	}
+}
+
+func TestCallGetWorkToolHTTPRejectsMismatchedResponseID(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{name: "json", contentType: "application/json", body: `{"jsonrpc":"2.0","id":"crawl-other","result":{}}`},
+		{name: "event stream", contentType: "text/event-stream", body: "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-other\",\"result\":{}}\n\n"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", testCase.contentType)
+				_, _ = writer.Write([]byte(testCase.body))
+			}))
+			t.Cleanup(upstream.Close)
+
+			var target getWorkMCPCrawl
+			err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+			if err == nil || !strings.Contains(err.Error(), "identity is invalid") {
+				t.Fatalf("mismatched response ID error = %v", err)
+			}
+		})
+	}
+}
+
+func TestCallGetWorkToolHTTPRejectsInvalidEventBeforeMatchingResponse(t *testing.T) {
+	valid := `{"jsonrpc":"2.0","id":"crawl-meituan","result":{"structuredContent":{"status":"ok","jobs":[]}}}`
+	for _, testCase := range []struct {
+		name      string
+		first     string
+		wantError string
+	}{
+		{name: "invalid JSON", first: `not-json`, wantError: "invalid JSON"},
+		{name: "wrong JSON-RPC version", first: `{"jsonrpc":"1.0","id":"crawl-meituan","result":{}}`, wantError: "JSON-RPC version"},
+		{name: "wrong response ID", first: `{"jsonrpc":"2.0","id":"crawl-other","result":{}}`, wantError: "identity is invalid"},
+		{name: "server request", first: `{"jsonrpc":"2.0","id":"server-call","method":"sampling/createMessage","params":{}}`, wantError: "server message is invalid"},
+		{name: "null ID notification", first: `{"jsonrpc":"2.0","id":null,"method":"notifications/progress","params":{}}`, wantError: "server message is invalid"},
+		{name: "invalid notification params", first: `{"jsonrpc":"2.0","method":"notifications/progress","params":"bad"}`, wantError: "server message is invalid"},
+		{name: "notification with result", first: `{"jsonrpc":"2.0","method":"notifications/progress","params":{},"result":{}}`, wantError: "server message is invalid"},
+		{name: "notification with error", first: `{"jsonrpc":"2.0","method":"notifications/progress","params":{},"error":{"code":-32000,"message":"bad"}}`, wantError: "server message is invalid"},
+		{name: "response with params", first: `{"jsonrpc":"2.0","id":"crawl-meituan","params":{},"result":{}}`, wantError: "server message is invalid"},
+		{name: "multiple matching responses", first: valid, wantError: "multiple responses"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			body := "data: " + testCase.first + "\n\ndata: " + valid + "\n\n"
+			upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "text/event-stream")
+				_, _ = writer.Write([]byte(body))
+			}))
+			t.Cleanup(upstream.Close)
+
+			var target getWorkMCPCrawl
+			err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+			if err == nil || !strings.Contains(err.Error(), testCase.wantError) {
+				t.Fatalf("mixed event stream error = %v, want %q", err, testCase.wantError)
+			}
+		})
+	}
+}
+
+func TestCallGetWorkToolHTTPRequiresNegotiatedProtocolVersion(t *testing.T) {
+	var target getWorkMCPCrawl
+	err := callGetWorkToolHTTP(context.Background(), http.DefaultClient, "http://127.0.0.1/mcp", "", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	if err == nil || !strings.Contains(err.Error(), "negotiated no protocol version") {
+		t.Fatalf("missing protocol version error = %v", err)
+	}
+}
+
+func TestCallGetWorkToolHTTPAllowsNotificationBeforeMatchingResponse(t *testing.T) {
+	body := "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n" +
+		"data: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-meituan\",\"result\":{\"structuredContent\":{\"status\":\"ok\",\"jobs\":[]}}}\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(body))
+	}))
+	t.Cleanup(upstream.Close)
+
+	var target getWorkMCPCrawl
+	if err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetWorkMCPRefusesCrawlRedirectWithoutLeakingBearer(t *testing.T) {
+	attackerAuthorization := make(chan string, 1)
+	attacker := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		attackerAuthorization <- request.Header.Get("Authorization")
+		http.Error(writer, "unexpected redirect", http.StatusBadRequest)
+	}))
+	t.Cleanup(attacker.Close)
+
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "getwork-test", Version: "0.1.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_sources"}, func(context.Context, *mcpsdk.CallToolRequest, struct{}) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "sources": []map[string]any{{"key": "meituan"}}}, nil
+	})
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "crawl_jobs"}, func(context.Context, *mcpsdk.CallToolRequest, upstreamCrawlInput) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "jobs": []map[string]any{}}, nil
+	})
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	crawlAuthorization := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read MCP request: %v", err)
+			return
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		var envelope struct {
+			Method string `json:"method"`
+			Params struct {
+				Name string `json:"name"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(body, &envelope) == nil && envelope.Method == "tools/call" && envelope.Params.Name == "crawl_jobs" {
+			crawlAuthorization <- request.Header.Get("Authorization")
+			http.Redirect(writer, request, attacker.URL+"/mcp", http.StatusTemporaryRedirect)
+			return
+		}
+		handler.ServeHTTP(writer, request)
+	}))
+	t.Cleanup(upstream.Close)
+
+	const token = "crawl-redirect-safety-token-000000000"
+	work, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
+		Endpoint: upstream.URL + "/mcp", AccessToken: token, SinceDays: 7, HTTPClient: upstream.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := work(context.Background(), map[string]any{}); err == nil {
+		t.Fatal("redirecting crawl unexpectedly succeeded")
+	}
+	select {
+	case authorization := <-crawlAuthorization:
+		if authorization != "Bearer "+token {
+			t.Fatal("original crawl endpoint did not receive the deployment bearer")
+		}
+	default:
+		t.Fatal("crawl request did not reach the original endpoint")
+	}
+	select {
+	case authorization := <-attackerAuthorization:
+		t.Fatalf("redirect target received authorization %q", authorization)
+	default:
 	}
 }
 
@@ -174,7 +419,9 @@ func TestGetWorkMCPKeepsSuccessfulSourcesWhenOneSourceFails(t *testing.T) {
 		}
 		return nil, map[string]any{"status": "ok", "source": input.Source, "jobs": []map[string]any{}}, nil
 	})
-	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
 	upstream := httptest.NewServer(handler)
 	t.Cleanup(upstream.Close)
 
@@ -220,7 +467,9 @@ func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		return nil, map[string]any{"status": "ok", "source": input.Source, "jobs": []map[string]any{}}, nil
 	})
-	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
 	var initializeCalls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		body, err := io.ReadAll(request.Body)
@@ -256,8 +505,8 @@ func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
 	if maximum.Load() <= 1 || maximum.Load() > 4 {
 		t.Fatalf("maximum concurrent crawls = %d, want 2..4", maximum.Load())
 	}
-	if initializeCalls.Load() != 2 {
-		t.Fatalf("MCP initialize calls = %d, want one startup probe plus one shared scan session", initializeCalls.Load())
+	if initializeCalls.Load() != 0 {
+		t.Fatalf("MCP initialize calls = %d, want no stateful sessions against the stateless source", initializeCalls.Load())
 	}
 }
 

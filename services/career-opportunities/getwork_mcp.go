@@ -1,11 +1,15 @@
 package career
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	mcpjsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -98,6 +103,12 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 		_ = probe.Close()
 		return nil, err
 	}
+	initializeResult := probe.InitializeResult()
+	if initializeResult == nil || strings.TrimSpace(initializeResult.ProtocolVersion) == "" {
+		_ = probe.Close()
+		return nil, errors.New("getWork MCP negotiated no protocol version")
+	}
+	protocolVersion := initializeResult.ProtocolVersion
 	_ = probe.Close()
 
 	return func(workContext context.Context, profile any) (WorkResult, error) {
@@ -107,11 +118,6 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 		if err != nil {
 			return WorkResult{}, err
 		}
-		session, err := connect(scanContext)
-		if err != nil {
-			return WorkResult{}, fmt.Errorf("connect getWork MCP: %w", err)
-		}
-		defer session.Close()
 		type sourceTask struct {
 			index  int
 			source string
@@ -134,7 +140,7 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 				defer workers.Done()
 				for task := range tasks {
 					var crawl getWorkMCPCrawl
-					callErr := callGetWorkTool(scanContext, session, "crawl_jobs", map[string]any{
+					callErr := callGetWorkToolHTTP(scanContext, &clientCopy, endpoint, protocolVersion, "crawl-"+task.source, "crawl_jobs", map[string]any{
 						"source": task.source, "since_days": config.SinceDays,
 					}, &crawl)
 					results[task.index] = sourceResult{crawl: crawl, err: callErr}
@@ -246,6 +252,9 @@ func verifyGetWorkMCP(ctx context.Context, session *mcpsdk.ClientSession) ([]str
 		if _, ok := required[tool.Name]; !ok {
 			return nil, fmt.Errorf("getWork MCP exposed unexpected tool %q", tool.Name)
 		}
+		if tool.Name == "crawl_jobs" && getWorkMCPHasHeaderAnnotation(tool.InputSchema) {
+			return nil, errors.New("getWork MCP crawl_jobs uses unsupported x-mcp-header annotations")
+		}
 		required[tool.Name] = true
 	}
 	for name, found := range required {
@@ -279,6 +288,36 @@ func verifyGetWorkMCP(ctx context.Context, session *mcpsdk.ClientSession) ([]str
 	return available, nil
 }
 
+func getWorkMCPHasHeaderAnnotation(schema any) bool {
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return true
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return true
+	}
+	var contains func(any) bool
+	contains = func(current any) bool {
+		switch typed := current.(type) {
+		case map[string]any:
+			for key, child := range typed {
+				if key == "x-mcp-header" || contains(child) {
+					return true
+				}
+			}
+		case []any:
+			for _, child := range typed {
+				if contains(child) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return contains(value)
+}
+
 func callGetWorkTool(ctx context.Context, session *mcpsdk.ClientSession, name string, arguments map[string]any, target any) error {
 	result, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: name, Arguments: arguments})
 	if err != nil {
@@ -288,6 +327,203 @@ func callGetWorkTool(ctx context.Context, session *mcpsdk.ClientSession, name st
 		return fmt.Errorf("getWork MCP tool %s failed", name)
 	}
 	return decodeGetWorkToolResult(name, result, target)
+}
+
+const (
+	maxGetWorkMCPResponseBytes = 8 << 20
+	getWorkMCPNewProtocolFloor = "2026-07-28"
+)
+
+// callGetWorkToolHTTP uses the verified streamable-HTTP endpoint without
+// opening an additional long-lived MCP session for every source. The startup
+// SDK probe above still negotiates the protocol and verifies the exact tool and
+// source surface; independent bounded calls keep browser crawls from coupling
+// their transport lifetime across the restricted SSH relay.
+func callGetWorkToolHTTP(ctx context.Context, client *http.Client, endpoint, protocolVersion, requestID, name string, arguments map[string]any, target any) error {
+	if strings.TrimSpace(protocolVersion) == "" {
+		return errors.New("getWork MCP negotiated no protocol version")
+	}
+	params := map[string]any{"name": name, "arguments": arguments}
+	if protocolVersion >= getWorkMCPNewProtocolFloor {
+		params["_meta"] = map[string]any{
+			mcpsdk.MetaKeyProtocolVersion:    protocolVersion,
+			mcpsdk.MetaKeyClientInfo:         map[string]any{"name": "henukit-career", "version": "1.0.0"},
+			mcpsdk.MetaKeyClientCapabilities: map[string]any{},
+		}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"method":  "tools/call",
+		"params":  params,
+	})
+	if err != nil {
+		return fmt.Errorf("encode getWork MCP tool %s request: %w", name, err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("create getWork MCP tool %s request: %w", name, err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	request.Header.Set("MCP-Protocol-Version", protocolVersion)
+	if protocolVersion >= getWorkMCPNewProtocolFloor {
+		request.Header.Set("MCP-Method", "tools/call")
+		request.Header.Set("MCP-Name", name)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("send getWork MCP tool %s request: %w", name, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("getWork MCP tool %s returned HTTP %d", name, response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxGetWorkMCPResponseBytes+1))
+	if err != nil {
+		return fmt.Errorf("read getWork MCP tool %s response: %w", name, err)
+	}
+	if len(body) > maxGetWorkMCPResponseBytes {
+		return fmt.Errorf("getWork MCP tool %s response exceeds the bounded limit", name)
+	}
+	payloads, err := getWorkMCPResponsePayloads(body, response.Header.Get("Content-Type"))
+	if err != nil {
+		return fmt.Errorf("decode getWork MCP tool %s response: %w", name, err)
+	}
+	var toolResponse *mcpjsonrpc.Response
+	for _, candidate := range payloads {
+		if !validGetWorkMCPJSONRPCEnvelope(candidate) {
+			return fmt.Errorf("getWork MCP tool %s server message is invalid", name)
+		}
+		message, decodeErr := mcpjsonrpc.DecodeMessage(candidate)
+		if decodeErr != nil {
+			if strings.Contains(decodeErr.Error(), "version tag") {
+				return fmt.Errorf("getWork MCP tool %s JSON-RPC version is invalid", name)
+			}
+			return fmt.Errorf("getWork MCP tool %s response message is invalid: %w", name, decodeErr)
+		}
+		switch current := message.(type) {
+		case *mcpjsonrpc.Request:
+			if current.IsCall() || strings.TrimSpace(current.Method) == "" || !validGetWorkMCPNotificationParams(current.Params) {
+				return fmt.Errorf("getWork MCP tool %s server message is invalid", name)
+			}
+		case *mcpjsonrpc.Response:
+			responseID, ok := current.ID.Raw().(string)
+			if !ok || responseID != requestID {
+				return fmt.Errorf("getWork MCP tool %s response identity is invalid", name)
+			}
+			if (len(current.Result) == 0) == (current.Error == nil) {
+				return fmt.Errorf("getWork MCP tool %s response shape is invalid", name)
+			}
+			if toolResponse != nil {
+				return fmt.Errorf("getWork MCP tool %s returned multiple responses", name)
+			}
+			toolResponse = current
+		default:
+			return fmt.Errorf("getWork MCP tool %s server message is invalid", name)
+		}
+	}
+	if toolResponse == nil {
+		return fmt.Errorf("getWork MCP tool %s response identity is invalid", name)
+	}
+	if toolResponse.Error != nil {
+		var responseError *mcpjsonrpc.Error
+		if !errors.As(toolResponse.Error, &responseError) {
+			return fmt.Errorf("getWork MCP tool %s returned an invalid JSON-RPC error", name)
+		}
+		return fmt.Errorf("getWork MCP tool %s returned JSON-RPC error %d", name, responseError.Code)
+	}
+	if len(toolResponse.Result) == 0 || string(toolResponse.Result) == "null" {
+		return fmt.Errorf("getWork MCP tool %s returned no result", name)
+	}
+	var result mcpsdk.CallToolResult
+	if err := json.Unmarshal(toolResponse.Result, &result); err != nil {
+		return fmt.Errorf("decode getWork MCP tool %s result: %w", name, err)
+	}
+	if result.IsError {
+		return fmt.Errorf("getWork MCP tool %s failed", name)
+	}
+	return decodeGetWorkToolResult(name, &result, target)
+}
+
+func validGetWorkMCPJSONRPCEnvelope(candidate []byte) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(candidate, &fields) != nil || fields == nil {
+		return false
+	}
+	_, hasID := fields["id"]
+	_, hasMethod := fields["method"]
+	_, hasParams := fields["params"]
+	_, hasResult := fields["result"]
+	_, hasError := fields["error"]
+	if hasMethod {
+		return !hasID && !hasResult && !hasError
+	}
+	return hasID && !hasParams && hasResult != hasError
+}
+
+func validGetWorkMCPNotificationParams(params json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(params)
+	return len(trimmed) == 0 || trimmed[0] == '{' || trimmed[0] == '['
+}
+
+func getWorkMCPResponsePayloads(body []byte, contentType string) ([][]byte, error) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, errors.New("response Content-Type is invalid")
+	}
+	switch strings.ToLower(mediaType) {
+	case "application/json":
+		if !json.Valid(body) {
+			return nil, errors.New("JSON response body is invalid")
+		}
+		return [][]byte{body}, nil
+	case "text/event-stream":
+		// Parsed below.
+	default:
+		return nil, errors.New("response Content-Type is not an MCP streamable HTTP type")
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, 64*1024), maxGetWorkMCPResponseBytes+1)
+	payloads := make([][]byte, 0, 1)
+	var eventData strings.Builder
+	flush := func() error {
+		if eventData.Len() == 0 {
+			return nil
+		}
+		candidate := []byte(eventData.String())
+		eventData.Reset()
+		if !json.Valid(candidate) {
+			return errors.New("event stream contains invalid JSON event")
+		}
+		payloads = append(payloads, append([]byte(nil), candidate...))
+		return nil
+	}
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" {
+			if err := flush(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			if eventData.Len() > 0 {
+				eventData.WriteByte('\n')
+			}
+			eventData.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if eventData.Len() > 0 {
+		return nil, errors.New("event stream is truncated")
+	}
+	if len(payloads) == 0 {
+		return nil, errors.New("event stream contains no JSON payload")
+	}
+	return payloads, nil
 }
 
 func decodeGetWorkToolResult(name string, result *mcpsdk.CallToolResult, target any) error {

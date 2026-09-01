@@ -44,9 +44,10 @@
 38. [`0039-library-canonical-material-types-and-owner-only-activation.md`](./0039-library-canonical-material-types-and-owner-only-activation.md) — 对齐公开资料 canonical 类型、教材授权、OSS 证据与 Library-only 激活边界。
 39. [`0040-career-resume-suification-command.md`](./0040-career-resume-suification-command.md) — Portal Gateway 的单条可撤销 Career Resume Suification 命令、幂等重放与独立明文传输门禁。
 40. [`0041-root-owned-actions-release-extraction.md`](./0041-root-owned-actions-release-extraction.md) — Actions runtime 解包统一 root 所有权，并以显式历史 UID 审计接管一次健康回滚基线（不放宽 ADR-0030）。
-41. [`0042-getwork-mcp-as-career-job-source.md`](./0042-getwork-mcp-as-career-job-source.md) — 直接运行已授权且锁定版本的 getWork MCP，Career 仅通过官方 SDK 调用岗位工具，继续自有匹配、持久化和邮件链。
+41. [`0042-getwork-mcp-as-career-job-source.md`](./0042-getwork-mcp-as-career-job-source.md) — 直接运行已授权且锁定版本的 getWork MCP；Career 启动时通过官方 SDK 校验协议、工具与来源，远程 `crawl_jobs` 传输按 ADR-0045 修订为受限 stateless 调用，并继续自有匹配、持久化和邮件链。
 42. [`0043-getwork-mcp-remote-execution-over-ssh.md`](./0043-getwork-mcp-remote-execution-over-ssh.md) — 浏览器型 getWork MCP 仅在常久在线 WSL2 执行，通过受限 SSH 隧道接入生产内网 relay。
 43. [`0044-actions-degraded-baseline-recovery.md`](./0044-actions-degraded-baseline-recovery.md) — 允许经显式双 SHA 授权的最新成功 current-main Actions 制品复用 ADR-0030 降级基线恢复契约。
+44. [`0045-stateless-getwork-crawl-transport.md`](./0045-stateless-getwork-crawl-transport.md) — 启动时保留官方 MCP SDK 校验，远程 `crawl_jobs` 改用受限 stateless Streamable HTTP，避免并发 SDK session 打断 WSL SSH 隧道。
 
 ## 使用规则
 
