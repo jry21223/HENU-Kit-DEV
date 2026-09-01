@@ -392,6 +392,9 @@ func callGetWorkToolHTTP(ctx context.Context, client *http.Client, endpoint, pro
 	}
 	var toolResponse *mcpjsonrpc.Response
 	for _, candidate := range payloads {
+		if !validGetWorkMCPJSONRPCEnvelope(candidate) {
+			return fmt.Errorf("getWork MCP tool %s server message is invalid", name)
+		}
 		message, decodeErr := mcpjsonrpc.DecodeMessage(candidate)
 		if decodeErr != nil {
 			if strings.Contains(decodeErr.Error(), "version tag") {
@@ -441,6 +444,22 @@ func callGetWorkToolHTTP(ctx context.Context, client *http.Client, endpoint, pro
 		return fmt.Errorf("getWork MCP tool %s failed", name)
 	}
 	return decodeGetWorkToolResult(name, &result, target)
+}
+
+func validGetWorkMCPJSONRPCEnvelope(candidate []byte) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(candidate, &fields) != nil || fields == nil {
+		return false
+	}
+	_, hasID := fields["id"]
+	_, hasMethod := fields["method"]
+	_, hasParams := fields["params"]
+	_, hasResult := fields["result"]
+	_, hasError := fields["error"]
+	if hasMethod {
+		return !hasID && !hasResult && !hasError
+	}
+	return hasID && !hasParams && hasResult != hasError
 }
 
 func validGetWorkMCPNotificationParams(params json.RawMessage) bool {

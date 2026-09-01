@@ -264,7 +264,11 @@ func TestCallGetWorkToolHTTPRejectsInvalidEventBeforeMatchingResponse(t *testing
 		{name: "wrong JSON-RPC version", first: `{"jsonrpc":"1.0","id":"crawl-meituan","result":{}}`, wantError: "JSON-RPC version"},
 		{name: "wrong response ID", first: `{"jsonrpc":"2.0","id":"crawl-other","result":{}}`, wantError: "identity is invalid"},
 		{name: "server request", first: `{"jsonrpc":"2.0","id":"server-call","method":"sampling/createMessage","params":{}}`, wantError: "server message is invalid"},
+		{name: "null ID notification", first: `{"jsonrpc":"2.0","id":null,"method":"notifications/progress","params":{}}`, wantError: "server message is invalid"},
 		{name: "invalid notification params", first: `{"jsonrpc":"2.0","method":"notifications/progress","params":"bad"}`, wantError: "server message is invalid"},
+		{name: "notification with result", first: `{"jsonrpc":"2.0","method":"notifications/progress","params":{},"result":{}}`, wantError: "server message is invalid"},
+		{name: "notification with error", first: `{"jsonrpc":"2.0","method":"notifications/progress","params":{},"error":{"code":-32000,"message":"bad"}}`, wantError: "server message is invalid"},
+		{name: "response with params", first: `{"jsonrpc":"2.0","id":"crawl-meituan","params":{},"result":{}}`, wantError: "server message is invalid"},
 		{name: "multiple matching responses", first: valid, wantError: "multiple responses"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
