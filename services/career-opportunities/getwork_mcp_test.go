@@ -152,6 +152,110 @@ func TestGetWorkMCPResponsePayloadsRejectsMislabeledJSON(t *testing.T) {
 	}
 }
 
+func TestCallGetWorkToolHTTPRejectsResponseOverBoundedLimit(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(strings.Repeat("x", maxGetWorkMCPResponseBytes+1)))
+	}))
+	t.Cleanup(upstream.Close)
+
+	var target getWorkMCPCrawl
+	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	if err == nil || !strings.Contains(err.Error(), "bounded limit") {
+		t.Fatalf("oversized response error = %v", err)
+	}
+}
+
+func TestCallGetWorkToolHTTPRejectsMismatchedResponseID(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{name: "json", contentType: "application/json", body: `{"jsonrpc":"2.0","id":"crawl-other","result":{}}`},
+		{name: "event stream", contentType: "text/event-stream", body: "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-other\",\"result\":{}}\n\n"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", testCase.contentType)
+				_, _ = writer.Write([]byte(testCase.body))
+			}))
+			t.Cleanup(upstream.Close)
+
+			var target getWorkMCPCrawl
+			err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+			if err == nil || !strings.Contains(err.Error(), "identity is invalid") {
+				t.Fatalf("mismatched response ID error = %v", err)
+			}
+		})
+	}
+}
+
+func TestGetWorkMCPRefusesCrawlRedirectWithoutLeakingBearer(t *testing.T) {
+	attackerAuthorization := make(chan string, 1)
+	attacker := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		attackerAuthorization <- request.Header.Get("Authorization")
+		http.Error(writer, "unexpected redirect", http.StatusBadRequest)
+	}))
+	t.Cleanup(attacker.Close)
+
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "getwork-test", Version: "0.1.0"}, nil)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_sources"}, func(context.Context, *mcpsdk.CallToolRequest, struct{}) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "sources": []map[string]any{{"key": "meituan"}}}, nil
+	})
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "crawl_jobs"}, func(context.Context, *mcpsdk.CallToolRequest, upstreamCrawlInput) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "jobs": []map[string]any{}}, nil
+	})
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	crawlAuthorization := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read MCP request: %v", err)
+			return
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		var envelope struct {
+			Method string `json:"method"`
+			Params struct {
+				Name string `json:"name"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(body, &envelope) == nil && envelope.Method == "tools/call" && envelope.Params.Name == "crawl_jobs" {
+			crawlAuthorization <- request.Header.Get("Authorization")
+			http.Redirect(writer, request, attacker.URL+"/mcp", http.StatusTemporaryRedirect)
+			return
+		}
+		handler.ServeHTTP(writer, request)
+	}))
+	t.Cleanup(upstream.Close)
+
+	const token = "crawl-redirect-safety-token-000000000"
+	work, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
+		Endpoint: upstream.URL + "/mcp", AccessToken: token, SinceDays: 7, HTTPClient: upstream.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := work(context.Background(), map[string]any{}); err == nil {
+		t.Fatal("redirecting crawl unexpectedly succeeded")
+	}
+	select {
+	case authorization := <-crawlAuthorization:
+		if authorization != "Bearer "+token {
+			t.Fatal("original crawl endpoint did not receive the deployment bearer")
+		}
+	default:
+		t.Fatal("crawl request did not reach the original endpoint")
+	}
+	select {
+	case authorization := <-attackerAuthorization:
+		t.Fatalf("redirect target received authorization %q", authorization)
+	default:
+	}
+}
+
 func TestGetWorkMCPRejectsDeploymentPlaceholderToken(t *testing.T) {
 	for _, token := range []string{"short", "replace-getwork-mcp-access-token-32chars!!"} {
 		_, err := NewGetWorkMCPWork(context.Background(), GetWorkMCPConfig{
