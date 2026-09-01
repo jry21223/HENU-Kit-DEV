@@ -502,8 +502,8 @@ func TestGetWorkMCPScansAllSourcesWithBoundedConcurrency(t *testing.T) {
 	if result.SourceCount != len(sources) || calls.Load() != int32(len(sources)) {
 		t.Fatalf("source_count=%d calls=%d, want %d", result.SourceCount, calls.Load(), len(sources))
 	}
-	if maximum.Load() <= 1 || maximum.Load() > 4 {
-		t.Fatalf("maximum concurrent crawls = %d, want 2..4", maximum.Load())
+	if maximum.Load() != 2 {
+		t.Fatalf("maximum concurrent crawls = %d, want 2", maximum.Load())
 	}
 	if initializeCalls.Load() != 0 {
 		t.Fatalf("MCP initialize calls = %d, want no stateful sessions against the stateless source", initializeCalls.Load())

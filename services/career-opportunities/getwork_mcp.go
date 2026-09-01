@@ -132,7 +132,7 @@ func NewGetWorkMCPWork(ctx context.Context, config GetWorkMCPConfig) (WorkFunc, 
 			tasks <- sourceTask{index: index, source: source}
 		}
 		close(tasks)
-		workerCount := min(4, len(sources))
+		workerCount := min(2, len(sources))
 		var workers sync.WaitGroup
 		workers.Add(workerCount)
 		for range workerCount {

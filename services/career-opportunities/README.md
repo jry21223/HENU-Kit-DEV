@@ -38,7 +38,8 @@ an independent, bounded stateless Streamable HTTP request so concurrent browser
 crawls do not share one SSH-coupled MCP session. These calls retain the exact
 SDK-negotiated protocol version and its required metadata and standard headers;
 unsupported parameter-header schemas fail startup. Career scans every
-discovered source with bounded concurrency; there is no per-source allowlist.
+discovered source with a production-verified maximum concurrency of two; there
+is no per-source allowlist.
 Each result keeps its source status and only accepts official HTTPS application
 URLs for that source. One scan has a six-minute deadline and persists at most
 the top 200 jobs by explainable relevance.
