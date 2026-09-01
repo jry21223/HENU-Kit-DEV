@@ -416,7 +416,9 @@ func getWorkMCPResponsePayloads(body []byte, contentType string) ([][]byte, erro
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-	flush()
+	if eventData.Len() > 0 {
+		return nil, errors.New("event stream is truncated")
+	}
 	if len(payloads) == 0 {
 		return nil, errors.New("event stream contains no JSON payload")
 	}

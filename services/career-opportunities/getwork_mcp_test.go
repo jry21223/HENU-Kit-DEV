@@ -143,6 +143,20 @@ func TestGetWorkMCPResponsePayloadsAcceptsBoundedEventStream(t *testing.T) {
 	}
 }
 
+func TestCallGetWorkToolHTTPRejectsTruncatedEventStream(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-meituan\",\"result\":{}}\n"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	var target getWorkMCPCrawl
+	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	if err == nil || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("truncated event stream error = %v", err)
+	}
+}
+
 func TestGetWorkMCPResponsePayloadsRejectsMislabeledJSON(t *testing.T) {
 	body := []byte(`{"jsonrpc":"2.0","id":"crawl-alibaba","result":{}}`)
 	for _, contentType := range []string{"", "text/plain", "text/html", "application/problem+json", "text/event-stream"} {
