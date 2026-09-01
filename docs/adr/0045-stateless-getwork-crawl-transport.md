@@ -10,8 +10,11 @@ reverse SSH tunnel. Production acceptance showed that the SDK's Streamable
 HTTP session transport is not safe on that boundary: four per-source sessions,
 one shared session, and a shared session requesting JSON responses each caused
 the reverse SSH connection to close with `Broken pipe` after about 20 seconds.
-The same relay completed four independent stateless `crawl_jobs` requests in
-176 seconds without restarting the tunnel.
+An initial comparison completed four independent stateless `crawl_jobs`
+requests in 176 seconds without an observed restart. Final exact-SHA production
+acceptance made the concurrency boundary reproducible: four simultaneous calls
+closed the tunnel after about 19 seconds, while two simultaneous calls completed
+all 18 sources in 234.34 seconds without increasing the restart count.
 
 ## Decision
 
@@ -28,8 +31,8 @@ The same relay completed four independent stateless `crawl_jobs` requests in
   metadata plus `Mcp-Method` and `Mcp-Name` standard headers. Career rejects a
   `crawl_jobs` schema containing unsupported `x-mcp-header` annotations rather
   than silently omitting required parameter headers.
-- The client keeps the existing six-minute scan deadline and maximum
-  concurrency of four. It rejects redirects, non-2xx responses, responses over
+- The client keeps the existing six-minute scan deadline and a maximum
+  concurrency of two. It rejects redirects, non-2xx responses, responses over
   8 MiB, unsupported or missing media types, unframed event streams, JSON-RPC
   versions or IDs that do not match the request, malformed events, ambiguous
   multiple responses, server calls, protocol errors, tool errors, and absent
@@ -56,6 +59,10 @@ The same relay completed four independent stateless `crawl_jobs` requests in
 - **Serial SDK calls:** avoids concurrent sessions but cannot reliably scan all
   18 sources inside the six-minute product deadline; four parallel calls alone
   required 176 seconds in the production comparison.
+- **Four stateless calls:** preserves the original local concurrency bound but
+  reproducibly closes the restricted reverse SSH tunnel under the production
+  browser workload. Two calls retain parallel progress and completed the exact
+  18-source acceptance probe inside the deadline.
 - **Public HTTPS MCP:** avoids SSH multiplexing but introduces a public service
   and certificate boundary that ADR-0043 intentionally rejected.
 
