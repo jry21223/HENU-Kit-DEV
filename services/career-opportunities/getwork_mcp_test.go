@@ -56,10 +56,43 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true,
 	})
+	var crawlProtocolChecks atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer getwork-test-token-0000000000000000" {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read MCP request: %v", err)
+			return
+		}
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		var envelope struct {
+			Method string `json:"method"`
+			Params struct {
+				Name string         `json:"name"`
+				Meta map[string]any `json:"_meta"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(body, &envelope) == nil && envelope.Method == "tools/call" && envelope.Params.Name == "crawl_jobs" {
+			headerVersion := request.Header.Get("MCP-Protocol-Version")
+			metaVersion, _ := envelope.Params.Meta[mcpsdk.MetaKeyProtocolVersion].(string)
+			if headerVersion == "" || (headerVersion >= "2026-07-28" && headerVersion != metaVersion) {
+				t.Errorf("crawl protocol version header = %q, meta = %q", headerVersion, metaVersion)
+			}
+			if headerVersion >= "2026-07-28" {
+				if request.Header.Get("MCP-Method") != "tools/call" || request.Header.Get("MCP-Name") != "crawl_jobs" {
+					t.Errorf("crawl standard headers: method = %q, name = %q", request.Header.Get("MCP-Method"), request.Header.Get("MCP-Name"))
+				}
+				if _, ok := envelope.Params.Meta[mcpsdk.MetaKeyClientInfo].(map[string]any); !ok {
+					t.Errorf("crawl client info meta = %#v", envelope.Params.Meta[mcpsdk.MetaKeyClientInfo])
+				}
+				if _, ok := envelope.Params.Meta[mcpsdk.MetaKeyClientCapabilities].(map[string]any); !ok {
+					t.Errorf("crawl client capabilities meta = %#v", envelope.Params.Meta[mcpsdk.MetaKeyClientCapabilities])
+				}
+			}
+			crawlProtocolChecks.Add(1)
 		}
 		handler.ServeHTTP(writer, request)
 	}))
@@ -117,6 +150,9 @@ func TestGetWorkMCPProducesMatchedCareerJobs(t *testing.T) {
 	if mismatched.JobCount != 0 || mismatched.MatchedCount != 0 {
 		t.Fatalf("job type mismatch result = %+v", mismatched)
 	}
+	if crawlProtocolChecks.Load() != 2 {
+		t.Fatalf("crawl protocol checks = %d, want 2", crawlProtocolChecks.Load())
+	}
 }
 
 func TestDecodeGetWorkToolResultAcceptsUpstreamTextJSON(t *testing.T) {
@@ -129,6 +165,17 @@ func TestDecodeGetWorkToolResultAcceptsUpstreamTextJSON(t *testing.T) {
 	}
 	if decoded.Status != "ok" || len(decoded.Sources) != 1 || decoded.Sources[0].Key != "meituan" {
 		t.Fatalf("decoded = %+v", decoded)
+	}
+}
+
+func TestGetWorkMCPHeaderAnnotationBoundary(t *testing.T) {
+	plain := map[string]any{"type": "object", "properties": map[string]any{"source": map[string]any{"type": "string"}}}
+	annotated := map[string]any{"type": "object", "properties": map[string]any{"source": map[string]any{"type": "string", "x-mcp-header": "Source"}}}
+	if getWorkMCPHasHeaderAnnotation(plain) {
+		t.Fatal("plain crawl schema was treated as header-annotated")
+	}
+	if !getWorkMCPHasHeaderAnnotation(annotated) {
+		t.Fatal("x-mcp-header crawl schema was accepted")
 	}
 }
 
@@ -151,7 +198,7 @@ func TestCallGetWorkToolHTTPRejectsTruncatedEventStream(t *testing.T) {
 	t.Cleanup(upstream.Close)
 
 	var target getWorkMCPCrawl
-	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
 	if err == nil || !strings.Contains(err.Error(), "truncated") {
 		t.Fatalf("truncated event stream error = %v", err)
 	}
@@ -175,7 +222,7 @@ func TestCallGetWorkToolHTTPRejectsResponseOverBoundedLimit(t *testing.T) {
 	t.Cleanup(upstream.Close)
 
 	var target getWorkMCPCrawl
-	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
 	if err == nil || !strings.Contains(err.Error(), "bounded limit") {
 		t.Fatalf("oversized response error = %v", err)
 	}
@@ -198,11 +245,65 @@ func TestCallGetWorkToolHTTPRejectsMismatchedResponseID(t *testing.T) {
 			t.Cleanup(upstream.Close)
 
 			var target getWorkMCPCrawl
-			err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+			err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
 			if err == nil || !strings.Contains(err.Error(), "identity is invalid") {
 				t.Fatalf("mismatched response ID error = %v", err)
 			}
 		})
+	}
+}
+
+func TestCallGetWorkToolHTTPRejectsInvalidEventBeforeMatchingResponse(t *testing.T) {
+	valid := `{"jsonrpc":"2.0","id":"crawl-meituan","result":{"structuredContent":{"status":"ok","jobs":[]}}}`
+	for _, testCase := range []struct {
+		name      string
+		first     string
+		wantError string
+	}{
+		{name: "invalid JSON", first: `not-json`, wantError: "invalid JSON"},
+		{name: "wrong JSON-RPC version", first: `{"jsonrpc":"1.0","id":"crawl-meituan","result":{}}`, wantError: "JSON-RPC version"},
+		{name: "wrong response ID", first: `{"jsonrpc":"2.0","id":"crawl-other","result":{}}`, wantError: "identity is invalid"},
+		{name: "server request", first: `{"jsonrpc":"2.0","id":"server-call","method":"sampling/createMessage","params":{}}`, wantError: "server message is invalid"},
+		{name: "invalid notification params", first: `{"jsonrpc":"2.0","method":"notifications/progress","params":"bad"}`, wantError: "server message is invalid"},
+		{name: "multiple matching responses", first: valid, wantError: "multiple responses"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			body := "data: " + testCase.first + "\n\ndata: " + valid + "\n\n"
+			upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "text/event-stream")
+				_, _ = writer.Write([]byte(body))
+			}))
+			t.Cleanup(upstream.Close)
+
+			var target getWorkMCPCrawl
+			err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+			if err == nil || !strings.Contains(err.Error(), testCase.wantError) {
+				t.Fatalf("mixed event stream error = %v, want %q", err, testCase.wantError)
+			}
+		})
+	}
+}
+
+func TestCallGetWorkToolHTTPRequiresNegotiatedProtocolVersion(t *testing.T) {
+	var target getWorkMCPCrawl
+	err := callGetWorkToolHTTP(context.Background(), http.DefaultClient, "http://127.0.0.1/mcp", "", "crawl-meituan", "crawl_jobs", map[string]any{}, &target)
+	if err == nil || !strings.Contains(err.Error(), "negotiated no protocol version") {
+		t.Fatalf("missing protocol version error = %v", err)
+	}
+}
+
+func TestCallGetWorkToolHTTPAllowsNotificationBeforeMatchingResponse(t *testing.T) {
+	body := "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n" +
+		"data: {\"jsonrpc\":\"2.0\",\"id\":\"crawl-meituan\",\"result\":{\"structuredContent\":{\"status\":\"ok\",\"jobs\":[]}}}\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(body))
+	}))
+	t.Cleanup(upstream.Close)
+
+	var target getWorkMCPCrawl
+	if err := callGetWorkToolHTTP(context.Background(), upstream.Client(), upstream.URL, "2025-11-25", "crawl-meituan", "crawl_jobs", map[string]any{}, &target); err != nil {
+		t.Fatal(err)
 	}
 }
 

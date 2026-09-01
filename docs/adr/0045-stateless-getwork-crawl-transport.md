@@ -23,11 +23,18 @@ The same relay completed four independent stateless `crawl_jobs` requests in
   Streamable HTTP client. Each source uses one independent JSON-RPC POST with
   the deployment-owned endpoint and bearer credential; the browser, actor,
   profile, and model cannot select the endpoint, method, token, or source set.
+- Every POST carries the exact protocol version negotiated by the startup SDK
+  probe. Protocols at or after `2026-07-28` also carry the required per-request
+  metadata plus `Mcp-Method` and `Mcp-Name` standard headers. Career rejects a
+  `crawl_jobs` schema containing unsupported `x-mcp-header` annotations rather
+  than silently omitting required parameter headers.
 - The client keeps the existing six-minute scan deadline and maximum
   concurrency of four. It rejects redirects, non-2xx responses, responses over
   8 MiB, unsupported or missing media types, unframed event streams, JSON-RPC
-  versions or IDs that do not match the request, protocol errors, tool errors,
-  and absent or malformed results.
+  versions or IDs that do not match the request, malformed events, ambiguous
+  multiple responses, server calls, protocol errors, tool errors, and absent
+  or malformed results. Well-formed server notifications may precede the one
+  matching response.
 - Raw JSON is accepted only as `application/json`; event data is accepted only
   as a correctly framed `text/event-stream`. Result decoding continues through
   the official SDK's `CallToolResult` types before Career normalizes jobs.
