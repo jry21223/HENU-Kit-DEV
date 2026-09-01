@@ -26,9 +26,10 @@ profile, or agent workflow would duplicate those owners.
   removes every tool except `list_sources` and `crawl_jobs`; publishing the
   endpoint, moving it across hosts, or adding write/credential tools requires
   TLS and a new credential-boundary decision.
-- Career calls `list_sources` and `crawl_jobs` using the official Go MCP SDK.
-  Source keys come from an operator-owned allowlist. Browser clients and model
-  prompts never select endpoints, credentials, or arbitrary sources.
+- Career uses the official Go MCP SDK for startup protocol, tool, and source
+  verification. ADR-0045 amends only the remote `crawl_jobs` transport with a
+  bounded stateless Streamable HTTP client. Browser clients and model prompts
+  never select endpoints, credentials, tools, or arbitrary sources.
 - Career continues to own normalization, deterministic Opportunity Match,
   durable search results, and the existing Platform Core digest-mail path.
   getWork's `send_email`, `render_briefing`, `add_source`, and `login` tools are

@@ -32,11 +32,14 @@ endpoint configured by the operator), or email delivery (#397).
 
 Production connects to the pinned getWork MCP server through
 `CAREER_GETWORK_MCP_URL` and `CAREER_GETWORK_MCP_ACCESS_TOKEN`. Career verifies
-the exact MCP tool surface, discovers the server's full source list at startup,
-and scans every discovered source with bounded concurrency. There is no
-per-source allowlist. Each result keeps its source status and only accepts
-official HTTPS application URLs for that source. One scan has a six-minute
-deadline and persists at most the top 200 jobs by explainable relevance.
+the exact MCP tool surface and discovers the server's full source list through
+the official SDK at startup. Under ADR-0045, each remote `crawl_jobs` call uses
+an independent, bounded stateless Streamable HTTP request so concurrent browser
+crawls do not share one SSH-coupled MCP session. Career scans every discovered
+source with bounded concurrency; there is no per-source allowlist. Each result
+keeps its source status and only accepts official HTTPS application URLs for
+that source. One scan has a six-minute deadline and persists at most the top
+200 jobs by explainable relevance.
 
 ADR-0043 places the browser-bearing MCP on the WSL Job Source node. Production
 Career reaches it through a forwarding-only SSH tunnel and a host-private relay
