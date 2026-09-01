@@ -83,7 +83,7 @@ describe("Console Overview", () => {
     await wrapper.findAll("button").find((button) => button.text() === "批准")!.trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("审核已批准");
-    expect(wrapper.text()).toContain("已通过 · 版本 v2");
+    expect(wrapper.text()).toContain("已通过 · 版本 2");
     wrapper.unmount();
   });
 
@@ -94,7 +94,7 @@ describe("Console Overview", () => {
         accounts: [{ id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", email: "operator@henu.edu.cn", email_verified: true, status: "active", authorization_revision: 1, created_at: "2026-07-19T00:00:00Z", grants: [{ role_code: "operations-operator", scope: { kind: "platform" } }] }],
         sessions: [{ id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", email: "operator@henu.edu.cn", kind: "core", last_seen_at: "2026-07-19T00:00:00Z", expires_at: "2026-07-19T01:00:00Z" }],
         mail: { pending: 1, processing: 0, retry_due: 0, accepted: 0, delivered: 2, failed: 0, dead_letters: 0 },
-        inbox_items: [{ id: "371f1c6f-7b10-4c92-91a2-b39bf5af5302", source_product_code: "quizcraft", source_resource_type: "submission", source_resource_id: "submission-7", priority: "normal", status: "open", version: 1, created_at: "2026-07-19T00:00:00Z", updated_at: "2026-07-19T00:00:00Z" }],
+        inbox_items: [{ id: "371f1c6f-7b10-4c92-91a2-b39bf5af5302", source_product_code: "quizcraft", source_resource_type: "submission", source_resource_id: "submission-7", priority: "normal", status: "open", version: 2, created_at: "2026-07-19T00:00:00Z", updated_at: "2026-07-19T00:00:00Z" }],
         audit: [{ request_id: "req_operations_test", actor_user_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", email: "operator@henu.edu.cn", permission_code: "platform.operations.read", target_kind: "platform", decision: "allowed", reason_code: "permission_granted", created_at: "2026-07-19T00:00:00Z" }],
         dependencies: { postgres: "ready", redis: "ready" }, generated_at: "2026-07-19T00:00:00Z",
       }, request_id: "req_operations_envelope",
@@ -106,6 +106,9 @@ describe("Console Overview", () => {
     for (const heading of ["平台运营工作台", "账户、角色与权限", "登录会话", "邮件基础设施", "运营收件箱", "授权审计"]) expect(wrapper.text()).toContain(heading);
     expect((wrapper.get("input[pattern]").element as HTMLInputElement).value).toBe("operations-operator");
     expect(wrapper.text()).toContain("撤销登录");
+    expect(wrapper.text()).toContain("练习服务 / submission");
+    expect(wrapper.text()).not.toMatch(/\bv2\b/i);
+    expect(wrapper.text()).not.toContain("QuizCraft");
     expect(wrapper.findAll("button").some((button) => button.text().includes("保存访问设置"))).toBe(true);
     for (const secret of ["token_hash", "recipient_ciphertext", "provider_message_id"]) expect(wrapper.text()).not.toContain(secret);
     wrapper.unmount();

@@ -152,7 +152,7 @@ watch(() => props.authState, (value) => {
     <div v-if="state === 'ready' && snapshot?.items.length === 0" class="mt-6 rounded-lg bg-white p-6">当前没有待处理的通知版本。</div>
     <div v-if="state === 'ready' && snapshot?.items.length" class="mt-6 grid gap-4">
       <article v-for="item in snapshot?.items" :key="item.id" class="rounded-lg border border-border bg-white p-5 ">
-        <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="eyebrow">{{ item.source.name }} · v{{ item.version }}</p><h2 class="mt-1 text-xl font-semibold">{{ item.title }}</h2></div><span class="rounded-full bg-muted px-3 py-1 text-sm">{{ stateLabel(item.state) }} · 版本 v{{ item.revision }}</span></div>
+        <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="eyebrow">{{ item.source.name }} · 版本 {{ item.version }}</p><h2 class="mt-1 text-xl font-semibold">{{ item.title }}</h2></div><span class="rounded-full bg-muted px-3 py-1 text-sm">{{ stateLabel(item.state) }} · 版本 {{ item.revision }}</span></div>
         <p class="mt-4 whitespace-pre-wrap leading-7">{{ item.body }}</p>
         <a :href="item.source_url" class="mt-3 inline-block text-sm underline" target="_blank" rel="noreferrer">核对原始来源</a>
         <div class="mt-5 flex flex-wrap gap-2">
@@ -179,7 +179,7 @@ watch(() => props.authState, (value) => {
         <p class="mt-2 text-sm leading-6 text-muted-foreground">取消不会产生任何写入；确认后按以下渠道与受众创建分发任务。</p>
         <dl class="mt-4 grid gap-3 border-t border-border pt-4 text-sm">
           <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-muted-foreground">通知</dt><dd class="max-w-[24rem] truncate font-medium">{{ pendingDistribution.item.title }}</dd></div>
-          <div class="flex items-baseline justify-between gap-2"><dt class="text-muted-foreground">版本</dt><dd class="font-medium">v{{ pendingDistribution.item.revision }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-muted-foreground">版本</dt><dd class="font-medium">{{ pendingDistribution.item.revision }}</dd></div>
           <div class="flex items-baseline justify-between gap-2"><dt class="text-muted-foreground">渠道</dt><dd class="font-medium">{{ channelLabel(pendingDistribution.channel) }}</dd></div>
           <div class="flex items-baseline justify-between gap-2"><dt class="text-muted-foreground">受众</dt><dd class="font-medium">{{ audienceLabel(pendingDistribution.audience) }}</dd></div>
         </dl>

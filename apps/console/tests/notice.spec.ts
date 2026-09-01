@@ -6,7 +6,7 @@ let resolveState: "approved" | "rejected" = "approved";
 let lastReviewBody: Record<string, unknown> = {};
 let distributionCalls = 0;
 
-function snapshot() { return { items: [{ id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", source: { id: "571f1c6f-7b10-4c92-91a2-b39bf5af5302", code: "henu-office", name: "学校办公室" }, version: 1, title: "暑期安排", body: "不可变正文", source_url: "https://example.edu/notices/1", content_hash: "a".repeat(64), state, revision: state === "distributed" ? 3 : state === "pending_review" ? 1 : 2, created_at: "2026-07-19T00:00:00Z", distribution_count: state === "distributed" ? 1 : 0, ...(state === "distributed" ? { distribution_status: "queued" } : {}) }], generated_at: "2026-07-19T00:00:00Z" }; }
+function snapshot() { return { items: [{ id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", source: { id: "571f1c6f-7b10-4c92-91a2-b39bf5af5302", code: "henu-office", name: "学校办公室" }, version: 2, title: "暑期安排", body: "不可变正文", source_url: "https://example.edu/notices/1", content_hash: "a".repeat(64), state, revision: state === "distributed" ? 3 : state === "pending_review" ? 1 : 2, created_at: "2026-07-19T00:00:00Z", distribution_count: state === "distributed" ? 1 : 0, ...(state === "distributed" ? { distribution_status: "queued" } : {}) }], generated_at: "2026-07-19T00:00:00Z" }; }
 
 test.beforeEach(async ({ page }) => {
   state = "pending_review";
@@ -61,7 +61,9 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.getByLabel("审核理由").fill("内容核实无误");
     await page.getByRole("button", { name: "批准" }).click();
     await expect(page.getByRole("status")).toContainText("审核已批准");
-    await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已通过 · 版本 2", { exact: true })).toBeVisible();
+    await expect(page.getByText("学校办公室 · 版本 2", { exact: true })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/\bv2\b/i);
     expect(lastReviewBody.note).toBe("内容核实无误");
     await page.getByLabel("渠道").selectOption("email");
     await page.getByLabel("受众").selectOption("college");
@@ -76,7 +78,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(dialog).toContainText("software-college");
     await dialog.getByRole("button", { name: "确认分发" }).click();
     await expect(page.getByRole("status")).toContainText("分发任务已创建");
-    await expect(page.getByText("已分发 · 版本 v3", { exact: true })).toBeVisible();
+    await expect(page.getByText("已分发 · 版本 3", { exact: true })).toBeVisible();
     expect(distributionCalls).toBe(1);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
@@ -92,7 +94,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     resolveState = "rejected";
     await reject.click();
     await expect(page.getByRole("status")).toContainText("审核已拒绝");
-    await expect(page.getByText("已拒绝 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已拒绝 · 版本 2", { exact: true })).toBeVisible();
     expect(lastReviewBody.note).toBe("与原文内容不符");
   });
 
@@ -101,7 +103,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.goto("/notices");
     await page.getByRole("button", { name: "批准" }).click();
     await expect(page.getByRole("status")).toContainText("审核已批准");
-    await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已通过 · 版本 2", { exact: true })).toBeVisible();
     await page.getByLabel("渠道").selectOption("email");
     await page.getByLabel("受众").selectOption("college");
     await page.getByLabel("受众值").fill("software-college");
@@ -113,7 +115,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await dialog.getByRole("button", { name: "取消" }).click();
     await expect(dialog).toBeHidden();
     expect(distributionCalls).toBe(0);
-    await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已通过 · 版本 2", { exact: true })).toBeVisible();
   });
 
   test(`${viewport.name} Notice owner failure is not presented as an empty snapshot`, async ({ page }) => {

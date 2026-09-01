@@ -128,7 +128,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
   test(`${viewport.name} Food ops edit a pending submission with campus`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/food");
-    await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
+    await expect(page.getByText("早餐窗口 · 未分配 · 版本 1")).toBeVisible();
     await page.getByRole("button", { name: "编辑投稿" }).click();
     await page.getByLabel("店名").fill("北苑餐厅（一餐）");
     await page.getByLabel("投稿校区").selectOption("minglun");
@@ -136,7 +136,8 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.getByRole("button", { name: "保存修改" }).click();
     await expect(page.getByText("投稿信息已更新。", { exact: true })).toBeVisible();
     await expect(page.getByText("北苑餐厅（一餐） · 胡辣汤")).toBeVisible();
-    await expect(page.getByText("早餐窗口 · 明伦 · v2")).toBeVisible();
+    await expect(page.getByText("早餐窗口 · 明伦 · 版本 2")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/\bv2\b/i);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
@@ -155,7 +156,8 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.getByRole("button", { name: "保存修改" }).click();
     await expect(page.getByText("投稿信息已更新。", { exact: true })).toBeVisible();
     await expect(page.getByText("南苑餐厅（一餐） · 明伦 · 顶级")).toBeVisible();
-    await expect(page.getByText("学生推荐 · 张三 · 已隐藏 · v2")).toBeVisible();
+    await expect(page.getByText("学生推荐 · 张三 · 已隐藏 · 版本 2")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/\bv2\b/i);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
@@ -165,7 +167,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
   test(`${viewport.name} Food ops filter workspace by campus`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/food");
-    await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
+    await expect(page.getByText("早餐窗口 · 未分配 · 版本 1")).toBeVisible();
     await expect(page.getByText("南苑餐厅 · 金明 · 夯")).toBeVisible();
     await page.getByLabel("校区筛选").selectOption("minglun");
     await expect(page.getByText("暂无待审核投稿")).toBeVisible();
@@ -174,7 +176,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByText("南苑餐厅 · 金明 · 夯")).toBeVisible();
     await expect(page.getByText("暂无待审核投稿")).toBeVisible();
     await page.getByLabel("校区筛选").selectOption("");
-    await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
+    await expect(page.getByText("早餐窗口 · 未分配 · 版本 1")).toBeVisible();
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
