@@ -194,7 +194,8 @@ cd "$repo_root"
 "$oauth_gate" verify --sha "$release_sha" --receipt "$oauth_gate_receipt"
 assert_source_snapshot
 source_root="$(mktemp -d "${TMPDIR:-/tmp}/henukit-release-source-${release_sha}.XXXXXX")"
-git -C "$repo_root" archive --format=tar "$release_sha" | tar -xf - -C "$source_root"
+git -C "$repo_root" -c tar.umask=0022 archive --format=tar "$release_sha" |
+  tar -xf - -C "$source_root"
 build_inventory="$source_root/scripts/ops/henukit-release-images.sh"
 [[ -x "$build_inventory" ]] || die "fixed-SHA source snapshot is incomplete"
 "$build_inventory" --check

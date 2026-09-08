@@ -226,9 +226,17 @@ the watcher pins that name to the Docker host gateway and installs verified
 INPUT/OUTPUT rules so only the HENUKit Compose subnet and the root verifier can
 reach port 18101.
 
-Follow `services/getwork-mcp/deploy/README.md` and execute deployment code only
-from the signature-verified, root-owned runtime extraction. The WSL verifier
-must prove WSL2/ext4, signed archive-to-image identity, approved tunnel/host
+Follow `services/getwork-mcp/deploy/README.md`. Prefer the exact-`main` GitHub
+Actions getWork handoff: verify its attested manifest with the root-owned OS
+GitHub CLI before extracting or executing the runtime, then pass the same
+attestation bundle to the installer so the node verifier repeats the pinned
+repository, workflow, ref, source-SHA, and GitHub-hosted-runner checks. The
+selected workflow run must be completed successfully at that SHA, and a fresh
+remote `main` lookup must still equal it before installation and activation. The
+SSH-signed local-builder handoff remains a mutually exclusive fallback. Execute
+deployment code only from that provenance-verified, root-owned runtime
+extraction. The WSL verifier must prove WSL2/ext4, archive-to-image identity,
+approved tunnel/host
 fingerprints, normalized no-login account state, root-owned secrets and exact
 units, live container/firewall hardening, active crawler and tunnel units,
 strict bounded MCP responses, exactly `list_sources` plus `crawl_jobs`, one
@@ -267,8 +275,30 @@ keys, databases, or volumes as an improvised rollback.
 The default activation still requires a healthy retained fixed-SHA rollback
 release. When production is already degraded and no healthy retained release
 exists, ADR-0030 permits one explicit recovery after the recovery-aware trust
-roots have been installed through the reviewed bootstrap below. Both preflight
-and execute name the exact current degraded SHA:
+roots have been installed through the reviewed bootstrap below. ADR-0044
+extends the same gates to the Actions source. For the newest
+completed successful GitHub Actions run that is still current `main`, invoke
+the production activation entry explicitly and name both exact SHAs:
+
+```bash
+sudo HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
+  GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
+  /usr/local/sbin/activate-henukit-release \
+  <full-current-main-sha> \
+  --recover-degraded-baseline <exact-current-degraded-sha> \
+  --execute
+```
+
+This is not watch mode: the activation entry rechecks the branch head and
+newest successful workflow before preparation and again before activation. The
+signed local-builder fallback instead carries the same exact baseline through
+the WSL transport; both preflight and execute name it:
+
+Before publishing approval, the activation entry binds the prepared evidence
+to the exact Actions run database ID plus run attempt, or the signed local
+manifest digest. Resume
+must match that immutable artifact identity, candidate SHA, and baseline SHA;
+changing source mode or rerunning the workflow requires new preparation.
 
 ```bash
 scripts/ops/deploy-henukit-release-from-wsl.sh \
@@ -296,7 +326,8 @@ publishes the terminal adoption audit.
 
 Use identical arguments with `--execute` only after preflight succeeds. The
 watcher rejects a healthy baseline, a mismatched current symlink or image set,
-an Actions-polled release, and missing backup or approval evidence. Candidate
+an inferred watch-mode recovery, a stale or unsuccessful Actions release, and
+missing backup or approval evidence. Candidate
 failure restores the exact known degraded state without reporting it healthy.
 Root-only records remain under
 `/var/lib/henukit-actions-watch/degraded-recoveries/`.
@@ -437,6 +468,9 @@ It deploys only the newest completed, successful `push` run of
 
 1. downloads the exact full-SHA artifact set with `gh`;
 2. rejects missing, duplicate, unexpected, or checksum-invalid files;
+   the exact-SHA getWork WSL manifest and attestation bundle are the one
+   documented exception: the production-only cache discards that pair because
+   WSL verifies it independently;
 3. verifies the runtime `RELEASE_SHA` and its exact-SHA Account production
    boundary manifest. The manifest follows Account's local import graph,
    rejects user-reachable Portal/Gateway fixtures and fake-success sources,

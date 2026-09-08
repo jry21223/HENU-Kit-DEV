@@ -9,6 +9,8 @@ program="activate-henukit-release"
 usage() {
   cat >&2 <<'EOF'
 usage: activate-henukit-release.sh <full-main-sha> --execute
+       activate-henukit-release.sh <full-main-sha> \
+         --recover-degraded-baseline <full-current-sha> --execute
        activate-henukit-release.sh <full-main-sha> --local-artifacts <artifact-dir> --execute
        activate-henukit-release.sh <full-main-sha> --local-artifacts <artifact-dir> \
          --recover-degraded-baseline <full-current-sha> --execute
@@ -35,6 +37,9 @@ local_artifact_dir=""
 recovery_baseline_sha=""
 if [[ $# -eq 2 && "$2" == "--execute" ]]; then
   release_sha="$1"
+elif [[ $# -eq 4 && "$2" == "--recover-degraded-baseline" && "$4" == "--execute" ]]; then
+  release_sha="$1"
+  recovery_baseline_sha="$3"
 elif [[ $# -eq 4 && "$2" == "--local-artifacts" && "$4" == "--execute" ]]; then
   release_sha="$1"
   release_source="local"
@@ -66,15 +71,15 @@ retained_release_owner_uid="${HENUKIT_RETAINED_RELEASE_OWNER_UID:-}"
 retained_release_adopter="${HENUKIT_RETAINED_RELEASE_ADOPTER:-/usr/local/sbin/adopt-henukit-degraded-baseline}"
 
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be 40 lowercase hexadecimal characters"
+if [[ -n "$recovery_baseline_sha" ]]; then
+  [[ "$recovery_baseline_sha" =~ ^[0-9a-f]{40}$ ]] ||
+    die "--recover-degraded-baseline must be a full lowercase Git SHA"
+  [[ "$recovery_baseline_sha" != "$release_sha" ]] ||
+    die "recovery baseline and candidate SHA must differ"
+fi
 if [[ "$release_source" == "local" ]]; then
   [[ -d "$local_artifact_dir" && ! -L "$local_artifact_dir" ]] ||
     die "--local-artifacts must name a non-symlink artifact directory"
-  if [[ -n "$recovery_baseline_sha" ]]; then
-    [[ "$recovery_baseline_sha" =~ ^[0-9a-f]{40}$ ]] ||
-      die "--recover-degraded-baseline must be a full lowercase Git SHA"
-    [[ "$recovery_baseline_sha" != "$release_sha" ]] ||
-      die "recovery baseline and candidate SHA must differ"
-  fi
 fi
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$blocker_issue" =~ ^[1-9][0-9]*$ ]] || die "HENUKIT_BLOCKER_ISSUE must be a positive issue number"
@@ -92,6 +97,7 @@ fi
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
 command -v ssh >/dev/null 2>&1 || die "ssh is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
 [[ -r "$token_file" && -f "$token_file" ]] || die "GH_TOKEN_FILE must point to a readable regular file"
 token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || stat -f '%Lp' "$token_file")"
 token_owner="$(stat -c '%u' "$token_file" 2>/dev/null || stat -f '%u' "$token_file")"
@@ -165,6 +171,7 @@ done
 approval="$state_root/approvals/$release_sha"
 prepared="$state_root/prepared/$release_sha"
 recovery_binding="$state_root/prepared/${release_sha}.recovery-baseline"
+recovery_source_binding="$state_root/prepared/${release_sha}.artifact-source"
 active="$state_root/last-activated-sha"
 resume_existing_approval=0
 
@@ -205,33 +212,51 @@ validate_recovery_binding() {
     die "existing approval is not bound to recovery baseline $recovery_baseline_sha"
 }
 
+validate_recovery_source_binding() {
+  validate_private_file "$recovery_source_binding" "recovery artifact source binding"
+  [[ "$(tr -d '\r\n' < "$recovery_source_binding")" == "$verified_artifact_identity" ]] ||
+    die "existing approval is not bound to $release_source artifacts"
+}
+
 blocker_state="$(gh api "repos/$repo/issues/$blocker_issue" --jq '.state')"
 [[ "$blocker_state" == "closed" ]] || die "blocker issue #$blocker_issue must be closed before Account Portfolio deployment"
 
+verified_artifact_identity=""
+verify_release_current() {
+  local branch_head run_row run_id run_attempt run_sha run_status run_conclusion current_identity manifest
+  branch_head="$(gh api "repos/$repo/branches/$branch" --jq '.commit.sha')"
+  [[ "$branch_head" == "$release_sha" ]] || die "requested release is not the current $branch head"
+  if [[ "$release_source" == "local" ]]; then
+    manifest="$local_artifact_dir/henukit-release-${release_sha}.manifest"
+    [[ -f "$manifest" && -s "$manifest" && ! -L "$manifest" ]] ||
+      die "local artifact manifest is missing or untrusted"
+    current_identity="local:$(sha256sum "$manifest" | awk '{print $1}')"
+  else
+    run_row="$(gh run list --repo "$repo" --workflow "$workflow" --branch "$branch" --event push --limit 1 --json databaseId,attempt,headSha,status,conclusion --jq 'first(.[]) | [.databaseId,.attempt,.headSha,.status,.conclusion] | @tsv')"
+    IFS=$'\t' read -r run_id run_attempt run_sha run_status run_conclusion <<< "$run_row"
+    [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || die "newest workflow run has an invalid identity"
+    [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || die "newest workflow run has an invalid attempt"
+    [[ "$run_sha" == "$release_sha" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] ||
+      die "requested release is not the newest completed successful $workflow run"
+    current_identity="actions:${run_id}:${run_attempt}"
+  fi
+  if [[ -n "$verified_artifact_identity" && "$verified_artifact_identity" != "$current_identity" ]]; then
+    die "release artifact identity changed during activation"
+  fi
+  verified_artifact_identity="$current_identity"
+}
+
+verify_release_current
 if [[ -e "$approval" ]]; then
-  [[ "$release_source" == "local" && -n "$recovery_baseline_sha" ]] ||
+  [[ -n "$recovery_baseline_sha" ]] ||
     die "an approval already exists for release $release_sha"
   validate_existing_approval
   validate_prepared_evidence
   validate_recovery_binding
+  validate_recovery_source_binding
   resume_existing_approval=1
   printf '%s: resuming valid unconsumed approval for release %s\n' "$program" "$release_sha"
 fi
-
-verify_release_current() {
-  local branch_head run_row run_sha run_status run_conclusion
-  branch_head="$(gh api "repos/$repo/branches/$branch" --jq '.commit.sha')"
-  [[ "$branch_head" == "$release_sha" ]] || die "requested release is not the current $branch head"
-  if [[ "$release_source" == "local" ]]; then
-    return
-  fi
-  run_row="$(gh run list --repo "$repo" --workflow "$workflow" --branch "$branch" --event push --limit 1 --json headSha,status,conclusion --jq 'first(.[]) | [.headSha,.status,.conclusion] | @tsv')"
-  IFS=$'\t' read -r run_sha run_status run_conclusion <<< "$run_row"
-  [[ "$run_sha" == "$release_sha" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] ||
-    die "requested release is not the newest completed successful $workflow run"
-}
-
-verify_release_current
 if [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]]; then
   printf '%s: release %s is already active\n' "$program" "$release_sha"
   exit 0
@@ -243,9 +268,9 @@ fi
 watcher_args=(--once)
 if [[ "$release_source" == "local" ]]; then
   watcher_args=(--local-artifacts "$local_artifact_dir" --sha "$release_sha")
-  if [[ -n "$recovery_baseline_sha" ]]; then
-    watcher_args+=(--recover-degraded-baseline "$recovery_baseline_sha")
-  fi
+fi
+if [[ -n "$recovery_baseline_sha" ]]; then
+  watcher_args+=(--recover-degraded-baseline "$recovery_baseline_sha")
 fi
 
 tenant_credentials="$(ssh "$epay_ssh_target" bash -s -- "$epay_gateway_dir" <<'REMOTE'
@@ -284,6 +309,7 @@ set_account_env_value() {
 
 approval_incoming=""
 recovery_binding_incoming=""
+recovery_source_binding_incoming=""
 remote_stage=""
 environment_backup="$(dirname "$env_file")/.henukit-env.backup.$$"
 cp -p "$env_file" "$environment_backup"
@@ -295,6 +321,9 @@ cleanup() {
   fi
   if [[ -n "${recovery_binding_incoming:-}" && -f "$recovery_binding_incoming" ]]; then
     rm -f -- "$recovery_binding_incoming"
+  fi
+  if [[ -n "${recovery_source_binding_incoming:-}" && -f "$recovery_source_binding_incoming" ]]; then
+    rm -f -- "$recovery_source_binding_incoming"
   fi
   if [[ "$remote_stage" =~ ^/tmp/henukit-epay-release\.[A-Za-z0-9]+$ ]]; then
     ssh "$epay_ssh_target" "rm -rf -- '$remote_stage'" >/dev/null 2>&1 || true
@@ -368,7 +397,12 @@ if [[ "$resume_existing_approval" -eq 0 ]]; then
     chmod 0600 "$recovery_binding_incoming"
     mv "$recovery_binding_incoming" "$recovery_binding"
     recovery_binding_incoming=""
-  elif [[ -e "$recovery_binding" ]]; then
+    recovery_source_binding_incoming="$(mktemp "$state_root/prepared/.${release_sha}.artifact-source.XXXXXX")"
+    printf '%s\n' "$verified_artifact_identity" > "$recovery_source_binding_incoming"
+    chmod 0600 "$recovery_source_binding_incoming"
+    mv "$recovery_source_binding_incoming" "$recovery_source_binding"
+    recovery_source_binding_incoming=""
+  elif [[ -e "$recovery_binding" || -e "$recovery_source_binding" ]]; then
     die "routine activation found a stale recovery approval binding"
   fi
   approval_incoming="$(mktemp "$state_root/approvals/.${release_sha}.XXXXXX")"

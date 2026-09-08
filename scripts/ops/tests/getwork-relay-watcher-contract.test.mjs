@@ -56,11 +56,18 @@ if [[ "$1 $2" == "-S INPUT" ]]; then
 elif [[ "$1 $2" == "-S OUTPUT" ]]; then
   printf '%s\\n' '-A OUTPUT -d 172.17.0.1/32 -p tcp -m tcp --dport 18101 -j HENUKIT-GETWORK-OUTPUT'
 elif [[ "$1 $2" == "-S HENUKIT-GETWORK-INGRESS" ]]; then
-  printf '%s\\n' '-A HENUKIT-GETWORK-INGRESS -s 172.19.0.0/16 -j ACCEPT' '-A HENUKIT-GETWORK-INGRESS -s 172.17.0.1/32 -j ACCEPT' '-A HENUKIT-GETWORK-INGRESS -j REJECT'
+  printf '%s\\n' '-A HENUKIT-GETWORK-INGRESS -s 172.19.0.0/16 -j ACCEPT' '-A HENUKIT-GETWORK-INGRESS -i lo -j ACCEPT' '-A HENUKIT-GETWORK-INGRESS -j REJECT'
 elif [[ "$1 $2" == "-S HENUKIT-GETWORK-OUTPUT" ]]; then
   printf '%s\\n' '-A HENUKIT-GETWORK-OUTPUT -m owner --uid-owner 0 -j ACCEPT' '-A HENUKIT-GETWORK-OUTPUT -j REJECT'
 elif [[ "$1" == "-C" ]]; then
-  exit 0
+  case "$*" in
+    "-C HENUKIT-GETWORK-INGRESS -s 172.19.0.0/16 -j ACCEPT" | \
+    "-C HENUKIT-GETWORK-INGRESS -i lo -j ACCEPT" | \
+    "-C HENUKIT-GETWORK-INGRESS -j REJECT" | \
+    "-C HENUKIT-GETWORK-OUTPUT -m owner --uid-owner 0 -j ACCEPT" | \
+    "-C HENUKIT-GETWORK-OUTPUT -j REJECT") exit 0 ;;
+    *) exit 1 ;;
+  esac
 else
   exit 64
 fi

@@ -68,7 +68,11 @@ for unit in henukit-getwork-mcp.service henukit-getwork-tunnel.service; do
         -f "/etc/systemd/system/$unit" ]]; then
     systemctl enable "$unit" >/dev/null
   else
-    systemctl disable "$unit" >/dev/null
+    if [[ -f "/etc/systemd/system/$unit" ]]; then
+      systemctl disable "$unit" >/dev/null
+    else
+      systemctl disable "$unit" >/dev/null 2>&1 || true
+    fi
   fi
   if [[ -f "/etc/systemd/system/$unit" ]]; then
     if [[ "$(state_value "unit_${key}_active")" == 1 ]]; then

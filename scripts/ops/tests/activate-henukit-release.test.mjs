@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -26,6 +27,16 @@ function executable(path, contents) {
   chmodSync(path, 0o755);
 }
 
+function signedLocalArtifacts(root) {
+  const artifacts = join(root, "signed-local-artifacts");
+  mkdirSync(artifacts);
+  writeFileSync(
+    join(artifacts, `henukit-release-${releaseSha}.manifest`),
+    "verified-by-fixture\n",
+  );
+  return artifacts;
+}
+
 function fixture({
   blockerState = "closed",
   branchSha = releaseSha,
@@ -36,7 +47,9 @@ function fixture({
   preparationFails = false,
   existingApproval = false,
   existingApprovalBaseline = recoveryBaselineSha,
+  existingApprovalSource = "local",
   runConclusion = "success",
+  runAttempt = "1",
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "activate-henukit-release-"));
   const bin = join(root, "bin");
@@ -74,6 +87,13 @@ function fixture({
       `${existingApprovalBaseline}\n`,
       { mode: 0o600 },
     );
+    writeFileSync(
+      join(state, "prepared", `${releaseSha}.artifact-source`),
+      existingApprovalSource === "actions"
+        ? "actions:123:1\n"
+        : `local:${createHash("sha256").update("verified-by-fixture\n").digest("hex")}\n`,
+      { mode: 0o600 },
+    );
     writeFileSync(join(state, "approvals", releaseSha), `${releaseSha}\n`, { mode: 0o600 });
   }
 
@@ -87,7 +107,7 @@ if [[ "$*" == *"/issues/"* ]]; then
 elif [[ "$*" == *"/branches/"* ]]; then
   printf '%s\n' "$FAKE_BRANCH_SHA"
 elif [[ "$1 $2" == "run list" ]]; then
-  printf '%s\tcompleted\t%s\n' "$FAKE_RELEASE_SHA" "$FAKE_RUN_CONCLUSION"
+  printf '123\t%s\t%s\tcompleted\t%s\n' "$FAKE_RUN_ATTEMPT" "$FAKE_RELEASE_SHA" "$FAKE_RUN_CONCLUSION"
 else
   exit 70
 fi
@@ -164,6 +184,7 @@ fi
       FAKE_METADATA_SYMLINK: metadataSymlink ? "1" : "0",
       FAKE_PREPARATION_FAILS: preparationFails ? "1" : "0",
       FAKE_RELEASE_SHA: releaseSha,
+      FAKE_RUN_ATTEMPT: runAttempt,
       FAKE_RUN_CONCLUSION: runConclusion,
       HENUKIT_STATE_ROOT: state,
       HENUKIT_TRUST_ANCHOR: root,
@@ -210,8 +231,7 @@ test("one command prepares, exact-SHA approves, and activates a release", () => 
 
 test("one command keeps the Account payment gates when its fixed-SHA artifacts come from the signed local path", () => {
   const setup = fixture();
-  const artifacts = join(setup.root, "signed-local-artifacts");
-  mkdirSync(artifacts);
+  const artifacts = signedLocalArtifacts(setup.root);
 
   const output = execFileSync(
     command,
@@ -261,9 +281,8 @@ test("normal activation audits an explicitly named historical release owner befo
 
 test("one command threads an explicit degraded-baseline recovery through both watcher passes", () => {
   const setup = fixture();
-  const artifacts = join(setup.root, "signed-local-artifacts");
+  const artifacts = signedLocalArtifacts(setup.root);
   const previousSha = "c".repeat(40);
-  mkdirSync(artifacts);
 
   execFileSync(
     command,
@@ -283,11 +302,28 @@ test("one command threads an explicit degraded-baseline recovery through both wa
   );
 });
 
+test("one command threads Actions degraded-baseline recovery through both watcher passes", () => {
+  const setup = fixture();
+  const previousSha = "c".repeat(40);
+
+  execFileSync(
+    command,
+    [releaseSha, "--recover-degraded-baseline", previousSha, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.equal(
+    (calls.match(new RegExp(`watcher --once --recover-degraded-baseline ${previousSha}`, "g")) ?? []).length,
+    2,
+  );
+  assert.equal((calls.match(/^gh run list/gm) ?? []).length, 3);
+});
+
 test("explicit local recovery resumes one valid unconsumed approval without preparing twice", () => {
   const setup = fixture({ existingApproval: true });
-  const artifacts = join(setup.root, "signed-local-artifacts");
+  const artifacts = signedLocalArtifacts(setup.root);
   const previousSha = "c".repeat(40);
-  mkdirSync(artifacts);
 
   const output = execFileSync(
     command,
@@ -305,6 +341,75 @@ test("explicit local recovery resumes one valid unconsumed approval without prep
   assert.equal((calls.match(/^watcher /gm) ?? []).length, 1);
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
   assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("explicit Actions recovery resumes one baseline-bound unconsumed approval", () => {
+  const setup = fixture({ existingApproval: true, existingApprovalSource: "actions" });
+
+  const output = execFileSync(
+    command,
+    [releaseSha, "--recover-degraded-baseline", recoveryBaselineSha, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+  const calls = readFileSync(setup.log, "utf8");
+
+  assert.match(output, /resuming valid unconsumed approval/i);
+  assert.equal((calls.match(/^watcher /gm) ?? []).length, 1);
+  assert.match(calls, new RegExp(`watcher --once --recover-degraded-baseline ${recoveryBaselineSha}`));
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("Actions recovery rejects an approval prepared from signed local artifacts", () => {
+  const setup = fixture({ existingApproval: true, existingApprovalSource: "local" });
+
+  const result = spawnSync(
+    command,
+    [releaseSha, "--recover-degraded-baseline", recoveryBaselineSha, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not bound to actions artifacts/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^watcher |^ssh /m);
+});
+
+test("Actions recovery rejects an approval prepared by an earlier run attempt", () => {
+  const setup = fixture({
+    existingApproval: true,
+    existingApprovalSource: "actions",
+    runAttempt: "2",
+  });
+
+  const result = spawnSync(
+    command,
+    [releaseSha, "--recover-degraded-baseline", recoveryBaselineSha, "--execute"],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not bound to actions artifacts/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^watcher |^ssh /m);
+});
+
+test("signed local recovery rejects an approval prepared from Actions artifacts", () => {
+  const setup = fixture({ existingApproval: true, existingApprovalSource: "actions" });
+  const artifacts = signedLocalArtifacts(setup.root);
+
+  const result = spawnSync(
+    command,
+    [
+      releaseSha,
+      "--local-artifacts", artifacts,
+      "--recover-degraded-baseline", recoveryBaselineSha,
+      "--execute",
+    ],
+    { encoding: "utf8", env: setup.env },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not bound to local artifacts/i);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^watcher |^ssh /m);
 });
 
 test("normal activation never silently reuses an existing approval", () => {
@@ -326,8 +431,7 @@ test("recovery never reuses an approval prepared for a different baseline", () =
     existingApprovalBaseline: "d".repeat(40),
   });
 
-  const artifacts = join(setup.root, "signed-local-artifacts");
-  mkdirSync(artifacts);
+  const artifacts = signedLocalArtifacts(setup.root);
   const result = spawnSync(
     command,
     [

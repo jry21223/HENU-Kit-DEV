@@ -35,7 +35,9 @@ func TestBuildWorkUsesAuthorizedGetWorkMCP(t *testing.T) {
 			}},
 		}, nil
 	})
-	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return mcpServer }, nil)
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return mcpServer }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer getwork-test-access-token-32-bytes" {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)

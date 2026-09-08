@@ -11,6 +11,60 @@ const packagerSource = fileURLToPath(
 );
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
+function runRuntimePackager(command, args, options) {
+  try {
+    return execFileSync(command, args, options);
+  } catch (error) {
+    error.message += `\nstatus: ${error.status}\nsignal: ${error.signal}\nstdout:\n${error.stdout?.toString() ?? ""}\nstderr:\n${error.stderr?.toString() ?? ""}`;
+    throw error;
+  }
+}
+
+test("runtime packager failures retain the command and exit status without output", () => {
+  assert.throws(
+    () => runRuntimePackager(process.execPath, ["-e", "process.exit(91)"], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.status, 91);
+      assert.match(error.message, /Command failed:/);
+      assert.match(error.message, /process\.exit\(91\)/);
+      assert.match(error.message, /status: 91/);
+      return true;
+    },
+  );
+});
+
+test("runtime packager failures identify signal termination without output", () => {
+  assert.throws(
+    () => runRuntimePackager(process.execPath, ["-e", "process.kill(process.pid, 'SIGTERM')"], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.status, null);
+      assert.equal(error.signal, "SIGTERM");
+      assert.match(error.message, /signal: SIGTERM/);
+      return true;
+    },
+  );
+});
+
+test("runtime packager failures retain captured output and launch errors", () => {
+  assert.throws(
+    () => runRuntimePackager(process.execPath, ["-e", "console.log('packager stdout'); console.error('packager stderr'); process.exit(23)"], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.status, 23);
+      assert.match(error.message, /stdout:\npackager stdout\n/);
+      assert.match(error.message, /stderr:\npackager stderr\n/);
+      return true;
+    },
+  );
+  assert.throws(
+    () => runRuntimePackager(join(tmpdir(), "missing-henukit-packager", "packager"), [], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.code, "ENOENT");
+      assert.match(error.message, /ENOENT/);
+      return true;
+    },
+  );
+});
+
 function createCleanSourceCheckout() {
   const root = mkdtempSync(join(tmpdir(), "henukit-runtime-source-"));
   const checkout = join(root, "checkout");
@@ -98,6 +152,14 @@ test("runtime binaries omit VCS metadata so unchanged materials remain rollback-
   }
 });
 
+test("runtime packaging fixes Git archive modes for root-trusted deployment assets", () => {
+  const source = readFileSync(packagerSource, "utf8");
+  assert.match(
+    source,
+    /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha"/,
+  );
+});
+
 test("runtime packaging rejects a receipt when tracked source changes", () => {
   const source = createCleanSourceCheckout();
   const { checkout, releaseSha, sourceTree } = source;
@@ -176,27 +238,27 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   const docker = join(binDirectory, "docker");
   writeFileSync(
     docker,
-    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then printf '{\"services\":{\"portal\":{\"image\":\"henukit-portal:test\"}}}\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nhost_output=\nsource_root=\nwhile [[ $# -gt 0 ]]; do\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/host-out\" ]]; then host_output=\"${2%:/host-out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/src:ro\" ]]; then source_root=\"${2%:/src:ro}\"; fi\n  shift\ndone\n[[ -n \"$output\" && -n \"$host_output\" && -n \"$source_root\" ]]\nif [[ -e \"$source_root/services/deploy-webhook/injected.go\" ]]; then printf 'ignored source injection reached Docker\\n' >&2; exit 91; fi\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\nprintf '#!/bin/sh\\nexit 0\\n' > \"$host_output/food-sanitize-post-image\"\nchmod 0755 \"$host_output/food-sanitize-post-image\"\n",
+    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then if [[ \" $* \" == *\" -f - \"* ]]; then cat >/dev/null; fi; printf '{\"services\":{\"portal\":{\"image\":\"henukit-portal:test\"}}}\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nhost_output=\nsource_root=\nwhile [[ $# -gt 0 ]]; do\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/host-out\" ]]; then host_output=\"${2%:/host-out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/src:ro\" ]]; then source_root=\"${2%:/src:ro}\"; fi\n  shift\ndone\n[[ -n \"$output\" && -n \"$host_output\" && -n \"$source_root\" ]]\nif [[ -e \"$source_root/services/deploy-webhook/injected.go\" ]]; then printf 'ignored source injection reached Docker\\n' >&2; exit 91; fi\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\nprintf '#!/bin/sh\\nexit 0\\n' > \"$host_output/food-sanitize-post-image\"\nchmod 0755 \"$host_output/food-sanitize-post-image\"\n",
     { mode: 0o755 },
   );
   chmodSync(docker, 0o755);
 
   try {
-    try {
-      execFileSync(packager, [
-        "--sha", releaseSha,
-        "--output-dir", outputDirectory,
-        "--oauth-gate-receipt", oauthGateReceipt,
-      ], {
-        cwd: checkout,
-        env: { ...process.env, PATH: `${binDirectory}:${process.env.PATH}` },
-        stdio: "pipe",
-      });
-    } catch (error) {
-      assert.fail(
-        `runtime packager failed\nstdout:\n${error.stdout?.toString() ?? ""}\nstderr:\n${error.stderr?.toString() ?? ""}`,
-      );
-    }
+    runRuntimePackager(packager, [
+      "--sha", releaseSha,
+      "--output-dir", outputDirectory,
+      "--oauth-gate-receipt", oauthGateReceipt,
+    ], {
+      cwd: checkout,
+      env: {
+        ...process.env,
+        PATH: `${binDirectory}:${process.env.PATH}`,
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "tar.umask",
+        GIT_CONFIG_VALUE_0: "0002",
+      },
+      encoding: "utf8",
+    });
 
   assert.equal(existsSync(runtimeArchive), true);
   assert.equal(existsSync(`${runtimeArchive}.sha256`), true);
@@ -231,6 +293,18 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   ]) {
     assert.match(files, new RegExp(`^${file.replaceAll(".", "\\.").replaceAll("/", "\\/")}$`, "m"));
   }
+  const getworkInstallerMode = execFileSync(
+    "tar",
+    ["-tvzf", runtimeArchive, "./getwork-node-deploy/install_node.sh"],
+    { encoding: "utf8" },
+  )
+    .trim()
+    .split(/\s+/)[0];
+  assert.equal(
+    getworkInstallerMode,
+    "-rwxr-xr-x",
+    "the root installer must not inherit Git archive's group-writable default",
+  );
   assert.doesNotMatch(files, /convert-henukit-slides|import-henukit-materials|migrations\/study/);
   const materialsChecksums = execFileSync(
     "tar",

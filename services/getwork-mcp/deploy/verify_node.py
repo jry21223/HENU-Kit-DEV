@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 import urllib.request
 from typing import BinaryIO, NamedTuple, Protocol
@@ -31,6 +32,10 @@ PINNED_SOURCES = (
     "tongcheng", "vipshop", "xfusion", "xiaohongshu",
 )
 UNIT_NAMES = ("henukit-getwork-mcp.service", "henukit-getwork-tunnel.service")
+REPOSITORY_URL = "https://github.com/jry21223/HENU-Kit-DEV.git"
+ACTIONS_PREDICATE_TYPE = (
+    "https://github.com/jry21223/HENU-Kit-DEV/attestations/getwork-actions-release-v1"
+)
 
 
 class Config(NamedTuple):
@@ -47,6 +52,11 @@ class Config(NamedTuple):
     manifest_file: pathlib.Path
     signature_file: pathlib.Path
     allowed_signers_file: pathlib.Path
+    provenance_mode: str = "ssh-signature"
+    attestation_file: pathlib.Path | None = None
+    gh_file: pathlib.Path = pathlib.Path("/usr/bin/gh")
+    actions_custom_trusted_root_file: pathlib.Path | None = None
+    current_main_ref_file: pathlib.Path | None = None
 
 
 class SecureFile(NamedTuple):
@@ -68,6 +78,7 @@ class Evidence(NamedTuple):
 
 
 class Probe(Protocol):
+    def current_main_sha(self) -> str: ...
     def osrelease(self) -> str: ...
     def machine(self) -> str: ...
     def root_fstype(self) -> str: ...
@@ -83,8 +94,16 @@ class Probe(Protocol):
     def signed_manifest_valid(
         self, manifest: pathlib.Path, signature: pathlib.Path, allowed_signers: pathlib.Path
     ) -> bool: ...
+    def actions_attestation_valid(
+        self,
+        manifest: pathlib.Path,
+        attestation: pathlib.Path,
+        gh_file: pathlib.Path,
+        release_sha: str,
+        custom_trusted_root: pathlib.Path,
+    ) -> bool: ...
     def archive_sha256(self, path: pathlib.Path) -> str: ...
-    def archive_image_id(self, path: pathlib.Path) -> str: ...
+    def image_matches_archive(self, image: str, path: pathlib.Path) -> bool: ...
     def runtime_hardened(self, expected_image_id: str) -> bool: ...
     def egress_policy_live(self) -> bool: ...
     def service_active(self, name: str) -> bool: ...
@@ -178,9 +197,52 @@ def _require_file(
     return item
 
 
+def _main_ref(contents: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in contents.splitlines():
+        if not line:
+            continue
+        key, separator, value = line.partition("=")
+        if not separator or not re.fullmatch(r"[a-z_]+", key) or key in values:
+            raise VerificationError("offline current-main proof is malformed")
+        values[key] = value
+    return values
+
+
+def _current_main_sha(config: Config, probe: Probe) -> str:
+    if config.provenance_mode != "github-actions":
+        return probe.current_main_sha()
+    if config.current_main_ref_file is None:
+        raise VerificationError("offline current-main proof path is missing")
+    proof = _require_file(
+        probe, config.current_main_ref_file, 0o400, "offline current-main proof"
+    )
+    trust_values = _env(
+        _require_file(probe, config.trust_file, 0o600, "fingerprint trust").contents
+    )
+    approved_digest = trust_values.get("HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", approved_digest):
+        raise VerificationError("offline current-main proof digest is invalid")
+    if hashlib.sha256(proof.contents.encode()).hexdigest() != approved_digest:
+        raise VerificationError("offline current-main proof digest is not approved")
+    values = _main_ref(proof.contents)
+    if set(values) != {"format", "source_repository", "source_ref", "release_sha"}:
+        raise VerificationError("offline current-main proof keys do not match")
+    if (
+        values["format"] != "henukit-current-main-ref-v1"
+        or values["source_repository"] != "jry21223/HENU-Kit-DEV"
+        or values["source_ref"] != "refs/heads/main"
+        or not re.fullmatch(r"[0-9a-f]{40}", values["release_sha"])
+    ):
+        raise VerificationError("offline current-main proof is invalid")
+    return values["release_sha"]
+
+
 def verify(config: Config, probe: Probe) -> Evidence:
     if not re.fullmatch(r"[0-9a-f]{40}", config.release_sha):
         raise VerificationError("release SHA must be 40 lowercase hexadecimal characters")
+    if _current_main_sha(config, probe) != config.release_sha:
+        raise VerificationError("release SHA is not the freshly fetched current origin/main")
     if "microsoft" not in probe.osrelease().lower():
         raise VerificationError("Job Source MCP node must run on WSL2")
     if probe.machine() != "x86_64" or probe.root_fstype() != "ext4":
@@ -196,11 +258,17 @@ def verify(config: Config, probe: Probe) -> Evidence:
         "HENUKIT_GETWORK_TUNNEL_TARGET", "HENUKIT_GETWORK_TUNNEL_PORT",
         "HENUKIT_GETWORK_MCP_UNIT_SHA256", "HENUKIT_GETWORK_TUNNEL_UNIT_SHA256",
         "HENUKIT_GETWORK_EGRESS_SHA256",
+        "HENUKIT_GETWORK_PROVENANCE_MODE",
     }
     if set(node_env) != required:
         raise VerificationError("node env keys do not match the reviewed contract")
     if node_env["HENUKIT_GETWORK_RELEASE_SHA"] != config.release_sha:
         raise VerificationError("node env release SHA does not match")
+    if (
+        config.provenance_mode not in {"ssh-signature", "github-actions"}
+        or node_env["HENUKIT_GETWORK_PROVENANCE_MODE"] != config.provenance_mode
+    ):
+        raise VerificationError("node env provenance mode does not match")
     expected_image_id = node_env["HENUKIT_GETWORK_IMAGE_ID"]
     expected_archive_sha = node_env["HENUKIT_GETWORK_ARCHIVE_SHA256"]
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_image_id):
@@ -235,11 +303,23 @@ def verify(config: Config, probe: Probe) -> Evidence:
     if not probe.account_contract("henukit-getwork-tunnel"):
         raise VerificationError("tunnel account does not match the no-login contract")
     trust = _env(_require_file(probe, config.trust_file, 0o600, "fingerprint trust").contents)
-    if set(trust) != {
+    expected_trust_keys = {
         "HENUKIT_GETWORK_TUNNEL_KEY_FINGERPRINT",
         "HENUKIT_GETWORK_HOST_KEY_FINGERPRINT",
-    }:
+    }
+    if config.provenance_mode == "github-actions":
+        expected_trust_keys.add("HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256")
+        expected_trust_keys.add("HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256")
+    if set(trust) != expected_trust_keys:
         raise VerificationError("fingerprint trust keys do not match the reviewed contract")
+    if config.provenance_mode == "github-actions" and not re.fullmatch(
+        r"[0-9a-f]{64}", trust["HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256"]
+    ):
+        raise VerificationError("Sigstore trusted-root digest is invalid")
+    if config.provenance_mode == "github-actions" and not re.fullmatch(
+        r"[0-9a-f]{64}", trust["HENUKIT_GETWORK_CURRENT_MAIN_REF_SHA256"]
+    ):
+        raise VerificationError("offline current-main proof digest is invalid")
     _require_file(probe, config.private_key_file, 0o600, "tunnel private key")
     if (
         probe.private_key_fingerprint(config.private_key_file)
@@ -290,13 +370,39 @@ def verify(config: Config, probe: Probe) -> Evidence:
     if not probe.egress_policy_live():
         raise VerificationError("live crawler egress policy is not hardened")
 
-    manifest = _require_file(probe, config.manifest_file, 0o400, "signed release manifest")
-    _require_file(probe, config.signature_file, 0o400, "release manifest signature")
-    _require_file(probe, config.allowed_signers_file, 0o644, "release allowed signers")
-    if not probe.signed_manifest_valid(
-        config.manifest_file, config.signature_file, config.allowed_signers_file
-    ):
-        raise VerificationError("release manifest signature is invalid")
+    manifest = _require_file(probe, config.manifest_file, 0o400, "release manifest")
+    if config.provenance_mode == "ssh-signature":
+        _require_file(probe, config.signature_file, 0o400, "release manifest signature")
+        _require_file(probe, config.allowed_signers_file, 0o644, "release allowed signers")
+        if not probe.signed_manifest_valid(
+            config.manifest_file, config.signature_file, config.allowed_signers_file
+        ):
+            raise VerificationError("release manifest signature is invalid")
+    else:
+        if config.attestation_file is None:
+            raise VerificationError("GitHub Actions attestation path is missing")
+        _require_file(probe, config.attestation_file, 0o400, "Actions attestation")
+        _require_file(probe, config.gh_file, 0o755, "GitHub CLI")
+        if config.actions_custom_trusted_root_file is None:
+            raise VerificationError("Actions custom trusted root path is missing")
+        trusted_root = _require_file(
+            probe,
+            config.actions_custom_trusted_root_file,
+            0o400,
+            "Actions custom trusted root",
+        )
+        if hashlib.sha256(trusted_root.contents.encode()).hexdigest() != trust[
+            "HENUKIT_GETWORK_SIGSTORE_TRUSTED_ROOT_SHA256"
+        ]:
+            raise VerificationError("Sigstore trusted-root digest is not approved")
+        if not probe.actions_attestation_valid(
+            config.manifest_file,
+            config.attestation_file,
+            config.gh_file,
+            config.release_sha,
+            config.actions_custom_trusted_root_file,
+        ):
+            raise VerificationError("GitHub Actions attestation is invalid")
     _require_file(probe, config.artifact_file, 0o400, "getWork image archive")
     archive_sha = probe.archive_sha256(config.artifact_file)
     if archive_sha != expected_archive_sha:
@@ -305,29 +411,43 @@ def verify(config: Config, probe: Probe) -> Evidence:
         f"artifact_sha256={archive_sha}  {config.artifact_file.name}"
     )
     manifest_lines = manifest.contents.splitlines()
-    if (
-        manifest_lines.count("format=henukit-local-release-v1") != 1
-        or manifest_lines.count(f"release_sha={config.release_sha}") != 1
-        or manifest_lines.count("source_ref=refs/heads/main") != 1
-        or manifest_lines.count("builder_platform=linux/amd64") != 1
-        or manifest_lines.count("signer=henukit-release") != 1
-        or manifest_lines.count("signature_namespace=henukit-release") != 1
-        or manifest_lines.count(archive_record) != 1
-    ):
-        raise VerificationError("signed release manifest does not bind the getWork archive")
+    common_manifest_lines = (
+        manifest_lines.count(f"release_sha={config.release_sha}") == 1
+        and manifest_lines.count("source_ref=refs/heads/main") == 1
+        and manifest_lines.count("builder_platform=linux/amd64") == 1
+        and manifest_lines.count(archive_record) == 1
+    )
+    if config.provenance_mode == "ssh-signature":
+        provenance_lines = (
+            manifest_lines.count("format=henukit-local-release-v1") == 1
+            and manifest_lines.count("signer=henukit-release") == 1
+            and manifest_lines.count("signature_namespace=henukit-release") == 1
+        )
+    else:
+        provenance_lines = (
+            manifest_lines.count("format=henukit-getwork-actions-release-v1") == 1
+            and manifest_lines.count("source_repository=jry21223/HENU-Kit-DEV") == 1
+            and manifest_lines.count(
+                "signer_workflow=.github/workflows/deploy-henukit.yml"
+            )
+            == 1
+        )
+    if not common_manifest_lines or not provenance_lines:
+        raise VerificationError("release manifest does not bind the getWork archive")
 
     image = f"henukit-getwork-mcp:{config.release_sha}"
     platform = probe.docker_platform(image)
     image_id = probe.docker_image_id(image)
-    archive_image_id = probe.archive_image_id(config.artifact_file)
     if (
         platform != "linux/amd64"
         or image_id != expected_image_id
-        or image_id != archive_image_id
+        or not probe.image_matches_archive(image, config.artifact_file)
     ):
         raise VerificationError("getWork image identity or platform does not match")
     if not probe.runtime_hardened(image_id):
-        raise VerificationError("live crawler runtime is not the signed hardened image")
+        raise VerificationError(
+            "live crawler runtime is not the provenance-verified hardened image"
+        )
 
     health = probe.health()
     if health.get("ok") is not True or health.get("upstream") != "RyaoVen/getWork@2c7800d":
@@ -342,6 +462,8 @@ def verify(config: Config, probe: Probe) -> Evidence:
     crawl = probe.crawl(token, crawl_source)
     if crawl.get("status") != "ok" or crawl.get("source") not in (None, crawl_source):
         raise VerificationError("real crawl_jobs preflight failed")
+    if _current_main_sha(config, probe) != config.release_sha:
+        raise VerificationError("origin/main changed during node verification")
 
     return Evidence(image, image_id, platform, archive_sha, len(sources), tools, crawl_source)
 
@@ -356,6 +478,39 @@ class RealProbe:
 
     def osrelease(self) -> str:
         return self._command("uname", "-r")
+
+    def current_main_sha(self) -> str:
+        environment = {
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/var/empty",
+            "XDG_CONFIG_HOME": "/var/empty",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        result = subprocess.run(
+            (
+                "/usr/bin/git",
+                "-c",
+                "credential.helper=",
+                "-c",
+                "protocol.allow=never",
+                "-c",
+                "protocol.https.allow=always",
+                "ls-remote",
+                "--exit-code",
+                REPOSITORY_URL,
+                "refs/heads/main",
+            ),
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+            cwd="/",
+            timeout=60,
+        )
+        return result.stdout.split(maxsplit=1)[0]
 
     def machine(self) -> str:
         return self._command("uname", "-m")
@@ -482,6 +637,53 @@ class RealProbe:
         )
         return result.returncode == 0
 
+    def actions_attestation_valid(
+        self,
+        manifest: pathlib.Path,
+        attestation: pathlib.Path,
+        gh_file: pathlib.Path,
+        release_sha: str,
+        custom_trusted_root: pathlib.Path,
+    ) -> bool:
+        environment = dict(os.environ)
+        environment.pop("GH_TOKEN", None)
+        environment.pop("GITHUB_TOKEN", None)
+        environment.update({"GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"})
+        result = subprocess.run(
+            (
+                str(gh_file),
+                "attestation",
+                "verify",
+                str(manifest),
+                "--repo",
+                "jry21223/HENU-Kit-DEV",
+                "--bundle",
+                str(attestation),
+                "--signer-workflow",
+                "jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml",
+                "--source-ref",
+                "refs/heads/main",
+                "--source-digest",
+                release_sha,
+                "--predicate-type",
+                ACTIONS_PREDICATE_TYPE,
+                "--deny-self-hosted-runners",
+                "--custom-trusted-root",
+                str(custom_trusted_root),
+                "--format",
+                "json",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            return False
+        decoded = json.loads(result.stdout)
+        return isinstance(decoded, list) and len(decoded) == 1
+
     def archive_sha256(self, path: pathlib.Path) -> str:
         digest = hashlib.sha256()
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -491,21 +693,97 @@ class RealProbe:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def archive_image_id(self, path: pathlib.Path) -> str:
-        with tarfile.open(path, mode="r:gz") as archive:
-            member = archive.getmember("manifest.json")
-            if not member.isfile() or member.size > 1024 * 1024:
-                return ""
-            extracted = archive.extractfile(member)
-            if extracted is None:
-                return ""
-            decoded = json.load(extracted)
-        if not isinstance(decoded, list) or len(decoded) != 1 or not isinstance(decoded[0], dict):
-            return ""
-        config_name = decoded[0].get("Config")
-        if not isinstance(config_name, str) or re.fullmatch(r"[0-9a-f]{64}\.json", config_name) is None:
-            return ""
-        return "sha256:" + config_name.removesuffix(".json")
+    def image_matches_archive(self, image: str, path: pathlib.Path) -> bool:
+        try:
+            with tarfile.open(path, mode="r:gz") as archive:
+                manifest_member = archive.getmember("manifest.json")
+                if not manifest_member.isfile() or manifest_member.size > 1024 * 1024:
+                    return False
+                extracted_manifest = archive.extractfile(manifest_member)
+                if extracted_manifest is None:
+                    return False
+                decoded = json.load(extracted_manifest)
+                if (
+                    not isinstance(decoded, list)
+                    or len(decoded) != 1
+                    or not isinstance(decoded[0], dict)
+                ):
+                    return False
+                record = decoded[0]
+                tags = record.get("RepoTags")
+                config_name = record.get("Config")
+                layer_names = record.get("Layers")
+                if (
+                    not isinstance(tags, list)
+                    or image not in tags
+                    or not isinstance(config_name, str)
+                    or not isinstance(layer_names, list)
+                ):
+                    return False
+
+                legacy_match = re.fullmatch(r"([0-9a-f]{64})\.json", config_name)
+                if legacy_match is not None:
+                    return self.docker_image_id(image) == f"sha256:{legacy_match.group(1)}"
+
+                if re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", config_name) is None:
+                    return False
+                if any(
+                    not isinstance(name, str)
+                    or re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", name) is None
+                    for name in layer_names
+                ):
+                    return False
+                manifest_layers = [
+                    f"sha256:{name.rsplit('/', maxsplit=1)[1]}" for name in layer_names
+                ]
+                config_member = archive.getmember(config_name)
+                if not config_member.isfile() or config_member.size > 4 * 1024 * 1024:
+                    return False
+                if any(not archive.getmember(name).isfile() for name in layer_names):
+                    return False
+                extracted_config = archive.extractfile(config_member)
+                if extracted_config is None:
+                    return False
+                archive_config = json.load(extracted_config)
+        except (KeyError, OSError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError):
+            return False
+
+        if not isinstance(archive_config, dict):
+            return False
+        runtime_config = archive_config.get("config")
+        rootfs = archive_config.get("rootfs")
+        if (
+            not isinstance(runtime_config, dict)
+            or not isinstance(rootfs, dict)
+            or rootfs.get("type") != "layers"
+        ):
+            return False
+        archive_layers = rootfs.get("diff_ids")
+        if (
+            not isinstance(archive_layers, list)
+            or len(archive_layers) != len(layer_names)
+            or archive_layers != manifest_layers
+            or any(
+                not isinstance(layer, str)
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", layer) is None
+                for layer in archive_layers
+            )
+        ):
+            return False
+        try:
+            loaded_config = json.loads(
+                self._command(
+                    "docker", "image", "inspect", image, "--format", "{{json .Config}}"
+                )
+            )
+            loaded_layers = json.loads(
+                self._command(
+                    "docker", "image", "inspect", image, "--format", "{{json .RootFS.Layers}}"
+                )
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return False
+        return loaded_config == runtime_config and loaded_layers == archive_layers
 
     def runtime_hardened(self, expected_image_id: str) -> bool:
         decoded = json.loads(self._command("docker", "inspect", "henukit-getwork-mcp"))
@@ -566,7 +844,7 @@ class RealProbe:
             or len(configs) != 1
             or configs[0].get("Subnet") != "172.30.250.0/24"
             or not isinstance(options, dict)
-            or options.get("com.docker.network.bridge.name") != "henukit-getwork0"
+            or options.get("com.docker.network.bridge.name") != "henukit-gw0"
         ):
             return False
         docker_user = self._command("iptables", "-S", "DOCKER-USER").splitlines()
@@ -613,8 +891,26 @@ class RealProbe:
         if token:
             request.add_header("Authorization", "Bearer " + token)
         deadline = time.monotonic() + total_seconds
-        with urllib.request.urlopen(request, timeout=min(30.0, total_seconds)) as response:
-            return _read_bounded_json(response, max_bytes, deadline)
+        results: list[dict[str, object]] = []
+        errors: list[BaseException] = []
+
+        def perform_request() -> None:
+            try:
+                with urllib.request.urlopen(request, timeout=total_seconds) as response:
+                    results.append(_read_bounded_json(response, max_bytes, deadline))
+            except BaseException as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=perform_request, daemon=True)
+        worker.start()
+        worker.join(total_seconds)
+        if worker.is_alive():
+            raise VerificationError("MCP request exceeded its total deadline")
+        if errors:
+            raise errors[0]
+        if len(results) != 1:
+            raise VerificationError("MCP request produced no result")
+        return results[0]
 
     def _call(self, token: str, request_id: int, name: str, arguments: dict[str, object]) -> dict[str, object]:
         envelope = self._json_request(
@@ -677,19 +973,59 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--installed-egress-file", type=pathlib.Path, default=pathlib.Path("/usr/local/libexec/henukit-getwork-egress"))
     parser.add_argument("--trust-file", type=pathlib.Path, default=pathlib.Path("/etc/henukit-getwork/trust.env"))
     parser.add_argument("--allowed-signers-file", type=pathlib.Path, default=pathlib.Path("/etc/henukit-getwork/release-signers"))
+    parser.add_argument(
+        "--provenance-mode",
+        choices=("ssh-signature", "github-actions"),
+        default="ssh-signature",
+    )
+    parser.add_argument("--actions-attestation-file", type=pathlib.Path)
+    parser.add_argument("--gh-file", type=pathlib.Path, default=pathlib.Path("/usr/bin/gh"))
+    parser.add_argument("--actions-custom-trusted-root-file", type=pathlib.Path)
+    parser.add_argument("--current-main-sha-file", type=pathlib.Path)
     parser.add_argument("--manifest-file", type=pathlib.Path)
     parser.add_argument("--signature-file", type=pathlib.Path)
     options = parser.parse_args(arguments)
     source_units = pathlib.Path(__file__).resolve().parent / "systemd"
-    manifest_file = options.manifest_file or options.artifact_file.parent / f"henukit-release-{options.sha}.manifest"
+    default_manifest = (
+        f"henukit-getwork-actions-{options.sha}.manifest"
+        if options.provenance_mode == "github-actions"
+        else f"henukit-release-{options.sha}.manifest"
+    )
+    manifest_file = options.manifest_file or options.artifact_file.parent / default_manifest
     signature_file = options.signature_file or manifest_file.with_name(manifest_file.name + ".sig")
+    attestation_file = options.actions_attestation_file
+    if options.provenance_mode == "github-actions" and attestation_file is None:
+        attestation_file = options.artifact_file.parent / f"henukit-getwork-actions-{options.sha}.attestation.json"
+    custom_trusted_root_file = options.actions_custom_trusted_root_file
+    if options.provenance_mode == "github-actions" and custom_trusted_root_file is None:
+        custom_trusted_root_file = pathlib.Path("/etc/henukit-getwork/trusted_root.jsonl")
+    current_main_ref_file = options.current_main_sha_file
+    if options.provenance_mode == "github-actions" and current_main_ref_file is None:
+        current_main_ref_file = pathlib.Path("/etc/henukit-getwork/main-ref.env")
     try:
-        evidence = verify(Config(
-            options.sha, options.token_file, options.node_env_file, options.private_key_file,
-            options.known_hosts_file, options.artifact_file, source_units, options.installed_unit_dir,
-            options.installed_egress_file,
-            options.trust_file, manifest_file, signature_file, options.allowed_signers_file,
-        ), RealProbe())
+        evidence = verify(
+            Config(
+                release_sha=options.sha,
+                token_file=options.token_file,
+                node_env_file=options.node_env_file,
+                private_key_file=options.private_key_file,
+                known_hosts_file=options.known_hosts_file,
+                artifact_file=options.artifact_file,
+                source_unit_dir=source_units,
+                installed_unit_dir=options.installed_unit_dir,
+                installed_egress_file=options.installed_egress_file,
+                trust_file=options.trust_file,
+                manifest_file=manifest_file,
+                signature_file=signature_file,
+                allowed_signers_file=options.allowed_signers_file,
+                provenance_mode=options.provenance_mode,
+                attestation_file=attestation_file,
+                gh_file=options.gh_file,
+                actions_custom_trusted_root_file=custom_trusted_root_file,
+                current_main_ref_file=current_main_ref_file,
+            ),
+            RealProbe(),
+        )
     except (VerificationError, OSError, subprocess.SubprocessError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
         print(f"verification failed: {error}", file=sys.stderr)
         return 1

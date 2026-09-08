@@ -87,7 +87,8 @@ cleanup() {
 }
 trap cleanup EXIT
 source_root="$(mktemp -d "${TMPDIR:-/tmp}/henukit-runtime-source-${release_sha}.XXXXXX")"
-git -C "$repo_root" archive --format=tar "$release_sha" | tar -xf - -C "$source_root"
+git -C "$repo_root" -c tar.umask=0022 archive --format=tar "$release_sha" |
+  tar -xf - -C "$source_root"
 [[ -f "$source_root/docker-compose.henukit.yml" ]] ||
   die "fixed-SHA source snapshot is incomplete"
 runtime="$(mktemp -d "${TMPDIR:-/tmp}/henukit-runtime-stage-${release_sha}.XXXXXX")"
