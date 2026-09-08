@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchCampusCategories,
   fetchCampusItems,
-  formatPortalError,
   mockAllowed,
 } from "@/lib/api/client";
 import type { CampusCategory, CampusItem } from "@/lib/api/types";
@@ -16,7 +15,6 @@ import {
   type Category,
 } from "@/lib/campus/mock";
 import {
-  getCampusGatewayError,
   getGatewayCategories,
   getGatewayItems,
   initCampusGateway,
@@ -76,7 +74,7 @@ export default function MarketPage() {
       setItems(itemsResp.items.map(toItem));
       setCategories(toCategories(catsResp?.categories ?? null));
       setLoadState("ready");
-    } catch (e) {
+    } catch {
       try {
         await initCampusGateway();
         const cached = getGatewayItems();
@@ -95,20 +93,16 @@ export default function MarketPage() {
           return;
         }
         setItems([]);
-        setError(
-          getCampusGatewayError() ||
-            formatPortalError(e) ||
-            "互助平台接口不可用，生产环境已禁用 mock 回退。"
-        );
+        setError("互助信息暂时无法加载，请重试。");
         setLoadState("error");
-      } catch (e2) {
+      } catch {
         if (mockAllowed) {
           setItems(campusStore.get().items);
           setCategories(CATEGORIES);
           setLoadState("ready");
           return;
         }
-        setError(formatPortalError(e2));
+        setError("互助信息暂时无法加载，请重试。");
         setLoadState("error");
       }
     }
@@ -135,10 +129,10 @@ export default function MarketPage() {
         index="04"
         en="CAMPUS MARKET"
         title="互助平台"
-        slogan="代取快递、搬行李、小项目、出闲置——发单有人接，同校互帮互助。"
+        slogan="可浏览互助与闲置信息；发布、接单和结算暂未开放。"
         counters={[
-          { label: "在架单子", value: openCount },
-          { label: "累计成交", value: doneCount },
+          { label: "在架单子", value: loadState === "ready" ? openCount : null, busy: loadState === "loading" },
+          { label: "已完成单子", value: loadState === "ready" ? doneCount : null, busy: loadState === "loading" },
         ]}
         fig="FIG.04 交接 / HANDOVER"
         scene={<SceneHandshake />}
@@ -202,10 +196,8 @@ export default function MarketPage() {
         <div data-enter className="mt-8">
           {loadState === "loading" ? (
             <LoadingBlock label="加载互助单" />
-          ) : loadState === "error" ? (
-            <EmptyBlock label="接口不可用" />
-          ) : filtered.length === 0 ? (
-            <EmptyBlock label="无匹配单子" />
+          ) : loadState === "error" ? null : filtered.length === 0 ? (
+            <EmptyBlock label={openCount === 0 ? "暂无互助或闲置信息" : "无匹配单子"} />
           ) : (
             <div className="columns-1 gap-4 sm:columns-2">
               {filtered.map((it) => (

@@ -120,7 +120,7 @@ export const foodMetadata: Metadata = pageMetadata(
 export const campusMetadata: Metadata = pageMetadata(
   "/campus",
   "互助平台",
-  "HENU Kit 互助平台提供同校互助市场：代取快递、搬行李、小项目、出闲置，发单有人接；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+  "HENU Kit 互助平台可浏览同校互助与闲置信息；发布、接单和结算暂未开放。学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
 );
 
 export const careerMetadata: Metadata = pageMetadata(

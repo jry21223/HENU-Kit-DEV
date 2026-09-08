@@ -130,59 +130,78 @@ export default function LibraryHomePage() {
         ]}
         fig="FIG.02 书脊 / SPINES"
         scene={<SceneBooks />}
+        compactOnMobile
       />
 
-      <div className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+      <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 lg:py-10">
         {loadState === "error" && error && (
           <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
         )}
 
         {/* 搜索 + 筛选行 */}
-        <div data-enter className="flex flex-wrap items-center gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索：真题 / 高数 / 课件"
-            className="w-56 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
-          />
-          <span aria-hidden className="hidden h-4 w-px bg-ink/20 sm:block" />
-          {(["all", ...TYPE_KEYS] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setType(t)}
-              className={cn(
-                "border px-3 py-1.5 font-mono text-xs transition-colors",
-                type === t ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-              )}
-            >
-              {t === "all" ? "全部" : MATERIAL_TYPES[t].name}
-            </button>
-          ))}
-          <span aria-hidden className="hidden h-4 w-px bg-ink/20 sm:block" />
-          {(["all", "free", "paid"] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setPrice(p)}
-              className={cn(
-                "border px-3 py-1.5 font-mono text-xs transition-colors",
-                price === p ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-              )}
-            >
-              {p === "all" ? "全部" : p === "free" ? "免费" : "收费"}
-            </button>
-          ))}
-          <select
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="border border-line bg-paper px-3 py-1.5 font-mono text-xs text-ink/70 outline-none focus:border-ink"
-          >
-            <option value="all">全部科目</option>
-            {subjects.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+        <div data-enter role="search" aria-label="资料搜索与筛选" className="space-y-4">
+          <div className="flex max-w-3xl items-end gap-3">
+            <div className="min-w-0 flex-1">
+              <label htmlFor="library-query" className="mb-1 block font-mono text-xs text-ink/70">搜索资料</label>
+              <input
+                id="library-query"
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索：真题 / 高数 / 课件"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
+              />
+            </div>
+            <div className="max-w-[45%]">
+              <label htmlFor="library-subject" className="mb-1 block font-mono text-xs text-ink/70">科目</label>
+              <select
+                id="library-subject"
+                aria-label="按科目筛选"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="min-h-11 w-full border border-line bg-paper px-3 py-2 font-mono text-xs text-ink/70 outline-none focus:border-ink"
+              >
+                <option value="all">全部科目</option>
+                {subjects.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div role="group" aria-label="资料类型" className="flex flex-wrap gap-2">
+              {(["all", ...TYPE_KEYS] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setType(t)}
+                  aria-pressed={type === t}
+                  className={cn(
+                    "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                    type === t ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
+                  )}
+                >
+                  {t === "all" ? "全部" : MATERIAL_TYPES[t].name}
+                </button>
+              ))}
+            </div>
+            <div role="group" aria-label="资料价格" className="flex flex-wrap gap-2">
+              {(["all", "free", "paid"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPrice(p)}
+                  aria-pressed={price === p}
+                  className={cn(
+                    "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                    price === p ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
+                  )}
+                >
+                  {p === "all" ? "全部" : p === "free" ? "免费" : "收费"}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* 书架网格 */}

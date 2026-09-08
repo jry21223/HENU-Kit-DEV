@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Material } from "@/lib/library/mock";
 import { MATERIAL_TYPES } from "@/lib/library/material-types";
+import { readableMaterialTitle } from "@/lib/library/material-title";
 
 /** 资料卡：封面块（图纸网格 + 类型代号 + 价格/免费签）+ 元信息行 */
 export default function MaterialCard({ material }: { material: Material }) {
@@ -8,7 +9,7 @@ export default function MaterialCard({ material }: { material: Material }) {
   const free = material.price === 0;
 
   return (
-    <Link href={`/library/item/${material.id}`} className="group block border border-ink/25 bg-paper transition-colors hover:border-ink">
+    <Link href={`/library/item/${material.id}`} className="group block min-w-0 border border-ink/25 bg-paper transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">
       {/* 封面 */}
       <div className="bg-blueprint relative flex h-36 flex-col justify-between border-b border-line p-3">
         <div className="flex items-start justify-between">
@@ -21,14 +22,17 @@ export default function MaterialCard({ material }: { material: Material }) {
             </span>
           )}
         </div>
-        <p className="font-display text-lg font-bold leading-snug line-clamp-2">
-          {material.title}
-        </p>
+        <div className="min-w-0">
+          <p className="mb-1 break-words font-mono text-[11px] text-ink/60">{material.subject}</p>
+          <h2 className="line-clamp-2 break-words font-display text-lg font-bold leading-snug">
+            {readableMaterialTitle(material)}
+          </h2>
+        </div>
       </div>
 
       <div className="p-4">
         <p className="font-mono text-[11px] text-ink/60">
-          {t.name} · {material.subject}
+          {t.name}
         </p>
         <div className="mt-3 flex items-center gap-3 border-t border-line pt-3 font-mono text-[10px] text-ink/50">
           <span className="truncate">{material.author}</span>

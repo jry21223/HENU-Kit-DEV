@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
+import { cn } from "@/lib/cn";
 
 export interface HeroCounter {
   label: string;
@@ -26,6 +27,7 @@ export default function SubHero({
   counters,
   fig,
   scene,
+  compactOnMobile = false,
 }: {
   index: string;
   en: string;
@@ -34,6 +36,7 @@ export default function SubHero({
   counters: HeroCounter[];
   fig: string;
   scene: React.ReactNode;
+  compactOnMobile?: boolean;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const counterRefs = useRef<Array<HTMLSpanElement | null>>([]);
@@ -99,22 +102,22 @@ export default function SubHero({
 
   return (
     <section ref={sectionRef} className="relative overflow-hidden border-b border-line">
-      <div className="mx-auto grid min-h-[52vh] max-w-[1440px] lg:grid-cols-2">
+      <div className={cn("mx-auto grid max-w-[1440px] lg:grid-cols-2", compactOnMobile ? "lg:min-h-[52vh]" : "min-h-[52vh]")}>
         {/* 左：文案 + 计数 */}
-        <div className="flex flex-col justify-center px-5 py-14 md:px-8">
+        <div className={cn("flex flex-col justify-center px-5 md:px-8", compactOnMobile ? "py-6 lg:py-14" : "py-14")}>
           <p data-hero-title className="font-mono text-xs tracking-[0.3em] text-ink/60">
             <span className="text-accent">{index}</span>
             <span className="mx-2">/</span>
             {en}
           </p>
-          <h1 data-hero-title className="mt-4 font-display text-6xl font-bold tracking-tight md:text-7xl">
+          <h1 data-hero-title className={cn("font-display font-bold tracking-tight md:text-7xl", compactOnMobile ? "mt-3 text-4xl lg:mt-4" : "mt-4 text-6xl")}>
             {title}
           </h1>
-          <div data-hero-line className="mt-6 h-px w-24 bg-accent" />
-          <p data-hero-title className="mt-5 max-w-md text-sm leading-7 text-ink/70">
+          <div data-hero-line className={cn("h-px w-24 bg-accent", compactOnMobile ? "mt-3 lg:mt-6" : "mt-6")} />
+          <p data-hero-title className={cn("max-w-md text-sm leading-7 text-ink/70", compactOnMobile ? "mt-3 lg:mt-5" : "mt-5")}>
             {slogan}
           </p>
-          <div data-hero-title className="mt-8 flex flex-wrap gap-x-10 gap-y-4">
+          <div data-hero-title className={cn("flex flex-wrap gap-x-10 gap-y-4", compactOnMobile ? "mt-5 lg:mt-8" : "mt-8")}>
             {counters.map((c, i) => (
               <div key={c.label} aria-busy={c.busy ?? false}>
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">{c.label}</p>
@@ -132,7 +135,7 @@ export default function SubHero({
         </div>
 
         {/* 右：图纸画板 + 场景 */}
-        <div className="bg-blueprint relative flex items-center justify-center border-t border-line p-10 lg:border-l lg:border-t-0">
+        <div className={cn("bg-blueprint relative items-center justify-center border-t border-line p-10 lg:border-l lg:border-t-0", compactOnMobile ? "hidden lg:flex" : "flex")}>
           <span aria-hidden className="absolute left-4 top-4 font-mono text-[10px] tracking-[0.3em] text-ink/40">
             {fig}
           </span>
