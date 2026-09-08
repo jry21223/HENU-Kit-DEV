@@ -70,8 +70,8 @@ const STATUS_COPY: Record<WorkRadarStatus, string> = {
 function polarPoint(angle: number, radius: number) {
   const rad = ((angle - 90) * Math.PI) / 180;
   return {
-    x: CENTER + Math.cos(rad) * radius,
-    y: CENTER + Math.sin(rad) * radius,
+    x: Number((CENTER + Math.cos(rad) * radius).toFixed(3)),
+    y: Number((CENTER + Math.sin(rad) * radius).toFixed(3)),
   };
 }
 

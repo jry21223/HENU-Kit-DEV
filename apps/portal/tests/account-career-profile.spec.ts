@@ -662,6 +662,43 @@ test("completed scans expose every source outcome and keep low-score jobs inspec
   await expect(page.getByRole("link", { name: "AI 工具开发实习生 · 美团 · 相关度 24" })).toBeVisible();
 });
 
+test("the homepage radar hydrates consistently across server and browser math runtimes", async ({ page }) => {
+  const radarHydrationWarnings: string[] = [];
+  page.on("console", (message) => {
+    const text = message.text();
+    if (/hydrat|server rendered HTML/i.test(text) && /WorkRadar|work-radar/.test(text)) {
+      radarHydrationWarnings.push(text);
+    }
+  });
+  // Different JS runtimes may differ in the last few trigonometric digits.
+  // Keep that difference deterministic and confined to this browser context.
+  await page.addInitScript(() => {
+    const { cos, sin } = Math;
+    Math.cos = (angle) => cos(angle) + 1e-15;
+    Math.sin = (angle) => sin(angle) + 1e-15;
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("**/api/v1/session", async (route) => {
+    await route.fulfill({ status: 401, contentType: "application/json", body: "{}" });
+  });
+
+  const response = await page.goto("/", { waitUntil: "domcontentloaded" });
+  expect(response?.ok()).toBe(true);
+  // Exercise the actual SSR boundary, not a dial mounted after client navigation.
+  expect(await response!.text()).toContain('<svg viewBox="0 0 560 560"');
+  const careerSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "求职雷达", exact: true }),
+  });
+  await expect(careerSection.getByText("SCHEMATIC", { exact: true })).toBeAttached();
+  const menu = page.getByRole("button", { name: "打开菜单" });
+  await menu.click();
+  await expect(menu).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("link", { name: "05 求职雷达" }).click();
+  await expect(page.locator('[data-career-state="anonymous"]')).toBeVisible();
+  expect(radarHydrationWarnings).toEqual([]);
+});
+
 test("the marketing radar is a schematic: labelled, aria-hidden, and lights nothing real", async ({ page }) => {
   await page.route("**/api/v1/session", async (route) => {
     await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) });
