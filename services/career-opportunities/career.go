@@ -41,9 +41,15 @@ type Config struct {
 	// off state: uploads are rejected with a clear error until an operator
 	// configures a provider (or mock mode).
 	Extract ExtractFunc
+	// Suify creates a transient entertainment rewrite of Resume Text. Nil is
+	// the production-safe off state; no profile write is performed by this seam.
+	Suify SuifyFunc
 	// ExtractRateLimit bounds how many resume extractions one actor may start
 	// per rolling hour. Zero uses the default of 5.
 	ExtractRateLimit int
+	// SuifyRateLimit bounds transient rewrites per actor per UTC hour. Zero uses
+	// the default of five so an entertainment action cannot create unbounded AI cost.
+	SuifyRateLimit int
 	// SearchRateLimit bounds new Work Radar tasks per actor per UTC hour. Exact
 	// idempotent replays bypass the limiter. Zero uses the default of 10.
 	SearchRateLimit int
@@ -66,7 +72,9 @@ type service struct {
 	keys              map[string]string
 	work              WorkFunc
 	extract           ExtractFunc
+	suify             SuifyFunc
 	extractRateLimit  int
+	suifyRateLimit    int
 	searchRateLimit   int
 	searchActiveLimit int
 	now               func() time.Time
@@ -101,6 +109,10 @@ func New(config Config) (*Service, error) {
 	if rateLimit <= 0 {
 		rateLimit = defaultExtractRateLimit
 	}
+	suifyRateLimit := config.SuifyRateLimit
+	if suifyRateLimit <= 0 {
+		suifyRateLimit = defaultSuifyRateLimit
+	}
 	searchRateLimit := config.SearchRateLimit
 	if searchRateLimit <= 0 {
 		searchRateLimit = 10
@@ -112,7 +124,7 @@ func New(config Config) (*Service, error) {
 	if config.DigestResultURL != "" && !validDigestResultURL(config.DigestResultURL) {
 		return nil, errors.New("career digest result URL must be an http(s) URL")
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, extract: config.Extract, extractRateLimit: rateLimit, searchRateLimit: searchRateLimit, searchActiveLimit: searchActiveLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, extract: config.Extract, suify: config.Suify, extractRateLimit: rateLimit, suifyRateLimit: suifyRateLimit, searchRateLimit: searchRateLimit, searchActiveLimit: searchActiveLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +137,7 @@ func New(config Config) (*Service, error) {
 		protected.Get(contract.ListSearchesRoute, h.listSearches)
 		protected.Get(contract.ProfileRoute, h.getProfile)
 		protected.Put(contract.UpdateProfileRoute, h.updateProfile)
+		protected.Post(contract.CreateSuificationRoute, h.createSuification)
 		protected.Post(contract.CreateExtractionRoute, h.createExtraction)
 		protected.Get(contract.ExtractionRoute, h.extractionStatus)
 	})

@@ -14,7 +14,8 @@ for (const viewport of [
     await page.goto("/practice/leaderboard", { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("heading", { name: "排行榜", exact: true })).toBeVisible();
-    await expect(page.getByText(/QuizCraft V2 排行榜将在确认切换后启用/)).toBeVisible();
+    await expect(page.getByText(/排行榜数据暂未开放/)).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("QuizCraft");
     await expect(page.locator("nav").getByRole("link", { name: /排行榜/ })).toHaveCount(0);
     expect(rankingRequests).toBe(0);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));

@@ -93,7 +93,7 @@ root to `0750`, completed bundle directories to `0550`, and bundle files to
 `0440`, all group-owned by `henukit-release-deployers`. The deployment identity
 can therefore read but not modify the bundle, while the signing key remains
 owner-only outside that tree. It emits one
-flat `henukit-release-<sha>` directory containing all eighteen image archives,
+flat `henukit-release-<sha>` directory containing all nineteen image archives,
 the runtime archive, checksums, `RELEASE_SHA`, and a signed manifest.
 
 ### Direct WSL2-to-production transport
@@ -185,7 +185,7 @@ runbook `henukit-local-deploy.md` and the one-command wrapper
    confirm `git status --porcelain --untracked-files=all` is empty.
 3. **Production inventory lags new images.** `henukit-release-images.sh` at
    `/usr/local/sbin/` is a root-owned trust root installed from a past release.
-   When the repository adds images (food-mcp, career-opportunities, career-mcp), the
+   When the repository adds images (food-mcp, career-opportunities, getwork-mcp, career-mcp), the
    production inventory must be updated from the new runtime payload before
    activation, or verify dies with `unexpected artifact file
    henukit-...-<sha>.docker.tar.gz`. Extract `bin/henukit-release-images.sh`
@@ -205,19 +205,100 @@ runbook `henukit-local-deploy.md` and the one-command wrapper
    reports `an approval already exists for release <sha>`, remove
    `/var/lib/henukit-actions-watch/approvals/<sha>` on production before
    retrying.
-6. **Production disk fills fast.** The release bundle is ~240 MB and backups
-   accumulate. Before activation check `df -h /`; clean old
+6. **Production disk fills fast.** The browser-bearing getWork image is about
+   1 GB after extraction, in addition to the remaining release images and
+   backups. Keep at least 5 GiB free before activation. The watcher enforces a
+   4096 MiB floor before consuming the exact-SHA approval. Before activation
+   check `df -h /`; clean old unreferenced fixed-SHA images and
    `/opt/henukit-incoming/henukit-release-<old-sha>` bundles and pre-current
-   release directories when under ~1.5 GB free, and re-point
+   release directories when under 5 GiB free, and re-point
    `/opt/henukit/current` to the active baseline if it dangles.
+
+### Remote Job Source MCP on WSL
+
+ADR-0043 moves only the browser-bearing Job Source MCP execution to the
+always-on WSL2 node. Career identity, task claims, matching, persistence,
+history, and digest delivery stay on production. The complete getWork image
+remains a signed release artifact, but production Compose runs the small
+`getwork-mcp-relay` process from the Career image instead of starting that
+browser image locally. Career uses the stable `getwork-mcp-relay` hostname;
+the watcher pins that name to the Docker host gateway and installs verified
+INPUT/OUTPUT rules so only the HENUKit Compose subnet and the root verifier can
+reach port 18101.
+
+Follow `services/getwork-mcp/deploy/README.md`. Prefer the exact-`main` GitHub
+Actions getWork handoff: verify its attested manifest with the root-owned OS
+GitHub CLI before extracting or executing the runtime, then pass the same
+attestation bundle to the installer so the node verifier repeats the pinned
+repository, workflow, ref, source-SHA, and GitHub-hosted-runner checks. The
+selected workflow run must be completed successfully at that SHA, and a fresh
+remote `main` lookup must still equal it before installation and activation. The
+SSH-signed local-builder handoff remains a mutually exclusive fallback. Execute
+deployment code only from that provenance-verified, root-owned runtime
+extraction. The WSL verifier must prove WSL2/ext4, archive-to-image identity,
+approved tunnel/host
+fingerprints, normalized no-login account state, root-owned secrets and exact
+units, live container/firewall hardening, active crawler and tunnel units,
+strict bounded MCP responses, exactly `list_sources` plus `crawl_jobs`, one
+real crawl, and all 18 configured sources.
+The production host accepts only a dedicated key restricted to
+`127.0.0.1:18100`; never copy a production root private key to WSL and never
+publish the MCP or relay on a public address.
+
+Before activation, also require:
+
+1. the implementation and ADR are merged into the freshly fetched current
+   `origin/main`, with required Career and release-contract CI green;
+2. the formal 4096 MiB production free-disk hard floor, a healthy retained rollback
+   release, and verified configuration/database backups;
+3. the existing getWork bearer token installed on WSL without logging it;
+4. the approved production host key in WSL `known_hosts`, and the new public
+   key installed with the exact forwarding-only options from the deployment
+   runbook;
+5. `CAREER_GETWORK_MCP_URL`, `GETWORK_RELAY_ADDR`, and
+   `GETWORK_RELAY_UPSTREAM_URL` added to the root-owned production environment
+   while every unrelated byte, owner, group, mode, and symlink state is
+   preserved;
+6. the private relay health check succeeds through the live SSH tunnel before
+   Career is restarted.
+
+Acceptance stops and restarts only the WSL tunnel unit, proves the relay changes
+from unavailable back to healthy without a production-local crawler, then runs
+one real actor-scoped Career scan. Record all source states and at least one
+normalized official Job Opportunity when upstream data is available. On any
+mandatory failure, stop the tunnel and use the existing fixed-SHA rollback plus
+the verified environment backup; do not delete images, releases, accounts,
+keys, databases, or volumes as an improvised rollback.
 
 ### Exact degraded-baseline recovery
 
 The default activation still requires a healthy retained fixed-SHA rollback
 release. When production is already degraded and no healthy retained release
 exists, ADR-0030 permits one explicit recovery after the recovery-aware trust
-roots have been installed through the reviewed bootstrap below. Both preflight
-and execute name the exact current degraded SHA:
+roots have been installed through the reviewed bootstrap below. ADR-0044
+extends the same gates to the Actions source. For the newest
+completed successful GitHub Actions run that is still current `main`, invoke
+the production activation entry explicitly and name both exact SHAs:
+
+```bash
+sudo HENUKIT_ENV_FILE=/opt/henukit/.env.henukit \
+  GH_TOKEN_FILE=/etc/henukit/github-actions-read.token \
+  /usr/local/sbin/activate-henukit-release \
+  <full-current-main-sha> \
+  --recover-degraded-baseline <exact-current-degraded-sha> \
+  --execute
+```
+
+This is not watch mode: the activation entry rechecks the branch head and
+newest successful workflow before preparation and again before activation. The
+signed local-builder fallback instead carries the same exact baseline through
+the WSL transport; both preflight and execute name it:
+
+Before publishing approval, the activation entry binds the prepared evidence
+to the exact Actions run database ID plus run attempt, or the signed local
+manifest digest. Resume
+must match that immutable artifact identity, candidate SHA, and baseline SHA;
+changing source mode or rerunning the workflow requires new preparation.
 
 ```bash
 scripts/ops/deploy-henukit-release-from-wsl.sh \
@@ -245,7 +326,8 @@ publishes the terminal adoption audit.
 
 Use identical arguments with `--execute` only after preflight succeeds. The
 watcher rejects a healthy baseline, a mismatched current symlink or image set,
-an Actions-polled release, and missing backup or approval evidence. Candidate
+an inferred watch-mode recovery, a stale or unsuccessful Actions release, and
+missing backup or approval evidence. Candidate
 failure restores the exact known degraded state without reporting it healthy.
 Root-only records remain under
 `/var/lib/henukit-actions-watch/degraded-recoveries/`.
@@ -386,6 +468,9 @@ It deploys only the newest completed, successful `push` run of
 
 1. downloads the exact full-SHA artifact set with `gh`;
 2. rejects missing, duplicate, unexpected, or checksum-invalid files;
+   the exact-SHA getWork WSL manifest and attestation bundle are the one
+   documented exception: the production-only cache discards that pair because
+   WSL verifies it independently;
 3. verifies the runtime `RELEASE_SHA` and its exact-SHA Account production
    boundary manifest. The manifest follows Account's local import graph,
    rejects user-reachable Portal/Gateway fixtures and fake-success sources,
@@ -396,11 +481,11 @@ It deploys only the newest completed, successful `push` run of
    into isolated temporary databases with key-table and Account durable-fact
    count checks. On the first Account Portfolio release it records and
    restores an explicit empty-database baseline before schema creation;
-5. loads all eighteen fixed-SHA Docker images;
+5. loads all nineteen fixed-SHA Docker images;
 6. calls the existing `deploy-henukit-artifact.sh`, then invokes Platform
    Core's owner-defined command to grant all eight Account Console permissions,
    bump the role revision, and append an immutable grant audit;
-7. verifies all eighteen running image tags, Account Portfolio health, and the public health routes, rolling
+7. verifies every image-backed service present in the fixed-SHA Compose contract, Account Portfolio health, and the public health routes, rolling
    back to the previously active fixed-SHA release if activation or verification
    fails.
 
@@ -437,6 +522,9 @@ sudo install -o root -g root -m 0555 \
 sudo install -o root -g root -m 0555 \
   /opt/henukit-releases/<sha>/bin/verify-henukit-local-release.sh \
   /usr/local/sbin/verify-henukit-local-release.sh
+sudo install -o root -g root -m 0555 \
+  /opt/henukit-releases/<sha>/bin/adopt-henukit-degraded-baseline.sh \
+  /usr/local/sbin/adopt-henukit-degraded-baseline
 sudo install -o root -g root -m 0644 \
   /opt/henukit-releases/<sha>/infra/systemd/henukit-actions-watch.service \
   /etc/systemd/system/henukit-actions-watch.service
@@ -480,12 +568,17 @@ only when that baseline's already-extracted
 `docker-compose.henukit.release.yml` explicitly lacks `account-portfolio`; it
 still requires all nine images and a healthy Account Portfolio container for
 the candidate. This prevents a partially broken new release from being treated
-as a legacy baseline. Current releases carry eighteen images: the nine above plus
+as a legacy baseline. Current release bundles carry nineteen images: the nine above plus
 `notice`, `notice-worker`, `food`, `library`, `food-mcp` (ADR-0033),
-`career-opportunities` (#392), `career-mcp` (ADR-0034), and
+`career-opportunities` (#392), `getwork-mcp` (ADR-0042), `career-mcp` (ADR-0034), and
 `quizcraft` (方案 2 containerized Go core, `products/quizcraft/go-service`) (see
 `notice-food-production-onboarding.md` and `henukit-local-deploy.md`).
-`career-opportunities`, `career-mcp`, and `quizcraft` are intentionally `conditional` inventory
+Under ADR-0043 the `getwork-mcp` artifact is installed on the WSL Job Source
+node, while production Compose runs `getwork-mcp-relay` from the small Career
+image and does not run the browser-bearing image. Runtime checks therefore
+follow the exact services in the rendered Compose contract rather than
+requiring every artifact image to have a local production container.
+`career-opportunities`, `getwork-mcp`, `career-mcp`, and `quizcraft` are intentionally `conditional` inventory
 roles, not `baseline` roles: baseline roles are required from every retained
 rollback release, so adding them as baseline would make older fourteen-image
 releases fail rollback verification. The inventory at
@@ -541,19 +634,63 @@ manifest, securely copies the existing MetaView HENU tenant identity into the
 Account environment, transfers the exact three EasyPay patches to `root@metaview.top`,
 tests and atomically activates the gateway with health rollback, creates the
 single-use SHA approval, refreshes both backups, applies Platform Core
-`000017` and `000018`, deploys all eighteen fixed-SHA images, grants the eight
+`000017` and `000018`, loads all nineteen fixed-SHA images and deploys every service in the fixed-SHA Compose contract, grants the eight
 Account Console permissions through Platform Core, and probes the public
 Account summary and EasyPay callback routes in addition to deterministic health
 checks. Account Portfolio migrations
 `000006` and `000007` remain service-owned startup migrations.
 
-If activation fails, the watcher invokes the previous fixed-SHA helper with the
-pre-release environment snapshot before the outer command restores that file,
-so running containers and disk state agree. A crash after the new containers
+Runtime extraction uses `tar --no-same-owner`, so a new Actions candidate is
+owned by the root watcher rather than the archive builder UID. If the exact
+healthy rollback release predates this rule, first determine its single
+historical numeric owner and pass it only for that activation:
+
+```bash
+HENUKIT_RETAINED_RELEASE_OWNER_UID=<exact-historical-owner-uid> \
+  /usr/local/sbin/activate-henukit-release <full-main-sha> --execute
+```
+
+The activation entry runs the existing reviewed ownership adopter in
+`--preflight` and `--execute` modes before creating the exact-SHA approval. The
+adopter binds the previous SHA, candidate SHA, historical UID, metadata digest,
+and complete content digest in its root-only audit, rejects mixed ownership or
+byte drift, and does not relax the normal requirement that the previous release
+is healthy. Do not set this variable for an already root-owned release or for
+degraded recovery.
+
+Before a normal rollback-protected activation, the root-owned watcher binds the
+candidate and previous release SHAs to hashes of the previous Compose file, the
+root-only rollback environment snapshot, and the materials-runtime manifest.
+Both releases must carry byte-identical, valid materials manifests; a normal
+release that changes that payload is refused until it has a separately reviewed
+atomic materials rollback. Both normal activation and explicitly authorized
+degraded-baseline recovery capture whether the approved materials path was
+enabled or disabled and whether the main deploy receiver was present and active.
+The watcher temporarily disables the path, waits for any already-started runner
+to drain without stopping it, and restores and verifies the captured state on
+success or rollback. That state and the mode-specific rollback hashes are
+recorded in an immutable candidate-SHA attempt contract, so a watcher restart
+reconciles the in-flight candidate before consulting a newer GitHub run. A
+failed, masked, missing, or otherwise ambiguous systemd state is never treated
+as inactive or disabled.
+If activation fails while the previous exact image set and materials control
+plane remain healthy (for example, a migration failed before Compose switched
+containers), the watcher verifies them in place and does not replay migrations.
+After a normal container switch, the watcher uses only the bound previous
+Compose file and rollback environment to restore the previous fixed-SHA images,
+without executing either release's deployment helper or replaying owner
+migrations. Explicit degraded recovery retains its separately authorized
+previous-helper restoration path. Both modes then restore and verify materials
+service state. A crash after the new containers
 become healthy but before the grant is recorded converges on the next run: the
 active SHA path re-invokes Platform Core's idempotent audited grant before it
 writes `last-activated-sha`. Migration `000018` is itself safe to reapply after
 a later release step fails.
+
+The immutable degraded-recovery authorization and terminal audits permanently
+reserve their candidate SHA. If an authorized degraded attempt restores its
+baseline instead of activating, retry with a newly reviewed candidate commit
+and a new exact-SHA approval; the failed candidate SHA cannot be re-approved.
 
 The defaults assume SSH key access to `root@metaview.top` and gateway directory
 `/root/epay-gateway`; override only with
@@ -588,7 +725,7 @@ requires a new explicit approval before the failed SHA can be attempted again.
 
 The process polls every 60 seconds by default and uses a kernel `flock` to
 prevent overlapping deployments; the lock is released even after a crash or
-power loss. A release already active on all eighteen image tags is an idempotent
+power loss. A release already active on every image-backed service in its rendered Compose contract is an idempotent
 health-checked no-op. During the one-time 8-to-9 transition, the explicitly
 legacy eight-image baseline remains a valid rollback target. A failed check exits the process, and Systemd retries it
 after 30 seconds. Activation or public verification failure invokes the

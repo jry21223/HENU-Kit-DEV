@@ -282,6 +282,7 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/career/searches/{search_id}", h.careerSearchStatus)
 	r.Get("/api/v1/career/profile", h.getCareerProfile)
 	r.Put("/api/v1/career/profile", h.updateCareerProfile)
+	r.Post("/api/v1/career/profile/suifications", h.createCareerSuification)
 	r.Post("/api/v1/career/profile/extractions", h.createCareerExtraction)
 	r.Get("/api/v1/career/profile/extractions/{extraction_id}", h.careerExtractionStatus)
 	// This private V2 route is never proxied to legacy Portal API data. Before
@@ -1330,6 +1331,12 @@ func (h *Handler) getCareerProfile(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) updateCareerProfile(w http.ResponseWriter, r *http.Request) {
 	h.careerProfileWrite(w, r, func(ctx context.Context, actorUserID, requestID string, raw []byte) (json.RawMessage, error) {
 		return h.career.UpdateProfile(ctx, actorUserID, requestID, raw)
+	})
+}
+
+func (h *Handler) createCareerSuification(w http.ResponseWriter, r *http.Request) {
+	h.careerWrite(w, r, func(ctx context.Context, actorUserID, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+		return h.career.CreateSuification(ctx, actorUserID, requestID, idempotencyKey, raw)
 	})
 }
 

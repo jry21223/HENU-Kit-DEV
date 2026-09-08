@@ -1,5 +1,26 @@
 import type { NextConfig } from "next";
 
+function localPlaywrightOrigin(raw: string | undefined): string {
+  if (!raw) return "";
+  try {
+    const value = new URL(raw);
+    if (
+      value.protocol !== "http:" ||
+      value.hostname !== "127.0.0.1" ||
+      value.username ||
+      value.password ||
+      value.pathname !== "/" ||
+      value.search ||
+      value.hash
+    ) {
+      return "";
+    }
+    return value.origin;
+  } catch {
+    return "";
+  }
+}
+
 const nextConfig: NextConfig = {
   // Required for multi-stage Docker image (apps/portal/Dockerfile).
   output: "standalone",
@@ -11,18 +32,56 @@ const nextConfig: NextConfig = {
     const noIndexHeaders = [
       { key: "X-Robots-Tag", value: "noindex, nofollow" },
     ];
+    const accountFormActions = ["'self'", "https://console.henukit.cn"];
+    const playwrightConsoleOrigin = localPlaywrightOrigin(
+      process.env.PLAYWRIGHT_CONSOLE_ORIGIN
+    );
+    if (playwrightConsoleOrigin) {
+      accountFormActions.push(playwrightConsoleOrigin);
+    }
+
+    const accountHeaders = [
+      ...noIndexHeaders,
+      { key: "Cache-Control", value: "private, no-store, max-age=0" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      {
+        key: "Content-Security-Policy",
+        value: `base-uri 'self'; form-action ${accountFormActions.join(" ")}; frame-ancestors 'none'`,
+      },
+    ];
 
     return [
-      "/account/:path*",
-      "/campus/deals",
-      "/campus/publish",
-      "/food/publish",
-      "/library/read/:path*",
-      "/library/shelf",
-      "/practice/favorites/:path*",
-      "/practice/quiz",
-      "/practice/stats",
-    ].map((source) => ({ source, headers: noIndexHeaders }));
+      { source: "/account/:path*", headers: accountHeaders },
+      ...[
+        "/campus/deals",
+        "/campus/publish",
+        "/food/publish",
+        "/library/read/:path*",
+        "/library/shelf",
+        "/practice/favorites/:path*",
+        "/practice/quiz",
+        "/practice/stats",
+      ].map((source) => ({ source, headers: noIndexHeaders })),
+    ];
+  },
+  async rewrites() {
+    const accountAuthFixture = process.env.PLAYWRIGHT_ACCOUNT_AUTH_URL;
+    const portalGatewayFixture = process.env.PLAYWRIGHT_PORTAL_GATEWAY_URL;
+    const rewrites: Array<{ source: string; destination: string }> = [];
+    if (accountAuthFixture) {
+      rewrites.push({
+        source: "/account-auth/:path*",
+        destination: `${accountAuthFixture}/:path*`,
+      });
+    }
+    if (portalGatewayFixture) {
+      rewrites.push({
+        source: "/api/:path*",
+        destination: `${portalGatewayFixture}/api/:path*`,
+      });
+    }
+    return rewrites;
   },
   async redirects() {
     return [

@@ -96,7 +96,7 @@ function QuizCraftCatalogCard({
     >
       <div className="flex items-start justify-between">
         <span className="font-mono text-xs text-accent">
-          QC-{String(index + 1).padStart(2, "0")}
+          题库 {String(index + 1).padStart(2, "0")}
         </span>
         <span className="font-mono text-[10px] tracking-wider text-ink/50">
           {bank.available ? "可练习" : "暂不可用"}

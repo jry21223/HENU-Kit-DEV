@@ -1,0 +1,29 @@
+[Unit]
+Description=HENUKit Job Source MCP restricted reverse SSH tunnel
+Wants=network-online.target
+After=network-online.target henukit-getwork-mcp.service
+Requires=henukit-getwork-mcp.service
+
+[Service]
+Type=simple
+User=henukit-getwork-tunnel
+Group=henukit-getwork-tunnel
+EnvironmentFile=/etc/henukit-getwork/node.env
+LoadCredential=tunnel-key:/etc/henukit-getwork/tunnel/id_ed25519
+ExecStart=/usr/bin/ssh -N -T -p ${HENUKIT_GETWORK_TUNNEL_PORT} -i ${CREDENTIALS_DIRECTORY}/tunnel-key -o UserKnownHostsFile=/etc/henukit-getwork/tunnel/known_hosts -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o KexAlgorithms=diffie-hellman-group14-sha256 -R 127.0.0.1:18100:127.0.0.1:8100 ${HENUKIT_GETWORK_TUNNEL_TARGET}
+Restart=always
+RestartSec=5s
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

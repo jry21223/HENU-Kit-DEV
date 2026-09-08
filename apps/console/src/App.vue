@@ -110,6 +110,26 @@ async function confirmSignOut() {
 
 onMounted(refreshSession);
 
+function publicModuleStatusMessage(
+  moduleId: ModuleSummary["id"],
+  status: ModuleSummary["status"],
+  unavailableReason: ModuleSummary["unavailableReason"],
+  message: string,
+): string {
+  if (moduleId !== "quizcraft") return message;
+  if (unavailableReason === "not_onboarded") return "练习服务摘要尚未接入；管理入口已停用";
+  if (unavailableReason === "operator_disabled") return "练习服务摘要已停用";
+  return {
+    ok: "练习服务摘要可用",
+    empty: "当前暂无练习摘要",
+    partial: "练习服务仅部分可用",
+    stale: "展示最近一次练习摘要",
+    unavailable: "练习服务摘要暂不可用",
+    loading: "正在读取练习摘要",
+    denied: "无权查看练习摘要",
+  }[status];
+}
+
 const summaries = computed<ModuleSummary[]>(() =>
   loading || authState.value === "loading" || (authState.value === "authenticated" && overviewState.value === "loading")
     ? moduleSummaries.map((summary) => ({ ...summary, status: "loading", metrics: [], trend: undefined }))
@@ -122,7 +142,7 @@ const summaries = computed<ModuleSummary[]>(() =>
                   ...presentation,
                   status: live.status,
                   metrics: live.metrics,
-                  statusMessage: live.status_message,
+                  statusMessage: publicModuleStatusMessage(presentation.id, live.status, live.unavailable_reason, live.status_message),
                   unavailableReason: live.unavailable_reason,
                   asOf: live.as_of,
                   lastSuccessAt: live.last_success_at,

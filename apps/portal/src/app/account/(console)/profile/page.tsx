@@ -7,9 +7,11 @@ import { useAccountConsoleUnauthorizedHandler } from "@/components/account/accou
 import { useReveal } from "@/components/account/use-reveal";
 import {
   createCareerResumeExtraction,
+  createCareerResumeSuification,
   formatPortalError,
   getCareerProfile,
   getCareerResumeExtraction,
+  PortalHttpError,
 } from "@/lib/api/client";
 import type {
   CareerJobType,
@@ -69,6 +71,13 @@ type UploadState =
   | { kind: "done"; extraction: CareerResumeExtraction }
   | { kind: "error"; message: string };
 
+type SuificationState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "preview"; original: string; draft: string }
+  | { kind: "applied"; original: string }
+  | { kind: "error"; message: string };
+
 function emptyInput(profile: CareerProfile): ProfileForm {
   return {
     target_roles: profile.target_roles ?? "",
@@ -99,18 +108,29 @@ export default function CareerProfilePage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [upload, setUpload] = useState<UploadState>({ kind: "idle" });
+  const [suification, setSuification] = useState<SuificationState>({ kind: "idle" });
   const requestVersion = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const suificationVersion = useRef(0);
+  const suificationIdempotencyKey = useRef<string | null>(null);
   const handleUnauthorized = useAccountConsoleUnauthorizedHandler();
   useReveal();
 
+  const resetSuification = useCallback(() => {
+    suificationVersion.current += 1;
+    suificationIdempotencyKey.current = null;
+    setSuification({ kind: "idle" });
+  }, []);
+
   const applyProfile = useCallback((profile: CareerProfile) => {
+    resetSuification();
     setForm(emptyInput(profile));
     setYearValue(profile.graduation_year == null ? "" : String(profile.graduation_year));
-  }, []);
+  }, [resetSuification]);
 
   /** 提取结果回填表单；画像仍是可编辑草稿，用户确认后才保存。 */
   const applyExtracted = useCallback((profile: CareerProfileInput) => {
+    resetSuification();
     setForm((current) =>
       current
         ? {
@@ -126,7 +146,7 @@ export default function CareerProfilePage() {
     setYearValue(
       profile.graduation_year == null ? "" : String(profile.graduation_year)
     );
-  }, []);
+  }, [resetSuification]);
 
   const loadProfile = useCallback(() => {
     const version = ++requestVersion.current;
@@ -160,10 +180,13 @@ export default function CareerProfilePage() {
   const setField = useCallback(
     (patch: Partial<ProfileForm>) => {
       setForm((current) => (current ? { ...current, ...patch } : current));
+      if (Object.prototype.hasOwnProperty.call(patch, "resume_text")) {
+        resetSuification();
+      }
       setSaveSuccess(false);
       setSaveError("");
     },
-    []
+    [resetSuification]
   );
 
   /** 轮询识别任务直到终态；完成即回填表单，失败给出可读中文错误。 */
@@ -202,6 +225,7 @@ export default function CareerProfilePage() {
     // 允许连续选择同一个文件。
     event.target.value = "";
     if (!file) return;
+    resetSuification();
     const ext = file.name.toLowerCase().split(".").pop() ?? "";
     if (!(RESUME_EXTENSIONS as readonly string[]).includes(ext)) {
       setSelectedFile(null);
@@ -227,6 +251,7 @@ export default function CareerProfilePage() {
 
   const uploadResume = async () => {
     if (!selectedFile || upload.kind === "uploading" || upload.kind === "active") return;
+    resetSuification();
     setUpload({ kind: "uploading" });
     setSaveError("");
     setSaveSuccess(false);
@@ -245,6 +270,72 @@ export default function CareerProfilePage() {
       }
       setUpload({ kind: "error", message: extractionCreateFailedMessage(error) });
     }
+  };
+
+  const suifyResume = async () => {
+    if (
+      !form ||
+      !form.resume_text.trim() ||
+      suification.kind === "loading" ||
+      upload.kind === "uploading" ||
+      upload.kind === "active"
+    ) return;
+    const original = form.resume_text;
+    const version = ++suificationVersion.current;
+    const idempotencyKey =
+      suificationIdempotencyKey.current ?? `career:suify-${crypto.randomUUID()}`;
+    suificationIdempotencyKey.current = idempotencyKey;
+    setSuification({ kind: "loading" });
+    setSaveError("");
+    setSaveSuccess(false);
+    try {
+      const response = await createCareerResumeSuification(
+        original,
+        idempotencyKey
+      );
+      if (version !== suificationVersion.current) return;
+      suificationIdempotencyKey.current = null;
+      setSuification({
+        kind: "preview",
+        original,
+        draft: response.draft.resume_text,
+      });
+    } catch (error) {
+      if (version !== suificationVersion.current) return;
+      if (handleUnauthorized(error)) return;
+      if (isCareerLifetimeRequiredError(error)) {
+        setState({ kind: "locked" });
+        return;
+      }
+      let message = "酥化暂时失败，请稍后重试。";
+      if (error instanceof PortalHttpError) {
+        if (error.errorCode === "AI_UNCONFIGURED") {
+          message = "酥化功能暂未开放，请稍后再试。";
+        } else if (error.errorCode === "SUIFY_RATE_LIMITED") {
+          message = "本小时酥化次数已达上限，请稍后再试。";
+        } else if (error.errorCode === "SUIFY_ALREADY_ACTIVE") {
+          message = "上一次酥化仍在进行，请稍等后重试。";
+        }
+      }
+      setSuification({ kind: "error", message });
+    }
+  };
+
+  const applySuification = () => {
+    if (suification.kind !== "preview") return;
+    const { original, draft } = suification;
+    suificationVersion.current += 1;
+    suificationIdempotencyKey.current = null;
+    setForm((current) => (current ? { ...current, resume_text: draft } : current));
+    setSuification({ kind: "applied", original });
+    setSaveSuccess(false);
+    setSaveError("");
+  };
+
+  const restoreSuificationOriginal = () => {
+    if (suification.kind !== "applied") return;
+    const { original } = suification;
+    setField({ resume_text: original });
   };
 
   const save = async () => {
@@ -508,13 +599,31 @@ export default function CareerProfilePage() {
                 </div>
 
                 <div>
-                  <label htmlFor="career-resume-text" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-                    经历摘要（≤4000 字）
-                  </label>
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+                    <label htmlFor="career-resume-text" className="block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                      经历摘要（≤4000 字）
+                    </label>
+                    <button
+                      type="button"
+                      aria-label={suification.kind === "loading" ? "酥化中" : "酥化"}
+                      aria-busy={suification.kind === "loading"}
+                      disabled={
+                        !form.resume_text.trim() ||
+                        suification.kind === "loading" ||
+                        upload.kind === "uploading" ||
+                        upload.kind === "active"
+                      }
+                      onClick={() => void suifyResume()}
+                      className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {suification.kind === "loading" ? "酥化中…" : "🧀 酥化"}
+                    </button>
+                  </div>
                   <textarea
                     id="career-resume-text"
                     value={form.resume_text}
                     onChange={(e) => setField({ resume_text: e.target.value })}
+                    disabled={suification.kind === "loading"}
                     maxLength={FIELD_LIMITS.resume_text}
                     rows={6}
                     placeholder="简述项目、竞赛或实习经历，用于匹配命中原因说明。不上传文件。"
@@ -523,6 +632,61 @@ export default function CareerProfilePage() {
                   <p className="mt-1 text-right font-mono text-[10px] text-ink/40">
                     {form.resume_text.length} / {FIELD_LIMITS.resume_text}
                   </p>
+                  <p className="mt-2 text-xs leading-5 text-ink/45">
+                    娱乐功能。点击后，当前经历摘要会发送给 HENU Kit 配置的外部 AI 模型服务。HENU Kit 仅为重试在 Redis 保留草稿最多 10 分钟且不自动写入画像；模型服务可能按其自身政策处理请求数据。应用前请逐项核对事实。
+                  </p>
+                  {suification.kind === "preview" ? (
+                    <div
+                      data-account-career-suification="preview"
+                      className="mt-4 border border-ink px-4 py-4"
+                    >
+                      <label htmlFor="career-resume-suification-preview" className="font-mono text-[10px] tracking-[0.2em] text-ink/55">
+                        酥化预览
+                      </label>
+                      <textarea
+                        id="career-resume-suification-preview"
+                        aria-label="酥化预览"
+                        readOnly
+                        value={suification.draft}
+                        rows={6}
+                        className="mt-2 w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none"
+                      />
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSuification({ kind: "idle" })}
+                          className="inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:border-ink"
+                        >
+                          撤销
+                        </button>
+                        <button
+                          type="button"
+                          onClick={applySuification}
+                          className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink"
+                        >
+                          应用
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {suification.kind === "applied" ? (
+                    <button
+                      type="button"
+                      onClick={restoreSuificationOriginal}
+                      className="mt-4 inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:border-ink"
+                    >
+                      恢复原文
+                    </button>
+                  ) : null}
+                  {suification.kind === "error" ? (
+                    <p
+                      data-account-career-suification="error"
+                      role="alert"
+                      className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-ink/75"
+                    >
+                      {suification.message}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="flex items-start gap-3 border border-line px-4 py-4">

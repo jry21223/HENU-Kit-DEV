@@ -56,6 +56,7 @@ import type {
   CareerProfileInput,
   CareerProfileResponse,
   CareerResumeExtractionResponse,
+  CareerResumeSuificationResponse,
   CareerSearchResponse,
   CareerSearchesResponse,
 } from "./types";
@@ -863,6 +864,17 @@ export async function getCareerResumeExtraction(
   return apiFetchRequired<CareerResumeExtractionResponse>(
     `/api/v1/career/profile/extractions/${encodeURIComponent(extractionID)}`,
     { cache: "no-store" }
+  );
+}
+
+/** Create a transient entertainment rewrite without updating the stored profile. */
+export async function createCareerResumeSuification(
+  resumeText: string,
+  idempotencyKey: string
+): Promise<CareerResumeSuificationResponse> {
+  return apiFetchRequired<CareerResumeSuificationResponse>(
+    "/api/v1/career/profile/suifications",
+    careerCommandInit(idempotencyKey, { resume_text: resumeText })
   );
 }
 

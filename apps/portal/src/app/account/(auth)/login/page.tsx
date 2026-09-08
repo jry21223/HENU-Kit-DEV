@@ -5,11 +5,12 @@
  * original HENUKIT account page, with real Platform Core mail channel for codes.
  *
  * Existing Portal UI; every production credential flow is owned by Platform
- * Core through the same-origin /account-auth route.
+ * Core through the same-origin /account-auth route. Validated cross-product
+ * OAuth requests arrive only as browser-bound opaque continuation handles.
  */
 
 import Link from "next/link";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
@@ -21,6 +22,7 @@ import {
   AccountCenterError,
   bootstrapAccountLogin,
   bootstrapAccountRegister,
+  buildOAuthContinuationResume,
   passwordLogin,
   portalOAuthStartUrl,
   registerAccount,
@@ -28,6 +30,10 @@ import {
   requestRegistrationCode,
   verifyLoginCode,
 } from "@/lib/auth/account-center";
+import {
+  accountCenterURLWithoutContinuation,
+  continuationHandleFromURL,
+} from "@/lib/auth/account-continuation-url";
 import { fetchSession, hasGateway } from "@/lib/api/client";
 import {
   isValidHenuLocalPart,
@@ -78,6 +84,11 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const requestedNext = params.get("next");
+  const [continuationHandle, setContinuationHandle] = useState(
+    () => params.get("continuation")?.trim() ?? ""
+  );
+  const continuationError = params.get("continuation_error")?.trim() ?? "";
+  const continuationRequestID = params.get("request_id")?.trim() ?? "";
 
   const { user, ready } = useSyncExternalStore(
     authStore.subscribe,
@@ -98,7 +109,29 @@ function LoginForm() {
   const [info, setInfo] = useState("");
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
+  const [continuationProduct, setContinuationProduct] = useState("");
+  const [continuationAttempt, setContinuationAttempt] = useState(0);
+  const [continuationFailure, setContinuationFailure] = useState<{
+    kind: "expired" | "service" | "unsupported";
+    requestID?: string;
+  } | null>(
+    continuationError
+      ? {
+          kind:
+            continuationError === "service"
+              ? "service"
+              : continuationError === "unsupported"
+                ? "unsupported"
+                : "expired",
+          requestID: continuationRequestID,
+        }
+      : null
+  );
   const csrfBootstrap = useRef<Promise<string> | null>(null);
+  const continuationBootstrap = useRef<{
+    handle: string;
+    request: ReturnType<typeof bootstrapAccountLogin>;
+  } | null>(null);
   const defaultNext = tab === "register" ? "/account/security" : "/account";
   const nextPath =
     requestedNext?.startsWith("/") ? requestedNext : defaultNext;
@@ -108,7 +141,26 @@ function LoginForm() {
   const needCode = tab === "register" || mode === "code";
   const passwordLength = Array.from(pwd).length;
 
+  useLayoutEffect(() => {
+    const currentURL = new URL(window.location.href);
+    const urlHandle = continuationHandleFromURL(currentURL.toString());
+    if (!urlHandle) return;
+    // The server moved the handle into a fragment before returning any HTML,
+    // so it cannot reach HTTP requests or Referer. Remove that fragment using
+    // the browser primitive before paint without dispatching a Next transition.
+    History.prototype.replaceState.call(
+      window.history,
+      window.history.state,
+      "",
+      accountCenterURLWithoutContinuation(currentURL.toString())
+    );
+    if (!continuationHandle) {
+      window.queueMicrotask(() => setContinuationHandle(urlHandle));
+    }
+  }, [continuationHandle]);
+
   useEffect(() => {
+    if (continuationHandle || continuationError) return;
     if (!ready || !user) return;
     // The cached user can be stale: signed out, session expired, or a fresh
     // module copy re-initialised from a server session. Only bounce to the
@@ -135,7 +187,41 @@ function LoginForm() {
     return () => {
       cancelled = true;
     };
-  }, [ready, user, nextPath, router]);
+  }, [ready, user, nextPath, router, continuationHandle, continuationError]);
+
+  useEffect(() => {
+    if (!continuationHandle || continuationError) return;
+    let cancelled = false;
+    if (continuationBootstrap.current?.handle !== continuationHandle) {
+      continuationBootstrap.current = {
+        handle: continuationHandle,
+        request: bootstrapAccountLogin(continuationHandle),
+      };
+    }
+    const bootstrap = continuationBootstrap.current.request;
+    void bootstrap.then(
+      (result) => {
+        if (cancelled) return;
+        setCsrf(result.csrfToken);
+        setContinuationProduct(result.continuation?.productName ?? "");
+      },
+      (cause) => {
+        if (cancelled) return;
+        setContinuationFailure({
+          kind:
+            cause instanceof AccountCenterError &&
+            cause.code === "CONTINUATION_UNAVAILABLE"
+              ? "expired"
+              : "service",
+          requestID:
+            cause instanceof AccountCenterError ? cause.requestID : undefined,
+        });
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [continuationHandle, continuationError, continuationAttempt]);
 
   useEffect(() => {
     if (cd <= 0) return;
@@ -145,11 +231,23 @@ function LoginForm() {
 
   const ensureCsrf = async () => {
     if (csrf) return csrf;
+    if (continuationHandle) {
+      if (continuationBootstrap.current?.handle !== continuationHandle) {
+        continuationBootstrap.current = {
+          handle: continuationHandle,
+          request: bootstrapAccountLogin(continuationHandle),
+        };
+      }
+      const result = await continuationBootstrap.current.request;
+      setCsrf(result.csrfToken);
+      setContinuationProduct(result.continuation?.productName ?? "");
+      return result.csrfToken;
+    }
     if (!csrfBootstrap.current) {
       csrfBootstrap.current = (
         tab === "register"
-          ? bootstrapAccountRegister(oauthReturnTo)
-          : bootstrapAccountLogin(oauthReturnTo)
+          ? bootstrapAccountRegister(continuationHandle)
+          : bootstrapAccountLogin(continuationHandle)
       ).then((result) => result.csrfToken);
     }
     const pendingBootstrap = csrfBootstrap.current;
@@ -254,6 +352,22 @@ function LoginForm() {
           returnTo: oauthReturnTo,
         });
       }
+      if (continuationHandle) {
+        const resume = buildOAuthContinuationResume(continuationHandle, token);
+        const form = document.createElement("form");
+        form.method = "post";
+        form.action = resume.action;
+        for (const [fieldName, fieldValue] of Object.entries(resume.fields)) {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = fieldName;
+          input.value = fieldValue;
+          form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        return;
+      }
       window.location.assign(oauthReturnTo);
     } catch (e) {
       if (e instanceof AccountCenterError && e.code === "CSRF") {
@@ -272,6 +386,96 @@ function LoginForm() {
     }
   };
 
+  const displayedRequestID = (
+    continuationFailure?.requestID || continuationRequestID
+  ).match(/^req_[A-Za-z0-9_-]{1,116}$/)?.[0];
+
+  if (continuationFailure || continuationError) {
+    const serviceUnavailable = continuationFailure?.kind === "service";
+    const unsupportedApplication = continuationFailure?.kind === "unsupported";
+    const canRetryContinuation = serviceUnavailable && Boolean(continuationHandle);
+    return (
+      <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
+        <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
+          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            账号中心
+          </p>
+          <h1 className="mt-4 font-display text-3xl font-bold tracking-tight">
+            {serviceUnavailable
+              ? "登录暂时不可用"
+              : unsupportedApplication
+                ? "此应用暂不支持统一登录"
+                : "登录链接已过期或不可继续"}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-ink/65">
+            {serviceUnavailable
+              ? canRetryContinuation
+                ? "暂时无法验证这次登录，请稍后重试。"
+                : "这次登录暂时无法继续。请重新开始登录；如仍失败，请稍后再试。"
+              : unsupportedApplication
+                ? "请返回原应用；如需继续使用，请联系该应用的维护者。"
+                : "这次登录无法继续。请重新开始登录，我们会为你创建一条新的安全链接。"}
+          </p>
+          {displayedRequestID ? (
+            <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/45">
+              请求编号：{displayedRequestID}
+            </p>
+          ) : null}
+          {unsupportedApplication ? (
+            <Button
+              type="button"
+              className="mt-7 w-full"
+              onClick={() => {
+                if (window.history.length > 1) window.history.back();
+                else window.location.assign("/");
+              }}
+            >
+              返回上一步
+            </Button>
+          ) : canRetryContinuation ? (
+            <Button
+              type="button"
+              className="mt-7 w-full"
+              onClick={() => {
+                continuationBootstrap.current = null;
+                setContinuationProduct("");
+                setContinuationFailure(null);
+                setContinuationAttempt((attempt) => attempt + 1);
+              }}
+            >
+              重新尝试
+            </Button>
+          ) : (
+            <Button asChild className="mt-7 w-full">
+              <a href="/api/v1/auth/login?return_to=%2Faccount">重新开始登录</a>
+            </Button>
+          )}
+          <Link
+            href="/"
+            className="mt-4 block text-center font-mono text-[10px] tracking-widest text-ink/45 hover:text-accent"
+          >
+            返回 HENU Kit 首页
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (continuationHandle && !continuationProduct) {
+    return (
+      <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
+        <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
+          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            账号中心
+          </p>
+          <p className="mt-6 font-mono text-xs tracking-wider text-ink/60" role="status">
+            正在验证登录链接…
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
       <div
@@ -280,9 +484,7 @@ function LoginForm() {
       >
         <div className="flex items-baseline justify-between">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">ACC-01</span>
-            <span className="mx-2">/</span>
-            AUTH
+            账号中心
           </p>
           <Link
             href="/"
@@ -297,6 +499,11 @@ function LoginForm() {
         <p className="mt-2 font-mono text-[11px] leading-5 tracking-wider text-ink/50">
           首次注册需验证学校邮箱并设置密码；之后可用密码或验证码登录。
         </p>
+        {continuationProduct ? (
+          <p className="mt-3 border-l-2 border-accent pl-3 font-mono text-[11px] leading-5 tracking-wider text-ink/65">
+            登录后继续前往 {continuationProduct}
+          </p>
+        ) : null}
 
         {/* 登录 / 注册 */}
         <div className="mt-6 flex border border-line">
@@ -347,7 +554,13 @@ function LoginForm() {
           </div>
         )}
 
-        <div className="mt-6 space-y-5">
+        <form
+          className="mt-6 space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
           {tab === "register" && (
             <Field
               id="reg-name"
@@ -438,16 +651,14 @@ function LoginForm() {
               autoComplete="new-password"
             />
           )}
-        </div>
-
-        <Button
-          type="button"
-          className="mt-8 w-full"
-          disabled={pending}
-          onClick={() => void submit()}
-        >
-          {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
-        </Button>
+          <Button
+            type="submit"
+            className="mt-8 w-full"
+            disabled={pending}
+          >
+            {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
+          </Button>
+        </form>
 
         <div className="mt-4 flex flex-col gap-2 font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/account/recover" className="hover:text-accent">

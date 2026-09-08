@@ -22,6 +22,7 @@
     "test:ops": "node --test scripts/ops/tests/*.test.mjs",
     "test:web-ui": "pnpm --filter @final-review/web run test:e2e:ui",
     "test:console": "pnpm --filter @henukit/console run test && pnpm --filter @henukit/console run test:e2e",
+    "test:oauth-continuation": "node --test scripts/tests/oauth-continuation-journey.test.mjs && go -C services/platform-core test ./internal/httpapi -run '^TestOAuthContinuationAuditUsesBoundedSchema$' -count=1 && go -C services/platform-core test ./tests -run '^TestPortalOAuthContinuationRestoresValidatedAuthorizeRequest$' -count=1 && pnpm --filter @henukit/portal run test:e2e:oauth-continuation && pnpm --filter @henukit/console run test:e2e:oauth-continuation",
     "test:quizcraft": "pnpm --filter quiz-app run test:syntax"
   },
   "devDependencies": {

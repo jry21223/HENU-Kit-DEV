@@ -9,7 +9,7 @@ trap 'rm -f "$log_tmp" "$error_tmp"' EXIT
 journalctl -q --no-pager --since "$CUTOVER_LOG_SINCE" "${units[@]/#/-u}" > "$log_tmp"
 journalctl -q --no-pager --priority=err --since "$CUTOVER_LOG_SINCE" "${units[@]/#/-u}" > "$error_tmp"
 test ! -s "$error_tmp"
-for name in CUTOVER_EVIDENCE_SECRET QUIZCRAFT_OPERATOR_SESSION PLATFORM_CLIENT_SECRET; do
+for name in CUTOVER_EVIDENCE_SECRET PLATFORM_CLIENT_SECRET; do
   value="${!name:-}"
   if [[ -n "$value" ]] && grep -Fq -- "$value" "$log_tmp"; then
     echo "secret value from $name appeared in service logs" >&2

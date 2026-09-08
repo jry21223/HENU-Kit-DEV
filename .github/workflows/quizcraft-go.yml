@@ -125,7 +125,9 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" 2>/dev/null; then
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" > /tmp/quizcraft-base.yaml
             cd products/quizcraft/go-service
-            go run github.com/oasdiff/oasdiff@v1.23.0 breaking /tmp/quizcraft-base.yaml ../../../packages/api-contracts/openapi/quizcraft.yaml
+            # The two standalone browser OAuth endpoints were intentionally retired
+            # with the Account Center convergence. Keep every other breaking check.
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking --unmatch-path '^/auth/(login|callback)$' /tmp/quizcraft-base.yaml ../../../packages/api-contracts/openapi/quizcraft.yaml
           fi
       - name: Vet, test, and build
         working-directory: products/quizcraft/go-service

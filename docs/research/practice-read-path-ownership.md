@@ -64,7 +64,7 @@ ADR-0018 规定「Portal 只从创建的 session 渲染题目内容，只在作�
 | `QUIZCRAFT_WRITES_ENABLED` | go-service README.md:129；`practice_http.go:56` | `0` | Go core 写路由门禁（`requireWritesEnabled`，practice_http.go:944-953） |
 | `QUIZCRAFT_PORTAL_COMMANDS_ENABLED` | practice_http.go:46,331-339 | `0` | Go core 注册 `/api/v1/portal/practice/*` 私有写路由 |
 | `VITE_QUIZCRAFT_GO_WRITES` | `web-app/src/api/quizcraftRollout.ts:1-7` | 未设 | web-app 原子切流：1 时全部读写走 Go（README.md:129） |
-| `VITE_QUIZCRAFT_WORKSHOP` | README.md:46 | 未设 | 独立控制 Workshop 前端 |
+| 已退役浏览器管理开关 | 不再配置 | 未设 | 不得恢复独立管理前端 |
 
 Gateway 侧三个服务端开关 + 浏览器侧两个烘焙开关，共 **5 个开关控制 Portal 的 QuizCraft 读**，切流时必须两两对齐（服务端 + 浏览器），且 ADR-0018 明示「仅靠改 Portal UI 无法启用边界，必须服务端 gate 与独立密钥对一起配置」（ADR-0018:53-55）。
 

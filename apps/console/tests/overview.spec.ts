@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const moduleNames = ["Portal", "Platform Operations", "Notice", "Library", "QuizCraft", "Food"];
+const moduleNames = ["Portal", "Platform Operations", "Notice", "Library", "练习服务", "Food"];
 const broadPermissionTargets = [
   ["产品运行概览", "/"],
   ["平台运营工作台", "/operations"],
@@ -69,7 +69,7 @@ test("desktop overview exposes six traced module summaries and degradation state
   await expect(page.getByText("积分", { exact: true })).toHaveCount(0);
   await expect(page.getByText("会员", { exact: true })).toHaveCount(0);
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
-  await expect(page.getByText("摘要暂不可用", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("练习服务摘要暂不可用", { exact: true })).toBeVisible();
   const portal = page.locator('[data-module-card="portal"]');
   await expect(portal).toHaveAccessibleName("Portal：正常");
   for (const fact of ["2026.07.19", "0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) await expect(portal.getByText(fact, { exact: true })).toBeVisible();
@@ -146,8 +146,9 @@ test("desktop and 390px overview distinguish owners that are not onboarded", asy
     await expect(platform.getByText("尚未接入", { exact: true })).toBeVisible();
     await expect(platform.getByText("Platform Operations 摘要尚未接入，请前往平台运营工作台查看实时数据", { exact: true })).toBeVisible();
     await expect(quizcraft.getByText("尚未接入", { exact: true })).toBeVisible();
-    await expect(quizcraft.getByText("QuizCraft 摘要尚未接入；题库工坊入口尚未配置", { exact: true })).toBeVisible();
-    await expect(quizcraft.getByRole("link", { name: "打开 QuizCraft 题库工坊" })).toHaveCount(0);
+    await expect(quizcraft.getByText("练习服务摘要尚未接入；管理入口已停用", { exact: true })).toBeVisible();
+    await expect(quizcraft).not.toContainText("QuizCraft");
+    await expect(quizcraft).not.toContainText("题库工坊");
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   }
@@ -395,7 +396,7 @@ test("degraded status messages render exactly once per card", async ({ page }) =
   // Degraded card explanations must not appear both in the state panel and
   // the footer; metric-bearing cards keep theirs in the footer only.
   await expect(page.getByText("部分来源可用", { exact: true })).toHaveCount(1);
-  await expect(page.getByText("摘要暂不可用", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("练习服务摘要暂不可用", { exact: true })).toHaveCount(1);
   await expect(page.getByText("Portal 部署与只读探测正常", { exact: true })).toHaveCount(1);
 });
 

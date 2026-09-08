@@ -141,9 +141,7 @@ export default function RecoverPage() {
       >
         <div className="flex items-baseline justify-between">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">ACC-02</span>
-            <span className="mx-2">/</span>
-            RECOVER
+            账号恢复
           </p>
           <Link
             href="/account/login"

@@ -17,6 +17,7 @@ test("artifact deployment is fixed-SHA, migration-aware, and orphan-safe", () =>
   assert.match(script, /docker compose --env-file/);
   assert.match(script, /exec -T postgres/);
   assert.match(script, /psql -v ON_ERROR_STOP=1/);
+  assert.match(script, /psql --single-transaction -v ON_ERROR_STOP=1/);
   assert.match(script, /IFS=',' read -r -a migration_names/);
   assert.match(script, /for migration_name in "\$\{migration_names\[@\]\}"/);
   assert.match(script, /ensure_account_portfolio_database/);

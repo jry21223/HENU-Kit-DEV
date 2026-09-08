@@ -32,7 +32,7 @@ const presentation = [
   ["platform", "Platform Operations", "共享平台", "账户、权限、登录会话、邮件、审计与运营收件箱。"],
   ["notice", "Notice", "校园通知", "通知来源、版本、审核、受众与分发状态。"],
   ["library", "Library", "学习资料", "课程、资料、下载、投稿、审核与纠错摘要。"],
-  ["quizcraft", "QuizCraft", "刷题产品", "题库、反馈与服务状态摘要；题库工坊独立运营，后续接入。"],
+  ["quizcraft", "练习服务", "刷题练习", "题库、作答、收藏、排行与纠错状态摘要。"],
   ["food", "Food", "校园美食", "榜单投稿、异常票与调档确认。"],
 ] as const;
 

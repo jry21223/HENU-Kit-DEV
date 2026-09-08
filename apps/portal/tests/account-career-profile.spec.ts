@@ -73,6 +73,117 @@ test("account profile page renders the career profile and saves the full replace
   await expect(page.getByText("求职画像已保存，将用于下一次求职雷达匹配。")).toBeVisible();
 });
 
+test("resume suification previews without overwriting and applies only after confirmation", async ({ page }) => {
+  await mockSession(page);
+  let profilePutCount = 0;
+  let suifyCount = 0;
+  await page.route("**/api/v1/career/profile", async (route) => {
+    if (route.request().method() === "PUT") profilePutCount += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile_get" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile/suifications", async (route) => {
+    suifyCount += 1;
+    expect(route.request().headers()["idempotency-key"]).toMatch(/^career:suify-/);
+    expect(await route.request().postDataJSON()).toEqual({ resume_text: "校内项目经历" });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        draft: { resume_text: "校内项目经历（重点表达版）" },
+        request_id: "req_career_suify",
+      }),
+    });
+  });
+
+  await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
+  const original = page.getByLabel("经历摘要（≤4000 字）");
+  await expect(original).toHaveValue("校内项目经历");
+
+  await page.getByRole("button", { name: "酥化" }).click();
+  const preview = page.locator('[data-account-career-suification="preview"]');
+  await expect(preview).toBeVisible();
+  await expect(preview.getByLabel("酥化预览")).toHaveValue("校内项目经历（重点表达版）");
+  await expect(original).toHaveValue("校内项目经历");
+  expect(profilePutCount).toBe(0);
+
+  await preview.getByRole("button", { name: "撤销" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(original).toHaveValue("校内项目经历");
+
+  await page.getByRole("button", { name: "酥化" }).click();
+  await expect(preview).toBeVisible();
+  await preview.getByRole("button", { name: "应用" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(original).toHaveValue("校内项目经历（重点表达版）");
+  expect(suifyCount).toBe(2);
+  expect(profilePutCount).toBe(0);
+
+  await page.getByRole("button", { name: "恢复原文" }).click();
+  await expect(original).toHaveValue("校内项目经历");
+  await expect(page.getByRole("button", { name: "恢复原文" })).toHaveCount(0);
+});
+
+test("a newly extracted resume invalidates an older in-flight Suification", async ({ page }) => {
+  await mockSession(page);
+  let releaseSuification!: () => void;
+  const suificationReleased = new Promise<void>((resolve) => {
+    releaseSuification = resolve;
+  });
+  await page.route("**/api/v1/career/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ profile, request_id: "req_profile_get" }),
+    });
+  });
+  await page.route("**/api/v1/career/profile/suifications", async (route) => {
+    await suificationReleased;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        draft: { resume_text: "旧内容的迟到酥化结果" },
+        request_id: "req_suify_old",
+      }),
+    });
+  });
+  await page.route("**/api/v1/career/profile/extractions", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        extraction: {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "completed",
+          user_id: sessionUserID,
+          file_name: "new-resume.txt",
+          extracted: { resume_text: "新识别经历" },
+          created_at: "2026-08-24T00:00:00Z",
+        },
+        request_id: "req_extract_new",
+      }),
+    });
+  });
+
+  await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
+  const resumeText = page.getByLabel("经历摘要（≤4000 字）");
+  await page.getByRole("button", { name: "酥化" }).click();
+  await expect(page.getByRole("button", { name: "酥化中" })).toHaveText("酥化中…");
+  await expect(page.getByRole("button", { name: "酥化中" })).toHaveAttribute("aria-busy", "true");
+
+  await page.locator("#career-resume-upload").setInputFiles({
+    name: "new-resume.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("new resume"),
+  });
+  await page.getByRole("button", { name: "上传并识别" }).click();
+  await expect(page.locator('[data-account-career-extraction="done"]')).toBeVisible();
+  await expect(resumeText).toHaveValue("新识别经历");
+
+  releaseSuification();
+  await expect(page.locator('[data-account-career-suification="preview"]')).toHaveCount(0);
+  await expect(resumeText).toHaveValue("新识别经历");
+});
+
 test("save button never double-submits while a save is pending", async ({ page }) => {
   await mockSession(page);
   let putCount = 0;
@@ -515,6 +626,42 @@ test("a finishing scan swaps the echo for confirmed hits", async ({ page }) => {
     .toBe("1.00,1.00,1.00,0.20,0.20,0.20,0.20,0.20");
 });
 
+test("completed scans expose every source outcome and keep low-score jobs inspectable", async ({ page }) => {
+  const inspectableSearch = {
+    ...completedSearch,
+    result: {
+      source_count: 2,
+      job_count: 2,
+      matched_count: 1,
+      summary: "已扫描 2 个来源，发现 2 个岗位，1 个相关岗位",
+      sources: [
+        { key: "getwork.meituan", status: "success", found: 2, fetched: 3, rejected: 1 },
+        { key: "getwork.tencent", status: "failed", found: 0 },
+      ],
+      jobs: [
+        { source_key: "getwork.meituan", company: "美团", title: "AI 工具开发实习生", location: "北京", url: "https://jobs.example.test/1", match_score: 24, match_reasons: ["匹配技术栈 Go、MCP"] },
+        { source_key: "getwork.meituan", company: "美团", title: "其他岗位", location: "", url: "https://jobs.example.test/2", match_score: 0, match_reasons: [] },
+      ],
+    },
+  };
+  await mockLifetimeCareer(page, [inspectableSearch]);
+
+  await page.goto(`/career?search=${inspectableSearch.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
+  await expect(page.getByText("AI 工具开发实习生")).toBeVisible();
+  await expect(page.getByText("其他岗位")).toBeVisible();
+  await expect(page.getByText("meituan")).toBeVisible();
+  await expect(page.getByText("已响应 · 可展示 2 / 抓取 3 / 未展示 1")).toBeVisible();
+  await expect(page.getByText("tencent")).toBeVisible();
+  await expect(page.getByText("暂时不可用")).toBeVisible();
+
+  await page.goto("/career/history", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("2 个来源 · 2 个岗位")).toBeVisible();
+  await expect(page.getByText("来源：meituan 已响应(2)；tencent 暂不可用")).toBeVisible();
+  await expect(page.getByText("岗位预览（最多 3 个）")).toBeVisible();
+  await expect(page.getByRole("link", { name: "AI 工具开发实习生 · 美团 · 相关度 24" })).toBeVisible();
+});
+
 test("the marketing radar is a schematic: labelled, aria-hidden, and lights nothing real", async ({ page }) => {
   await page.route("**/api/v1/session", async (route) => {
     await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) });
@@ -592,6 +739,59 @@ test("refocusing the tab does not re-restore an unchanged scan", async ({ page }
   // 刷新落地之后，恢复 effect 不应重跑：同一条任务的完整状态不会被再读一次。
   expect(statusReads).toBe(statusReadsAfterFirstRestore);
   await expect(page.getByRole("button", { name: "正在恢复任务…" })).toHaveCount(0);
+});
+
+test("a new scan keeps ownership after refocusing a historical deep link", async ({ page }) => {
+  let created = false;
+  const nextCompletedSearch = {
+    ...completedSearch,
+    id: runningSearch.id,
+    created_at: runningSearch.created_at,
+    result: { ...completedSearch.result, summary: "本次新扫描已完成。" },
+  };
+  await mockLifetimeCareer(page, [completedSearch]);
+  await page.route("**/api/v1/career/searches/*", async (route) => {
+    const search = route.request().url().endsWith(`/${completedSearch.id}`)
+      ? completedSearch
+      : nextCompletedSearch;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ search, request_id: "req_search" }),
+    });
+  });
+  await page.route("**/api/v1/career/searches", async (route) => {
+    if (route.request().method() === "POST") {
+      created = true;
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ search: runningSearch, request_id: "req_create" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        searches: created ? [runningSearch, completedSearch] : [completedSearch],
+        request_id: "req_searches",
+      }),
+    });
+  });
+
+  await page.goto(`/career?search=${completedSearch.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
+  await page.getByRole("button", { name: "开始扫描 →" }).click();
+  await expect(page.locator('[data-career-scan-status="running"]')).toBeVisible();
+
+  const refreshed = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/career/searches") &&
+    response.request().method() === "GET"
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await refreshed;
+  // 列表现已包含新任务：旧邮件深链不能抢回面板，也不能停掉新任务的轮询。
+  await expect(page.getByText("本次新扫描已完成。", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
 });
 
 test("/career renders the ready view for a lifetime member with a complete profile", async ({ page }) => {

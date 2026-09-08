@@ -61,6 +61,16 @@ The boundary fails closed: an unconfigured `FOOD_POSTS_URL` answers `503`
 and a Food network failure answers `502`; these exact routes never fall back
 to the Portal API wildcard, and there is no `_ENABLED` flag.
 
+ADR-0040 adds one transient Career command:
+`POST /api/v1/career/profile/suifications`. Gateway takes the actor only from
+the verified Portal Session, requires a browser idempotency key, signs the
+exact Resume Text with the existing Career owner credential, and forwards no
+provider configuration. Career returns a temporary Suification Draft and does
+not update the Career Profile. The browser may discard or apply the draft to
+its editable form; only the existing explicit profile `PUT` saves it. The
+boundary fails closed on authentication, Career, Redis, or provider failure
+and never falls back to Portal API or mock data.
+
 ## Key terms
 
 - **Portal Session**: An encrypted cookie containing UserID, the login-time Display Name snapshot, ExchangeToken, and ExpiresAt. The snapshot is presentation-only and refreshes on the next OAuth login; Platform Core remains the Display Name source of truth. Distinct from Console Session and Core Session.
@@ -69,6 +79,7 @@ to the Portal API wildcard, and there is no `_ENABLED` flag.
 - **Portal Practice command**: The ADR-0018-specific signed bridge for only create-session and submit-answer. It is not a product write proxy, and before #166 it must fail closed without contacting QuizCraft Core.
 - **Portal Library download façade**: ADR-0027's anonymous exact route that relays one Library-owned short-lived grant as a `303`; it owns no catalog, Object key, or Download Start fact.
 - **Portal Food Post boundary**: The exact `/api/v1/food/posts*` and `/api/v1/food/venues` routes that shadow the legacy Portal API food wildcard. Public reads use the independent read credential; the signed-in-only create command binds the verified Portal Session actor with the five-line service signature. It never falls back to the wildcard and forwards Food errors verbatim.
+- **Portal Career Suification command**: ADR-0040's exact authenticated command that forwards current Resume Text for a temporary entertainment rewrite. It requires actor-bound signing and idempotency, owns no Career data, and never saves the returned draft.
 
 ## Relationships
 
@@ -78,4 +89,5 @@ to the Portal API wildcard, and there is no `_ENABLED` flag.
 - **Portal Gateway → QuizCraft Practice Core**: ADR-0018's two default-off commands only, using a credential distinct from catalog reads; QuizCraft remains the owner of session selection, scoring, attempts, and the anonymous identity cookie.
 - **Portal Gateway → Library**: ADR-0027's dedicated signed download-start command only; Library owns active eligibility, signing, ledger persistence, and aggregates.
 - **Portal Gateway → Food**: The Food Post boundary only: public post/image/venue reads with the read credential, the signed-in actor's create command with the create credential. Food owns post data, the daily cap, idempotency replay, and image bytes; the Gateway owns neither food facts nor a fallback response.
+- **Portal Gateway → Career**: Signed Career Profile reads/writes plus ADR-0040's exact transient Suification command. Career owns the profile, provider call, rate limit, and replay state; Gateway only binds the verified actor and forwards the required idempotency key.
 - **Portal frontend → Portal Gateway**: Same-origin API calls with session cookie (`credentials: "same-origin"`).

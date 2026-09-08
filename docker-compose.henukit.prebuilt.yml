@@ -174,6 +174,8 @@ services:
     build: !reset null
     pull_policy: never
     mem_limit: 256m
+    extra_hosts:
+      - "getwork-mcp-relay:host-gateway"
     environment:
       GOMEMLIMIT: 192MiB
       CAREER_ADDR: ${CAREER_ADDR:-:8097}
@@ -182,8 +184,9 @@ services:
       CAREER_SERVICE_CLIENT_ID: ${CAREER_CLIENT_ID:-portal-gateway-career}
       CAREER_SERVICE_KEY_ID: ${CAREER_KEY_ID:-career-key-1}
       CAREER_SERVICE_SECRET: ${CAREER_CLIENT_SECRET:?CAREER_CLIENT_SECRET is required}
-      CAREER_SOURCE_ALLOWLIST: ${CAREER_SOURCE_ALLOWLIST:?CAREER_SOURCE_ALLOWLIST is required}
-      CAREER_MEITUAN_API_URL: ${CAREER_MEITUAN_API_URL:-https://zhaopin.meituan.com/api/official/job/getJobList}
+      CAREER_GETWORK_MCP_URL: ${CAREER_GETWORK_MCP_URL:?CAREER_GETWORK_MCP_URL is required}
+      CAREER_GETWORK_MCP_ACCESS_TOKEN: ${GETWORK_MCP_ACCESS_TOKEN:?GETWORK_MCP_ACCESS_TOKEN is required}
+      CAREER_GETWORK_SINCE_DAYS: ${CAREER_GETWORK_SINCE_DAYS:-7}
       PLATFORM_CORE_CAREER_DIGEST_URL: http://platform-core:8081
       PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID: ${PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID:?PLATFORM_CORE_CAREER_DIGEST_CLIENT_ID is required}
       PLATFORM_CORE_CAREER_DIGEST_KEY_ID: ${PLATFORM_CORE_CAREER_DIGEST_KEY_ID:?PLATFORM_CORE_CAREER_DIGEST_KEY_ID is required}
@@ -195,9 +198,47 @@ services:
       CAREER_AI_MODEL: ${CAREER_AI_MODEL:?CAREER_AI_MODEL is required}
       CAREER_REQUIRE_AI: "1"
       CAREER_ALLOW_INSECURE_AI_HTTP: ${CAREER_ALLOW_INSECURE_AI_HTTP:-0}
+      CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP: ${CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP:-0}
       CAREER_EXTRACT_RATE_LIMIT: ${CAREER_EXTRACT_RATE_LIMIT:-5}
+      CAREER_SUIFY_RATE_LIMIT: ${CAREER_SUIFY_RATE_LIMIT:-5}
       CAREER_SEARCH_RATE_LIMIT: ${CAREER_SEARCH_RATE_LIMIT:-10}
       CAREER_SEARCH_ACTIVE_LIMIT: ${CAREER_SEARCH_ACTIVE_LIMIT:-1}
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      getwork-mcp-relay:
+        condition: service_healthy
+        required: true
+      platform-core:
+        condition: service_started
+  getwork-mcp:
+    profiles: ["getwork"]
+    image: henukit-getwork-mcp:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    mem_limit: 768m
+    environment:
+      GETWORK_MCP_HOST: 0.0.0.0
+      GETWORK_MCP_PORT: 8100
+      GETWORK_MCP_ACCESS_TOKEN: ${GETWORK_MCP_ACCESS_TOKEN:?GETWORK_MCP_ACCESS_TOKEN is required}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2))['ok'] is True"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+  getwork-mcp-relay:
+    profiles: !reset []
+    image: henukit-career-opportunities:${RELEASE_SHA:?RELEASE_SHA is required}
+    build: !reset null
+    pull_policy: never
+    restart: "no"
+    environment:
+      GETWORK_RELAY_ADDR: ${GETWORK_RELAY_ADDR:?GETWORK_RELAY_ADDR is required}
+      GETWORK_RELAY_UPSTREAM_URL: ${GETWORK_RELAY_UPSTREAM_URL:-http://127.0.0.1:18100}
+      GETWORK_RELAY_HEALTH_ADDR: ${GETWORK_RELAY_HEALTH_ADDR:-127.0.0.1:18100}
   portal-gateway:
     image: henukit-portal-gateway:${RELEASE_SHA:?RELEASE_SHA is required}
     build: !reset null

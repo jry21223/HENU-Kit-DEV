@@ -28,7 +28,7 @@ const (
 	ConsoleUserIdentityResolutionRoute        = "/api/v1/console-user-identities/resolutions"
 	PlatformOperationsMembershipAccountsRoute = "/api/v1/platform-operations/membership-accounts/search"
 	DisplayNamesRoute                         = "/api/v1/users/display-names"
-	SourceSHA256                              = "4dfd36d6747e4b00390f8b980111119e82ded6cc6c4ecca61c0bfaa1d1ba705a"
+	SourceSHA256                              = "6fb00997dd318fb5445a03af4001c2286d4d23438349f2484095897ff70fa78d"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
@@ -108,9 +108,15 @@ func ParseAuthorizeOAuthClientQuery(values url.Values) (AuthorizeOAuthClientQuer
 	if result.ClientID == "" {
 		return AuthorizeOAuthClientQuery{}, fmt.Errorf("client_id is required")
 	}
+	if len(result.ClientID) > 120 {
+		return AuthorizeOAuthClientQuery{}, fmt.Errorf("client_id is too long")
+	}
 	result.RedirectURI = values.Get("redirect_uri")
 	if result.RedirectURI == "" {
 		return AuthorizeOAuthClientQuery{}, fmt.Errorf("redirect_uri is required")
+	}
+	if len(result.RedirectURI) > 2048 {
+		return AuthorizeOAuthClientQuery{}, fmt.Errorf("redirect_uri is too long")
 	}
 	if _, err := url.ParseRequestURI(result.RedirectURI); err != nil {
 		return AuthorizeOAuthClientQuery{}, fmt.Errorf("redirect_uri must be a URI")
@@ -121,6 +127,9 @@ func ParseAuthorizeOAuthClientQuery(values url.Values) (AuthorizeOAuthClientQuer
 	}
 	if len(result.State) < 8 {
 		return AuthorizeOAuthClientQuery{}, fmt.Errorf("state is too short")
+	}
+	if len(result.State) > 200 {
+		return AuthorizeOAuthClientQuery{}, fmt.Errorf("state is too long")
 	}
 	result.CodeChallenge = values.Get("code_challenge")
 	if result.CodeChallenge == "" {

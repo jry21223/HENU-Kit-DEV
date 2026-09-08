@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: QuizCraft API
+  title: HENU Kit Practice API
   version: 1.0.0
-  description: Frozen QuizCraft contract for Practice, Favorites, Ranking, Feedback, and Question Bank Workshop.
+  description: Practice, Favorites, Ranking, Feedback, and trusted bank-migration contract for HENU Kit.
   license: { name: MIT, identifier: MIT }
 servers:
   - url: https://quizcraft-api.henukit.internal
@@ -13,31 +13,6 @@ tags:
   - { name: Feedback, description: Corrections linked to stable bank and question identity. }
   - { name: Workshop, description: Scoped QuizCraft-owned bank lifecycle administration. }
 paths:
-  /auth/login:
-    get:
-      summary: Start Platform Core OAuth with state and S256 PKCE
-      tags: [Workshop]
-      operationId: startQuizCraftPlatformLogin
-      security: []
-      parameters:
-        - { name: return_to, in: query, required: false, schema: { type: string, pattern: '^/([^/].*)?$' } }
-      responses:
-        '302': { description: Redirect to the Platform Core authorization endpoint and set an encrypted short-lived state cookie. }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
-  /auth/callback:
-    get:
-      summary: Exchange a single-use Platform Core code server-side and establish an encrypted HttpOnly session
-      tags: [Workshop]
-      operationId: finishQuizCraftPlatformLogin
-      security: []
-      parameters:
-        - { name: code, in: query, required: true, schema: { type: string, minLength: 1 } }
-        - { name: state, in: query, required: true, schema: { type: string, minLength: 16 } }
-      responses:
-        '302': { description: Secure local QuizCraft session established and redirected to the validated same-origin return path. }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /healthz:
     get:
       summary: Check the Practice shadow process

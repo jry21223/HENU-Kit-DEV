@@ -8,6 +8,13 @@ const workflow = readFileSync(
   new URL("../../../.github/workflows/deploy-henukit.yml", import.meta.url),
   "utf8",
 );
+const careerWorkflow = readFileSync(
+  new URL("../../../.github/workflows/career.yml", import.meta.url),
+  "utf8",
+);
+const rootPackage = JSON.parse(
+  readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+);
 const portalDockerfile = readFileSync(
   new URL("../../../apps/portal/Dockerfile", import.meta.url),
   "utf8",
@@ -26,6 +33,22 @@ const exampleEnvironment = readFileSync(
 );
 const runtimePackager = readFileSync(
   new URL("../package-henukit-runtime.sh", import.meta.url),
+  "utf8",
+);
+const localBuilder = readFileSync(
+  new URL("../build-henukit-release-local.sh", import.meta.url),
+  "utf8",
+);
+const quickBuilder = readFileSync(
+  new URL("../build-henukit-release-quick.sh", import.meta.url),
+  "utf8",
+);
+const oauthGate = readFileSync(
+  new URL("../oauth-continuation-release-gate.sh", import.meta.url),
+  "utf8",
+);
+const actionsWatcher = readFileSync(
+  new URL("../watch-henukit-actions.sh", import.meta.url),
   "utf8",
 );
 const imageInventory = fileURLToPath(
@@ -55,6 +78,7 @@ test("CI builds the primary HENU runtime without legacy Study or standalone Quiz
     "henukit-food-mcp",
     "henukit-library",
     "henukit-career-opportunities",
+    "henukit-getwork-mcp",
     "henukit-career-mcp",
     "henukit-portal-gateway",
     "henukit-quizcraft",
@@ -77,8 +101,125 @@ test("CI builds the primary HENU runtime without legacy Study or standalone Quiz
   );
 });
 
+test("release artifacts are blocked on the pinned read-only getWork MCP smoke", () => {
+  assert.match(workflow, /Verify getWork MCP release image/);
+  assert.match(workflow, /matrix\.name == 'getwork-mcp'/);
+  assert.match(workflow, /sort == \["crawl_jobs","list_sources"\]/);
+  assert.match(workflow, /"source":"meituan","since_days":7/);
+  assert.match(workflow, /scripts\/ops\/tests\/getwork-node-rollback\.test\.mjs/);
+  assert.match(workflow, /scripts\/ops\/tests\/getwork-wsl-node-contract\.test\.mjs/);
+  assert.match(careerWorkflow, /python3 -m unittest services\/getwork-mcp\/deploy\/test_verify_node\.py/);
+  assert.match(actionsWatcher, /getwork_relay_matches "\$release_sha"/);
+  assert.match(actionsWatcher, /getwork_relay_is_healthy "\$release_sha"/);
+});
+
+test("main Actions builds publish an OIDC-attested getWork WSL handoff manifest", () => {
+  assert.match(
+    workflow,
+    /attest-getwork-wsl-release:[\s\S]*if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/,
+  );
+  assert.match(
+    workflow,
+    /attest-getwork-wsl-release:[\s\S]*needs: \[build-image, package-runtime\]/,
+  );
+  assert.match(
+    workflow,
+    /attest-getwork-wsl-release:[\s\S]*permissions:[\s\S]*contents: read[\s\S]*id-token: write[\s\S]*attestations: write/,
+  );
+  assert.match(
+    workflow,
+    /name: henukit-getwork-mcp-\$\{\{ github\.sha \}\}[\s\S]*name: henukit-runtime-\$\{\{ github\.sha \}\}/,
+  );
+  assert.match(workflow, /scripts\/ops\/create-getwork-actions-manifest\.sh/);
+  assert.match(
+    workflow,
+    /uses: actions\/attest@daf44fb950173508f38bd2406030372c1d1162b1 # v3/,
+  );
+  assert.match(
+    workflow,
+    /subject-path: release\/henukit-getwork-actions-\$\{\{ github\.sha \}\}\.manifest/,
+  );
+  assert.match(
+    workflow,
+    /predicate-type: https:\/\/github\.com\/jry21223\/HENU-Kit-DEV\/attestations\/getwork-actions-release-v1[\s\S]*predicate: '\{\}'/,
+  );
+  assert.match(workflow, /steps\.attest-getwork\.outputs\.bundle-path/);
+  assert.match(
+    workflow,
+    /henukit-getwork-actions-\$\{\{ github\.sha \}\}\.attestation\.json/,
+  );
+  assert.match(
+    workflow,
+    /scripts\/ops\/tests\/getwork-actions-provenance\.test\.mjs/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /uses: actions\/[a-z-]+@v\d/,
+    "release workflow Actions must be pinned to immutable commit SHAs",
+  );
+});
+
 test("CI runs the Account Portfolio browser behavior spec", () => {
   assert.match(workflow, /pnpm --filter @henukit\/portal test:e2e:account/);
+});
+
+test("release artifacts are blocked on the cumulative cross-product OAuth journey", () => {
+  assert.equal(
+    rootPackage.scripts["test:oauth-continuation"],
+    "node --test scripts/tests/oauth-continuation-journey.test.mjs && go -C services/platform-core test ./internal/httpapi -run '^TestOAuthContinuationAuditUsesBoundedSchema$' -count=1 && go -C services/platform-core test ./tests -run '^TestPortalOAuthContinuationRestoresValidatedAuthorizeRequest$' -count=1 && pnpm --filter @henukit/portal run test:e2e:oauth-continuation && pnpm --filter @henukit/console run test:e2e:oauth-continuation",
+  );
+  assert.match(workflow, /oauth-continuation:\s+name: oauth-continuation/);
+  assert.match(
+    workflow,
+    /build-image:[\s\S]*needs: \[validate-release-contract, oauth-continuation, release-image-matrix\]/,
+  );
+  assert.match(
+    workflow,
+    /package-runtime:[\s\S]*needs: \[validate-release-contract, oauth-continuation\]/,
+  );
+  assert.match(workflow, /oauth-continuation-release-gate\.sh run[\s\S]*--sha "\$GITHUB_SHA"/);
+  assert.match(workflow, /actions\/upload-artifact@[0-9a-f]{40} # v4[\s\S]*henukit-oauth-continuation-gate-/);
+  assert.match(workflow, /actions\/download-artifact@[0-9a-f]{40} # v4[\s\S]*henukit-oauth-continuation-gate-/);
+  assert.match(workflow, /oauth-continuation-release-gate\.sh verify/);
+  assert.match(
+    workflow,
+    /Build fixed-SHA image[\s\S]*git -c tar\.umask=0022 archive --format=tar "\$GITHUB_SHA"[\s\S]*cd "\$source_root"[\s\S]*docker build/,
+  );
+  assert.match(workflow, /scripts\/ops\/tests\/oauth-continuation-release-gate\.test\.mjs/);
+  for (const builder of [localBuilder, quickBuilder]) {
+    assert.match(builder, /"\$oauth_gate" run --sha "\$release_sha" --output "\$oauth_gate_receipt"/);
+    assert.match(builder, /"\$oauth_gate" verify --sha "\$release_sha" --receipt "\$oauth_gate_receipt"/);
+    assert.match(builder, /"\$runtime_packager"[\s\S]*--oauth-gate-receipt "\$oauth_gate_receipt"/);
+    assert.ok(
+      builder.indexOf('"$oauth_gate" run') < builder.indexOf("docker build"),
+      "local builders must run the gate before the first image build",
+    );
+    assert.match(
+      builder,
+      /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha" \|[\s\S]*tar -xf - -C "\$source_root"/,
+    );
+    assert.ok(
+      builder.indexOf('archive --format=tar "$release_sha"') <
+        builder.indexOf("docker build"),
+      "local builders must build images from an exact Git snapshot",
+    );
+  }
+  assert.match(
+    quickBuilder,
+    /\[\[ -z "\$output_dir" \]\] && output_dir="\$repo_root\/artifacts\/henukit-release-quick"/,
+  );
+  assert.match(quickBuilder, /source_tree=.*rev-parse "\$\{release_sha\}\^\{tree\}"/);
+  assert.equal(
+    (quickBuilder.match(/assert_source_snapshot/g) ?? []).length,
+    4,
+    "the quick builder rechecks the exact source before and after construction",
+  );
+  assert.match(oauthGate, /pnpm -C "\$repo_root" run test:oauth-continuation/);
+  assert.match(oauthGate, /release_sha=%s/);
+  assert.match(oauthGate, /source_tree=%s/);
+  assert.match(runtimePackager, /oauth-continuation-release-gate\.sh/);
+  assert.match(runtimePackager, /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha"/);
+  assert.match(runtimePackager, /release-gates\/oauth-continuation\.env/);
 });
 
 test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {
@@ -89,7 +230,14 @@ test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {
 test("release artifacts carry an exact-SHA Account mock-free boundary manifest", () => {
   assert.match(
     workflow,
-    /scripts\/ops\/package-henukit-runtime\.sh --sha "\$GITHUB_SHA" --output-dir release/,
+    /scripts\/ops\/package-henukit-runtime\.sh[\s\S]*--sha "\$GITHUB_SHA"[\s\S]*--oauth-gate-receipt/,
+  );
+});
+
+test("the production watcher extracts runtime artifacts as the root release owner", () => {
+  assert.match(
+    actionsWatcher,
+    /tar --no-same-owner -xzf "\$runtime_archive" -C "\$release_incoming"/,
   );
 });
 
@@ -97,6 +245,17 @@ test("release-contract CI exercises the production artifact deployment seam", ()
   assert.match(
     workflow,
     /scripts\/ops\/tests\/deploy-henukit-artifact\.test\.mjs/,
+  );
+});
+
+test("release-contract isolates runtime packaging from cross-file repository fixtures", () => {
+  assert.equal(
+    workflow.match(/scripts\/ops\/tests\/package-henukit-runtime\.test\.mjs/g)?.length,
+    1,
+  );
+  assert.match(
+    workflow,
+    /node --test --test-concurrency=1 \\\n+\s+scripts\/ops\/tests\/package-henukit-runtime\.test\.mjs/,
   );
 });
 
@@ -261,7 +420,9 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
       "FOOD_SUMMARY_KEY_ID",
       "CAREER_DATABASE_URL",
       "CAREER_CLIENT_SECRET",
-      "CAREER_SOURCE_ALLOWLIST",
+      "CAREER_GETWORK_MCP_URL",
+      "GETWORK_MCP_ACCESS_TOKEN",
+      "GETWORK_RELAY_ADDR",
       "CAREER_AI_BASE_URL",
       "CAREER_AI_API_KEY",
       "CAREER_AI_MODEL",
@@ -337,6 +498,8 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
             ACCOUNT_PORTFOLIO_DATABASE_URL: "postgres://test",
             QUIZCRAFT_CORE_URL: "http://quizcraft:10089",
             CAREER_DATABASE_URL: "postgres://test",
+            CAREER_GETWORK_MCP_URL: "http://getwork-mcp-relay:18101/mcp",
+            GETWORK_RELAY_ADDR: "172.17.0.1:18101",
             RELEASE_SHA: releaseSha,
             STUDY_DATABASE_URL: "postgres://test",
             ...overrides,
@@ -443,8 +606,70 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.equal(
     config.services["career-opportunities"].environment.CAREER_SOURCE_ALLOWLIST,
-    "test-required-value",
-    "production Career must require an explicit authorized source allowlist",
+    undefined,
+    "production Career must not select a subset of the pinned MCP sources",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.CAREER_GETWORK_SOURCE_ALLOWLIST,
+    undefined,
+    "production Career must discover every pinned MCP source",
+  );
+  assert.equal(
+    config.services["career-opportunities"].environment.CAREER_GETWORK_MCP_URL,
+    "http://getwork-mcp-relay:18101/mcp",
+    "production Career must consume the host-private SSH relay endpoint",
+  );
+  assert.deepEqual(
+    config.services["career-opportunities"].extra_hosts,
+    ["getwork-mcp-relay=host-gateway"],
+    "Career must resolve the production-private relay on the Docker host",
+  );
+  assert.equal(
+    config.services["career-opportunities"].depends_on["getwork-mcp-relay"].condition,
+    "service_healthy",
+    "Career must wait for the private relay rather than a local browser crawler",
+  );
+  assert.equal(
+    config.services["career-opportunities"].depends_on["getwork-mcp"],
+    undefined,
+    "production Career must not require the browser-bearing local crawler",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].image,
+    `henukit-career-opportunities:${releaseSha}`,
+    "the relay reuses the small Career image instead of the browser crawler image",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].network_mode,
+    "host",
+    "the relay must bridge host loopback to the private Docker gateway without publishing a port",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].restart,
+    "no",
+    "production relay must not auto-start before the watcher restores ingress firewall rules",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_ADDR,
+    "172.17.0.1:18101",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_UPSTREAM_URL,
+    "http://127.0.0.1:18100",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_HEALTH_ADDR,
+    "127.0.0.1:18100",
+  );
+  assert.equal(
+    config.services["getwork-mcp-relay"].ports,
+    undefined,
+    "the relay must not publish a host port",
+  );
+  assert.equal(
+    config.services["getwork-mcp"],
+    undefined,
+    "the browser-bearing local crawler must not be part of the production runtime",
   );
   assert.equal(
     config.services["career-opportunities"].environment.PLATFORM_CORE_CAREER_DIGEST_URL,
@@ -611,10 +836,10 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     config.services["console-gateway"].depends_on["portal-summary"].condition,
     "service_healthy",
   );
-  assert.match(
+  assert.doesNotMatch(
     releaseImageMatrix().include.find(({ name }) => name === "console").build_args,
-    /VITE_QUIZCRAFT_WORKSHOP_URL=$/m,
-    "production Console must not bake a retired QuizCraft workshop route",
+    /VITE_QUIZCRAFT_WORKSHOP_URL/,
+    "production Console must not retain a retired workshop build argument",
   );
   assert.equal(
     config.services["notice"].environment.NOTICE_SERVICE_CLIENT_ID,
@@ -659,10 +884,13 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     /henukit_dev_change_me|replace-[a-z]|0123456789abcdef|cUUpjiEH/,
   );
   assert.match(workflow, /name: henukit-runtime-\$\{\{ github\.sha \}\}/);
-  assert.match(workflow, /scripts\/ops\/package-henukit-runtime\.sh --sha "\$GITHUB_SHA" --output-dir release/);
+  assert.match(
+    workflow,
+    /scripts\/ops\/package-henukit-runtime\.sh[\s\S]*--sha "\$GITHUB_SHA"[\s\S]*--oauth-gate-receipt/,
+  );
   assert.match(
     runtimePackager,
-    /config --no-interpolate --no-path-resolution > "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
+    /config --format json --no-interpolate --no-path-resolution[\s\S]*del\(\.services\[\][\s\S]*docker compose -f - config --no-interpolate --no-path-resolution[\s\S]*> "\$runtime\/docker-compose\.henukit\.release\.yml"[\s\S]*infra\/nginx\/henukit\.conf\.example/,
   );
   assert.match(runtimePackager, /deploy-henukit-artifact\.sh/);
   assert.match(runtimePackager, /watch-henukit-actions\.sh/);
@@ -677,22 +905,22 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/platform-core\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/platform-core\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry the registration migration",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/account-portfolio\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Account Portfolio recovery migrations",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/notice\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/notice\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Notice recovery migrations",
   );
   assert.match(
     runtimePackager,
-    /cp "\$repo_root"\/services\/food\/db\/migrations\/\*\.up\.sql/,
+    /cp "\$source_root"\/services\/food\/db\/migrations\/\*\.up\.sql/,
     "the fixed-SHA runtime must carry Food recovery migrations",
   );
 });

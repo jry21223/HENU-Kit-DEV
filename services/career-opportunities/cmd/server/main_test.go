@@ -3,45 +3,63 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	career "henukit.dev/career"
 )
 
-func TestBuildWorkEnablesAuthorizedOfficialSource(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"message":"成功","data":{"page":{"totalPage":1},"list":[{"jobUnionId":"job-1","name":"后端开发实习生","cityList":[{"name":"北京市"}],"jobDuty":"Go 服务研发","jobRequirement":"熟悉 Go"}]}}`))
+func TestBuildWorkUsesAuthorizedGetWorkMCP(t *testing.T) {
+	mcpServer := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "getwork-test", Version: "0.1.0"}, nil)
+	mcpsdk.AddTool(mcpServer, &mcpsdk.Tool{Name: "list_sources"}, func(context.Context, *mcpsdk.CallToolRequest, struct{}) (*mcpsdk.CallToolResult, any, error) {
+		return nil, map[string]any{"status": "ok", "sources": []map[string]any{{"key": "meituan"}}}, nil
+	})
+	type crawlInput struct {
+		Source    string `json:"source"`
+		SinceDays int    `json:"since_days"`
+	}
+	mcpsdk.AddTool(mcpServer, &mcpsdk.Tool{Name: "crawl_jobs"}, func(_ context.Context, _ *mcpsdk.CallToolRequest, input crawlInput) (*mcpsdk.CallToolResult, any, error) {
+		if input.Source != "meituan" {
+			return nil, nil, fmt.Errorf("unexpected source %q", input.Source)
+		}
+		return nil, map[string]any{
+			"status": "ok", "source": "meituan", "fetched_at": "2026-08-26T00:00:00Z",
+			"jobs": []map[string]any{{
+				"title": "Go 后端实习生", "company": "美团", "source": "meituan", "location": "北京",
+				"job_type": "实习", "description": "Go 后端开发", "apply_url": "https://zhaopin.meituan.com/job/1",
+			}},
+		}, nil
+	})
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return mcpServer }, &mcpsdk.StreamableHTTPOptions{
+		Stateless: true, JSONResponse: true,
+	})
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer getwork-test-access-token-32-bytes" {
+			http.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		handler.ServeHTTP(writer, request)
 	}))
-	defer server.Close()
+	defer upstream.Close()
 
-	t.Setenv("CAREER_SOURCE_ALLOWLIST", "official.meituan")
-	t.Setenv("CAREER_MEITUAN_API_URL", server.URL)
+	t.Setenv("CAREER_GETWORK_MCP_URL", upstream.URL+"/mcp")
+	t.Setenv("CAREER_GETWORK_MCP_ACCESS_TOKEN", "getwork-test-access-token-32-bytes")
+	t.Setenv("CAREER_GETWORK_SINCE_DAYS", "7")
 	work, err := buildWork()
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := work(context.Background(), map[string]any{
-		"target_roles": "后端开发",
-		"tech_stack":   "Go",
-		"locations":    "北京",
-		"job_type":     "daily_intern",
-	})
+	result, err := work(context.Background(), map[string]any{"target_roles": "后端", "tech_stack": "Go", "locations": "北京", "job_type": "daily_intern"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.SourceCount != 1 || result.JobCount != 1 || result.MatchedCount != 1 {
-		t.Fatalf("result = %+v, want one real matched job from one source", result)
-	}
-}
-
-func TestBuildWorkRejectsUnknownAuthorizedSource(t *testing.T) {
-	t.Setenv("CAREER_SOURCE_ALLOWLIST", "official.unknown")
-	if _, err := buildWork(); err == nil {
-		t.Fatal("unknown allowlisted source was silently accepted")
+		t.Fatalf("MCP result = %+v", result)
 	}
 }
 
@@ -113,6 +131,63 @@ func TestBuildExtractorDoesNotBroadenTheHTTPException(t *testing.T) {
 		if _, err := buildExtractor(); err == nil {
 			t.Fatalf("HTTP exception broadened to %s", endpoint)
 		}
+	}
+}
+
+func TestBuildSuifierUsesTheConfiguredCareerLLM(t *testing.T) {
+	t.Setenv("CAREER_REQUIRE_AI", "1")
+	t.Setenv("CAREER_AI_MODE", "")
+	t.Setenv("CAREER_AI_BASE_URL", "https://llm.provider.internal/v1")
+	t.Setenv("CAREER_AI_API_KEY", "sk-production-secret")
+	t.Setenv("CAREER_AI_MODEL", "qwen-production")
+	t.Setenv("CAREER_ALLOW_INSECURE_AI_HTTP", "0")
+	suifier, err := buildSuifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if suifier == nil {
+		t.Fatal("configured production Career LLM returned a nil suifier")
+	}
+}
+
+func TestBuildSuifierRequiresItsOwnPlaintextDisclosureGate(t *testing.T) {
+	t.Setenv("CAREER_REQUIRE_AI", "1")
+	t.Setenv("CAREER_AI_MODE", "")
+	t.Setenv("CAREER_AI_BASE_URL", approvedInsecureAIURL)
+	t.Setenv("CAREER_AI_API_KEY", "sk-production-secret")
+	t.Setenv("CAREER_AI_MODEL", "qwen-production")
+	t.Setenv("CAREER_ALLOW_INSECURE_AI_HTTP", "1")
+	t.Setenv("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP", "0")
+
+	suifier, err := buildSuifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if suifier != nil {
+		t.Fatal("plaintext Suification was enabled without its separate disclosure gate")
+	}
+
+	t.Setenv("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP", "1")
+	suifier, err = buildSuifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if suifier == nil {
+		t.Fatal("explicitly approved plaintext Suification returned a nil suifier")
+	}
+}
+
+func TestBuildSuifierDoesNotBroadenThePlaintextException(t *testing.T) {
+	t.Setenv("CAREER_REQUIRE_AI", "1")
+	t.Setenv("CAREER_AI_MODE", "")
+	t.Setenv("CAREER_AI_BASE_URL", "https://llm.provider.internal/v1")
+	t.Setenv("CAREER_AI_API_KEY", "sk-production-secret")
+	t.Setenv("CAREER_AI_MODEL", "qwen-production")
+	t.Setenv("CAREER_ALLOW_INSECURE_AI_HTTP", "0")
+	t.Setenv("CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP", "1")
+
+	if _, err := buildSuifier(); err == nil {
+		t.Fatal("Suification plaintext exception was accepted for an HTTPS provider")
 	}
 }
 

@@ -313,6 +313,47 @@ func TestCareerExtractionStatusForwards(t *testing.T) {
 	}
 }
 
+func TestCareerSuificationForwardsActorBoundDraft(t *testing.T) {
+	const original = "负责校园资料检索网站开发"
+	const draft = "主导校园资料检索能力从 0 到 1 建设"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/career/profile/suifications" {
+			t.Fatalf("unexpected upstream request %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("X-Actor-User-Id"); got != careerSessionUserID {
+			t.Fatalf("upstream X-Actor-User-Id = %q", got)
+		}
+		assertCareerSignature(t, r, careerSessionUserID)
+		if got := r.Header.Get("Idempotency-Key"); got != "idem_suify_browser" {
+			t.Fatalf("upstream Idempotency-Key = %q", got)
+		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != `{"resume_text":"`+original+`"}` {
+			t.Fatalf("upstream body = %s", raw)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"draft":{"resume_text":"` + draft + `"}},"request_id":"req_career_suify"}`))
+	}))
+	defer upstream.Close()
+	mem := membershipServer(t, careerSessionUserID, false)
+	defer mem.Close()
+	handler := newCareerHandler(t, upstream.URL, mem.URL)
+
+	request := careerRequest(t, handler, true, careerSessionUserID, http.MethodPost, "/api/v1/career/profile/suifications", `{"resume_text":"`+original+`"}`, "idem_suify_browser")
+	request.Header.Set("X-Actor-User-Id", "99999999-9999-4999-8999-999999999999")
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("suification status = %d: %s", response.Code, response.Body.String())
+	}
+	if response.Body.String() != `{"draft":{"resume_text":"`+draft+`"},"request_id":"req_career_suify"}` {
+		t.Fatalf("suification response = %s", response.Body.String())
+	}
+}
+
 func TestCareerCreateSearchRequiresSessionAndLifetime(t *testing.T) {
 	career := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("upstream contacted without auth gate")

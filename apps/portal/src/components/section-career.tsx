@@ -4,8 +4,8 @@ import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import WorkRadar from "@/components/career/work-radar";
 
-// 首页文案只承诺已授权来源能做到的事：来源由服务端 allowlist 控制
-// （首发只有美团官方校招接口），邮件只发到已验证的账户邮箱。
+// 首页文案只描述服务端已接入的官方来源，扫描范围由服务端发现并校验；
+// 邮件只发到已验证的账户邮箱。
 const FEATURES = [
   "扫描受控的官方招聘来源",
   "按求职画像筛选匹配岗位",

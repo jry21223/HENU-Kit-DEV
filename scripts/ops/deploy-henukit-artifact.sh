@@ -112,7 +112,7 @@ if [[ -n "$migration_arg" ]]; then
     migration_path="$migration_dir/$migration_name"
     [[ -f "$migration_path" && ! -L "$migration_path" ]] || die "migration file does not exist or is unsafe"
     echo "Applying Platform Core migration $migration_name to the platform database"
-    "${compose[@]}" exec -T postgres sh -ceu 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d platform -f -' < "$migration_path"
+    "${compose[@]}" exec -T postgres sh -ceu 'psql --single-transaction -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d platform -f -' < "$migration_path"
   done
 fi
 

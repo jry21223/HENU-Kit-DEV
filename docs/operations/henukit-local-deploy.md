@@ -18,12 +18,12 @@ WSL ──ssh henu-prod(修正KEX)──> 生产 8.146.200.82:22222 ──rsync 
 
 **关键事实（本次踩坑总结）：**
 
-1. **镜像清单现为 18 个**：`henukit-release-images.sh` 含 `food-mcp`（ADR-0033）、`career-opportunities`（#392）、`career-mcp`（ADR-0034）和 `quizcraft`（方案 2 容器化 Go core）。`docker-compose.henukit.yml` 的每个服务都必须同时在 inventory 和 `docker-compose.henukit.prebuilt.yml` 中有固定镜像。
+1. **镜像清单现为 19 个**：`henukit-release-images.sh` 含 `food-mcp`（ADR-0033）、`career-opportunities`（#392）、`getwork-mcp`（ADR-0042）、`career-mcp`（ADR-0034）和 `quizcraft`（方案 2 容器化 Go core）。`docker-compose.henukit.yml` 的每个服务都必须同时在 inventory 和 `docker-compose.henukit.prebuilt.yml` 中有固定镜像。
 2. **career-opportunities 是 conditional 角色**（不是 baseline），否则旧 release（14 镜像时代）无法通过回滚验证。
 3. **直连 SSH 到生产会被中间设备干扰 KEX**（卡在 `expecting SSH2_MSG_KEX_ECDH_REPLY`），必须用 `KexAlgorithms diffie-hellman-group14-sha256`。
 4. **生产 `.env.henukit` 必须包含全部 compose 必填变量**，新增服务（career/food-mcp）需要手动补 env + 建数据库。
 5. **WSL git checkout 权限是 775**，会触发 verify 的 `trusted file must not be group- or world-writable`；构建前需 `chmod 755`（且 `henukit-materials-sync.sh` 在 git 里是 644，不能 chmod）。
-6. **生产磁盘紧张**：部署前检查 `df -h /`，必要时清理旧 bundle/release。
+6. **生产磁盘紧张**：getWork MCP 的浏览器运行时使单个镜像解压后约 1 GB。部署前必须检查 `df -h /`，保留至少 5 GiB 可用空间，必要时清理未被容器引用的旧 SHA 镜像和可重新下载的 Actions staging。
 
 ---
 
@@ -33,14 +33,14 @@ WSL ──ssh henu-prod(修正KEX)──> 生产 8.146.200.82:22222 ──rsync 
 
 ```bash
 ssh quizcraft-prod 'df -h / | tail -1'
-# 需要 ≥1.5G 可用；不足时清理（见第五节）
+# 需要 ≥5 GiB 可用；watcher 会在消费批准前强制检查 4096 MiB 底线
 ```
 
 ### 1.2 生产 inventory 版本
 
 ```bash
 ssh quizcraft-prod '/usr/local/sbin/henukit-release-images.sh --records | wc -l'
-# 必须 = 18。若 <18，从本地提取新 inventory 覆盖（见第六节）
+# 必须 = 19。若 <19，从目标 SHA 的 runtime 产物提取新 inventory 覆盖（见第六节）
 ```
 
 ### 1.3 生产 env 必填变量
@@ -82,7 +82,7 @@ docker run --rm -v /home/jerry/HENU-Kit-DEV-career-radar-364:/repo \
 # 输出必须是 0（干净）。否则 verify 会报 trusted file group-writable
 ```
 
-### 2.3 容器内签名构建（18 镜像）
+### 2.3 容器内签名构建（19 镜像）
 
 ```bash
 cat > /tmp/henukit-build.sh <<'SCRIPT'
@@ -123,7 +123,7 @@ docker run --rm \
 - `DOCKER_BUILDKIT=1` + 挂载宿主 buildx 插件（否则 `--mount=type=cache` 报错）
 - 容器内装 `nodejs npm findutils`（runtime 打包要 node + GNU find `-printf`）
 - 签名 key 从 `/etc/henukit-release-builder/ed25519` 挂载（只读）
-- 产物在 `/home/jerry/henukit-signed/henukit-release-<sha>/`（41 个文件：18 镜像×2 + runtime×2 + RELEASE_SHA + manifest + sig）
+- 产物在 `/home/jerry/henukit-signed/henukit-release-<sha>/`（43 个文件：19 镜像×2 + runtime×2 + RELEASE_SHA + manifest + sig）
 
 ### 2.4 验证产物
 
@@ -203,9 +203,10 @@ docker run --rm \
 |---|---|
 | `required variable CAREER_DATABASE_URL is missing` | 生产 env 补变量（第七节） |
 | `required variable PORTAL_DEPLOYED_AT/PORTAL_VERSION is missing` | 同上 |
-| `no healthy fixed-SHA rollback release is ready` | career 角色必须 conditional；生产 inventory 更新到 18 镜像 |
+| `no healthy fixed-SHA rollback release is ready` | career 角色必须 conditional；生产 inventory 更新到 19 镜像 |
 | `unexpected artifact file henukit-career-opportunities-...` | 生产 inventory 旧（14 镜像），更新（第六节） |
 | `an approval already exists for release ...` | `ssh quizcraft-prod "rm -f /var/lib/henukit-actions-watch/approvals/<sha>"` |
+| `activation requires at least 4096 MiB free` | 批准尚未消费；清理至少 5 GiB 可用空间后重新走显式批准 |
 | 磁盘满 `No space left on device` | 清理（第五节） |
 
 ---
@@ -222,7 +223,7 @@ ssh quizcraft-prod '
 '
 ```
 
-**成功标准：** last-activated = 目标 SHA；18 个容器镜像全为目标 SHA；21 容器 Up；全部路由 200。
+**成功标准：** last-activated = 目标 SHA；19 个自建镜像全为目标 SHA；22 容器 Up；全部路由通过各自的精确验收契约。
 
 ---
 
@@ -261,7 +262,7 @@ scp -o ProxyCommand="nc -x 127.0.0.1:7890 %h %p" \
 ssh quizcraft-prod '
   cp /tmp/inventory-latest.sh /usr/local/sbin/henukit-release-images.sh
   chmod 555 /usr/local/sbin/henukit-release-images.sh
-  /usr/local/sbin/henukit-release-images.sh --records | wc -l   # 必须 = 18
+  /usr/local/sbin/henukit-release-images.sh --records | wc -l   # 必须 = 19
 '
 ```
 
@@ -292,6 +293,8 @@ FOOD_POST_READ_SECRET=food-post-read-$(openssl rand -hex 16)
 FOOD_POST_READ_KEY_ID=food-post-read-key
 FOOD_MCP_ACCESS_TOKEN=mcp-$(openssl rand -hex 16)
 CAREER_MCP_ACCESS_TOKEN=mcp-$(openssl rand -hex 16)
+GETWORK_MCP_ACCESS_TOKEN=getwork-mcp-$(openssl rand -hex 24)
+CAREER_GETWORK_SINCE_DAYS=7
 PORTAL_DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PORTAL_VERSION=<sha前12位>
 EOF

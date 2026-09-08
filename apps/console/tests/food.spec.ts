@@ -14,7 +14,10 @@ function workspace() {
     submissions: approved ? [] : [{ id: "11111111-1111-4111-8111-111111111111", venue_name: submissionEdited ? "北苑餐厅（一餐）" : "北苑餐厅", item_name: "胡辣汤", description: "早餐窗口", campus: submissionEdited ? "minglun" : null, status: "pending", version: submissionEdited ? 2 : 1, submitted_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }],
     anomaly_tickets: anomalyResolved ? [] : [{ id: "22222222-2222-4222-8222-222222222222", venue_name: "北苑餐厅", kind: "duplicate", details: "重复地点", severity: "medium", status: "open", version: 1, created_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }],
     tier_adjustments: tierConfirmed ? [] : [{ id: "33333333-3333-4333-8333-333333333333", venue_name: "北苑餐厅", current_tier: "standard", proposed_tier: "recommended", reason: "近期评分稳定", status: "pending", version: 1, created_at: "2026-07-20T00:00:00Z", updated_at: "2026-07-20T00:00:00Z" }],
-    posts: [{ id: "44444444-4444-4444-8444-444444444444", venue_name: postEdited ? "南苑餐厅（一餐）" : "南苑餐厅", campus: postEdited ? "minglun" : "jinming", tier: postEdited ? "top" : "hang", review_text: "学生推荐", price_reference: "¥12", hours_reference: "10:00-20:00", author_display_name: "张三", hidden: postEdited, version: postEdited ? 2 : 1, created_at: "2026-07-19T10:00:00Z", updated_at: "2026-07-19T10:00:00Z" }] };
+    // Frozen legacy Food rows use deterministic md5-derived PostgreSQL UUIDs.
+    // Their canonical 8-4-4-4-12 shape is valid for the owner and Go clients,
+    // even though the hash does not carry RFC version/variant marker bits.
+    posts: [{ id: "01234567-89ab-cdef-0123-456789abcdef", venue_name: postEdited ? "南苑餐厅（一餐）" : "南苑餐厅", campus: postEdited ? "minglun" : "jinming", tier: postEdited ? "top" : "hang", review_text: "学生推荐", price_reference: "¥12", hours_reference: "10:00-20:00", author_display_name: "张三", hidden: postEdited, version: postEdited ? 2 : 1, created_at: "2026-07-19T10:00:00Z", updated_at: "2026-07-19T10:00:00Z" }] };
 }
 
 test.beforeEach(async ({ page }) => {

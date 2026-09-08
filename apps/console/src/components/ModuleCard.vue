@@ -22,7 +22,6 @@ const statusLabels: Record<ModuleStatus, string> = {
   denied: "无权访问",
 };
 
-const quizcraftWorkshopURL = computed(() => import.meta.env.VITE_QUIZCRAFT_WORKSHOP_URL?.trim() || "");
 const statusLabel = computed(() => props.summary.unavailableReason === "not_onboarded"
   ? "尚未接入"
   : props.summary.unavailableReason === "operator_disabled"
@@ -92,16 +91,6 @@ const statusLabel = computed(() => props.summary.unavailableReason === "not_onbo
         <Clock3 v-else :size="16" aria-hidden="true" class="shrink-0" />
         <span>{{ summary.statusMessage }}</span>
       </div>
-
-      <a
-        v-if="summary.id === 'quizcraft' && quizcraftWorkshopURL"
-        :href="quizcraftWorkshopURL"
-        target="_blank"
-        rel="noreferrer"
-        class="mt-3 inline-flex min-h-9 items-center rounded-md border border-border px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      >
-        打开 QuizCraft 题库工坊
-      </a>
 
       <footer
         v-if="summary.metrics.length || summary.asOf || (summary.status === 'stale' && summary.lastSuccessAt)"

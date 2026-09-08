@@ -40,7 +40,7 @@ import {
   getPendingShadowFeedback,
   isQuizcraftAuthenticationError,
   persistPendingShadowFeedback,
-  redirectToQuizcraftLogin,
+  redirectToHenuKitFavorites,
   shadowFavoritesApi,
   shadowFeedbackApi,
 } from "@/api/quizcraftShadowClient";
@@ -1008,14 +1008,14 @@ function useQuizController() {
       setUi({
         favoriteSubmitting: false,
         favoriteError: isQuizcraftAuthenticationError(error)
-          ? "登录后才能收藏题目"
-          : "收藏失败，请登录后重试",
+          ? "请前往练习服务使用收藏"
+          : "收藏失败，请稍后重试",
       });
       if (isQuizcraftAuthenticationError(error)) {
         try {
-          redirectToQuizcraftLogin(pendingBankId, pendingQuestionId, pendingFavorite);
+          redirectToHenuKitFavorites();
         } catch {
-          setUi({ favoriteError: "登录入口暂不可用，请稍后重试" });
+          setUi({ favoriteError: "暂时无法打开练习服务，请稍后重试" });
         }
       }
     });
@@ -1694,14 +1694,14 @@ function useQuizController() {
       setUi({
         favoriteSubmitting: false,
         favoriteError: isQuizcraftAuthenticationError(error)
-          ? "登录后才能收藏题目"
-          : "收藏失败，请登录后重试",
+          ? "请前往练习服务使用收藏"
+          : "收藏失败，请稍后重试",
       });
       if (isQuizcraftAuthenticationError(error)) {
         try {
-          redirectToQuizcraftLogin(activeBankId, activeQuestion.id, nextFavorite);
+          redirectToHenuKitFavorites();
         } catch {
-          setUi({ favoriteError: "登录入口暂不可用，请稍后重试" });
+          setUi({ favoriteError: "暂时无法打开练习服务，请稍后重试" });
         }
       }
     });

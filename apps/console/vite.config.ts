@@ -13,6 +13,8 @@ function normalizeBase(raw: string | undefined): string {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const base = normalizeBase(env.VITE_BASE_PATH ?? process.env.VITE_BASE_PATH);
+  const gatewayProxy =
+    env.PLAYWRIGHT_CONSOLE_GATEWAY_URL ?? "http://127.0.0.1:8082";
 
   return {
     base,
@@ -26,7 +28,7 @@ export default defineConfig(({ mode }) => {
       host: "0.0.0.0",
       port: 5174,
       proxy: {
-        "/api": "http://127.0.0.1:8082",
+        "/api": gatewayProxy,
       },
     },
   };

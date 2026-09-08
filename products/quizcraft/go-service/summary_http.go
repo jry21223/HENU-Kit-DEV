@@ -244,10 +244,10 @@ func readPortalPracticeCommandBody(request *http.Request) ([]byte, error) {
 }
 
 func (service *practiceHTTP) consoleSummary(writer http.ResponseWriter, request *http.Request) {
-	var publishedBanks, drafts, pendingFeedback int64
-	err := service.database.QueryRow(request.Context(), `SELECT (SELECT count(*) FROM quizcraft_banks WHERE active_version_id IS NOT NULL),(SELECT count(*) FROM quizcraft_workshop_version_states WHERE state='draft'),(SELECT count(*) FROM quizcraft_feedback_inbox_deliveries WHERE delivered_at IS NULL)`).Scan(&publishedBanks, &drafts, &pendingFeedback)
+	var publishedBanks, practiceSessions, pendingFeedback int64
+	err := service.database.QueryRow(request.Context(), `SELECT (SELECT count(*) FROM quizcraft_banks WHERE active_version_id IS NOT NULL),(SELECT count(*) FROM quizcraft_practice_sessions),(SELECT count(*) FROM quizcraft_feedback_inbox_deliveries WHERE delivered_at IS NULL)`).Scan(&publishedBanks, &practiceSessions, &pendingFeedback)
 	if err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft summary is temporarily unavailable")
+		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "practice summary is temporarily unavailable")
 		return
 	}
 	requestID := request.Header.Get("X-Request-Id")
@@ -255,8 +255,8 @@ func (service *practiceHTTP) consoleSummary(writer http.ResponseWriter, request 
 		requestID = "req_summary_invalid"
 	}
 	data := map[string]any{
-		"id": "quizcraft", "status": "ok", "status_message": "QuizCraft Workshop and feedback facts are available.", "as_of": service.now().UTC(),
-		"metrics": []map[string]string{{"label": "已发布题库", "value": strconv.FormatInt(publishedBanks, 10)}, {"label": "待人工校验", "value": strconv.FormatInt(drafts, 10)}, {"label": "纠错反馈", "value": strconv.FormatInt(pendingFeedback, 10)}},
+		"id": "quizcraft", "status": "ok", "status_message": "练习服务摘要可用", "as_of": service.now().UTC(),
+		"metrics": []map[string]string{{"label": "已发布题库", "value": strconv.FormatInt(publishedBanks, 10)}, {"label": "练习会话", "value": strconv.FormatInt(practiceSessions, 10)}, {"label": "纠错反馈", "value": strconv.FormatInt(pendingFeedback, 10)}},
 	}
 	encoded, _ := json.Marshal(responseEnvelope{RequestID: requestID, Data: data})
 	writeRawJSON(writer, http.StatusOK, encoded)

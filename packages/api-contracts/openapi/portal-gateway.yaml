@@ -721,6 +721,55 @@ paths:
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/career/profile/suifications:
+    post:
+      operationId: createCareerResumeSuification
+      summary: Create a transient entertainment rewrite of Resume Text
+      description: >-
+        Returns a temporary draft for the signed-in Lifetime user. The command
+        does not update the stored Career profile; the browser may discard or
+        apply the returned text to its editable form.
+      security:
+        - portalSession: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 200
+            pattern: '^[A-Za-z0-9._:-]{8,200}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CareerResumeSuificationInput"
+      responses:
+        "200":
+          description: The transient draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CareerResumeSuificationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   # Legacy practice reads (/api/v1/practice/banks, /schools, /lists/{id},
   # /leaderboard) were removed with ADR-0036: Portal Gateway routes every
   # practice read to the QuizCraft Go core contract instead, and the removed
@@ -1557,6 +1606,31 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    CareerResumeSuificationInput:
+      type: object
+      additionalProperties: false
+      required: [resume_text]
+      properties:
+        resume_text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    CareerResumeSuificationResponse:
+      type: object
+      required: [draft, request_id]
+      properties:
+        draft:
+          type: object
+          required: [resume_text]
+          properties:
+            resume_text:
+              type: string
+              minLength: 1
+              maxLength: 4000
+        request_id:
+          type: string
 
     VenueSummary:
       type: object

@@ -28,13 +28,31 @@ idempotency ledger, and resume AI-extraction jobs.
 lives in Account Portfolio), the AI provider (a custom OpenAI-compatible
 endpoint configured by the operator), or email delivery (#397).
 
-## Authorized opportunity sources
+## Opportunity sources
 
-`CAREER_SOURCE_ALLOWLIST=official.meituan` enables the independently written
-Meituan campus-recruitment adapter. The adapter reads only Meituan's public
-official JSON endpoint, normalizes source-attributed jobs, and scores them
-against the frozen Career Profile. Unknown allowlist keys fail startup. An
-empty allowlist remains the emergency kill switch for local/degraded use.
+Production connects to the pinned getWork MCP server through
+`CAREER_GETWORK_MCP_URL` and `CAREER_GETWORK_MCP_ACCESS_TOKEN`. Career verifies
+the exact MCP tool surface and discovers the server's full source list through
+the official SDK at startup. Under ADR-0045, each remote `crawl_jobs` call uses
+an independent, bounded stateless Streamable HTTP request so concurrent browser
+crawls do not share one SSH-coupled MCP session. These calls retain the exact
+SDK-negotiated protocol version and its required metadata and standard headers;
+unsupported parameter-header schemas fail startup. Career scans every
+discovered source with a production-verified maximum concurrency of two; there
+is no per-source allowlist.
+Each result keeps its source status and only accepts official HTTPS application
+URLs for that source. One scan has a six-minute deadline and persists at most
+the top 200 jobs by explainable relevance.
+
+ADR-0043 places the browser-bearing MCP on the WSL Job Source node. Production
+Career reaches it through a forwarding-only SSH tunnel and a host-private relay
+at the operator-configured `CAREER_GETWORK_MCP_URL`. The relay exposes only
+`/mcp` and `/healthz`; tunnel loss returns a stable unavailable response and
+never starts a local crawler fallback.
+
+The older direct-source registry remains available for local/degraded tests.
+Every source explicitly registered in code is enabled; an empty registry runs
+no direct source.
 
 ## Resume extraction (上传简历 → AI 识别)
 

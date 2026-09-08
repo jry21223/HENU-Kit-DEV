@@ -580,7 +580,16 @@ export interface CareerSearchResult {
   job_count: number;
   matched_count: number;
   summary: string;
+  sources: CareerSourceScan[];
   jobs: CareerJob[];
+}
+
+export interface CareerSourceScan {
+  key: string;
+  status: "success" | "failed";
+  found: number;
+  fetched?: number;
+  rejected?: number;
 }
 
 export interface CareerSearch {
@@ -662,5 +671,13 @@ export interface CareerResumeExtraction {
 /** 网关解包后的提取创建 / 状态响应。 */
 export interface CareerResumeExtractionResponse {
   extraction: CareerResumeExtraction;
+  request_id: string;
+}
+
+/** A transient entertainment rewrite; it is not a stored Career Profile. */
+export interface CareerResumeSuificationResponse {
+  draft: {
+    resume_text: string;
+  };
   request_id: string;
 }
