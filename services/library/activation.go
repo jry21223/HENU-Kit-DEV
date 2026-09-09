@@ -192,6 +192,7 @@ type manifestAsset struct {
 	College              string       `json:"college"`
 	ContainsPersonalInfo bool         `json:"containsPersonalInfo"`
 	LicenseStatus        string       `json:"licenseStatus"`
+	Major                string       `json:"major"`
 	ReviewStatus         string       `json:"reviewStatus"`
 	SourceNote           string       `json:"sourceNote"`
 	SourceType           string       `json:"sourceType"`
