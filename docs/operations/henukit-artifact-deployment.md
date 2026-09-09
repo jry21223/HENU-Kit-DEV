@@ -212,7 +212,23 @@ runbook `henukit-local-deploy.md` and the one-command wrapper
    check `df -h /`; clean old unreferenced fixed-SHA images and
    `/opt/henukit-incoming/henukit-release-<old-sha>` bundles and pre-current
    release directories when under 5 GiB free, and re-point
-   `/opt/henukit/current` to the active baseline if it dangles.
+   `/opt/henukit/current` to the active baseline if it dangles. The release
+   helper also writes `/opt/henukit-materials/runtime-backups/<sha>` on every
+   activation and never removes it; drop the ones for SHAs that are neither the
+   active release nor a candidate named under
+   `/var/lib/henukit-actions-watch/rollback-contracts/pending/`. Deleting a
+   pending candidate's record makes its rollback fail outright, after the
+   containers are back but before the materials control plane is restored. The
+   site stays healthy, but the watcher then fails every 30 seconds and no
+   release can proceed; the only way out is to remove that candidate's
+   `/var/lib/henukit-actions-watch/rollback-contracts/pending/<sha>` by hand,
+   as for a stale approval, and finish the rollback manually. Do not re-approve
+   the same SHA to get past it: the helper would record the candidate's own
+   tooling as what to restore, and the next rollback would report success having
+   put the candidate back. **Never delete
+   `/opt/henukit-materials/retired/<sha>`**: `retire_root_file` moves those
+   files there rather than copying them, so it holds the only copy, and the
+   rollback section below names it as the sole recovery source.
 
 ### Remote Job Source MCP on WSL
 
@@ -661,9 +677,63 @@ degraded recovery.
 Before a normal rollback-protected activation, the root-owned watcher binds the
 candidate and previous release SHAs to hashes of the previous Compose file, the
 root-only rollback environment snapshot, and the materials-runtime manifest.
-Both releases must carry byte-identical, valid materials manifests; a normal
-release that changes that payload is refused until it has a separately reviewed
-atomic materials rollback. Both normal activation and explicitly authorized
+Both releases must carry valid materials manifests. A release whose materials
+payload differs from the previous one used to be refused outright, because the
+runtime installs into fixed system paths and a container rollback would have
+left the candidate's tooling on the host. It is accepted now that rollback
+undoes that install: `install-materials-runtime.sh` copies each target it
+replaces into `/opt/henukit-materials/runtime-backups/<candidate-sha>` first,
+and a normal rollback replays that record. The watcher creates that directory
+itself when it binds the contract, before the helper runs, for two reasons: the
+helper keeps a target's first backup and skips it afterwards, so a directory
+carried over from an earlier attempt at the same SHA would describe the wrong
+release; and creating it makes its absence mean something. Every persisted
+normal contract has one, so a record that is gone by rollback time was removed
+rather than never written, and the rollback fails instead of reporting success
+having restored nothing. An empty record is different and entirely normal: it
+means the release replaced no runtime file.
+
+The record can only be replayed into `/usr/local/bin`, `/usr/local/libexec` and
+`/etc/systemd/system` -- the three trees the helper installs into. Of the two
+others it writes, the record root is not an install target and
+`/etc/henukit-deploy` is deliberately withheld from this unit's
+`ReadWritePaths`. A record naming anything else fails the rollback; if a future
+release adds an install target outside those three, this is where it will
+surface. Degraded recovery does not replay the record at all:
+it re-runs the previous release's own helper, reinstalling that release's
+runtime outright.
+
+A normal rollback replays the record on both of its paths: after the container
+switch, and after the early return that finds the previous release still healthy
+and needs no container switch. The helper installs the runtime before it
+switches containers, so both paths can have tooling to undo. The replay always
+runs after the container work and never in front of it, because a record that
+will not replay fails the rollback, and that must not keep the images from going
+back first.
+
+Two parts of that install are outside what the watcher can undo, and both need a
+human. Check for each separately: the helper writes the configuration backup
+only when the live configuration still carries a retired key, and creates
+`retired/<sha>` only when one of the legacy source files is still present, so a
+release can produce one without the other:
+
+- the retired-key migration of `/etc/henukit-deploy/materials-activate.env` and
+  the files moved to `/opt/henukit-materials/retired/<candidate-sha>`. The
+  watcher's `ProtectSystem=strict` unit does not carry `/etc/henukit-deploy` in
+  `ReadWritePaths`, by design. Where
+  `/etc/henukit-deploy/backups/materials-activate.env.pre-oss-only-<sha>`
+  exists, copy it back and `chmod 600` it: the helper writes that backup `0400`
+  and refuses any activation configuration whose mode is not exactly `600`.
+  Where `retired/<sha>` exists, **move** its files back rather than copying
+  them, so that retrying the same SHA does not find a retired backup beside a
+  live source and refuse to run.
+- a runtime file the candidate creates that the previous release did not have.
+  Nothing was overwritten, so nothing is recorded, and the rollback leaves it in
+  place. List what only the candidate installs with
+  `diff <(grep -o '|/[^|]*|' <previous>/materials-runtime/install.sh) <(grep -o '|/[^|]*|' <candidate>/materials-runtime/install.sh)`
+  and remove by hand only the targets the previous release does not install.
+
+Both normal activation and explicitly authorized
 degraded-baseline recovery capture whether the approved materials path was
 enabled or disabled and whether the main deploy receiver was present and active.
 The watcher temporarily disables the path, waits for any already-started runner

@@ -27,6 +27,12 @@ Optional configuration:
   HENUKIT_RELEASE_ROOT   Extracted releases (default: /opt/henukit-releases)
   HENUKIT_BACKUP_ROOT    Platform and Account Portfolio backups (default: /opt/henukit-backups)
   HENUKIT_STATE_ROOT     Watcher state and lock (default: /var/lib/henukit-actions-watch)
+  HENUKIT_MATERIALS_ROOT Materials state, including the runtime records the
+                         release helper writes (default: /opt/henukit-materials).
+                         Any other value is a test override and is refused
+                         alongside the production state or release roots
+  HENUKIT_MATERIALS_RUNTIME_PREFIX Prefix for the runtime paths a rollback
+                         restores (tests only; refused the same way)
   HENUKIT_POLL_SECONDS   Watch interval (default: 60)
   HENUKIT_ACTIVE_RELEASE_ATTEMPTS Readiness attempts per activation (default: 30)
   HENUKIT_MIN_ACTIVATION_FREE_MIB Minimum free space before approval consumption (default: 4096)
@@ -83,6 +89,9 @@ staging_root="${HENUKIT_STAGING_ROOT:-/opt/henukit-staging}"
 release_root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}"
 backup_root="${HENUKIT_BACKUP_ROOT:-/opt/henukit-backups}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
+materials_root="${HENUKIT_MATERIALS_ROOT:-/opt/henukit-materials}"
+# Empty in production, so a rollback writes to the real install destinations.
+materials_runtime_prefix="${HENUKIT_MATERIALS_RUNTIME_PREFIX:-}"
 poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
 active_release_attempts="${HENUKIT_ACTIVE_RELEASE_ATTEMPTS:-30}"
 minimum_activation_free_mib="${HENUKIT_MIN_ACTIVATION_FREE_MIB:-4096}"
@@ -134,6 +143,25 @@ conditional_images=()
   die "HENUKIT_MIN_ACTIVATION_FREE_MIB must be a positive integer"
 ((minimum_activation_free_mib >= 4096)) ||
   die "HENUKIT_MIN_ACTIVATION_FREE_MIB cannot lower the 4096 MiB production floor"
+# A wrong materials root does not fail loudly -- it makes the rollback restore
+# find no record and quietly do nothing -- so it is refused alongside the
+# production roots exactly like the runtime prefix it is paired with.
+for materials_knob in HENUKIT_MATERIALS_ROOT:"${HENUKIT_MATERIALS_ROOT:-}" \
+                      HENUKIT_MATERIALS_RUNTIME_PREFIX:"$materials_runtime_prefix"; do
+  materials_knob_name="${materials_knob%%:*}"
+  materials_knob_value="${materials_knob#*:}"
+  [[ -n "$materials_knob_value" ]] || continue
+  # Spelling out the production default is documentation, not a test setup. Only
+  # the root has a production default to spell out; a prefix pointed there is a
+  # test override aimed at production, which is the thing this loop refuses.
+  [[ "$materials_knob_name" != "HENUKIT_MATERIALS_ROOT" ||
+     "$materials_knob_value" != "/opt/henukit-materials" ]] || continue
+  [[ "$materials_knob_value" == /* ]] ||
+    die "$materials_knob_name must use an absolute path: $materials_knob_value"
+  [[ "$state_root" != "/var/lib/henukit-actions-watch" &&
+     "$release_root" != "/opt/henukit-releases" ]] ||
+    die "$materials_knob_name cannot be combined with the production roots"
+done
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_REPO must be an owner/name pair"
 [[ "$branch" =~ ^[A-Za-z0-9_.-]+$ ]] || die "HENUKIT_BRANCH contains unsupported characters"
 [[ "$account_operator_role" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] ||
@@ -1437,6 +1465,174 @@ capture_materials_operational_state() {
   rollback_contract_deploy_webhook_state="$deploy_state"
 }
 
+# The materials runtime is installed into fixed system paths, outside any release
+# directory, so rolling the containers back does not undo it. materials-runtime/
+# install.sh copies each target it is about to overwrite into this root first,
+# and refuses to continue unless the copy is root-owned, so the root holds
+# exactly the files the candidate replaced -- including when the install died
+# partway through its target list. An empty root means it replaced nothing; a
+# root that is not there at all means something removed it, because the watcher
+# creates it before the helper runs.
+#
+# Reading that record rather than snapshotting the paths ourselves keeps the two
+# in step: the record is written from install.sh's own target list, at the moment
+# each target is replaced, so it describes what was actually replaced rather than
+# what a second copy of that list here would guess. install.sh keeps a target's
+# first backup and skips it afterwards, so a record left by an earlier activation
+# of the same SHA would describe a different previous release; the record is
+# cleared before the helper runs for exactly that reason.
+#
+# This does trust the candidate's own helper to have written the record. That
+# widens nothing: the watcher already runs that helper, and that install.sh, as
+# root. Reading data written by code it has already executed adds no new trust.
+materials_runtime_backup_root() {
+  printf '%s/runtime-backups/%s\n' "$materials_root" "$1"
+}
+
+# The three trees install.sh installs into. It writes two others: the record
+# root itself, which is not an install target, and /etc/henukit-deploy, which
+# this unit's ReadWritePaths deliberately withhold. A record naming anything
+# else is one this watcher cannot replay, so it fails the rollback rather than
+# being quietly skipped.
+materials_runtime_target_is_restorable() {
+  local target="$1"
+  # A record is built from install.sh's own target paths, so a traversal
+  # component can only mean the record was tampered with.
+  case "$target" in
+    */../* | */..) return 1 ;;
+  esac
+  case "$target" in
+    /usr/local/bin/henukit-* | /usr/local/libexec/henukit/* | /etc/systemd/system/henukit-*) ;;
+    *) return 1 ;;
+  esac
+  [[ ! -d "$materials_runtime_prefix$target" ]]
+}
+
+# Clear whatever an earlier attempt at this SHA left behind and create the root
+# the helper will fill. install.sh keeps a target's first backup and skips it
+# afterwards, so a record carried over from an earlier attempt would describe
+# whatever release preceded that one. Creating it here rather than letting
+# install.sh create it is what makes a missing record meaningful: every
+# persisted normal contract has one, so its absence at rollback time means it
+# was removed, not that the install never got that far.
+reset_materials_runtime_record() {
+  local root
+  root="$(materials_runtime_backup_root "$1")"
+  rm -rf -- "$root" || return 1
+  # -m applies to the leaf only, so the shared parent is created explicitly
+  # rather than being left at whatever the default mode gives it.
+  install -d -m 0700 "$(dirname "$root")" || return 1
+  install -d -m 0700 "$root" || return 1
+  # Checked here rather than at rollback time: trusted_root_parent_chain dies,
+  # and dying partway through a rollback would skip both the staging cleanup and
+  # the caller's report of why the rollback failed. It runs after the directory
+  # exists, because the chain it walks includes the parent just created.
+  trusted_root_parent_chain "$root" "materials runtime record"
+}
+
+# Put back whatever the candidate's runtime install overwrote. An empty record
+# is the normal outcome for a release that overwrote nothing; a record that is
+# missing, untrusted, or cannot be replayed fails the rollback.
+restore_materials_runtime_backup() {
+  local candidate_sha="$1"
+  local root listing mode backup target destination staged
+  local -a backups=() staged_paths=() destinations=()
+  root="$(materials_runtime_backup_root "$candidate_sha")"
+  if [[ ! -e "$root" && ! -L "$root" ]]; then
+    log "materials runtime record $root is missing; it is created before the release helper runs"
+    return 1
+  fi
+  [[ -d "$root" && ! -L "$root" ]] ||
+    { log "materials runtime record $root is not a directory"; return 1; }
+  [[ "$(file_owner "$root")" == "0" ]] ||
+    { log "materials runtime record $root is not owned by root"; return 1; }
+  mode="$(file_mode "$root")"
+  [[ "$mode" =~ ^[0-7]{3,4}$ ]] ||
+    { log "could not determine the mode of materials runtime record $root"; return 1; }
+  (( (8#$mode & 8#022) == 0 )) ||
+    { log "materials runtime record $root is group- or world-writable"; return 1; }
+
+  # Everything the record holds, directories included, so that a subdirectory
+  # anyone could write to is refused rather than trusted implicitly. The listing
+  # goes through a file in the watcher's own state, because a pipeline or process
+  # substitution would hide find's exit status, and because a sibling of the
+  # record root would outlive a kill and litter the directory the runbook sends
+  # operators into. Sorted so the order a partial restore stops at is the same
+  # every time.
+  listing="$state_root/materials-restore-list.$$"
+  rm -f -- "$listing" || return 1
+  if ! find "$root" -mindepth 1 -print0 > "$listing" || ! LC_ALL=C sort -z -o "$listing" "$listing"; then
+    log "materials runtime record $root could not be listed"
+    rm -f -- "$listing"
+    return 1
+  fi
+  while IFS= read -r -d '' backup; do
+    materials_record_entry_is_trusted "$backup" ||
+      { log "materials runtime record entry $backup is not a trusted root-owned path"
+        rm -f -- "$listing"; return 1; }
+    [[ -d "$backup" ]] || backups+=("$backup")
+  done < "$listing"
+  rm -f -- "$listing" || return 1
+
+  # Staged in full before anything is replaced, so a record that cannot be
+  # replayed leaves the host as it was rather than half rolled back.
+  local index=0
+  while ((index < ${#backups[@]})); do
+    backup="${backups[index]}"
+    index=$((index + 1))
+    [[ -f "$backup" && -r "$backup" && ! -L "$backup" ]] ||
+      { log "materials runtime record $backup is not a regular readable file"
+        clear_materials_runtime_staging "${staged_paths[@]+"${staged_paths[@]}"}"; return 1; }
+    target="${backup#"$root"}"
+    materials_runtime_target_is_restorable "$target" ||
+      { log "materials runtime record names $target, which this unit may not write"
+        clear_materials_runtime_staging "${staged_paths[@]+"${staged_paths[@]}"}"; return 1; }
+    destination="$materials_runtime_prefix$target"
+    # A sibling, so the rename below is atomic, and dot-prefixed to stay in the
+    # namespace install.sh uses for its own temporaries and cleans up.
+    staged="$(dirname "$destination")/.henukit-rollback-$(basename "$destination")"
+    if ! { rm -f -- "$staged" && cp -a -- "$backup" "$staged"; }; then
+      log "could not stage $target from the materials runtime record"
+      clear_materials_runtime_staging "${staged_paths[@]+"${staged_paths[@]}"}" "$staged"
+      return 1
+    fi
+    staged_paths+=("$staged")
+    destinations+=("$destination")
+  done
+
+  # Past this point the host is being changed. A rename that fails leaves it
+  # partly restored -- there is nothing better to do than say so loudly -- but
+  # the staging that never landed is still cleaned up.
+  index=0
+  while ((index < ${#staged_paths[@]})); do
+    if ! mv -f -- "${staged_paths[index]}" "${destinations[index]}"; then
+      log "could not put ${destinations[index]} back; the materials runtime is partly restored"
+      clear_materials_runtime_staging "${staged_paths[@]:index}"
+      return 1
+    fi
+    index=$((index + 1))
+  done
+  log "restored ${#destinations[@]} materials runtime file(s) overwritten by release $candidate_sha"
+}
+
+# Owner and mode only. The record root's own parent chain was checked when the
+# record was created, and every entry here is below it.
+materials_record_entry_is_trusted() {
+  local path="$1" mode
+  [[ ! -L "$path" ]] || return 1
+  [[ "$(file_owner "$path")" == "0" ]] || return 1
+  mode="$(file_mode "$path")" || return 1
+  [[ "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+  (( (8#$mode & 8#022) == 0 ))
+}
+
+clear_materials_runtime_staging() {
+  local staged
+  for staged in "$@"; do
+    rm -f -- "$staged" || true
+  done
+}
+
 materials_manifest_is_valid() {
   local materials_dir="$1"
   (
@@ -1461,7 +1657,13 @@ rollback_contract_is_ready() {
   [[ "$(tr -d '[:space:]' < "$previous_dir/RELEASE_SHA")" == "$previous_sha" ]] || return 1
   materials_manifest_is_valid "$previous_dir/materials-runtime" || return 1
   materials_manifest_is_valid "$candidate_dir/materials-runtime" || return 1
-  cmp --silent "$previous_materials" "$candidate_materials" || return 1
+  # A candidate whose materials runtime differs from the previous release used to
+  # be refused here, because rolling the containers back would have stranded its
+  # tooling on the host. rollback_release now puts that tooling back, so the
+  # difference is no longer a reason to refuse. Nothing about the backup can be
+  # checked at this point: the contract is captured before the release is
+  # activated, and the record does not fill up until the install runs.
+  return 0
 }
 
 capture_rollback_contract() {
@@ -1469,6 +1671,7 @@ capture_rollback_contract() {
   local candidate_sha="$2"
   local previous_dir="$release_root/$previous_sha"
   rollback_contract_is_ready "$previous_sha" "$candidate_sha" || return 1
+  reset_materials_runtime_record "$candidate_sha" || return 1
   capture_materials_operational_state || return 1
   rollback_contract_previous_sha="$previous_sha"
   rollback_contract_candidate_sha="$candidate_sha"
@@ -1548,9 +1751,16 @@ rollback_release() {
   [[ "$(sha256sum "$previous_compose" | awk '{print $1}')" == "$rollback_contract_compose_sha" ]] || return 1
   [[ "$(sha256sum "$rollback_env_file" | awk '{print $1}')" == "$rollback_contract_env_sha" ]] || return 1
   [[ "$(sha256sum "$previous_dir/materials-runtime/SHA256SUMS" | awk '{print $1}')" == "$rollback_contract_materials_sha" ]] || return 1
+  # The release helper installs the materials runtime before it swaps the
+  # containers, so a failure that leaves the previous release running still
+  # leaves the candidate's tooling on the host. Both paths below therefore undo
+  # it -- but each one only after its own container work, never in front of it:
+  # a runtime that will not go back is a worse outcome than a stale runtime, and
+  # far worse than images that were never rolled back at all.
   if verify_active_release "$previous_sha"; then
+    restore_materials_runtime_backup "$candidate_sha" || return 1
     restore_materials_control_plane || return 1
-    log "release $previous_sha remained active; rollback needs no runtime replacement"
+    log "release $previous_sha remained active; rollback needs no container replacement"
     return 0
   fi
   log "rolling back to release $previous_sha"
@@ -1562,6 +1772,7 @@ rollback_release() {
   rollback_compose=(docker compose --env-file "$rollback_env_file" -f "$previous_compose")
   "${rollback_compose[@]}" config --quiet || return 1
   "${rollback_compose[@]}" up -d --remove-orphans || return 1
+  restore_materials_runtime_backup "$candidate_sha" || return 1
   restore_materials_control_plane || return 1
   wait_for_active_release "$previous_sha"
 }
