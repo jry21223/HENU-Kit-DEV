@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,5 +73,16 @@ func TestUnsupportedEnvironmentRejectsCredentialAuthorityAndProxyOverrides(t *te
 				t.Fatalf("unsupportedEnvironment()=%q, want %q", actual, name)
 			}
 		})
+	}
+}
+
+func TestActivationFailureMessageIncludesTheUnderlyingError(t *testing.T) {
+	underlying := errors.New("public release object verification failed for 线性代数/电子版教材/x.pdf")
+	message := activationFailureMessage(underlying)
+	if !strings.Contains(message, underlying.Error()) {
+		t.Fatalf("activationFailureMessage() = %q, want it to include %q", message, underlying.Error())
+	}
+	if !strings.HasPrefix(message, "Library public release activation failed: ") {
+		t.Fatalf("activationFailureMessage() = %q, want the stable operator-facing prefix", message)
 	}
 }

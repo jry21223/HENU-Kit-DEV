@@ -50,7 +50,7 @@ func main() {
 	defer database.Close()
 	result, err := library.ActivatePublicRelease(ctx, database, store, bundle, time.Now)
 	if err != nil {
-		fail("Library public release activation failed")
+		fail(activationFailureMessage(err))
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		fail("Library activation result could not be encoded")
@@ -94,6 +94,14 @@ func readBundle(name string) (library.PublicReleaseActivation, error) {
 		return library.PublicReleaseActivation{}, errors.New("activation bundle has trailing content")
 	}
 	return bundle, nil
+}
+
+// activationFailureMessage keeps the stable operator-facing prefix and appends
+// the underlying cause. The cause is required: without it an activation that
+// fails deep inside object verification is indistinguishable from a database
+// or bundle problem, and the release cannot be diagnosed from the journal.
+func activationFailureMessage(err error) string {
+	return fmt.Sprintf("Library public release activation failed: %v", err)
 }
 
 func fail(message string) {
