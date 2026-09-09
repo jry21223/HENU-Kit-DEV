@@ -964,6 +964,33 @@ paths:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/learning-state:
+    get:
+      operationId: personalLearningState
+      summary: Read the signed-in user's fact-derived QuizCraft per-question learning state
+      description: >
+        This endpoint is served by QuizCraft V2 only when the explicit
+        Portal V2-read cutover flag is enabled. Before that deployment window,
+        Portal clients must not treat a response as V2 data or synthesize a
+        success fallback. The items carry derived facts only — no question
+        stem or answer — so clients must never fabricate question content
+        from them.
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Persistent per-question learning state derived from immutable QuizCraft Practice attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LearningStateEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/notices:
     get:
       operationId: noticeList
@@ -1813,6 +1840,33 @@ components:
           items:
             $ref: "#/components/schemas/MasterySubject"
 
+    LearningStateItem:
+      type: object
+      required: [bank_id, question_id, question_version_id, wrong, attempt_count, correct_count, updated_at]
+      properties:
+        bank_id:
+          type: string
+          format: uuid
+        question_id:
+          type: string
+          format: uuid
+        question_version_id:
+          type: string
+          format: uuid
+        wrong:
+          type: boolean
+        attempt_count:
+          type: integer
+          format: int64
+          minimum: 1
+        correct_count:
+          type: integer
+          format: int64
+          minimum: 0
+        updated_at:
+          type: string
+          format: date-time
+
     QuizCraftCatalogResponse:
       type: object
       additionalProperties: false
@@ -1916,6 +1970,17 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/PersonalPracticeStats"
+
+    LearningStateEnvelope:
+      type: object
+      required: [request_id, data]
+      properties:
+        request_id:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LearningStateItem"
 
     NoticeListResponse:
       type: object
