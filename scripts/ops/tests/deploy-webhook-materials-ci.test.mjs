@@ -11,6 +11,7 @@ const server = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "
 const installer = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install.sh"), "utf8");
 const runtimeInstaller = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "install-materials-runtime.sh"), "utf8");
 const runtimePackager = readFileSync(join(repositoryRoot, "scripts", "ops", "package-henukit-runtime.sh"), "utf8");
+const watcher = readFileSync(join(repositoryRoot, "scripts", "ops", "watch-henukit-actions.sh"), "utf8");
 const orchestrator = readFileSync(join(repositoryRoot, "services", "deploy-webhook", "deploy", "henukit-materials-orchestrate"), "utf8");
 const materialsUnits = [
   "henukit-materials-runner.service",
@@ -129,4 +130,22 @@ test("deploy-webhook CI gates the complete materials release boundary", () => {
   assert.doesNotMatch(installer, /if \(\( enable_materials_sync \)\)|go build.*materials/);
   assert.doesNotMatch(orchestrator, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
   assert.doesNotMatch(materialsUnits, /henukit-materials-publish-oss|materials-oss-canary|materials-oss\.env/);
+});
+
+// The watcher replays the runtime record this installer writes, and reads it
+// from a root it lets an operator override. The installer hardcodes its own.
+// If the two ever name different directories the watcher finds an empty record
+// and reports a clean rollback while the candidate's tooling stays installed --
+// the exact failure the record exists to prevent -- so pin them together here,
+// where a divergence is caught rather than discovered during a rollback.
+test("the materials runtime record is written and replayed under the same root", () => {
+  assert.match(runtimeInstaller, /^runtime_backup_root="\/opt\/henukit-materials\/runtime-backups\/\$release_sha"$/m);
+  assert.match(watcher, /^materials_root="\$\{HENUKIT_MATERIALS_ROOT:-\/opt\/henukit-materials\}"$/m);
+  assert.match(
+    watcher,
+    /^materials_runtime_backup_root\(\) \{\n  printf '%s\/runtime-backups\/%s\\n' "\$materials_root" "\$1"\n\}$/m,
+  );
+  // And that an override cannot be aimed somewhere else while the installer
+  // still writes to production.
+  assert.match(watcher, /\$materials_knob_name cannot be combined with the production roots/);
 });

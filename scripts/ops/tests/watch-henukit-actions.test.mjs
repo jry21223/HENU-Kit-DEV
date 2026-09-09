@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -146,6 +146,13 @@ function fixture({
   failCandidateDeployBeforeSwitch = false,
   partialCandidateSwitch = false,
   candidateMaterialsDiffer = false,
+  materialsRuntimeBackup = {},
+  materialsRuntimeInstalled = {},
+  materialsRuntimeTargets = [],
+  removeMaterialsRuntimeRecord = false,
+  danglingMaterialsRuntimeRecord = false,
+  unreadableMaterialsRecordDirectory = false,
+  materialsRuntimeDestinationIsDirectory = "",
   mutateRollbackEnvOnFailure = false,
   missingMaterialsRunnerUnit = false,
   failedMaterialsRunnerUnit = false,
@@ -187,11 +194,20 @@ function fixture({
   // The production trust-root check deliberately rejects symlinked parents, so
   // create the fixture below tmpdir's canonical path instead.
   const root = mkdtempSync(join(realpathSync(tmpdir()), "henukit-actions-watch-"));
+  const writeTree = (base, files) => {
+    for (const [relative, contents] of Object.entries(files)) {
+      const target = join(base, relative);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, contents);
+    }
+  };
   const bin = join(root, "bin");
   const staging = join(root, "staging");
   const releases = join(root, "releases");
   const backups = join(root, "backups");
   const state = join(root, "state");
+  const materialsRoot = join(root, "materials");
+  const materialsRuntimePrefix = join(root, "runtime-prefix");
   const log = join(root, "calls.log");
   const active = join(root, "active-sha");
   const currentLink = join(root, "current");
@@ -303,12 +319,19 @@ fi
 if [[ "$format" == "%u" ]]; then
   if [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "current-link" && "$path" == "$FAKE_CURRENT_LINK" ]]; then
     printf '1000'
+  elif [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "materials-record-directory" && -d "$path" &&
+          "$path" == "$FAKE_MATERIALS_ROOT/runtime-backups/"*/* ]]; then
+    id -u
   elif [[ -d "$path" ]]; then
     printf '0'
   elif [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "inventory" && "$path" == "$FAKE_TRUSTED_INVENTORY" ]] ||
        [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "verifier" && "$path" == "$FAKE_TRUSTED_VERIFIER" ]] ||
        [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "signers" && "$path" == "$FAKE_TRUSTED_SIGNERS" ]]; then
     id -u
+  elif [[ "$FAKE_NON_ROOT_TRUST_ROOT" == "materials-backup" && "$path" == "$FAKE_MATERIALS_ROOT/runtime-backups/"* ]]; then
+    id -u
+  elif [[ "$path" == "$FAKE_MATERIALS_ROOT"/* ]]; then
+    printf '0'
   elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_ROLLBACK_ENV_FILE" || "$path" == "$FAKE_RELEASE_ROOT"/* || "$path" == "$FAKE_BACKUP_ROOT"/* || "$path" == "$FAKE_STATE_ROOT/approvals/"* || "$path" == "$FAKE_STATE_ROOT/prepared/"* || "$path" == "$FAKE_STATE_ROOT/practice-smoke-"* ]]; then
     printf '0'
   else
@@ -460,6 +483,33 @@ if [[ "$FAKE_MUTATE_ROLLBACK_ENV_ON_FAILURE" == "1" ]]; then
 fi
 if [[ "$FAKE_BREAK_MATERIALS_WEBHOOK_BEFORE_FAILURE" == "1" ]]; then
   : > "$FAKE_MATERIALS_WEBHOOK_UNHEALTHY"
+fi
+if [[ -n "$FAKE_MATERIALS_RUNTIME_TARGETS" ]]; then
+  backup_root="$FAKE_MATERIALS_ROOT/runtime-backups/$(cat "$1/RELEASE_SHA")"
+  mkdir -p "$backup_root"
+  while IFS= read -r target; do
+    [[ -n "$target" ]] || continue
+    live="$FAKE_MATERIALS_RUNTIME_PREFIX/$target"
+    [[ -e "$live" ]] || continue
+    mkdir -p "$backup_root/$(dirname "$target")"
+    [[ -e "$backup_root/$target" ]] || cp -a "$live" "$backup_root/$target"
+    printf 'candidate-runtime\\n' > "$live"
+  done <<< "$FAKE_MATERIALS_RUNTIME_TARGETS"
+fi
+record_root="$FAKE_MATERIALS_ROOT/runtime-backups/$(cat "$1/RELEASE_SHA")"
+if [[ "$FAKE_REMOVE_MATERIALS_RUNTIME_RECORD" == "1" ]]; then
+  rm -rf "$record_root"
+fi
+if [[ "$FAKE_DANGLING_MATERIALS_RUNTIME_RECORD" == "1" ]]; then
+  mv "$record_root" "$record_root.real"
+  ln -s "$record_root.real" "$record_root"
+fi
+if [[ "$FAKE_UNREADABLE_MATERIALS_RECORD_DIRECTORY" == "1" ]]; then
+  chmod 000 "$record_root/usr/local/libexec/henukit"
+fi
+if [[ -n "$FAKE_MATERIALS_DESTINATION_IS_DIRECTORY" ]]; then
+  rm -f "$FAKE_MATERIALS_RUNTIME_PREFIX/$FAKE_MATERIALS_DESTINATION_IS_DIRECTORY"
+  mkdir -p "$FAKE_MATERIALS_RUNTIME_PREFIX/$FAKE_MATERIALS_DESTINATION_IS_DIRECTORY"
 fi
 if [[ "$FAKE_FAIL_CANDIDATE_DEPLOY_BEFORE_SWITCH" == "1" ]]; then exit 1; fi
 printf 'disabled\\n' > "$FAKE_MATERIALS_PATH_STATE"
@@ -728,6 +778,9 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
 `,
   );
 
+  writeTree(join(materialsRoot, "runtime-backups", releaseSha), materialsRuntimeBackup);
+  writeTree(materialsRuntimePrefix, materialsRuntimeInstalled);
+
   return {
     active,
     libraryHealthAttempts,
@@ -736,6 +789,8 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
     materialsPathState,
     mixedRuntime,
     state,
+    materialsRoot,
+    materialsRuntimePrefix,
     env: {
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
@@ -792,6 +847,15 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       FAKE_RUN_RELEASE_SHA: releaseSha,
       FAKE_RUN_STATUS: runStatus,
       FAKE_STATE_ROOT: state,
+      FAKE_MATERIALS_ROOT: materialsRoot,
+      FAKE_MATERIALS_RUNTIME_TARGETS: materialsRuntimeTargets.join("\n"),
+      FAKE_MATERIALS_RUNTIME_PREFIX: materialsRuntimePrefix,
+      FAKE_REMOVE_MATERIALS_RUNTIME_RECORD: removeMaterialsRuntimeRecord ? "1" : "0",
+      FAKE_DANGLING_MATERIALS_RUNTIME_RECORD: danglingMaterialsRuntimeRecord ? "1" : "0",
+      FAKE_UNREADABLE_MATERIALS_RECORD_DIRECTORY: unreadableMaterialsRecordDirectory ? "1" : "0",
+      FAKE_MATERIALS_DESTINATION_IS_DIRECTORY: materialsRuntimeDestinationIsDirectory,
+      HENUKIT_MATERIALS_ROOT: materialsRoot,
+      HENUKIT_MATERIALS_RUNTIME_PREFIX: materialsRuntimePrefix,
       GH_TOKEN_FILE: token,
       HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE: accountOperatorRole,
       HENUKIT_ACTIVE_RELEASE_ATTEMPTS: "5",
@@ -1401,7 +1465,7 @@ test("a pre-switch migration failure keeps the verified previous runtime without
   const calls = readFileSync(setup.log, "utf8");
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stdout, /remained active; rollback needs no runtime replacement/);
+  assert.match(result.stdout, /remained active; rollback needs no container replacement/);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
   assert.equal(readFileSync(setup.materialsPathState, "utf8").trim(), "enabled");
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 1);
@@ -1425,7 +1489,7 @@ test("a pre-switch failure repairs an unhealthy materials receiver before declar
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /rolled back/);
-  assert.match(result.stdout, /rollback needs no runtime replacement/);
+  assert.match(result.stdout, /rollback needs no container replacement/);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
   assert.doesNotMatch(calls, /docker compose --env-file .*henukit\.rollback\.env/);
   assert.match(calls, /systemctl restart henukit-materials-webhook\.service/);
@@ -1449,7 +1513,7 @@ test("a partial candidate switch cannot masquerade as the exact previous runtime
   assert.doesNotMatch(calls, /--runtime-only/);
 });
 
-test("activation refuses a candidate whose materials payload cannot be rolled back atomically", () => {
+test("activation accepts a candidate whose materials runtime differs from the previous release", () => {
   const setup = fixture({ candidateMaterialsDiffer: true });
 
   const result = spawnSync(script, ["--once"], {
@@ -1458,10 +1522,300 @@ test("activation refuses a candidate whose materials payload cannot be rolled ba
   });
   const calls = readFileSync(setup.log, "utf8");
 
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /do not satisfy the exact rollback contract/i);
+  assert.equal(
+    readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(),
+    releaseSha,
+  );
+  assert.match(calls, /^deploy /m);
+});
+
+// What the previous release left on the host. The fake release helper backs
+// each of these up before overwriting it, the way install-materials-runtime.sh
+// does, so a rollback has a record to replay.
+const previousRuntime = {
+  "usr/local/libexec/henukit/henukit-materials-activate": "previous-tooling\n",
+  "usr/local/bin/henukit-deploy-webhook": "previous-receiver\n",
+};
+const previousRuntimeTargets = Object.keys(previousRuntime);
+
+function runtimeFile(setup, relative) {
+  return readFileSync(join(setup.materialsRuntimePrefix, relative), "utf8");
+}
+
+function assertRuntimeIsStillTheCandidate(setup) {
+  for (const relative of previousRuntimeTargets) {
+    assert.equal(runtimeFile(setup, relative), "candidate-runtime\n", relative);
+  }
+}
+
+function assertPreviousRuntimeIsBack(setup) {
+  for (const [relative, contents] of Object.entries(previousRuntime)) {
+    assert.equal(runtimeFile(setup, relative), contents, relative);
+  }
+}
+
+// The helper installs the materials runtime before it switches containers, so
+// this failure leaves the previous images running and the candidate's tooling on
+// the host. The rollback returns early without touching containers; it must
+// still put the tooling back.
+test("a rollback that keeps the previous containers still restores the materials runtime", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failCandidateDeployBeforeSwitch: true,
+    materialsPathInitiallyEnabled: true,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /do not satisfy the exact rollback contract/i);
-  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
-  assert.doesNotMatch(calls, /docker load|^deploy /m);
+  assert.match(result.stdout, /remained active; rollback needs no container replacement/);
+  assert.match(result.stdout, /restored 2 materials runtime file\(s\) overwritten by release/);
+  assertPreviousRuntimeIsBack(setup);
+});
+
+test("a container rollback restores the materials runtime the candidate overwrote", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /rolled back/);
+  assertPreviousRuntimeIsBack(setup);
+});
+
+// install.sh keeps a target's first backup and skips it afterwards, so a record
+// left by an earlier activation of the same SHA would describe whatever release
+// preceded that attempt. The watcher clears it before the helper runs.
+test("a rollback ignores a materials runtime record left by an earlier attempt at the same SHA", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeBackup: {
+      "usr/local/libexec/henukit/henukit-materials-activate": "stale-from-an-older-attempt\n",
+      "usr/local/bin/henukit-deploy-webhook": "stale-from-an-older-attempt\n",
+    },
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /rolled back/);
+  assertPreviousRuntimeIsBack(setup);
+});
+
+// A release that overwrote nothing leaves its record empty, and that is the
+// normal outcome: restoring nothing is correct and is not a failure.
+test("a rollback with an empty materials runtime record restores nothing", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({ failTargetHealth: true, previousSha });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /restored 0 materials runtime file\(s\)/);
+  assert.match(result.stderr, /rolled back/);
+  assert.doesNotMatch(result.stderr, /also failed/);
+});
+
+test("a materials knob pointed somewhere else alongside a production root is refused", () => {
+  const setup = fixture();
+
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8",
+    env: {
+      ...setup.env,
+      HENUKIT_MATERIALS_ROOT: "/tmp/somewhere-else",
+      HENUKIT_RELEASE_ROOT: "/opt/henukit-releases",
+    },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /HENUKIT_MATERIALS_ROOT cannot be combined with the production roots/);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+// The watcher creates the record before the helper runs, so a record that is
+// gone by rollback time was removed -- the runbook sends operators into this
+// directory to reclaim disk. Restoring nothing here would report a clean
+// rollback while leaving the candidate's tooling installed.
+test("a rollback refuses a materials runtime record that was removed", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    removeMaterialsRuntimeRecord: true,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /materials runtime record .* is missing/);
+  assert.match(result.stderr, /rollback to .* also failed/);
+});
+
+// A record it cannot trust or replay fails the rollback -- but only after the
+// containers are back, never instead of them.
+test("a rollback refuses a materials runtime record that is not root-owned", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    nonRootTrustRoot: "materials-backup",
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /is not a trusted root-owned path/);
+  assert.match(result.stderr, /rollback to .* also failed/);
+  assert.match(
+    readFileSync(setup.log, "utf8"),
+    /docker compose --env-file .*henukit\.rollback\.env .* up -d --remove-orphans/,
+  );
+});
+
+// The replay stages every file before it replaces any, so a record it cannot
+// finish reading leaves the host exactly as it was. The good entry sorts first,
+// so it is staged before the bad one is refused: if staging and replacing were
+// interleaved it would already be back in place by then.
+test("a record with one unusable entry replaces nothing at all", () => {
+  const previousSha = "c".repeat(40);
+  const good = "usr/local/libexec/henukit/henukit-materials-activate";
+  const bad = "var/lib/henukit-not-an-install-target";
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeInstalled: { [good]: "previous-tooling\n", [bad]: "previous-stray\n" },
+    materialsRuntimeTargets: [good, bad],
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /which this unit may not write/);
+  assert.equal(runtimeFile(setup, good), "candidate-runtime\n");
+  assert.equal(
+    existsSync(
+      join(setup.materialsRuntimePrefix, "usr/local/libexec/henukit/.henukit-rollback-henukit-materials-activate"),
+    ),
+    false,
+    "staging must not be left behind",
+  );
+});
+
+// A record's directories are checked too. Trusting them because their files
+// passed would let a subdirectory anyone can write to smuggle entries in.
+test("a rollback refuses a materials runtime record with an untrusted directory", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    nonRootTrustRoot: "materials-record-directory",
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /record entry .* is not a trusted root-owned path/);
+  assert.match(result.stderr, /rollback to .* also failed/);
+  assertRuntimeIsStillTheCandidate(setup);
+});
+
+test("a rollback refuses a materials runtime record root that is a symlink", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failTargetHealth: true,
+    danglingMaterialsRuntimeRecord: true,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /is not a directory/);
+  assert.match(result.stderr, /rollback to .* also failed/);
+});
+
+// find's exit status is easy to lose to a pipeline, and losing it would turn an
+// unreadable record into an empty one -- a rollback that restores nothing and
+// says so cheerfully.
+test("a rollback refuses a materials runtime record it cannot read through", () => {
+  const previousSha = "c".repeat(40);
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    unreadableMaterialsRecordDirectory: true,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /could not be listed/);
+  assert.match(result.stderr, /rollback to .* also failed/);
+});
+
+// mv would move the file into the directory rather than replace it.
+test("a rollback refuses to replace a runtime path that became a directory", () => {
+  const previousSha = "c".repeat(40);
+  const target = "usr/local/bin/henukit-deploy-webhook";
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeDestinationIsDirectory: target,
+    materialsRuntimeInstalled: previousRuntime,
+    materialsRuntimeTargets: previousRuntimeTargets,
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /which this unit may not write/);
+  assert.match(result.stderr, /rollback to .* also failed/);
+});
+
+// install.sh also records files under /etc/henukit-deploy, which ProtectSystem
+// keeps out of this unit's ReadWritePaths. A record it cannot replay fails the
+// rollback loudly rather than being skipped.
+test("a rollback refuses a materials runtime record outside the paths it may write", () => {
+  const previousSha = "c".repeat(40);
+  const outside = "etc/henukit-deploy/materials-activate.env";
+  const setup = fixture({
+    failTargetHealth: true,
+    materialsRuntimeInstalled: { [outside]: "previous-config\n" },
+    materialsRuntimeTargets: [outside],
+    previousSha,
+  });
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /which this unit may not write/);
+  assert.match(result.stderr, /rollback to .* also failed/);
+  assert.equal(runtimeFile(setup, outside), "candidate-runtime\n");
 });
 
 test("activation refuses a rollback baseline with a missing required materials unit", () => {
