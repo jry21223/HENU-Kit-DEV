@@ -17,6 +17,14 @@ const FavoritePortalQuestionPath = "/api/v1/portal/practice/banks/{bank_id}/favo
 const UnfavoritePortalQuestionPath = "/api/v1/portal/practice/banks/{bank_id}/favorites/{question_id}"
 const CreatePortalFavoritesSessionPath = "/api/v1/portal/practice/banks/{bank_id}/favorites/practice-sessions"
 
+// GetPortalLearningStatePath is the actor-bound persistent learning-state read
+// on QuizCraft Core. It is deliberately not Core's own /api/v1/learning-state:
+// that route authenticates a browser cookie the Gateway never forwards, so it
+// would resolve this request to an anonymous actor and answer 401. This Portal
+// route is registered behind authenticatePortalPersonalStats and takes its
+// identity from the six-part signed X-Actor-User-Id instead.
+const GetPortalLearningStatePath = "/api/v1/portal/practice/learning-state"
+
 // BankListEnvelope is the generated read-only QuizCraft catalog response.
 // Its data members are the published, and therefore available, bank versions.
 type BankListEnvelope struct {
