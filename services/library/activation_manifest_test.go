@@ -206,6 +206,7 @@ func TestReviewedManifestAcceptsCanonicalProvenanceFields(t *testing.T) {
       "college": "计算机与信息工程学院",
       "containsPersonalInfo": false,
       "licenseStatus": "cleared",
+      "major": "物理学",
       "reviewStatus": "reviewed",
       "sourceNote": "公开资料",
       "sourceType": "repository",
