@@ -1,11 +1,13 @@
 # HENU Kit Portal Context
 
+Last updated: 2026-09-08.
+
 ## Owns
 
 - The HENU Kit main site frontend (henukit.cn).
 - Campus tool system product shell: brand, navigation, and entry points.
-- Homepage module sections (Library, Practice, Food, Campus) with scroll-driven animations.
-- Sub-site layouts and navigation for Library, Practice, Food, and Campus Market.
+- Homepage module sections (Library, Practice, Food, Campus, Career) with scroll-driven animations.
+- Sub-site layouts and navigation for Library, Practice, Food, Campus Market, and Career.
 - Mock data layer and deterministic SSR rendering (mulberry32 seeded PRNG).
 - GSAP animation system with prefers-reduced-motion respect.
 - Three.js 3D hero scenes (homepage and practice bank hero).
@@ -79,6 +81,9 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 - **Portal Configuration**: Content and navigation changes through Git, review, and CI/CD. Console has no content editor.
 - **Account page**: Existing Portal presentation that collects credential form input and sends it unchanged through the same-origin `/account-auth` bridge. Platform Core alone decides success and establishes the Core Session.
 - **Account entry**: A Portal navigation point that starts Portal Gateway OAuth. After Platform Core accepts a credential flow, Portal continues that OAuth flow to establish its own Gateway Session.
-- **Module section**: A full-viewport homepage block for each product (Library, Practice, Food, Campus).
-- **Sub-site**: A top-level route group (/library, /practice, /food, /campus) with its own layout and navigation.
+- **Module section**: A homepage block introducing one of the five products: Library, Practice, Food, Campus, or Career.
+- **Sub-site**: A product area with its own navigation: Library, Practice, Food, Campus, or Career.
+- **Quick entry**: A first-screen shortcut to a common task: finding materials, starting practice, or viewing job opportunities.
+- **Material display title**: A readable material name shown alongside its course and material type to help readers identify it.
+- **Original material title**: The complete title supplied by the material owner. It is distinct from the file name; a title alone does not establish the file name.
 - **Deterministic SSR**: Seeded randomness (mulberry32) and picsum seed URLs ensure server/client output match.

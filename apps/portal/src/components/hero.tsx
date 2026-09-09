@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { gsap, useGSAP, REDUCED_MOTION } from "@/lib/gsap";
 import Marquee from "@/components/marquee";
 import AmbientSvg from "@/components/ui/ambient-svg";
@@ -12,7 +13,7 @@ const MARQUEE_ITEMS = [
   "往年试卷",
   "AI 刷题",
   "美食榜",
-  "互助接单",
+  "校园互助",
   "学长笔记",
   "KEEP IN TOUCH",
 ];
@@ -189,13 +190,29 @@ export default function Hero() {
         </div>
 
         <p data-hero-line className="mt-8 max-w-md text-sm leading-7 text-ink/70 md:text-base">
-          henukit 是面向校园的综合性学生平台：资料库、AI 智能刷题、
-          美食排行榜、校园互助——一份图纸，四个模块，一个站点全部搞定。
+          资料库、智能刷题、美食榜、校园互助与求职雷达，
+          五个模块，陪你处理校园日常。
         </p>
 
-        <div data-hero-gridline className="mt-10 h-px w-full max-w-md bg-line" />
+        <nav aria-label="常用功能" className="mt-7 grid w-full max-w-md grid-cols-3 gap-2">
+          {[
+            { label: "找资料", href: "/library" },
+            { label: "开始刷题", href: "/practice" },
+            { label: "看岗位", href: "/career" },
+          ].map((entry, index) => (
+            <Link
+              key={entry.href}
+              href={entry.href}
+              className={`inline-flex min-h-12 items-center justify-center border px-3 py-3 font-mono text-sm text-ink transition-colors hover:border-ink hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${index === 0 ? "border-accent bg-accent" : "border-ink/30 bg-paper"}`}
+            >
+              {entry.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div data-hero-gridline className="mt-8 h-px w-full max-w-md bg-line" />
         <p className="mt-3 font-mono text-[10px] tracking-[0.3em] text-ink/40">
-          SCROLL / 向下滚动查看模块 01—04
+          SCROLL / 向下滚动查看模块 01—05
         </p>
       </div>
 

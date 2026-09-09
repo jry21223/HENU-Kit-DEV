@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Material } from "@/lib/library/mock";
 import { MATERIAL_TYPES } from "@/lib/library/material-types";
+import { readableMaterialTitle } from "@/lib/library/material-title";
 import { getMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
@@ -23,6 +24,7 @@ export default function ItemDetail({ id }: { id: string }) {
   const { material } = state;
 
   const t = MATERIAL_TYPES[material.type];
+  const title = readableMaterialTitle(material);
   const free = material.price === 0;
   const related = getMaterials().filter(
     (m) => m.id !== id && (m.subject === material.subject || m.type === material.type)
@@ -50,7 +52,7 @@ export default function ItemDetail({ id }: { id: string }) {
             )}
           </div>
           <div>
-            <p className="font-display text-2xl font-bold leading-snug">{material.title}</p>
+            <p className="break-words font-display text-2xl font-bold leading-snug">{title}</p>
             <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">{meta}</p>
           </div>
         </div>
@@ -62,9 +64,13 @@ export default function ItemDetail({ id }: { id: string }) {
             <span className="mx-2">/</span>
             {t.name} · {material.subject}
           </p>
-          <h1 data-enter className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
-            {material.title}
+          <h1 data-enter className="mt-3 break-words font-display text-3xl font-bold tracking-tight md:text-4xl">
+            {title}
           </h1>
+          <dl data-enter className="mt-3 text-xs leading-6 text-ink/60">
+            <dt className="font-mono text-[10px] tracking-widest text-ink/40">原始标题</dt>
+            <dd className="break-words">{material.title}</dd>
+          </dl>
           <p data-enter className="mt-3 font-mono text-[11px] tracking-wider text-ink/50">
             {material.author}
             {material.rating !== undefined ? ` · ★ ${material.rating.toFixed(1)}` : ""}
