@@ -290,6 +290,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/feedback/{feedback_id}/status", service.portalFeedbackStatus)
 		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/favorites", service.portalFavoritesOverview)
 		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/banks/{bank_id}/favorites", service.portalFavoritesList)
+		router.With(service.authenticatePortalPersonalStats).Get("/api/v1/portal/practice/learning-state", service.portalLearningState)
 	}
 	writes := router.With(service.requireWritesEnabled)
 	writes.Get("/api/v1/feedback", service.listFeedbackStatuses)
@@ -1140,6 +1141,23 @@ func (service *practiceHTTP) learningState(writer http.ResponseWriter, request *
 		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read persistent learning state")
 		return
 	}
+	service.listLearningStateForActor(writer, request, actor)
+}
+
+// portalLearningState serves the same persistent learning state to the narrow
+// Portal Gateway boundary. authenticatePortalPersonalStats has already
+// verified the six-part HMAC over X-Actor-User-Id, so the signed actor — not a
+// browser cookie the Gateway never forwards — establishes the identity here.
+func (service *practiceHTTP) portalLearningState(writer http.ResponseWriter, request *http.Request) {
+	userID, err := portalActorUserID(request)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, "authentication_required", "sign in to read persistent learning state")
+		return
+	}
+	service.listLearningStateForActor(writer, request, practiceActor{userID: &userID, key: "user:" + userID.String()})
+}
+
+func (service *practiceHTTP) listLearningStateForActor(writer http.ResponseWriter, request *http.Request, actor practiceActor) {
 	rows, err := service.queries.ListLearningState(request.Context(), *actor.userID)
 	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")

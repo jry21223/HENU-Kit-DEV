@@ -1258,6 +1258,12 @@ type GetPortalPracticeFeedbackStatusParams struct {
 	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
 }
 
+// GetPortalLearningStateParams defines parameters for GetPortalLearningState.
+type GetPortalLearningStateParams struct {
+	// XActorUserId UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+	XActorUserId openapi_types.UUID `json:"X-Actor-User-Id"`
+}
+
 // CreatePortalPracticeSessionParams defines parameters for CreatePortalPracticeSession.
 type CreatePortalPracticeSessionParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`

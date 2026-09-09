@@ -234,7 +234,17 @@ func sendCatalogRequestWithHeaders(t *testing.T, request *http.Request) (int, []
 
 func newPersonalStatsRequest(t *testing.T, baseURL, actor string) *http.Request {
 	t.Helper()
-	request, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/stats", nil)
+	request := newPortalActorReadRequest(t, baseURL, "/api/v1/stats", actor)
+	request.Header.Set("X-Request-Id", "req_personal_stats_test")
+	return request
+}
+
+// newPortalActorReadRequest signs one six-part actor-bound Portal read exactly
+// the way Portal Gateway's actorBoundRead does: Basic service credential plus
+// an HMAC whose sixth canonical line is the actor UUID, and no browser cookie.
+func newPortalActorReadRequest(t *testing.T, baseURL, path, actor string) *http.Request {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,6 +268,5 @@ func newPersonalStatsRequest(t *testing.T, baseURL, actor string) *http.Request 
 	request.Header.Set("X-Scope-Kind", "product")
 	request.Header.Set("X-Product-Code", "quizcraft")
 	request.Header.Set("X-Actor-User-Id", actor)
-	request.Header.Set("X-Request-Id", "req_personal_stats_test")
 	return request
 }
