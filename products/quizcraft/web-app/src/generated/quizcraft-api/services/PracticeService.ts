@@ -235,6 +235,34 @@ export class PracticeService {
         });
     }
     /**
+     * Read one signed-in user's persistent learning state for Portal
+     * The trusted Portal actor header is bound as the sixth line of the signed service request; guests cannot read learning state.
+     * @returns LearningStateEnvelope Persistent account learning state
+     * @throws ApiError
+     */
+    public static getPortalLearningState({
+        xActorUserId,
+    }: {
+        /**
+         * UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+         */
+        xActorUserId: string,
+    }): CancelablePromise<LearningStateEnvelope> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/portal/practice/learning-state',
+            headers: {
+                'X-Actor-User-Id': xActorUserId,
+            },
+            errors: {
+                401: `Missing or invalid actor credentials`,
+                403: `Permission code or product Scope denied`,
+                409: `Dedicated service request nonce was already used`,
+                503: `PostgreSQL or a required service is unavailable`,
+            },
+        });
+    }
+    /**
      * Read one authenticated user's fact-derived Practice statistics for Portal
      * The trusted Portal actor header is bound as the sixth line of the signed service request and cannot be substituted in transit.
      * @returns PersonalPracticeStatsEnvelope Persistent stats and mastery rebuilt from immutable Practice attempts

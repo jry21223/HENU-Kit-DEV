@@ -296,6 +296,26 @@ paths:
         '200': { description: Persistent account learning state, content: { application/json: { schema: { $ref: '#/components/schemas/LearningStateEnvelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/portal/practice/learning-state:
+    get:
+      x-internal: true
+      summary: Read one signed-in user's persistent learning state for Portal
+      description: The trusted Portal actor header is bound as the sixth line of the signed service request; guests cannot read learning state.
+      tags: [Practice]
+      operationId: getPortalLearningState
+      security: [{ portalCatalogBasic: [], portalCatalogSignature: [], portalCatalogPermission: [], portalCatalogScope: [], portalCatalogProduct: [], portalCatalogActor: [] }]
+      parameters:
+        - name: X-Actor-User-Id
+          in: header
+          required: true
+          description: UUID of the Portal Session subject; it is the sixth line of the HMAC canonical request.
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Persistent account learning state, content: { application/json: { schema: { $ref: '#/components/schemas/LearningStateEnvelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ServiceReplay' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/stats:
     get:
       summary: Read one authenticated user's fact-derived Practice statistics for Portal

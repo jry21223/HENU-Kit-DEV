@@ -8,12 +8,16 @@ import (
 	"strings"
 )
 
-// GetPortalLearningStatePath is the signed-in persistent learning-state read
-// on QuizCraft Core. The operation is not yet on the curated
-// quizcraftcontractgen emit whitelist, so this constant is hand-written
-// alongside the generated contract; cutover should fold it into the
-// generator's whitelist.
-const GetPortalLearningStatePath = "/api/v1/learning-state"
+// GetPortalLearningStatePath is the actor-bound persistent learning-state read
+// on QuizCraft Core. It is deliberately not Core's own /api/v1/learning-state:
+// that route authenticates a browser cookie the Gateway never forwards, so it
+// would resolve this request to an anonymous actor and answer 401. This Portal
+// route is registered behind authenticatePortalPersonalStats and takes its
+// identity from the six-part signed X-Actor-User-Id instead. The operation is
+// not yet on the curated quizcraftcontractgen emit whitelist, so this constant
+// is hand-written alongside the generated contract; cutover should fold it into
+// the generator's whitelist.
+const GetPortalLearningStatePath = "/api/v1/portal/practice/learning-state"
 
 // LearningStateEnvelope is one signed-in Portal user's fact-derived
 // per-question learning state. It never represents a mock response.
