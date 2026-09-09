@@ -10,6 +10,17 @@ permissions:
 jobs:
   branch-name:
     runs-on: ubuntu-24.04
+    # Dependabot can satisfy neither gate: the bot fixes its own branch name and
+    # cannot write review evidence, so both checks were permanently red and said
+    # nothing about the bump. Skip the job, not the step -- a job skipped by its
+    # own condition reports success, and it costs no runner.
+    # Both the PR author and the acting identity must be Dependabot. Dependabot
+    # branches live in this repository, so anyone with write access can push to
+    # an open Dependabot PR; on that push the author still reads as the bot
+    # while the head commit is a person's. Checking the actor closes it.
+    if: >-
+      ${{ !(github.event.pull_request.user.login == 'dependabot[bot]'
+            && github.actor == 'dependabot[bot]') }}
     steps:
       - name: Require a conventional branch name
         env:
@@ -23,6 +34,17 @@ jobs:
 
   review-evidence:
     runs-on: ubuntu-24.04
+    # Dependabot can satisfy neither gate: the bot fixes its own branch name and
+    # cannot write review evidence, so both checks were permanently red and said
+    # nothing about the bump. Skip the job, not the step -- a job skipped by its
+    # own condition reports success, and it costs no runner.
+    # Both the PR author and the acting identity must be Dependabot. Dependabot
+    # branches live in this repository, so anyone with write access can push to
+    # an open Dependabot PR; on that push the author still reads as the bot
+    # while the head commit is a person's. Checking the actor closes it.
+    if: >-
+      ${{ !(github.event.pull_request.user.login == 'dependabot[bot]'
+            && github.actor == 'dependabot[bot]') }}
     steps:
       - name: Require current-commit Standards and Spec evidence
         env:

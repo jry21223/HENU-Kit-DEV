@@ -12,8 +12,9 @@
 - 每个 Issue 0.5–2 个工作日；超过 2 日必须拆分。
 - 一个 PR 只做一类变化：业务行为、Migration、目录移动、部署变更和仓库改名必须分开。
 - Draft PR 可跳过生产批准，不能跳过 Repo Governance 和受影响模块 CI。
+- Dependabot 是 Repo Governance 两项检查的唯一例外：分支名由 bot 固定、正文由 bot 生成，两项它都无法满足，长红既不反映依赖更新是否安全，也让真实失败淹没在噪音里。豁免只在 PR 作者与触发者**同时**为 `dependabot[bot]` 时成立——Dependabot 分支位于本仓库，任何有写权限者都能向已开的 Dependabot PR 推提交，校验触发者可堵住这条路。**受影响模块 CI 不豁免。**
 - 单人维护时不强制非作者 Review；安全关键和数据迁移 PR 必须在当前 SHA 上完成 Standards / Spec 双轴审查、受影响模块 CI、失败路径测试和可执行回滚。存在协作者时仍推荐外部 Review，但不作为不可满足的合并条件。
-- PR 正文必须以 `Review-Head`、`Standards-Review`、`Spec-Review` 记录当前完整 SHA 与双轴零发现；新提交会使旧证据自动失效。
+- PR 正文必须以 `Review-Head`、`Standards-Review`、`Spec-Review` 记录当前完整 SHA 与双轴零发现；新提交会使旧证据自动失效。上一条的 Dependabot 例外同样适用于本项。
 
 ## 2. 代码归属
 
