@@ -3,13 +3,15 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import {
+  SCROLL_REAPPLY_WINDOW_MS,
   SCROLL_RESTORE_WINDOW_MS,
-  clearStaleScrollRestore,
+  clearStaleScrollRequest,
   isAncestorPath,
   readScrollOffset,
   reapplyScrollOffset,
   requestScrollRestore,
-  scrollRestoreRequested,
+  requestScrollTop,
+  scrollLandingFor,
   writeScrollOffset,
 } from "@/lib/navigation/scroll-memory";
 
@@ -76,8 +78,9 @@ export default function ScrollMemory() {
       if (!destination) return;
 
       flush();
-      // 横向切换标签、走进更深的页面都该从顶部开始，只有向上回退才落回原处。
+      // 只有向上回退才落回原处；横向切换标签、走进更深的页面都从顶部开始。
       if (isAncestorPath(destination, pathname)) requestScrollRestore(destination);
+      else if (destination !== pathname) requestScrollTop(destination);
     };
 
     window.addEventListener("scroll", record, { passive: true });
@@ -91,14 +94,18 @@ export default function ScrollMemory() {
     };
   }, [pathname]);
 
-  // 返回上一级落地：把读者放回上次离开的位置。
+  // 落地：向上回退放回原处，其余从顶部开始。
   useEffect(() => {
-    clearStaleScrollRestore(pathname);
-    if (!scrollRestoreRequested(pathname)) return;
-    const target = readScrollOffset(pathname);
-    if (target <= 0) return;
+    clearStaleScrollRequest(pathname);
+    const landing = scrollLandingFor(pathname);
+    if (!landing) return;
+    const target = landing === "top" ? 0 : readScrollOffset(pathname);
+    if (target <= 0 && landing === "restore") return;
 
-    const stopReapplying = reapplyScrollOffset(target, SCROLL_RESTORE_WINDOW_MS);
+    const stopReapplying = reapplyScrollOffset(
+      target,
+      landing === "top" ? SCROLL_REAPPLY_WINDOW_MS : SCROLL_RESTORE_WINDOW_MS
+    );
 
     // 读者一动手就把位置交还给他。
     const yieldToReader = () => stopReapplying();

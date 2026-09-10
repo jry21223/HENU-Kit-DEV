@@ -3,18 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import {
   SCROLL_REAPPLY_WINDOW_MS,
+  claimHistoryReturn,
   readScrollOffset,
   reapplyScrollOffset,
+  rememberHistoryReturn,
 } from "@/lib/navigation/scroll-memory";
 
-let returnedThroughHistory = false;
 let popstateBound = false;
 
 function bindPopstate() {
   if (popstateBound || typeof window === "undefined") return;
   popstateBound = true;
   window.addEventListener("popstate", () => {
-    returnedThroughHistory = true;
+    rememberHistoryReturn(window.location.pathname);
   });
 }
 
@@ -45,9 +46,10 @@ export function useScrollRestoration(ready: boolean) {
   // and reading the offset later would hand back whatever those events had
   // already recorded instead of where the reader actually left off.
   const [restoreTarget] = useState(() => {
-    if (typeof window === "undefined" || !returnedThroughHistory) return 0;
-    returnedThroughHistory = false;
-    return readScrollOffset(window.location.pathname);
+    if (typeof window === "undefined") return 0;
+    const pathname = window.location.pathname;
+    if (!claimHistoryReturn(pathname)) return 0;
+    return readScrollOffset(pathname);
   });
 
   useEffect(bindPopstate, []);

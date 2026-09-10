@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AccountEntry from "@/components/account/account-entry";
 import BackLink from "@/components/back-link";
+import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
 import { cn } from "@/lib/cn";
 
 const TABS = [
-  { href: "/library", index: "L-01", label: "书库", match: (p: string) => p === "/library" || p.startsWith("/library/item") || p.startsWith("/library/read") },
+  { href: "/library", index: "L-01", label: LEVEL_LABELS.library, match: (p: string) => p === "/library" || p.startsWith("/library/item") || p.startsWith("/library/read") },
 ];
 
 export default function LibraryNav() {

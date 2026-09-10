@@ -219,6 +219,37 @@ const SUB_SITE_HOMES = [
   { route: "/practice", label: "← henukit" },
 ] as const;
 
+test("历史回退落到别处之后，点进列表页不会被拽回旧位置", async ({ page }) => {
+  await mockFood(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForClientShell(page);
+
+  // 首页 → 榜单，留下一个阅读位置
+  await page.evaluate(() => {
+    const entry = document.querySelector<HTMLAnchorElement>('a[href="/food"]');
+    if (!entry) throw new Error("首页没有美食榜入口");
+    entry.click();
+  });
+  await expect(page).toHaveURL(/\/food$/);
+  await expect(page.locator("[data-food-tier]")).toHaveCount(TIER_TAGS.length);
+  await scrollTo(page, 1600);
+
+  // 历史回退到首页：首页没有列表恢复钩子，"这次是回退"的标记不该留给下一次进入
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await waitForClientShell(page);
+
+  // 再点进榜单：这是一次普通进入，必须从顶部开始
+  await page.evaluate(() => {
+    const entry = document.querySelector<HTMLAnchorElement>('a[href="/food"]');
+    if (!entry) throw new Error("首页没有美食榜入口");
+    entry.click();
+  });
+  await expect(page).toHaveURL(/\/food$/);
+  await expect(page.locator("[data-food-tier]")).toHaveCount(TIER_TAGS.length);
+  await expect.poll(() => scrollY(page)).toBeLessThan(40);
+});
+
 test("没走成的点击不会让读者之后的位移被丢掉", async ({ page }) => {
   await mockFood(page);
   await page.goto("/food", { waitUntil: "domcontentloaded" });
@@ -249,19 +280,20 @@ test("没走成的点击不会让读者之后的位移被丢掉", async ({ page 
   await page.waitForTimeout(400);
   expect(new URL(page.url()).pathname).toBe("/food");
 
-  // 读者自己滚回顶部：这一次位移必须被记下来。
-  // 这里断言记录值而不是界面结果：要把这份记录"带出去"需要一次没有点击的站内导航，
-  // 页面上没有可点的入口；键与格式由 scroll-memory 的单测钉住。
+  // 读者自己滚回顶部：这一次位移必须被记下来
   await page.evaluate(() => window.scrollTo(0, 0));
-  await expect
-    .poll(() => page.evaluate(() => window.sessionStorage.getItem("henukit.scroll.v1:/food")))
-    .toBe("0");
+  await page.waitForTimeout(400);
+
+  // 换一次整页加载再回到榜单：带走的只有已记录的位置，读者应该落在自己刚离开的
+  // 顶部，而不是被拽回 1600。
+  await page.goto("/food/post/post-0-0", { waitUntil: "domcontentloaded" });
+  await waitForClientShell(page);
+  await page.locator("header [data-back-link]").first().click();
+  await expect(page).toHaveURL(/\/food$/);
+  await expect(page.locator("[data-food-tier]")).toHaveCount(TIER_TAGS.length);
+  await expect.poll(() => scrollY(page)).toBeLessThan(40);
 });
 
-/**
- * 新标签（题库/书库/榜单/市集/求职雷达/收藏夹概览）只出现在这些内页上，
- * 所以"移动端无横向溢出"必须在这里量，而不是只量五个模块首页。
- */
 test.describe("内页在窄屏下不横向溢出", () => {
   for (const { route } of SUB_SITE_INNER_PAGES) {
     test(`${route} 在 360px 下不溢出`, async ({ page }) => {

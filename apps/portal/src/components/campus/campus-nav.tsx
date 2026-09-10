@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AccountEntry from "@/components/account/account-entry";
 import BackLink from "@/components/back-link";
+import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
 import { cn } from "@/lib/cn";
 
 const TABS = [
-  { href: "/campus", index: "M-01", label: "市集", match: (p: string) => p === "/campus" || p.startsWith("/campus/item") },
+  { href: "/campus", index: "M-01", label: LEVEL_LABELS.campus, match: (p: string) => p === "/campus" || p.startsWith("/campus/item") },
   { href: "/campus/deals", index: "M-02", label: "我的交易", match: (p: string) => p.startsWith("/campus/deals") },
   { href: "/campus/publish", index: "M-03", label: "发布", match: (p: string) => p.startsWith("/campus/publish") },
 ];

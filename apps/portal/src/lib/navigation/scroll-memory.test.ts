@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  clearStaleScrollRestore,
+  claimHistoryReturn,
+  clearStaleScrollRequest,
   isAncestorPath,
   readScrollOffset,
+  rememberHistoryReturn,
   requestScrollRestore,
   scrollMemoryKey,
-  scrollRestoreRequested,
+  requestScrollTop,
+  scrollLandingFor,
   writeScrollOffset,
 } from "./scroll-memory";
 
@@ -25,7 +28,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
-  clearStaleScrollRestore("/");
+  clearStaleScrollRequest("/");
   delete (globalThis as { window?: unknown }).window;
 });
 
@@ -76,33 +79,57 @@ describe("scroll offset memory", () => {
   });
 });
 
-describe("restore requests", () => {
+describe("history return", () => {
+  it("restores only the path the history traversal landed on", () => {
+    expect(claimHistoryReturn("/food")).toBe(false);
+
+    rememberHistoryReturn("/food");
+    // 别的路径挂载不能把这次回退用掉：回退落到首页之后，读者再点进列表页
+    // 仍然必须从顶部开始。
+    expect(claimHistoryReturn("/library")).toBe(false);
+    expect(claimHistoryReturn("/food")).toBe(true);
+  });
+
+  it("uses a traversal once", () => {
+    rememberHistoryReturn("/library");
+    expect(claimHistoryReturn("/library")).toBe(true);
+    expect(claimHistoryReturn("/library")).toBe(false);
+  });
+});
+
+describe("landing requests", () => {
   it("only serves the pathname that was requested", () => {
     requestScrollRestore("/practice");
-    expect(scrollRestoreRequested("/practice")).toBe(true);
-    expect(scrollRestoreRequested("/library")).toBe(false);
+    expect(scrollLandingFor("/practice")).toBe("restore");
+    expect(scrollLandingFor("/library")).toBeNull();
     // Reading twice keeps the request: strict mode runs the effect twice.
-    expect(scrollRestoreRequested("/practice")).toBe(true);
+    expect(scrollLandingFor("/practice")).toBe("restore");
+  });
+
+  it("asks for the top on a sideways or deeper navigation", () => {
+    requestScrollTop("/practice/stats");
+    expect(scrollLandingFor("/practice/stats")).toBe("top");
+    expect(scrollLandingFor("/practice/favorites")).toBeNull();
   });
 
   it("drops a request the reader never landed on", () => {
     requestScrollRestore("/practice");
-    clearStaleScrollRestore("/library");
-    expect(scrollRestoreRequested("/practice")).toBe(false);
+    clearStaleScrollRequest("/library");
+    expect(scrollLandingFor("/practice")).toBeNull();
   });
 
   it("keeps the request for the pathname that cleared as landed", () => {
     requestScrollRestore("/practice");
-    clearStaleScrollRestore("/practice");
-    expect(scrollRestoreRequested("/practice")).toBe(true);
+    clearStaleScrollRequest("/practice");
+    expect(scrollLandingFor("/practice")).toBe("restore");
   });
 
   it("drops a request that has gone stale before the reader lands", () => {
     requestScrollRestore("/practice");
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 60_000);
-    expect(scrollRestoreRequested("/practice")).toBe(false);
-    clearStaleScrollRestore("/practice");
-    expect(scrollRestoreRequested("/practice")).toBe(false);
+    expect(scrollLandingFor("/practice")).toBeNull();
+    clearStaleScrollRequest("/practice");
+    expect(scrollLandingFor("/practice")).toBeNull();
   });
 });

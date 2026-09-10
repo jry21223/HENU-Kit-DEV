@@ -4,6 +4,20 @@
  * 上一级按路径层级判断，而不是按浏览器历史：读者可能从任何地方进来（首页入口、
  * 搜索结果、外部链接、直接刷新），左上角那个箭头必须总是走到同一层，才算可预期。
  */
+/**
+ * 层级的读者可见名字。箭头文案和各子站导航里指向同一层的落地标签共用这一份——
+ * 同一个落点在两处叫出两个名字，是这套层级唯一会悄悄漂移的地方。
+ */
+export const LEVEL_LABELS = {
+  platformHome: "henukit",
+  practiceBank: "题库",
+  practiceFavorites: "收藏夹概览",
+  library: "书库",
+  food: "榜单",
+  campus: "市集",
+  career: "求职雷达",
+} as const;
+
 export type ParentRoute = {
   href: string;
   /** 箭头后面显示的层级名。 */
@@ -17,25 +31,24 @@ export type ParentRoute = {
 
 const PLATFORM_HOME: ParentRoute = {
   href: "/",
-  label: "henukit",
+  label: LEVEL_LABELS.platformHome,
   spokenAs: "henukit（平台首页）",
 };
 
 const RULES: Array<{ matches: (pathname: string) => boolean; parent: ParentRoute }> = [
   {
     matches: (pathname) => pathname.startsWith("/practice/favorites/"),
-    // 文件夹页自己的「返回收藏夹概览」用的也是这个词，两层入口对同一层保持同一个叫法。
-    parent: { href: "/practice/favorites", label: "收藏夹概览" },
+    parent: { href: "/practice/favorites", label: LEVEL_LABELS.practiceFavorites },
   },
-  { matches: (pathname) => pathname.startsWith("/practice/"), parent: { href: "/practice", label: "题库" } },
+  { matches: (pathname) => pathname.startsWith("/practice/"), parent: { href: "/practice", label: LEVEL_LABELS.practiceBank } },
   { matches: (pathname) => pathname === "/practice", parent: PLATFORM_HOME },
-  { matches: (pathname) => pathname.startsWith("/library/"), parent: { href: "/library", label: "书库" } },
+  { matches: (pathname) => pathname.startsWith("/library/"), parent: { href: "/library", label: LEVEL_LABELS.library } },
   { matches: (pathname) => pathname === "/library", parent: PLATFORM_HOME },
-  { matches: (pathname) => pathname.startsWith("/food/"), parent: { href: "/food", label: "榜单" } },
+  { matches: (pathname) => pathname.startsWith("/food/"), parent: { href: "/food", label: LEVEL_LABELS.food } },
   { matches: (pathname) => pathname === "/food", parent: PLATFORM_HOME },
-  { matches: (pathname) => pathname.startsWith("/campus/"), parent: { href: "/campus", label: "市集" } },
+  { matches: (pathname) => pathname.startsWith("/campus/"), parent: { href: "/campus", label: LEVEL_LABELS.campus } },
   { matches: (pathname) => pathname === "/campus", parent: PLATFORM_HOME },
-  { matches: (pathname) => pathname.startsWith("/career/"), parent: { href: "/career", label: "求职雷达" } },
+  { matches: (pathname) => pathname.startsWith("/career/"), parent: { href: "/career", label: LEVEL_LABELS.career } },
   { matches: (pathname) => pathname === "/career", parent: PLATFORM_HOME },
 ];
 

@@ -84,27 +84,64 @@ export function isAncestorPath(destination: string, pathname: string): boolean {
   return pathname.startsWith(destination.endsWith("/") ? destination : `${destination}/`);
 }
 
-type RestoreRequest = { pathname: string; requestedAt: number };
+/**
+ * 浏览器历史回退落到的那个路径。按落点记录、用掉即清：只用一个全局布尔量的话，
+ * 一次回退到别处（首页、题库……）会把标记一直挂着，读者之后**点**进列表页也会被
+ * 拽回旧位置——那就成了「普通进入也恢复」。
+ */
+let historyReturnPath: string | null = null;
 
-let restoreRequest: RestoreRequest | null = null;
+export function rememberHistoryReturn(pathname: string): void {
+  historyReturnPath = pathname;
+}
 
-export function requestScrollRestore(pathname: string): void {
-  restoreRequest = { pathname, requestedAt: Date.now() };
+/** 这条路径是否刚被历史回退落到，因而应当恢复位置。用掉即清。 */
+export function claimHistoryReturn(pathname: string): boolean {
+  if (historyReturnPath !== pathname) return false;
+  historyReturnPath = null;
+  return true;
 }
 
 /**
- * 落点页面是否该恢复位置。读取不清除：React 严格模式下 effect 会跑两遍，
- * 清除会让第二次丢掉请求。过期请求由 clearStaleScrollRestore 收走。
+ * 落地后该怎么处理滚动：`restore` 放回读者上次离开的位置（向上回退），
+ * `top` 从顶部开始（横跳标签、进入更深的页面）。
  */
-export function scrollRestoreRequested(pathname: string): boolean {
-  if (!restoreRequest) return false;
-  if (restoreRequest.pathname !== pathname) return false;
-  return Date.now() - restoreRequest.requestedAt <= REQUEST_TTL_MS;
+export type ScrollLanding = "restore" | "top";
+
+type LandingRequest = { pathname: string; landing: ScrollLanding; requestedAt: number };
+
+let landingRequest: LandingRequest | null = null;
+
+/** 向上回退：落点页面把读者放回上次离开的位置。 */
+export function requestScrollRestore(pathname: string): void {
+  landingRequest = { pathname, landing: "restore", requestedAt: Date.now() };
+}
+
+/**
+ * 非向上导航：落点页面必须从顶部开始。
+ *
+ * 这一步不能全指望路由——练习区的横跳走的是过渡动画里的 `router.push`，实测会把
+ * 上一页的滚动一并带过去（页面够高时就不再有"从顶部开始"）。契约写在实现决定里，
+ * 就由这里保证。
+ */
+export function requestScrollTop(pathname: string): void {
+  landingRequest = { pathname, landing: "top", requestedAt: Date.now() };
+}
+
+/**
+ * 落点页面该怎么落位。读取不清除：React 严格模式下 effect 会跑两遍，清除会让
+ * 第二次丢掉请求。过期请求由 clearStaleScrollRequest 收走。
+ */
+export function scrollLandingFor(pathname: string): ScrollLanding | null {
+  if (!landingRequest) return null;
+  if (landingRequest.pathname !== pathname) return null;
+  if (Date.now() - landingRequest.requestedAt > REQUEST_TTL_MS) return null;
+  return landingRequest.landing;
 }
 
 /** 读者没有落到请求的那个路径（点击被取消、跳去了别处）时丢掉请求。 */
-export function clearStaleScrollRestore(pathname: string): void {
-  if (!restoreRequest) return;
-  const expired = Date.now() - restoreRequest.requestedAt > REQUEST_TTL_MS;
-  if (expired || restoreRequest.pathname !== pathname) restoreRequest = null;
+export function clearStaleScrollRequest(pathname: string): void {
+  if (!landingRequest) return;
+  const expired = Date.now() - landingRequest.requestedAt > REQUEST_TTL_MS;
+  if (expired || landingRequest.pathname !== pathname) landingRequest = null;
 }

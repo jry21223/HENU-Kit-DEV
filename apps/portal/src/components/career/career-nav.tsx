@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AccountEntry from "@/components/account/account-entry";
 import BackLink from "@/components/back-link";
+import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
 import { cn } from "@/lib/cn";
 
 const TABS = [
-  { href: "/career", index: "R-01", label: "扫描", match: (p: string) => p === "/career" },
+  { href: "/career", index: "R-01", label: LEVEL_LABELS.career, match: (p: string) => p === "/career" },
   { href: "/career/history", index: "R-02", label: "历史", match: (p: string) => p.startsWith("/career/history") },
 ];
 
