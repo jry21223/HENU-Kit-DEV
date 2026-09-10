@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import BackLink from "@/components/back-link";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import FavoritesLoginPrompt from "@/components/practice/favorites-login-prompt";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
@@ -268,12 +268,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
               <p className="mt-4 font-mono text-[10px] leading-5 text-ink/45">
                 不可用的收藏会保留在这里，但不会进入收藏练习，也不展示题目内容。
               </p>
-              <Link
-                href="/practice/favorites"
-                className="mt-6 inline-block font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent"
-              >
-                ← 返回收藏夹概览
-              </Link>
+              <BackLink className="mt-6 inline-block font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent" />
             </>
           )}
         </section>

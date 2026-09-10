@@ -10,8 +10,16 @@ import { parentRoute } from "@/lib/navigation/parent-route";
  *
  * `data-back-link` 是浏览器验收用来定位这个控件的钩子（与 `data-food-tier` 同类）；
  * 可见文案只有一个箭头加层级名，所以另给可访问名说明「回到哪一层」。
+ *
+ * 默认样式就是子站导航里那一行；页面正文里的回退入口可以传自己的 className。
  */
-export default function BackLink({ className }: { className?: string }) {
+const NAV_LINK_CLASS =
+  "font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent";
+export default function BackLink({
+  className = NAV_LINK_CLASS,
+}: {
+  className?: string;
+}) {
   const pathname = usePathname();
   const parent = parentRoute(pathname);
 

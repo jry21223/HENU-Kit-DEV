@@ -20,7 +20,7 @@ export default function CampusNav() {
       <div className="mx-auto flex min-h-14 max-w-[1440px] flex-wrap items-center px-5 md:flex-nowrap md:justify-between md:px-8">
         <div className="flex h-14 w-full items-center justify-between md:h-auto md:w-auto md:justify-start md:gap-4">
           <div className="flex items-baseline gap-4">
-          <BackLink className="font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent" />
+          <BackLink />
           <span className="font-display text-base font-bold tracking-tight">
             CAMPUS<span className="text-accent">®</span>
           </span>
