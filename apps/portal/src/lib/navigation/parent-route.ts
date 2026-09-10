@@ -11,7 +11,8 @@ const PLATFORM_HOME: ParentRoute = { href: "/", label: "henukit" };
 const RULES: Array<{ matches: (pathname: string) => boolean; parent: ParentRoute }> = [
   {
     matches: (pathname) => pathname.startsWith("/practice/favorites/"),
-    parent: { href: "/practice/favorites", label: "收藏夹" },
+    // 文件夹页自己的「返回收藏夹概览」用的也是这个词，两层入口对同一层保持同一个叫法。
+    parent: { href: "/practice/favorites", label: "收藏夹概览" },
   },
   { matches: (pathname) => pathname.startsWith("/practice/"), parent: { href: "/practice", label: "题库" } },
   { matches: (pathname) => pathname === "/practice", parent: PLATFORM_HOME },

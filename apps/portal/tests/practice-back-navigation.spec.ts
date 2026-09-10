@@ -204,7 +204,7 @@ const SUB_SITE_INNER_PAGES = [
   { route: "/campus/item/h-01", label: "← 市集", destination: "/campus" },
   { route: "/career/history", label: "← 求职雷达", destination: "/career" },
   { route: "/practice/quiz", label: "← 题库", destination: "/practice" },
-  { route: "/practice/favorites/bank-1", label: "← 收藏夹", destination: "/practice/favorites" },
+  { route: "/practice/favorites/bank-1", label: "← 收藏夹概览", destination: "/practice/favorites" },
 ] as const;
 
 /**
@@ -218,6 +218,70 @@ const SUB_SITE_HOMES = [
   { route: "/career", label: "← henukit" },
   { route: "/practice", label: "← henukit" },
 ] as const;
+
+test("没走成的点击不会让读者之后的位移被丢掉", async ({ page }) => {
+  await mockFood(page);
+  await page.goto("/food", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("[data-food-tier]")).toHaveCount(TIER_TAGS.length);
+  await waitForClientShell(page);
+  await scrollTo(page, 1600);
+
+  // 拦下一次点击：导航没有发生（下载链接、别的处理函数 preventDefault 都长这样）。
+  // 记录器如果据此认定"这一页要走了"并一直等一个 0，读者后续的真实位移就会被丢掉。
+  await page.evaluate(() => {
+    const swallow = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener("click", swallow, true);
+    window.setTimeout(() => document.removeEventListener("click", swallow, true), 1000);
+  });
+  await page.evaluate(() => {
+    const onScreen = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>('a[href^="/food/post/"]')
+    ).find((link) => {
+      const box = link.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= window.innerHeight;
+    });
+    if (!onScreen) throw new Error("屏幕上没有可点的条目");
+    onScreen.click();
+  });
+  await page.waitForTimeout(400);
+  expect(new URL(page.url()).pathname).toBe("/food");
+
+  // 读者自己滚回顶部：这一次位移必须被记下来。
+  // 这里断言记录值而不是界面结果：要把这份记录"带出去"需要一次没有点击的站内导航，
+  // 页面上没有可点的入口；键与格式由 scroll-memory 的单测钉住。
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect
+    .poll(() => page.evaluate(() => window.sessionStorage.getItem("henukit.scroll.v1:/food")))
+    .toBe("0");
+});
+
+/**
+ * 新标签（题库/书库/榜单/市集/求职雷达/收藏夹概览）只出现在这些内页上，
+ * 所以"移动端无横向溢出"必须在这里量，而不是只量五个模块首页。
+ */
+test.describe("内页在窄屏下不横向溢出", () => {
+  for (const { route } of SUB_SITE_INNER_PAGES) {
+    test(`${route} 在 360px 下不溢出`, async ({ page }) => {
+      await page.setViewportSize({ width: 360, height: 844 });
+      await page.goto(route, { waitUntil: "domcontentloaded" });
+      await expect(page.locator("header [data-back-link]").first()).toBeVisible();
+
+      const metrics = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        headerOverflow: (() => {
+          const header = document.querySelector("header");
+          return header ? header.scrollWidth - header.clientWidth : 0;
+        })(),
+      }));
+      expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+      expect(metrics.headerOverflow).toBeLessThanOrEqual(1);
+    });
+  }
+});
 
 test("模块首页的返回箭头回平台首页，并落回读者离开时的位置", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });

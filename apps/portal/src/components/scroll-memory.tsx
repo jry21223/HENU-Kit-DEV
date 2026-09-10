@@ -15,12 +15,6 @@ import {
 /** 滚动写入不需要每帧都碰 sessionStorage。 */
 const RECORD_INTERVAL_MS = 120;
 
-/**
- * 路由换页时会把文档拉回顶部，那个 0 不是读者的位置。标记必须跨页面存活到读者
- * 真的滚动为止，所以放在模块作用域，而不是某一个 effect 的闭包里。
- */
-let leftThroughNavigation = false;
-
 function sameOriginPathname(href: string): string | null {
   try {
     const url = new URL(href, window.location.href);
@@ -49,6 +43,7 @@ export default function ScrollMemory() {
   useEffect(() => {
     let timer = 0;
 
+    // 离开这一页时先落一次盘：这是权威值，之后的写入都不该覆盖它。
     const flush = () => {
       if (timer) {
         window.clearTimeout(timer);
@@ -61,9 +56,12 @@ export default function ScrollMemory() {
       if (timer) return;
       timer = window.setTimeout(() => {
         timer = 0;
-        // 换页时路由自己把文档拉回 0，那不是读者滚上去的。
-        if (leftThroughNavigation && window.scrollY === 0) return;
-        leftThroughNavigation = false;
+        // 路由换页会把文档拉回顶部。等这条位移落定时路径已经换了，说明它属于上一页，
+        // 既不该写进新页的记录，也不该覆盖上一页离开时的位置。
+        //
+        // 判断依据是「路径变了没有」，不是「位置是不是 0」：后者会让一次没走成的点击
+        // （被别的处理函数拦下、下载链接等）把读者真实滚回顶部的位移永久丢掉。
+        if (window.location.pathname !== pathname) return;
         writeScrollOffset(pathname, window.scrollY);
       }, RECORD_INTERVAL_MS);
     };
@@ -76,24 +74,18 @@ export default function ScrollMemory() {
       const destination = sameOriginPathname(anchor.href);
       if (!destination) return;
 
-      leftThroughNavigation = true;
       flush();
       // 横向切换标签、走进更深的页面都该从顶部开始，只有向上回退才落回原处。
       if (isAncestorPath(destination, pathname)) requestScrollRestore(destination);
     };
 
-    const onPopState = () => {
-      leftThroughNavigation = true;
-      flush();
-    };
-
     window.addEventListener("scroll", record, { passive: true });
     document.addEventListener("click", onClick, true);
-    window.addEventListener("popstate", onPopState);
+    window.addEventListener("popstate", flush);
     return () => {
       window.removeEventListener("scroll", record);
       document.removeEventListener("click", onClick, true);
-      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("popstate", flush);
       if (timer) window.clearTimeout(timer);
     };
   }, [pathname]);

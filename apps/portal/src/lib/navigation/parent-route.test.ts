@@ -19,7 +19,7 @@ describe("parentRoute", () => {
     expect(parentRoute("/practice/favorites")).toEqual({ href: "/practice", label: "题库" });
     expect(parentRoute("/practice/favorites/abc")).toEqual({
       href: "/practice/favorites",
-      label: "收藏夹",
+      label: "收藏夹概览",
     });
   });
 
