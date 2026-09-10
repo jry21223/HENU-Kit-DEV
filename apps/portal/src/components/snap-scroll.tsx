@@ -76,11 +76,30 @@ export default function SnapScroll() {
         const isScrollingDown = (self: Observer) =>
           self.event.type === "wheel" ? self.deltaY > 0 : self.deltaY < 0;
 
+        // 一次触摸手势只切一屏：Observer 每个累积位移都会回调，而整屏动画只有约
+        // 1.1s，慢速拖动会在动画结束后继续产生位移，同一次拖动因此连切两屏。手势
+        // 起止由按下/抬起圈定（不用 onStop：被机器拉长的位移之间会有空档，那会让
+        // 同一次手势重新起跳）。滚轮读者连续滚动仍然一屏一屏走，不受此锁影响。
+        let gestureSpent = false;
+
         const observer = Observer.create({
           type: "wheel,touch",
           preventDefault: true,
           tolerance: 12,
-          onChangeY: (self) => go(isScrollingDown(self) ? 1 : -1),
+          onPress: () => {
+            gestureSpent = false;
+          },
+          onRelease: () => {
+            gestureSpent = false;
+          },
+          onChangeY: (self) => {
+            const fromWheel = self.event.type === "wheel";
+            if (!fromWheel) {
+              if (gestureSpent) return;
+              gestureSpent = true;
+            }
+            go(isScrollingDown(self) ? 1 : -1);
+          },
         });
 
         const onKey = (e: KeyboardEvent) => {

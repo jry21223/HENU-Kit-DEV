@@ -7,6 +7,7 @@ import {
   clearStaleScrollRestore,
   isAncestorPath,
   readScrollOffset,
+  reapplyScrollOffset,
   requestScrollRestore,
   scrollRestoreRequested,
   writeScrollOffset,
@@ -97,32 +98,16 @@ export default function ScrollMemory() {
     const target = readScrollOffset(pathname);
     if (target <= 0) return;
 
-    let cancelled = false;
-    let frame = 0;
-    const deadline = performance.now() + SCROLL_RESTORE_WINDOW_MS;
+    const stopReapplying = reapplyScrollOffset(target, SCROLL_RESTORE_WINDOW_MS);
 
-    // 列表页的行是客户端拉取的，文档要过几帧才够高，所以反复落到同一位置，
-    // 直到文档撑得下、窗口过期，或者读者自己动手（那就把位置交还给他）。
-    const apply = () => {
-      if (cancelled) return;
-      window.scrollTo(0, target);
-      const roomy = document.documentElement.scrollHeight - window.innerHeight >= target;
-      if (!roomy && performance.now() < deadline) frame = window.requestAnimationFrame(apply);
-    };
-
-    const yieldToReader = () => {
-      cancelled = true;
-      if (frame) window.cancelAnimationFrame(frame);
-    };
+    // 读者一动手就把位置交还给他。
+    const yieldToReader = () => stopReapplying();
 
     window.addEventListener("wheel", yieldToReader, { passive: true, once: true });
     window.addEventListener("touchstart", yieldToReader, { passive: true, once: true });
     window.addEventListener("keydown", yieldToReader, { passive: true, once: true });
-    frame = window.requestAnimationFrame(apply);
-
     return () => {
-      cancelled = true;
-      if (frame) window.cancelAnimationFrame(frame);
+      stopReapplying();
       window.removeEventListener("wheel", yieldToReader);
       window.removeEventListener("touchstart", yieldToReader);
       window.removeEventListener("keydown", yieldToReader);

@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { readScrollOffset } from "@/lib/navigation/scroll-memory";
-
-/**
- * Frames to keep reapplying the offset while the list finishes painting.
- * Rows arrive in one render, but fonts and images can still grow the document
- * for a few frames after that; ~30 frames is half a second at 60fps.
- */
-const MAX_RESTORE_FRAMES = 30;
+import {
+  SCROLL_REAPPLY_WINDOW_MS,
+  readScrollOffset,
+  reapplyScrollOffset,
+} from "@/lib/navigation/scroll-memory";
 
 let returnedThroughHistory = false;
 let popstateBound = false;
@@ -58,23 +55,6 @@ export function useScrollRestoration(ready: boolean) {
   useEffect(() => {
     if (!ready || restored.current || restoreTarget <= 0) return;
     restored.current = true;
-
-    const target = restoreTarget;
-    let frame = 0;
-    let attempts = 0;
-    const apply = () => {
-      attempts += 1;
-      const settled =
-        document.documentElement.scrollHeight - window.innerHeight >= target;
-      window.scrollTo(0, target);
-      if (!settled && attempts < MAX_RESTORE_FRAMES) {
-        frame = window.requestAnimationFrame(apply);
-      }
-    };
-
-    frame = window.requestAnimationFrame(apply);
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-    };
+    return reapplyScrollOffset(restoreTarget, SCROLL_REAPPLY_WINDOW_MS);
   }, [ready, restoreTarget]);
 }

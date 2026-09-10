@@ -15,13 +15,10 @@ import { expect, test, type Page } from "@playwright/test";
 const SECTION_COUNT = 7;
 
 /**
- * 一次滑动 = 一次手势 = 一屏，所以默认只发一段位移。
- *
- * 多段位移在机器繁忙时会被拉长投递：整屏动画（~1.1s）已经结束、后面的位移才到，
- * 于是同一次滑动切了两屏（用例因此间歇性变红）。需要真实连续拖动的用例——比如
- * 未接管时验证原生滚动——显式传 steps。
+ * 一次滑动 = 一次手势 = 一屏，所以默认只发一段位移：方向用例只关心方向，不必让
+ * 投递时序参与。需要真实连续拖动的用例显式传 steps（原生滚动、慢速拖动回归）。
  */
-async function swipeFinger(page: Page, from: number, to: number, steps = 1) {
+async function swipeFinger(page: Page, from: number, to: number, steps = 1, stepDelayMs = 12) {
   const cdp = await page.context().newCDPSession(page);
   const x = 200;
   await cdp.send("Input.dispatchTouchEvent", {
@@ -33,7 +30,7 @@ async function swipeFinger(page: Page, from: number, to: number, steps = 1) {
       type: "touchMove",
       touchPoints: [{ x, y: from + ((to - from) * step) / steps }],
     });
-    if (steps > 1) await page.waitForTimeout(12);
+    if (steps > 1) await page.waitForTimeout(stepDelayMs);
   }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await cdp.detach();
@@ -86,6 +83,18 @@ test.describe("首页整屏切换方向", () => {
     await swipeFinger(page, 240, 640);
     await waitForSnap(page);
     expect(await activeSection(page)).toBe(0);
+  });
+
+  test("一次慢速拖动只切一屏", async ({ page }) => {
+    await page.goto("/", { waitUntil: "load" });
+    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT);
+    await expect.poll(() => activeSection(page)).toBe(0);
+
+    // 位移一直持续到整屏动画（~1.1s）结束之后：同一次手势不该再起跳一次。
+    // 滚轮读者连续滚动仍然一屏一屏走，所以这里只钉触摸手势。
+    await swipeFinger(page, 700, 200, 20, 120);
+    await waitForSnap(page);
+    expect(await activeSection(page)).toBe(1);
   });
 
   test("同一页面上鼠标滚轮保持原有方向", async ({ page }) => {
