@@ -20,7 +20,7 @@ export default function BackLink({ className }: { className?: string }) {
       href={parent.href}
       className={className}
       data-back-link
-      aria-label={`返回上一级：${parent.label}`}
+      aria-label={`返回上一级：${parent.spokenAs ?? parent.label}`}
     >
       ← {parent.label}
     </Link>

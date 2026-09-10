@@ -471,6 +471,9 @@ test("刷题页的返回箭头回题库目录，而不是平台首页", async ({
 
   await expect(page).toHaveURL(/\/practice$/);
   await expect(backLink(page)).toHaveText("← henukit");
+  // 可见文案是品牌名，读屏要说出它其实是平台首页这一层；同时保留屏幕上的字，
+  // 语音控制念得出这个控件（WCAG 2.5.3 标签在名称中）。
+  await expect(backLink(page)).toHaveAttribute("aria-label", "返回上一级：henukit（平台首页）");
 });
 
 for (const { route, label, destination } of SUB_SITE_INNER_PAGES) {

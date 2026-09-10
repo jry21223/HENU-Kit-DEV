@@ -25,15 +25,39 @@ describe("parentRoute", () => {
 
   it("sends a module home to the platform home", () => {
     for (const moduleHome of ["/practice", "/library", "/food", "/campus", "/career"]) {
-      expect(parentRoute(moduleHome)).toEqual({ href: "/", label: "henukit" });
+      expect(parentRoute(moduleHome)).toEqual({
+        href: "/",
+        label: "henukit",
+        spokenAs: "henukit（平台首页）",
+      });
     }
   });
 
   it("falls back to the platform home for paths outside the five modules", () => {
-    expect(parentRoute("/")).toEqual({ href: "/", label: "henukit" });
-    expect(parentRoute("/account/login")).toEqual({ href: "/", label: "henukit" });
-    expect(parentRoute("/account/recover")).toEqual({ href: "/", label: "henukit" });
-    expect(parentRoute("/account")).toEqual({ href: "/", label: "henukit" });
-    expect(parentRoute("/somewhere-else")).toEqual({ href: "/", label: "henukit" });
+    expect(parentRoute("/")).toEqual({
+      href: "/",
+      label: "henukit",
+      spokenAs: "henukit（平台首页）",
+    });
+    expect(parentRoute("/account/login")).toEqual({
+      href: "/",
+      label: "henukit",
+      spokenAs: "henukit（平台首页）",
+    });
+    expect(parentRoute("/account/recover")).toEqual({
+      href: "/",
+      label: "henukit",
+      spokenAs: "henukit（平台首页）",
+    });
+    expect(parentRoute("/account")).toEqual({
+      href: "/",
+      label: "henukit",
+      spokenAs: "henukit（平台首页）",
+    });
+    expect(parentRoute("/somewhere-else")).toEqual({
+      href: "/",
+      label: "henukit",
+      spokenAs: "henukit（平台首页）",
+    });
   });
 });

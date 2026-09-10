@@ -4,9 +4,22 @@
  * 上一级按路径层级判断，而不是按浏览器历史：读者可能从任何地方进来（首页入口、
  * 搜索结果、外部链接、直接刷新），左上角那个箭头必须总是走到同一层，才算可预期。
  */
-export type ParentRoute = { href: string; label: string };
+export type ParentRoute = {
+  href: string;
+  /** 箭头后面显示的层级名。 */
+  label: string;
+  /**
+   * 读屏时说的层级名，默认同 `label`。平台首页的可见文案是品牌名：只念品牌没说清
+   * 回到哪一层，但也不能丢掉屏幕上的字，否则语音控制念不出这个控件。
+   */
+  spokenAs?: string;
+};
 
-const PLATFORM_HOME: ParentRoute = { href: "/", label: "henukit" };
+const PLATFORM_HOME: ParentRoute = {
+  href: "/",
+  label: "henukit",
+  spokenAs: "henukit（平台首页）",
+};
 
 const RULES: Array<{ matches: (pathname: string) => boolean; parent: ParentRoute }> = [
   {
