@@ -200,6 +200,10 @@ test.beforeAll(async ({ browser }) => {
   const page = await browser.newPage();
   const routes = [
     "/",
+    // 横向切换标签那条用例访问的两个同级页：它们与本文件其他路由不是同一个 route entry，
+    // 不预热就会在断言窗口里现编译。
+    "/practice/favorites",
+    "/practice/stats",
     ...SUB_SITE_INNER_PAGES.map((entry) => entry.route),
     ...SUB_SITE_HOMES.map((entry) => entry.route),
   ];
