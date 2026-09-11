@@ -66,6 +66,19 @@ function inboxStatusLabel(status: string) {
   return status === "open" ? "待处理" : status === "in_progress" ? "处理中" : status === "blocked" ? "受阻" : status === "resolved" ? "已解决" : status === "archived" ? "已归档" : status;
 }
 
+function productLabel(code: string) {
+  return code === "quizcraft" || code === "practice" ? "练习服务" : code;
+}
+
+const practicePermissionLabels: Record<string, string> = {
+  "quizcraft.attempt.write": "练习服务 · 作答写入",
+  "quizcraft.bank.manage": "练习服务 · 题库管理",
+};
+
+function permissionLabel(code: string) {
+  return practicePermissionLabels[code] ?? (code.startsWith("quizcraft.") ? "练习服务权限" : code);
+}
+
 function sessionKindLabel(kind: string) {
   return kind === "core" ? "核心" : kind === "client_exchange" ? "客户端" : kind;
 }
@@ -111,7 +124,7 @@ function targetKindLabel(kind: string) {
 
 function targetLabel(event: PlatformOperationsAuditEvent) {
   const parts = [targetKindLabel(event.target_kind)];
-  if (event.target_product_code) parts.push(event.target_product_code);
+  if (event.target_product_code) parts.push(productLabel(event.target_product_code));
   if (event.target_resource_type) parts.push(event.target_resource_type);
   if (event.target_resource_id) parts.push(event.target_resource_id);
   return parts.join(" / ");
@@ -230,9 +243,9 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); });
 
       <div class="operation-two-column">
         <section class="operation-panel"><h2>邮件基础设施</h2><dl class="mail-grid"><template v-for="(value, key) in operations.mail" :key="key"><dt>{{ mailLabel(key) }}</dt><dd>{{ value }}</dd></template></dl></section>
-        <section class="operation-panel"><h2>运营收件箱</h2><article v-for="item in operations.inbox_items" :key="item.id" class="compact-row"><strong>{{ item.source_product_code }} / {{ item.source_resource_type }}</strong><span>{{ item.source_resource_id }} · {{ inboxStatusLabel(item.status) }} · v{{ item.version }}</span></article><p v-if="!operations.inbox_items.length">暂无引用项</p></section>
+        <section class="operation-panel"><h2>运营收件箱</h2><article v-for="item in operations.inbox_items" :key="item.id" class="compact-row"><strong>{{ productLabel(item.source_product_code) }} / {{ item.source_resource_type }}</strong><span>{{ item.source_resource_id }} · {{ inboxStatusLabel(item.status) }} · 版本 {{ item.version }}</span></article><p v-if="!operations.inbox_items.length">暂无引用项</p></section>
       </div>
-      <section class="operation-panel"><h2>授权审计</h2><article v-for="event in operations.audit" :key="event.request_id + event.created_at" class="compact-row"><strong>{{ decisionLabel(event.decision) }} · {{ event.permission_code }}</strong><span class="break-all">{{ personLabel(event) }} · {{ personEmail(event) }} · {{ localDateTime(event.created_at) }} · 目标 {{ targetLabel(event) }}</span><span>原因：{{ reasonLabel(event.reason_code) }}<template v-if="unknownReason(event.reason_code)">（{{ event.reason_code }}）</template> · {{ event.request_id }}</span></article><p v-if="!operations.audit.length">暂无审计事件</p></section>
+      <section class="operation-panel"><h2>授权审计</h2><article v-for="event in operations.audit" :key="event.request_id + event.created_at" class="compact-row"><strong>{{ decisionLabel(event.decision) }} · {{ permissionLabel(event.permission_code) }}</strong><span class="break-all">{{ personLabel(event) }} · {{ personEmail(event) }} · {{ localDateTime(event.created_at) }} · 目标 {{ targetLabel(event) }}</span><span>原因：{{ reasonLabel(event.reason_code) }}<template v-if="unknownReason(event.reason_code)">（{{ event.reason_code }}）</template> · {{ event.request_id }}</span></article><p v-if="!operations.audit.length">暂无审计事件</p></section>
     </template>
   </section>
 </template>
