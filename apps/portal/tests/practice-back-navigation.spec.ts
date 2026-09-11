@@ -299,7 +299,7 @@ test.describe("内页在窄屏下不横向溢出", () => {
     test(`${route} 在 360px 下不溢出`, async ({ page }) => {
       await page.setViewportSize({ width: 360, height: 844 });
       await page.goto(route, { waitUntil: "domcontentloaded" });
-      await expect(page.locator("header [data-back-link]").first()).toBeVisible();
+      await expect(page.locator("header [data-back-link]").first()).toBeVisible({ timeout: 30_000 });
 
       const metrics = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
@@ -514,7 +514,8 @@ for (const { route, label, destination } of SUB_SITE_INNER_PAGES) {
     // 直接打开深层地址，前面没有任何站内导航：落点仍然由路径层级决定。
     await page.goto(route, { waitUntil: "domcontentloaded" });
 
-    await expect(backLink(page)).toHaveText(label);
+    // 冷启动时这条路由要先编译；生产是预构建，超时只用来盖住 dev 的编译时间。
+    await expect(backLink(page)).toHaveText(label, { timeout: 30_000 });
     await expect(backLink(page)).toHaveAttribute("href", destination);
 
     await backLink(page).click();
@@ -531,7 +532,8 @@ for (const { route, label } of SUB_SITE_HOMES) {
   test(`${route} 子站首页的返回箭头回平台首页`, async ({ page }) => {
     await page.goto(route, { waitUntil: "domcontentloaded" });
 
-    await expect(backLink(page)).toHaveText(label);
+    // 冷启动时这条路由要先编译；生产是预构建，超时只用来盖住 dev 的编译时间。
+    await expect(backLink(page)).toHaveText(label, { timeout: 30_000 });
     await expect(backLink(page)).toHaveAttribute("href", "/");
 
     await backLink(page).click();

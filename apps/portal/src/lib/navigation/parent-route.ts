@@ -1,16 +1,10 @@
 /**
- * 「返回上一级」的落点：模块内的页面回到该模块首页，模块首页回到平台首页。
- *
- * 上一级按路径层级判断，而不是按浏览器历史：读者可能从任何地方进来（首页入口、
- * 搜索结果、外部链接、直接刷新），左上角那个箭头必须总是走到同一层，才算可预期。
- */
-/**
- * 层级的读者可见名字：箭头文案、以及各子站导航里指向同一层的落地标签与页面标题
- * 共用这一份，同一个落点不会在同一屏出现两个叫法。
+ * 层级的读者可见名字：箭头文案、各子站导航里指向同一层的落地标签、以及层级自己那
+ * 一页的标题共用这一份，同一个落点不会在同一屏出现两个叫法。
  *
  * 用的是「子站导航那一套词」（书库/榜单/市集/题库…），也就是读者在落点页的标签行
  * 上正看着的那个词。首页一级入口与模块 SEO 标题用的是另一套「模块名」（资料库/
- * 美食榜/互助平台…）；两套语域的统一是独立事项，不在本次范围（见 #501 的 Out of
+ * 美食榜/互助平台…），不在这一份里；两套语域的统一是独立事项（见 #501 的 Out of
  * Scope）。
  */
 export const LEVEL_LABELS = {
@@ -40,6 +34,9 @@ const PLATFORM_HOME: ParentRoute = {
   spokenAs: "henukit（平台首页）",
 };
 
+/**
+ * 先匹配先生效，所以更深的路径必须排在它所属模块前面（收藏夹文件夹在 /practice 之前）。
+ */
 const RULES: Array<{ matches: (pathname: string) => boolean; parent: ParentRoute }> = [
   {
     matches: (pathname) => pathname.startsWith("/practice/favorites/"),
@@ -57,6 +54,12 @@ const RULES: Array<{ matches: (pathname: string) => boolean; parent: ParentRoute
   { matches: (pathname) => pathname === "/career", parent: PLATFORM_HOME },
 ];
 
+/**
+ * 「返回上一级」的落点：模块内的页面回到该模块首页，模块首页回到平台首页。
+ *
+ * 上一级按路径层级判断，而不是按浏览器历史：读者可能从任何地方进来（首页入口、
+ * 搜索结果、外部链接、直接刷新），左上角那个箭头必须总是走到同一层，才算可预期。
+ */
 export function parentRoute(pathname: string): ParentRoute {
   return RULES.find((rule) => rule.matches(pathname))?.parent ?? PLATFORM_HOME;
 }

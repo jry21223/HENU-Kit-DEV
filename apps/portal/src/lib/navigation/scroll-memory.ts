@@ -5,7 +5,7 @@
  * 浏览器恢复滚动时还没有渲染出行，需要自己把 offset 补回去；「返回上一级」也读
  * 同一份记录，把读者放回上次离开的位置。
  */
-export const SCROLL_MEMORY_PREFIX = "henukit.scroll.v1:";
+const SCROLL_MEMORY_PREFIX = "henukit.scroll.v1:";
 
 /**
  * 「返回上一级」的恢复窗口：慢网络下列表页的行可能几秒后才到，所以给得宽一些。
@@ -75,7 +75,7 @@ export function writeScrollOffset(pathname: string, offset: number): void {
 }
 
 /**
- * destination 是不是 pathname 的上一层（含跨级回到模块首页、回到平台首页）。
+ * destination 是不是 pathname 的上层（前缀祖先：上一层、跨级回模块首页或平台首页）。
  * 只有向上导航才恢复位置：横向切换标签、进入更深的页面都应当从顶部开始。
  */
 export function isAncestorPath(destination: string, pathname: string): boolean {
