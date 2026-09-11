@@ -7,6 +7,7 @@ import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import { fetchFavoritesOverview } from "@/lib/api/client";
 import type { FavoriteFolder } from "@/lib/api/types";
 import { useFetchState } from "@/lib/api/use-fetch-state";
+import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
 
 function FolderCard({ folder, index }: { folder: FavoriteFolder; index: number }) {
   const total = folder.available_count + folder.unavailable_count;
@@ -51,7 +52,7 @@ export default function FavoritesOverview() {
           COLLECTION
         </p>
         <h1 className="mt-3 font-display text-5xl font-bold tracking-tight md:text-6xl">
-          收藏夹
+          {LEVEL_LABELS.practiceFavorites}
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
           按题库分组的收藏题目。不可用的题目保留收藏关系，但不会进入收藏练习。

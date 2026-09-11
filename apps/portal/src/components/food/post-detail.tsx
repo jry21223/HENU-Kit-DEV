@@ -13,6 +13,7 @@ import { CAMPUSES } from "@/lib/food/campuses";
 import { foodStore } from "@/lib/food/mock";
 import PostBlocks from "@/components/food/post-blocks";
 import Img from "@/components/ui/img";
+import BackLink from "@/components/back-link";
 import {
   EmptyBlock,
   ErrorBanner,
@@ -112,12 +113,7 @@ export default function PostDetail({ id }: { id: string }) {
         <p className="mt-4 font-display text-2xl font-bold">
           商家档案不存在或已隐藏
         </p>
-        <Link
-          href="/food"
-          className="mt-6 inline-block font-mono text-sm text-accent hover:underline"
-        >
-          ← 返回五档榜
-        </Link>
+        <BackLink className="mt-6 inline-block font-mono text-sm text-accent hover:underline" />
       </main>
     );
   }

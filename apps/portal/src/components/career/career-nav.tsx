@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AccountEntry from "@/components/account/account-entry";
+import BackLink from "@/components/back-link";
+import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
 import { cn } from "@/lib/cn";
 
 const TABS = [
-  { href: "/career", index: "R-01", label: "扫描", match: (p: string) => p === "/career" },
+  { href: "/career", index: "R-01", label: LEVEL_LABELS.career, match: (p: string) => p === "/career" },
   { href: "/career/history", index: "R-02", label: "历史", match: (p: string) => p.startsWith("/career/history") },
 ];
 
@@ -17,9 +19,7 @@ export default function CareerNav() {
       <div className="mx-auto flex min-h-14 max-w-[1440px] flex-wrap items-center px-5 md:flex-nowrap md:justify-between md:px-8">
         <div className="flex h-14 w-full items-center justify-between md:h-auto md:w-auto md:justify-start md:gap-4">
           <div className="flex items-baseline gap-4">
-            <Link href="/" className="font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent">
-              ← henukit
-            </Link>
+            <BackLink />
             <span className="font-display text-base font-bold tracking-tight">
               WORK RADAR<span className="text-accent">®</span>
             </span>

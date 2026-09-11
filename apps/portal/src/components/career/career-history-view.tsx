@@ -10,6 +10,7 @@ import {
   formatCareerSearchTime,
 } from "@/lib/career/career-scan-state";
 import type { CareerHistoryViewState } from "@/lib/career/page-state";
+import BackLink from "@/components/back-link";
 
 /**
  * /career/history 历史页（#402）：当前用户搜索历史列表。
@@ -114,12 +115,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <p className="mt-3 text-sm leading-6 text-ink/60">
           扫描历史读取失败时，不会以本地或会话数据替代真实记录。
         </p>
-        <Link
-          href="/career"
-          className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
-        >
-          返回扫描页
-        </Link>
+        <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest text-ink transition-colors hover:bg-ink hover:text-paper" />
       </section>
     );
   }

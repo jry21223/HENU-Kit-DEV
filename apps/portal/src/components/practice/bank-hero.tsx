@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import dynamic from "next/dynamic";
 import { REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
+import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
 import {
   toMasterySnapshot,
   type PersonalPracticeStatsState,
@@ -211,7 +212,7 @@ export default function BankHero({
             data-enter
             className="mt-4 font-display text-6xl font-bold tracking-tight md:text-7xl"
           >
-            题库
+            {LEVEL_LABELS.practiceBank}
           </h1>
           <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
             {catalogMode

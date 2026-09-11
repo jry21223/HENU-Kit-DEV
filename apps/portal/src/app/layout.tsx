@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import GatewayBootstrap from "@/components/gateway-bootstrap";
 import LangBotWidget from "@/components/langbot-widget";
+import ScrollMemory from "@/components/scroll-memory";
 import { siteMetadata, websiteStructuredData } from "@/lib/seo";
 import "./globals.css";
 
@@ -39,6 +40,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: structuredData }}
         />
         <GatewayBootstrap />
+        <ScrollMemory />
         {children}
         <LangBotWidget />
       </body>

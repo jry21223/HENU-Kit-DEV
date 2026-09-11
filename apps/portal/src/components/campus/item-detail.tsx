@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { categoryOf } from "@/lib/campus/mock";
 import Img from "@/components/ui/img";
 import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
 import { useCampusItemDetail } from "@/lib/campus/use-campus-item-detail";
+import BackLink from "@/components/back-link";
 
 const STATUS_LABEL = { open: "待接单", ongoing: "进行中", done: "已完成", hidden: "已隐藏" } as const;
 
@@ -20,18 +20,14 @@ export default function ItemDetail({ id }: { id: string }) {
           <p className="font-mono text-xs tracking-[0.3em] text-ink/40">404 / NOT FOUND</p>
           <p className="mt-4 font-display text-2xl font-bold">单子不存在或已下架</p>
           {state.error && <p className="mt-2 font-mono text-[11px] text-ink/50">{state.error}</p>}
-          <Link href="/campus" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-            ← 返回市集
-          </Link>
+          <BackLink className="mt-6 inline-block font-mono text-sm text-accent hover:underline" />
         </main>
       );
     }
     return (
       <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
         <p className="font-mono text-xs tracking-[0.3em] text-ink/40">LOADING / 加载中</p>
-        <Link href="/campus" className="mt-6 inline-block font-mono text-sm text-accent hover:underline">
-          ← 返回市集
-        </Link>
+        <BackLink className="mt-6 inline-block font-mono text-sm text-accent hover:underline" />
       </main>
     );
   }

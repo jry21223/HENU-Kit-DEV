@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import BackLink from "@/components/back-link";
+import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
 import { usePathname } from "next/navigation";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import AccountEntry from "@/components/account/account-entry";
@@ -21,7 +22,7 @@ const TABS: Tab[] = [
   {
     href: "/practice",
     index: "P-01",
-    label: "题库",
+    label: LEVEL_LABELS.practiceBank,
     match: (p: string) => p === "/practice" || p.startsWith("/practice/lists"),
   },
   {
@@ -31,7 +32,7 @@ const TABS: Tab[] = [
     disabled: !quizCraftCatalogEnabled(),
     match: (p: string) => p.startsWith("/practice/quiz"),
   },
-  { href: "/practice/favorites", index: "P-03", label: "收藏夹", match: (p: string) => p.startsWith("/practice/favorites") },
+  { href: "/practice/favorites", index: "P-03", label: LEVEL_LABELS.practiceFavorites, match: (p: string) => p.startsWith("/practice/favorites") },
   { href: "/practice/stats", index: "P-04", label: "数据", match: (p: string) => p.startsWith("/practice/stats") },
 ];
 
@@ -43,12 +44,7 @@ export default function PracticeNav() {
       <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center px-5 md:flex-nowrap md:justify-between md:px-8">
         <div className="flex h-14 w-full items-center justify-between md:h-auto md:w-auto md:justify-start md:gap-4">
           <div className="flex items-baseline gap-4">
-          <Link
-            href="/"
-            className="font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent"
-          >
-            ← henukit
-          </Link>
+          <BackLink />
           <span className="font-display text-base font-bold tracking-tight">
             PRACTICE<span className="text-accent">®</span>
           </span>
