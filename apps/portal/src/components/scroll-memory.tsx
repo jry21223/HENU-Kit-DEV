@@ -107,17 +107,20 @@ export default function ScrollMemory() {
       landing === "top" ? SCROLL_REAPPLY_WINDOW_MS : SCROLL_RESTORE_WINDOW_MS
     );
 
-    // 读者一动手就把位置交还给他。
+    // 读者一动手就把位置交还给他。pointerdown 覆盖那些"只发 scroll、不发输入事件"的
+    // 操作：拖动滚动条、中键自动滚动；锚点跳转本身也是一次点击。我们自己的 scrollTo
+    // 不产生 pointerdown，所以不会自我取消。
     const yieldToReader = () => stopReapplying();
 
-    window.addEventListener("wheel", yieldToReader, { passive: true, once: true });
-    window.addEventListener("touchstart", yieldToReader, { passive: true, once: true });
-    window.addEventListener("keydown", yieldToReader, { passive: true, once: true });
+    const readerInputs = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    for (const type of readerInputs) {
+      window.addEventListener(type, yieldToReader, { passive: true, once: true });
+    }
     return () => {
       stopReapplying();
-      window.removeEventListener("wheel", yieldToReader);
-      window.removeEventListener("touchstart", yieldToReader);
-      window.removeEventListener("keydown", yieldToReader);
+      for (const type of readerInputs) {
+        window.removeEventListener(type, yieldToReader);
+      }
     };
   }, [pathname]);
 

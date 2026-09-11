@@ -115,7 +115,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <p className="mt-3 text-sm leading-6 text-ink/60">
           扫描历史读取失败时，不会以本地或会话数据替代真实记录。
         </p>
-        <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper" />
+        <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest text-ink transition-colors hover:bg-ink hover:text-paper" />
       </section>
     );
   }
