@@ -3,16 +3,16 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * `go()` 的起点是现推的。这组用例钉住 #508 诊断出来的缺陷：**修复前**
  * `currentIndex()` 把「scrollY + 35% 视口高」当作读者所在的整屏，而整屏接管只在整屏
- * 边界上停得住——读者并不总停在边界上：视口变大（旋转屏幕、拉窗口、地址栏收放、
- * 布局回流）会让每一屏重新长高，浏览器保持 scrollY 不动，读者于是落到某个边界
- * **上方**（不足一屏处）。
+ * 边界上停得住——读者并不总停在边界上：视口变大（旋转屏幕、拉窗口、布局回流）会让
+ * 每一屏重新长高，浏览器保持 scrollY 不动，读者于是落到某个边界**上方**（不足一屏
+ * 处）。
  *
- * 探针与视觉不一致的是其中 35%~50% 视口高那一段：这时读者主要看着下面那一屏，35%
- * 的探针却仍把他算在上一屏（δ ≤ 35% 时两者本来一致，δ > 50% 时他确实该算上一屏）。
- * 起点少算一屏的下场分两种：第一处边界上向上滑被判成「已经在第一屏」，`go(-1)` 算出
- * next === from 直接返回 false，整段手势被吃掉——屏幕一动不动，而且再滑几次也不会
- * 动，只能先向下滑一屏才解得开；更高的边界上 next ≠ from，手势不会空转，但读者会从
- * 自己看着的那一屏连退两屏。
+ * 这类短落点里，δ 落在 35%~50% 视口高那一段时探针与视觉不一致：读者主要看着下面那
+ * 一屏，35% 的探针却仍把他算在上一屏（δ ≤ 35% 时两者本来一致，δ > 50% 时他确实该算
+ * 上一屏）。起点少算一屏的下场分两种：第一处边界上向上滑被判成「已经在第一屏」，
+ * `go(-1)` 算出 next === from 直接返回 false，整段手势被吃掉——屏幕一动不动，而且再
+ * 滑几次也不会动，只能先向下滑一屏才解得开；更高的边界上 next ≠ from，手势不会空转，
+ * 但读者会从自己看着的那一屏连退两屏。
  *
  * 修复后的起点是「视口里可见高度最大的那一屏」，各占一半时取靠下那屏（见
  * `snap-scroll.tsx` 的 `currentIndex`）：短落点上向上滑回到上一屏，向下滑推进到下一
@@ -27,6 +27,11 @@ import { expect, test, type Page } from "@playwright/test";
 /** hero + 资料库 + 刷题 + 美食 + 互助 + 求职 + footer */
 const SECTION_COUNT = 7;
 
+/**
+ * 一次滑动 = 一次手势 = 一屏，所以默认只发一段位移：方向用例只关心方向，不必让投递
+ * 时序参与。steps/stepDelayMs 是给「真实连续拖动」留的口子（本文件暂时只用默认值），
+ * 与 homepage-snap-scroll.spec.ts 的同名助手保持一致。
+ */
 async function swipeFinger(page: Page, from: number, to: number, steps = 1, stepDelayMs = 12) {
   const cdp = await page.context().newCDPSession(page);
   const x = 200;
@@ -67,6 +72,7 @@ async function openHomepage(page: Page) {
 async function waitForSnapTakeover(page: Page) {
   await page.keyboard.press("PageDown");
   await expect.poll(() => activeSection(page)).toBe(1);
+  // 索引在动画中途就会翻过去，而防连滚锁要等动画走完才释放：先落定再按回去。
   await waitForSnapSettle(page);
   await page.keyboard.press("PageUp");
   await expect.poll(() => activeSection(page)).toBe(0);
@@ -123,8 +129,9 @@ async function readScrollY(page: Page) {
 async function layout(page: Page) {
   return page.evaluate(() => {
     const sections = Array.from(document.querySelectorAll<HTMLElement>(".snap-screen"));
+    const exactScrollY = window.scrollY;
     const tops = sections.map((section) => Math.round(section.offsetTop));
-    const scrollY = Math.round(window.scrollY);
+    const scrollY = Math.round(exactScrollY);
     const viewportHeight = window.innerHeight;
     let dominant = 0;
     let mostVisible = -1;
@@ -134,7 +141,7 @@ async function layout(page: Page) {
       const bottom = top + section.offsetHeight;
       const visible = Math.max(
         0,
-        Math.min(bottom, scrollY + viewportHeight) - Math.max(top, scrollY)
+        Math.min(bottom, exactScrollY + viewportHeight) - Math.max(top, exactScrollY)
       );
       visibles.push(visible);
       if (visible >= mostVisible) {
@@ -213,6 +220,7 @@ test.describe("短落点上的手势起点", () => {
     const before = await layout(page);
     expect(before.dominant).toBe(1);
 
+    // 修复前起点被判成第 0 屏，go(-1) 空转，480 原地不动——读者连滑几次都不会动。
     await swipeFinger(page, 600, 900);
     await waitForSnapSettle(page);
 
