@@ -11,6 +11,6 @@
     "start:prod": "npm run build:web && electron ."
   },
   "devDependencies": {
-    "electron": "^29.4.6"
+    "electron": "^44.2.0"
   }
 }
