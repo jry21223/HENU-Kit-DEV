@@ -81,7 +81,10 @@ async function readScrollY(page: Page) {
   return page.evaluate(() => window.scrollY);
 }
 
-/** 视口里可见高度最大的那一屏——读者直觉上的「我现在在哪一屏」。 */
+/**
+ * 视口里可见高度最大的那一屏——读者直觉上的「我现在在哪一屏」。判据与生产里的
+ * `currentIndex()` 相同，平局同样取靠下那屏，免得断言量的是另一条规则。
+ */
 async function layout(page: Page) {
   return page.evaluate(() => {
     const sections = Array.from(document.querySelectorAll<HTMLElement>(".snap-screen"));
@@ -97,12 +100,12 @@ async function layout(page: Page) {
         0,
         Math.min(bottom, scrollY + viewportHeight) - Math.max(top, scrollY)
       );
-      if (visible > mostVisible) {
+      if (visible >= mostVisible) {
         mostVisible = visible;
         dominant = position;
       }
     });
-    return { scrollY, tops, dominant, mostVisible, viewportHeight };
+    return { scrollY, tops, dominant, viewportHeight };
   });
 }
 
@@ -143,11 +146,11 @@ test.describe("短落点上的手势起点", () => {
     expect(landed.dominant).toBe(1);
     expect(landed.scrollY).toBeLessThan(landed.tops[1]);
 
-    // 向上滑（手指下滑）：读者想回到上一屏。
+    // 向上滑（手指下滑）：读者想回到上一屏。修复前起点被判成第 0 屏，go(-1) 空转，
+    // scrollY 一动不动（800），手势被整段吃掉。
     await swipeFinger(page, 600, 900);
     await waitForSnapSettle(page);
 
-    // 实际：起点被判成第 0 屏，go(-1) 空转，scrollY 一动不动，手势被整段吃掉。
     expect(Math.round(await readScrollY(page))).toBe(landed.tops[0]);
   });
 
@@ -181,11 +184,55 @@ test.describe("短落点上的手势起点", () => {
     const before = await layout(page);
     expect(before.dominant).toBe(1);
 
-    // 手指上滑（读者想继续往下读）：从第 1 屏推进到第 2 屏。
+    // 手指上滑（读者想继续往下读）：从第 1 屏推进到第 2 屏。修复前起点被判成第 0
+    // 屏，这一滑只补完那次未完成的转场，停在第 1 屏边界上（800）。
     await swipeFinger(page, 600, 300);
     await waitForSnapSettle(page);
 
-    // 实际：起点被判成第 0 屏，这一滑只补完那次未完成的转场，停在第 1 屏边界上。
+    expect(Math.round(await readScrollY(page))).toBe(tops[2]);
+  });
+});
+
+// 验收要求触摸视口与滚轮路径行为一致：起点判定与输入类型无关，两条路径共用同一个
+// `go()`，所以滚轮读者从同一个短落点出发也要分别上/下走一屏。
+test.describe("短落点上的滚轮起点", () => {
+  test.use({ viewport: { width: 1024, height: 800 }, hasTouch: true });
+
+  test("边界上方 40% 视口的短落点：滚轮上滚回到上一屏", async ({ page }) => {
+    await openHomepage(page);
+    await waitForSnapTakeover(page);
+
+    const { tops, viewportHeight } = await layout(page);
+    const landing = tops[1] - Math.round(viewportHeight * 0.4);
+    await page.evaluate((offset) => window.scrollTo(0, offset), landing);
+    await expect.poll(async () => Math.round(await readScrollY(page))).toBe(landing);
+
+    const before = await layout(page);
+    expect(before.dominant).toBe(1);
+
+    await page.mouse.move(500, 400);
+    await page.mouse.wheel(0, -400);
+    await waitForSnapSettle(page);
+
+    expect(Math.round(await readScrollY(page))).toBe(tops[0]);
+  });
+
+  test("边界上方 40% 视口的短落点：滚轮下滚推进到下一屏", async ({ page }) => {
+    await openHomepage(page);
+    await waitForSnapTakeover(page);
+
+    const { tops, viewportHeight } = await layout(page);
+    const landing = tops[1] - Math.round(viewportHeight * 0.4);
+    await page.evaluate((offset) => window.scrollTo(0, offset), landing);
+    await expect.poll(async () => Math.round(await readScrollY(page))).toBe(landing);
+
+    const before = await layout(page);
+    expect(before.dominant).toBe(1);
+
+    await page.mouse.move(500, 400);
+    await page.mouse.wheel(0, 400);
+    await waitForSnapSettle(page);
+
     expect(Math.round(await readScrollY(page))).toBe(tops[2]);
   });
 });
