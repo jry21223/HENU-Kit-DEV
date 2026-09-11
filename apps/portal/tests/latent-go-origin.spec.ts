@@ -1,20 +1,28 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * `go()` 的起点是现推的：`currentIndex()` 把「scrollY + 35% 视口高」当作读者所在
- * 的整屏。整屏接管只在整屏边界上停得住，可读者并不总停在边界上——视口变大（旋转
- * 屏幕、拉窗口、地址栏收放、布局回流）会让每一屏重新长高，浏览器保持 scrollY 不动，
- * 读者于是落到某个边界**上方**（不足一屏处）。
+ * `go()` 的起点是现推的。这组用例钉住 #508 诊断出来的缺陷：**修复前**
+ * `currentIndex()` 把「scrollY + 35% 视口高」当作读者所在的整屏，而整屏接管只在整屏
+ * 边界上停得住——读者并不总停在边界上：视口变大（旋转屏幕、拉窗口、地址栏收放、
+ * 布局回流）会让每一屏重新长高，浏览器保持 scrollY 不动，读者于是落到某个边界
+ * **上方**（不足一屏处）。
  *
- * 这种落点上探针会把读者的屏号少算一屏：向上滑被判成「已经在第一屏」，`go(-1)`
- * 算出 next === from 直接返回 false，整段手势被吃掉——屏幕一动不动，而且再滑几次
- * 也不会动，只能先向下滑一屏才解得开。
+ * 这种落点上 35% 的探针会把读者的屏号少算一屏：向上滑被判成「已经在第一屏」，
+ * `go(-1)` 算出 next === from 直接返回 false，整段手势被吃掉——屏幕一动不动，而且
+ * 再滑几次也不会动，只能先向下滑一屏才解得开。
+ *
+ * 修复后的起点是「视口里可见高度最大的那一屏」，各占一半时取靠下那屏（见
+ * `snap-scroll.tsx` 的 `currentIndex`）：短落点上向上滑回到上一屏，向下滑推进到下一
+ * 屏，而不是只补完那次未完成的转场。触摸与滚轮共用这一个起点，两条路径分别有用例。
  *
  * 与 #501 修掉的两条不同：那两条是输入方向归一化（触摸端整屏反向）和手势锁（一次
  * 拖动连切多屏）。这里是起点来源本身错了，方向判断和手势锁都修好了它依然在。
  *
  * 测试只断言读者看得见的结果：一次手势必须在手势方向上切到相邻的整屏模块。
  */
+
+/** hero + 资料库 + 刷题 + 美食 + 互助 + 求职 + footer */
+const SECTION_COUNT = 7;
 
 async function swipeFinger(page: Page, from: number, to: number, steps = 1, stepDelayMs = 12) {
   const cdp = await page.context().newCDPSession(page);
@@ -36,7 +44,7 @@ async function swipeFinger(page: Page, from: number, to: number, steps = 1, step
 
 async function openHomepage(page: Page) {
   await page.goto("/", { waitUntil: "load" });
-  await expect(page.locator(".snap-screen")).toHaveCount(7, { timeout: 30_000 });
+  await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
   await page.waitForSelector("html[data-scroll-memory='ready']", { timeout: 30_000 });
 }
 
@@ -65,6 +73,11 @@ async function waitForSnapSettle(page: Page) {
     .toBeGreaterThanOrEqual(2);
 }
 
+/**
+ * 落定在整屏边界上时读者在第几屏——沿用**修复前**的 35% 探针，只用于接管自检与
+ * PageDown/PageUp 之后说一句「已经翻到第 N 屏了」。它和 `layout()` 的可见高度判据在
+ * 短落点上并不一致：读者实际看着哪一屏以 `layout().dominant` 为准，短落点用例都用它。
+ */
 async function activeSection(page: Page) {
   return page.evaluate(() => {
     const sections = Array.from(document.querySelectorAll<HTMLElement>(".snap-screen"));
@@ -139,12 +152,22 @@ test.describe("短落点上的手势起点", () => {
     await waitForSnapSettle(page);
 
     // 视口变大：每一屏跟着长高，浏览器保持 scrollY 不变，读者于是落到了新的第二屏
-    // 边界上方约 0.43 屏处——视口里主要可见的仍然是第二屏。
+    // 边界上方约 0.43 屏处——视口里主要可见的仍然是第二屏。等这次回流真落地（视口与
+    // 第二屏边界都长到新高度），不用固定睡眠。
     await page.setViewportSize({ width: 1024, height: 1400 });
-    await page.waitForTimeout(800);
+    await expect
+      .poll(async () => {
+        const current = await layout(page);
+        return current.viewportHeight === 1400 && current.tops[1] > current.scrollY;
+      })
+      .toBe(true);
+
     const landed = await layout(page);
     expect(landed.dominant).toBe(1);
     expect(landed.scrollY).toBeLessThan(landed.tops[1]);
+    // 这条用例只有在「探针会少算一屏」的那条带子里才有意义（δ > 35% 视口高）：否则
+    // 它会在正确代码和 35% 探针上都变绿，悄悄退化成一个不设防的用例。
+    expect(landed.tops[1] - landed.scrollY).toBeGreaterThan(landed.viewportHeight * 0.35);
 
     // 向上滑（手指下滑）：读者想回到上一屏。修复前起点被判成第 0 屏，go(-1) 空转，
     // scrollY 一动不动（800），手势被整段吃掉。
@@ -190,6 +213,39 @@ test.describe("短落点上的手势起点", () => {
     await waitForSnapSettle(page);
 
     expect(Math.round(await readScrollY(page))).toBe(tops[2]);
+  });
+
+  test("边界恰好各占一半时：起点归靠下那屏", async ({ page }) => {
+    await openHomepage(page);
+    await waitForSnapTakeover(page);
+
+    // 视口正好被第 0/1 屏各占一半：起点必须归靠下那屏（第 1 屏），否则向上滑会被判成
+    // 「已经在第 0 屏」而原地不动——这正是 35% 探针在那条带子里的错法。
+    const { tops, viewportHeight } = await layout(page);
+    const landing = tops[1] - Math.round(viewportHeight / 2);
+    await page.evaluate((offset) => window.scrollTo(0, offset), landing);
+    await expect.poll(async () => Math.round(await readScrollY(page))).toBe(landing);
+
+    // 先确认这真是一个平局，而不是碰巧滑进了别处：上下两屏的可见高度相等。
+    const halves = await page.evaluate(() => {
+      const sections = Array.from(document.querySelectorAll<HTMLElement>(".snap-screen"));
+      const visible = (position: number) => {
+        const top = sections[position].offsetTop;
+        const bottom = top + sections[position].offsetHeight;
+        return (
+          Math.min(bottom, window.scrollY + window.innerHeight) - Math.max(top, window.scrollY)
+        );
+      };
+      return { upper: visible(0), lower: visible(1) };
+    });
+    expect(halves.upper).toBe(halves.lower);
+    expect(halves.lower).toBeGreaterThan(0);
+    expect((await layout(page)).dominant).toBe(1);
+
+    await swipeFinger(page, 600, 900);
+    await waitForSnapSettle(page);
+
+    expect(Math.round(await readScrollY(page))).toBe(tops[0]);
   });
 });
 
