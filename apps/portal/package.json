@@ -13,7 +13,7 @@
     "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts tests/quizcraft-catalog-dark.spec.ts tests/library-owner-stats.spec.ts tests/homepage-entry-ux.spec.ts tests/library-discovery-ux.spec.ts",
     "test:e2e:food": "playwright test --workers=1 tests/food-ranking.spec.ts tests/food-detail.spec.ts tests/food-publish.spec.ts tests/food-scroll-restoration.spec.ts",
     "test:e2e:practice": "playwright test tests/practice-session.spec.ts tests/practice-swipe.spec.ts",
-    "test:e2e:navigation": "playwright test tests/homepage-snap-scroll.spec.ts tests/sub-site-back-navigation.spec.ts",
+    "test:e2e:navigation": "playwright test tests/homepage-snap-scroll.spec.ts tests/sub-site-back-navigation.spec.ts tests/latent-go-origin.spec.ts",
     "test:e2e:quizcraft-catalog": "playwright test --config playwright.quizcraft-catalog.config.ts",
     "test:e2e:stats": "PLAYWRIGHT_ENABLE_QUIZCRAFT_V2_READS=1 playwright test tests/personal-stats.spec.ts tests/practice-leaderboard-live.spec.ts",
     "test:e2e:account": "playwright test tests/account-center-bootstrap.spec.ts tests/account-portfolio.spec.ts tests/account-ticket-loop.spec.ts tests/membership-purchase.spec.ts tests/account-food-posts.spec.ts tests/account-career-profile.spec.ts",
