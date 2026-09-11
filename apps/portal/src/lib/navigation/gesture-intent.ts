@@ -17,9 +17,8 @@
  * `snap-scroll.tsx`；速度也只能在**松手回调**里读，因为 Observer 在 `onStop` 之前就把速度
  * 清零了（同文件 `:183-188`），在 `onStop` 里读出来恒为 0。
  *
- * 滚轮侧本票不动（兄弟票 #510 负责 burst 聚合）：`snap-scroll.tsx` 仍按每个 tick 直接起跳。
- * 这里对 `wheel` 也给出同一套门槛，是为了让「输入符号 → 读者方向」的归一化只有一处，等
- * #510 落地后直接接上。
+ * 滚轮侧走**另一条通道**（#510 的 `wheelBurstStep`）：滚轮没有「松手」事件、也读不到速度，
+ * 所以用时间窗把一次突发聚合成一次判定。两条通道共用 `readingDirection` 的方向归一化。
  *
  * 引用的 `Observer.js:NNN` 都指 `node_modules/gsap/src/Observer.js`（gsap 3.15.0 的可读源
  * 码）：`import "gsap/Observer"` 解析到的是它的构建产物，同一个文件里行号不同。
@@ -122,4 +121,107 @@ export function gestureIntent({
   }
 
   return { action: "none" };
+}
+
+/**
+ * 滚轮突发里两个 tick 之间的最大间隔（ms）：**静默超过它就是一个新突发**。
+ *
+ * 取 1500ms 的依据：这个界要挡住的是「同一次物理滚动在补间结束后又被算一次」，而补间本身
+ * 就要 1.1s（`snap-scroll.tsx` 的 `duration: 1.1`，实测 ~1.07s）——一次突发至少要能安静地
+ * 跨过整段补间，否则尾巴上任何一个落在补间结束之后的 tick 都会另开一次手势，那正是 #510 要
+ * 修的缺陷。1500ms ≈ 补间时长的 1.36 倍，留出实测抖动与慢帧的余量（本机合成的突发内部间隔
+ * 实测 min 25.2 / 中位 33.3–41.7 / max 52.6ms，机器忙时更长）。
+ *
+ * 另一头不能无限大：离散鼠标滚轮刻意滚动、以及读者真的在连续滚时，刻度之间隔的是「一屏动画
+ * 走完」的量级。1500ms 落在两种物理现实之间——触控板的惯性尾巴是连续流（间隔远小于它），
+ * 刻意一屏一屏滚则要等补间结束再看下一屏（间隔大于它）。
+ */
+export const WHEEL_BURST_GAP_MS = 1500;
+
+/**
+ * 一次滚轮突发的最长跨度（ms）：从这次突发的第一个 tick 起算，**跨过它之后 tick 重新开窗**。
+ *
+ * 这个数不能小于整屏补间时长，否则就是留了个缺口：补间 1.1s 一结束、惯性尾巴还在流，下一个
+ * tick 就开新窗再跳一屏——那正是 #510 要修的缺陷（实测：一次 60 tick 的衰减序列把页面从第
+ * 1 屏推到第 3 屏，第二次起跳由补间结束之后到达的 tick 触发）。
+ *
+ * 取 2000ms 的依据：补间时长实测 ~1.07s（名义 1.1s，见 `snap-scroll.tsx` 的
+ * `duration: 1.1`），窗口要**盖住整段补间**，否则尾巴一定能在补间刚结束时补一屏；而按
+ * `40 → 5` 的指数衰减算，delta 掉到 Observer 的 `tolerance: 12` 以下大约在第 1.5s，之后
+ * 即使还有 tick 也不再触发判定。2000ms 同时是长于一次惯性尾巴（不再留缺口）与短于「读者还在
+ * 有意连续滚」之间的分界：跨度更长的连续滚动会在窗口合上后按新的一次手势再走一屏。
+ *
+ * 代价写在明处：比真实触控板惯性尾巴更长的连续滚动会在窗口合上后再走一屏——合成事件无法复现
+ * 真实触控板的动量曲线，这一条留给 #510 的生产实机验收。
+ */
+export const WHEEL_BURST_SPAN_MS = 2000;
+
+/**
+ * 一次滚轮突发的聚合状态。纯数据：调用方（`snap-scroll.tsx`）持有它并把它交回
+ * `wheelBurstStep`，判定本身不碰 DOM、不认识 `Observer`。
+ *
+ * `active` 为 false 时其余字段无意义；`wheelBurstStep` 遇到新突发会整份重建，不必手工重置。
+ */
+export type WheelBurstState = {
+  active: boolean;
+  /** 这次突发的第一个 tick 的时刻（ms，时钟由调用方决定，只需单调）。 */
+  startedAt: number;
+  /** 上一个被这次突发收下的 tick 的时刻（ms）。 */
+  lastTickAt: number;
+  /** 这次突发在当前方向上已经消费过判定没有。方向翻转会把它重置。 */
+  consumed: boolean;
+  /** 这次突发当前的方向；`null` 表示还没定过（第一个 tick 定方向）。 */
+  direction: 1 | -1 | null;
+};
+
+/** 还没进入任何突发的初始状态。 */
+export const IDLE_WHEEL_BURST: WheelBurstState = {
+  active: false,
+  startedAt: 0,
+  lastTickAt: 0,
+  consumed: false,
+  direction: null,
+};
+
+/**
+ * 滚轮的一次 tick 该怎么判（#510）——**时间窗聚合**版的「一次手势一屏」。
+ *
+ * 滚轮没有「松手」事件（`Observer` 的 `onStop` 要等 250ms 静默，且速度已被清零），也读不到
+ * 峰值速度，所以判定只能按 tick 的时刻来聚合：
+ *
+ * - 距上一个 tick 超过 `WHEEL_BURST_GAP_MS`：新的一次手势，开新窗。
+ * - 距第一个 tick 超过 `WHEEL_BURST_SPAN_MS`：窗口合上，这一 tick 也开新窗（读者还在滚，
+ *   但已经跨过了一整段补间，算他继续往下读的新意图）。
+ * - 两者都不是：同一个突发。**只有这个突发的第一个 tick 消费判定**，之后同方向的 tick 一律
+ *   不消费——这就是「一次突发一屏」，也是修掉「惯性尾巴在补间结束后又跳一屏」的那道门。
+ * - 突发中途反向：方向是读者最新的意图，重置消费，让新方向能走一屏（同一方向仍然只走一屏）。
+ *
+ * 返回新的状态，不修改传入的那个：判定是纯的，组件那边的 `animating` 锁、补间、滚动写入
+ * 照旧。
+ *
+ * 视口高不参与：比例门槛是触摸端的语义（净位移要跟手指走过的距离比），滚轮这边一次刻度就是
+ * 一个明确的方向意图，没有「位移多大才算」这一层。
+ */
+export function wheelBurstStep(
+  state: WheelBurstState,
+  tick: { delta: number; at: number }
+): { intent: GestureIntent; state: WheelBurstState } {
+  const { delta, at } = tick;
+  const direction = readingDirection("wheel", delta);
+  const fresh =
+    !state.active ||
+    at - state.lastTickAt > WHEEL_BURST_GAP_MS ||
+    at - state.startedAt > WHEEL_BURST_SPAN_MS;
+
+  if (fresh) {
+    return {
+      intent: { action: "step", direction },
+      state: { active: true, startedAt: at, lastTickAt: at, consumed: true, direction },
+    };
+  }
+
+  const turned = state.direction !== null && direction !== state.direction;
+  const before = { ...state, lastTickAt: at, consumed: turned ? false : state.consumed, direction };
+  if (before.consumed) return { intent: { action: "none" }, state: before };
+  return { intent: { action: "step", direction }, state: { ...before, consumed: true } };
 }

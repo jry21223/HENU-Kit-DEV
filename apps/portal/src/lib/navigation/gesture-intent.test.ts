@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   DRAG_MINIMUM_PX,
+  IDLE_WHEEL_BURST,
   NET_DISPLACEMENT_RATIO,
   PEAK_VELOCITY_PX_PER_SECOND,
   VELOCITY_DISPLACEMENT_RATIO,
+  WHEEL_BURST_GAP_MS,
   gestureIntent,
   netDisplacementAfter,
   readingDirection,
+  wheelBurstStep,
+  type WheelBurstState,
 } from "./gesture-intent";
 
 /** 1024×800 视口：6% = 48px、3% = 24px，都是整数，边界才好写。 */
@@ -144,5 +148,115 @@ describe("gestureIntent", () => {
         viewportHeight: VIEWPORT,
       })
     ).toEqual({ action: "step", direction: -1 });
+  });
+});
+
+/**
+ * 滚轮的一次突发只走一屏（#510）。窗口与阈值的实测依据写在 `gesture-intent.ts` 的常量注释
+ * 里；这里按阈值两侧钉死判定，端到端只负责断言落在第几屏。
+ */
+describe("wheelBurstStep", () => {
+  /** 把一串 tick 依次喂进去，返回每个 tick 的判定与最终状态。 */
+  const run = (ticks: Array<[delta: number, at: number]>, from = IDLE_WHEEL_BURST) => {
+    let state: WheelBurstState = from;
+    return ticks.map(([delta, at]) => {
+      const judged = wheelBurstStep(state, { delta, at });
+      state = judged.state;
+      return judged.intent;
+    });
+  };
+
+  it("steps on the first tick of a burst", () => {
+    expect(run([[40, 0]])).toEqual([{ action: "step", direction: 1 }]);
+    expect(run([[-40, 0]])).toEqual([{ action: "step", direction: -1 }]);
+  });
+
+  it("keeps the wheel's own sign convention", () => {
+    // deltaY 正数 = 页面向下 = 读者往下读。
+    expect(wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).intent).toEqual({
+      action: "step",
+      direction: 1,
+    });
+    expect(wheelBurstStep(IDLE_WHEEL_BURST, { delta: -40, at: 0 }).intent).toEqual({
+      action: "step",
+      direction: -1,
+    });
+  });
+
+  it("consumes the step only once inside the burst, however long the tail is", () => {
+    // 60 个 tick、delta 40→5、每 33ms 一个：#510 的测量用的就是这一串（它把页面推了两屏）。
+    const ticks: Array<[number, number]> = Array.from({ length: 60 }, (_, i) => [
+      Math.max(5, Math.round(40 * Math.pow(5 / 40, i / 59))),
+      i * 33,
+    ]);
+    const intents = run(ticks);
+    // 前 37 个 tick 覆盖到 ~1.2s，还在跨度窗口（2000ms）之内：只有第一个算数，其余都是同一个
+    // 突发的尾巴。窗口合上之后的 tick（这里从第 37 个起）按新的一次手势处理，不在本用例里。
+    const insideWindow = intents.slice(0, 37);
+    expect(insideWindow[0]).toEqual({ action: "step", direction: 1 });
+    expect(insideWindow.slice(1)).toEqual(Array.from({ length: 36 }, () => ({ action: "none" })));
+  });
+
+  it("opens a new burst once the gap between ticks passes the threshold", () => {
+    const [first] = run([[40, 0]]);
+    expect(first).toEqual({ action: "step", direction: 1 });
+    // 恰好等于阈值：还是同一个突发（判定用「大于」，边界落在外面）。
+    expect(run([[40, WHEEL_BURST_GAP_MS]], wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state)).toEqual([
+      { action: "none" },
+    ]);
+    // 超过阈值一个毫秒：新的一次手势，可以再走一屏。
+    expect(
+      run([[40, WHEEL_BURST_GAP_MS + 1]], wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state)
+    ).toEqual([{ action: "step", direction: 1 }]);
+  });
+
+  it("closes the window once its span passes the threshold", () => {
+    // 密集的连续滚动：每 50ms 一个 tick（远远小于间隔界 120ms），所以窗口只能靠跨度合上。
+    // 阈值之内一个都不许消费，跨过阈值的那一个才重新起跳。
+    const intents = run(
+      Array.from({ length: 25 }, (_, i) => [40, i * 50] as [number, number])
+    );
+    // 0…1200ms 还在跨度窗口（2000ms）之内，是同一个突发：只有第一个 tick 算数。
+    expect(intents[0]).toEqual({ action: "step", direction: 1 });
+    expect(intents.slice(1, 25)).toEqual(Array.from({ length: 24 }, () => ({ action: "none" })));
+    // 再往后一个 tick（1250ms）就跨过了跨度阈值——读者还在继续滚，那是新的一次意图。
+    expect(run([[40, 1250]], wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state)).toEqual([
+      { action: "step", direction: 1 },
+    ]);
+  });
+
+  it("lets the reader turn around inside one burst, once per direction", () => {
+    const opened = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state;
+    const intents = run(
+      [
+        [-40, 100],
+        [-40, 200],
+        [40, 300],
+        [40, 400],
+      ],
+      opened
+    );
+    // 前两个反向 tick：第一个按新方向走一屏（读者最新的意图），第二个不再消费。
+    expect(intents).toEqual([
+      { action: "step", direction: -1 },
+      { action: "none" },
+      { action: "step", direction: 1 },
+      { action: "none" },
+    ]);
+  });
+
+  it("leaves the state it was given untouched", () => {
+    const opened = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 1000 }).state;
+    const snapshot = { ...opened };
+    wheelBurstStep(opened, { delta: 40, at: 1100 });
+    expect(opened).toEqual(snapshot);
+  });
+
+  it("does not read a zero delta as a direction", () => {
+    // deltaY 为 0 不是一次滚动；`readingDirection` 把它归成「往上」，与改造前一致。
+    expect(wheelBurstStep(IDLE_WHEEL_BURST, { delta: 0, at: 0 }).intent).toEqual({
+      action: "step",
+      direction: -1,
+    });
   });
 });

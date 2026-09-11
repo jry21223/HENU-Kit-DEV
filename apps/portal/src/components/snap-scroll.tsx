@@ -5,9 +5,10 @@ import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { Observer } from "gsap/Observer";
 import {
   DRAG_MINIMUM_PX,
+  IDLE_WHEEL_BURST,
   gestureIntent,
   netDisplacementAfter,
-  readingDirection,
+  wheelBurstStep,
 } from "@/lib/navigation/gesture-intent";
 
 /**
@@ -19,8 +20,13 @@ import {
  * 触摸/指针端按**手势意图**判定（#509）：松手时看这次手势的净位移（同向累加、反向重置）
  * 与峰值速度，一次手势只判一次。整屏吸附原来的判据只有 Observer 的桶累计阈值
  * `tolerance: 12`——位移累加到 12px 就回调一次，于是十几像素的手抖、误触、点击前的位移
- * 都会翻一整屏。判定本身是纯函数，在 `@/lib/navigation/gesture-intent` 里。滚轮与键盘
- * 路径不变；滚轮侧的 burst 聚合留给 #510。
+ * 都会翻一整屏。判定本身是纯函数，在 `@/lib/navigation/gesture-intent` 里。
+ *
+ * 滚轮端按**突发聚合**判定（#510）：滚轮没有松手事件、也读不到速度，改用时间窗把一次突发
+ * 聚合成一次判定，一次突发同样只走一屏。原来每个 tick 直接起跳，只靠 `animating` 挡动画期间
+ * 的 tick——1.1s 补间一结束，同一次物理滚动（触控板惯性尾巴）剩下的 tick 就被当成第二次
+ * 滚动，实测一次轻扫连跳两屏。判定同样是纯函数（`wheelBurstStep`），窗口与阈值的实测依据
+ * 写在那个模块的常量注释里。键盘路径不变。
  *
  * 下面提到的 `Observer.js:NNN` 都指 `node_modules/gsap/src/Observer.js`（gsap 3.15.0 的
  * 可读源码）：`import "gsap/Observer"` 解析到的是它的构建产物，同一个文件里行号不同，
@@ -37,6 +43,15 @@ export default function SnapScroll() {
         if (sections.length < 2) return;
 
         let animating = false;
+
+        /**
+         * 滚轮这次突发攒到哪儿了（#510）。判定是纯函数，状态只是数据：`wheelBurstStep`
+         * 每次返回一份新的，这里换掉引用即可。
+         *
+         * 时钟用 tick 的到达时刻（`performance.now()`）：窗口问的是「这两个 tick 隔了多久」，
+         * 与墙上时间无关，单调即可；`Observer` 不提供事件时刻，所以在回调里现取。
+         */
+        let wheelBurst = IDLE_WHEEL_BURST;
 
         /**
          * 读者实际待着的那一屏：视口里可见高度最大的 section；恰好各占一半时取靠下
@@ -177,8 +192,15 @@ export default function SnapScroll() {
           },
           onChangeY: (self) => {
             if (self.event.type === "wheel") {
-              // 滚轮侧本票不动（#510）：每个 tick 仍然直接起跳，方向语义与改造前一致。
-              go(readingDirection("wheel", self.deltaY));
+              // 一次突发一屏（#510）：只有这次突发的第一个 tick 起跳，之后同方向、同窗口内的
+              // tick（触控板惯性尾巴）不消费判定。方向语义不变——仍然是
+              // `readingDirection("wheel", deltaY)`，正数向下。
+              const judged = wheelBurstStep(wheelBurst, {
+                delta: self.deltaY,
+                at: performance.now(),
+              });
+              wheelBurst = judged.state;
+              if (judged.intent.action === "step") go(judged.intent.direction);
               return;
             }
             sampleTouchDisplacement(self);
