@@ -5,9 +5,12 @@ import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { Observer } from "gsap/Observer";
 import {
   DRAG_MINIMUM_PX,
+  IDLE_WHEEL_BURST,
   gestureIntent,
   netDisplacementAfter,
-  readingDirection,
+  wheelBurstBlocked,
+  wheelBurstStep,
+  wheelBurstStepped,
 } from "@/lib/navigation/gesture-intent";
 
 /**
@@ -19,8 +22,13 @@ import {
  * 触摸/指针端按**手势意图**判定（#509）：松手时看这次手势的净位移（同向累加、反向重置）
  * 与峰值速度，一次手势只判一次。整屏吸附原来的判据只有 Observer 的桶累计阈值
  * `tolerance: 12`——位移累加到 12px 就回调一次，于是十几像素的手抖、误触、点击前的位移
- * 都会翻一整屏。判定本身是纯函数，在 `@/lib/navigation/gesture-intent` 里。滚轮与键盘
- * 路径不变；滚轮侧的 burst 聚合留给 #510。
+ * 都会翻一整屏。判定本身是纯函数，在 `@/lib/navigation/gesture-intent` 里。
+ *
+ * 滚轮端按**突发聚合**判定（#510）：滚轮没有松手事件、也读不到速度，改用时间窗把一次突发
+ * 聚合成一次判定，一次突发同样只走一屏。原来每个 tick 直接起跳，只靠 `animating` 挡动画期间
+ * 的 tick——1.1s 补间一结束，同一次物理滚动（触控板惯性尾巴）剩下的 tick 就被当成第二次
+ * 滚动，实测一次轻扫连跳两屏。判定同样是纯函数（`wheelBurstStep`），窗口与阈值的实测依据
+ * 写在那个模块的常量注释里。键盘路径不变。
  *
  * 下面提到的 `Observer.js:NNN` 都指 `node_modules/gsap/src/Observer.js`（gsap 3.15.0 的
  * 可读源码）：`import "gsap/Observer"` 解析到的是它的构建产物，同一个文件里行号不同，
@@ -37,6 +45,15 @@ export default function SnapScroll() {
         if (sections.length < 2) return;
 
         let animating = false;
+
+        /**
+         * 滚轮这次突发攒到哪儿了（#510）。判定是纯函数，状态只是数据：`wheelBurstStep`
+         * 每次返回一份新的，这里换掉引用即可。
+         *
+         * 时钟用 tick 的到达时刻（`performance.now()`）：窗口问的是「这两个 tick 隔了多久」，
+         * 与墙上时间无关，单调即可；`Observer` 不提供事件时刻，所以在回调里现取。
+         */
+        let wheelBurst = IDLE_WHEEL_BURST;
 
         /**
          * 读者实际待着的那一屏：视口里可见高度最大的 section；恰好各占一半时取靠下
@@ -71,12 +88,12 @@ export default function SnapScroll() {
           return idx;
         };
 
-        /** 起跳一屏；动画期间或首末屏边界空转时什么都不做。 */
-        const go = (dir: 1 | -1): void => {
-          if (animating) return;
+        /** 起跳一屏；返回这次到底有没有走成（动画期间或首末屏边界空转时什么都不做）。 */
+        const go = (dir: 1 | -1): boolean => {
+          if (animating) return false;
           const from = currentIndex();
           const next = Math.min(sections.length - 1, Math.max(0, from + dir));
-          if (next === from) return;
+          if (next === from) return false;
           animating = true;
 
           const target = sections[next];
@@ -107,6 +124,7 @@ export default function SnapScroll() {
               clearProps: "transform",
             }
           );
+          return true;
         };
 
         // 这次手势的净位移（输入自身的符号）与上一次取样的指针位置。
@@ -177,8 +195,30 @@ export default function SnapScroll() {
           },
           onChangeY: (self) => {
             if (self.event.type === "wheel") {
-              // 滚轮侧本票不动（#510）：每个 tick 仍然直接起跳，方向语义与改造前一致。
-              go(readingDirection("wheel", self.deltaY));
+              // 一个窗口一屏（#510）：同一次突发的 tick（触控板惯性尾巴）不消费判定。
+              // 方向语义不变——仍然是 `readingDirection("wheel", deltaY)`，正数向下。
+              //
+              // `self.deltaY` 不是一个原始 tick：Observer 把一帧内的刻度累加进桶，凑够
+              // `tolerance` 才回调一次（`Observer.js:190-210`、`:227-233`），所以这里拿到的是
+              // 「这一次回调」的桶值；时刻取回调发生的这一刻（事件自己的 `timeStamp` 也在同一
+              // 时基上，差不超过一帧）。
+              const at = performance.now();
+              const judged = wheelBurstStep(wheelBurst, { delta: self.deltaY, at });
+              wheelBurst = judged.state;
+              if (animating) {
+                // 补间还占着，这一下走不成：把窗口从这一刻重新起算（`go()` 自己也会因为
+                // `animating` 直接返回）。补间在负载高时会比名义的 1.1s 长得多，不这样做，
+                // 窗口会从动画开始那刻起算，读者还在流的那段滚动就会被当成新的一次手势。
+                // 判定本身不记账，所以「动画期间滚了一下、落定后应该走一屏」仍然成立。
+                wheelBurst = wheelBurstBlocked(wheelBurst, at);
+                return;
+              }
+              if (judged.intent.action !== "step") return;
+              // 真的起跳了才记账：没走成（首末屏空转）不该把这次突发花掉——与 #509 触摸端
+              // 「抬手前什么都不消费」的语义一致。
+              if (go(judged.intent.direction)) {
+                wheelBurst = wheelBurstStepped(wheelBurst);
+              }
               return;
             }
             sampleTouchDisplacement(self);
