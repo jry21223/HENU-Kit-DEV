@@ -217,7 +217,7 @@ export default function SnapScroll() {
               // 真的起跳了才记账：没走成（首末屏空转）不该把这次突发花掉——与 #509 触摸端
               // 「抬手前什么都不消费」的语义一致。
               if (go(judged.intent.direction)) {
-                wheelBurst = wheelBurstStepped(wheelBurst, judged.intent.direction);
+                wheelBurst = wheelBurstStepped(wheelBurst);
               }
               return;
             }

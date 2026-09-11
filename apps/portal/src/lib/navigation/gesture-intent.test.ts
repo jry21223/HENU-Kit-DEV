@@ -155,13 +155,13 @@ describe("gestureIntent", () => {
 });
 
 /**
- * 滚轮的一次突发只走一屏（#510）。窗口与阈值的实测依据写在 `gesture-intent.ts` 的常量注释
- * 里；这里按阈值两侧钉死判定，端到端只负责断言落在第几屏。
+ * 滚轮的一个突发窗口只走一屏（#510）。窗口与阈值的实测依据写在 `gesture-intent.ts` 的常量
+ * 注释里；这里按阈值两侧钉死判定，端到端只负责断言落在第几屏。
  */
 /** 一次突发的第一个 tick 走成之后的状态（`at` 是它的时刻）。 */
 const openedAt = (at: number) => {
   const judged = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at });
-  return wheelBurstStepped(judged.state, 1);
+  return wheelBurstStepped(judged.state);
 };
 
 /**
@@ -174,7 +174,7 @@ const run = (ticks: Array<[delta: number, at: number]>, from = IDLE_WHEEL_BURST)
   return ticks.map(([delta, at]) => {
     const judged = wheelBurstStep(state, { delta, at });
     state = judged.state;
-    if (judged.intent.action === "step") state = wheelBurstStepped(state, judged.intent.direction);
+    if (judged.intent.action === "step") state = wheelBurstStepped(state);
     return judged.intent;
   });
 };
@@ -211,7 +211,7 @@ describe("wheelBurstStep", () => {
 
   it("does not spend the burst when the step never happened", () => {
     // 判定说走、但组件没走成（`animating` 挡住）时只调 `wheelBurstBlocked`，不调
-    // `wheelBurstStepped`：后面的同向 tick 仍然可以走一屏。
+    // `wheelBurstStepped`：后面的 tick 仍然可以走一屏。
     const judged = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 });
     const blocked = wheelBurstBlocked(judged.state, 0);
     expect(wheelBurstStep(blocked, { delta: 40, at: 200 }).intent).toEqual({
@@ -228,7 +228,7 @@ describe("wheelBurstStep", () => {
 
   it("reopens the window once one window's span is reached", () => {
     // 密集的连续滚动：每 50ms 一个 tick（远小于静默界 600ms），所以窗口只能靠跨度合上。
-    // 73 个 tick = 0…3600ms，跨过 3500ms 的那一刻正好覆盖。
+    // 73 个 tick = 0…3600ms，达到 3500ms 的那一刻正好覆盖。
     const ticks: Array<[number, number]> = Array.from(
       { length: 73 },
       (_, i) => [40, i * 50] as [number, number]
@@ -240,9 +240,9 @@ describe("wheelBurstStep", () => {
     expect(steps).toEqual([0, WHEEL_BURST_SPAN_MS]);
   });
 
-  it("never lets the same direction step twice in one window, even after turning around", () => {
-    // 读者在同一个窗口里来回翻转：+1 走过一屏之后，之后再怎么翻回 +1 都不再算数，
-    // -1 还可以走一屏。所以一个窗口最多两屏，而且是「一上一下」。
+  it("does not step twice when the reader turns around inside one window", () => {
+    // 滚轮没有松手，窗口中途反向按**同一次手势**处理（#510 验收标准：一次突发只走一屏）。
+    // 读者想往回走，就等静默界之后重新滚——下面这条就是这个意思。
     const intents = run(
       [
         [-40, 100],
@@ -250,17 +250,13 @@ describe("wheelBurstStep", () => {
         [40, 300],
         [-40, 400],
         [40, 500],
-        [40, 600],
       ],
       openedAt(0)
     );
-    expect(intents).toEqual([
+    expect(intents).toEqual(Array.from({ length: 5 }, () => ({ action: "none" })));
+    // 静默够久之后再反向滚：新窗口，照常走一屏。
+    expect(run([[-40, WHEEL_BURST_GAP_MS + 100]], openedAt(0))).toEqual([
       { action: "step", direction: -1 },
-      { action: "none" },
-      { action: "none" },
-      { action: "none" },
-      { action: "none" },
-      { action: "none" },
     ]);
   });
 
@@ -268,7 +264,7 @@ describe("wheelBurstStep", () => {
     const opened = openedAt(1000);
     const snapshot = { ...opened };
     wheelBurstStep(opened, { delta: 40, at: 1100 });
-    wheelBurstStepped(opened, 1);
+    wheelBurstStepped(opened);
     wheelBurstBlocked(opened, 1200);
     expect(opened).toEqual(snapshot);
   });
@@ -300,11 +296,17 @@ describe("wheelBurstBlocked", () => {
     });
   });
 
-  it("keeps the other direction open for a reader who turns around mid-animation", () => {
+  it("leaves a step that never happened unspent", () => {
     const opened = openedAt(0);
     const blocked = wheelBurstBlocked(opened, 1200);
-    // 补间期间读者反手往上滚：新方向可以走一屏（原来那个方向已经走过一屏）。
-    expect(wheelBurstStep(blocked, { delta: -40, at: 1250 }).intent).toEqual({
+    // 窗口被顺延、没有被标记消费：补间结束之后读者接着滚，这一屏仍然走得成。
+    expect(blocked.consumed).toBe(true); // openedAt 已经走过一屏，这里只是确认状态没被改坏
+    const fresh = wheelBurstBlocked(
+      wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state,
+      1200
+    );
+    expect(fresh.consumed).toBe(false);
+    expect(wheelBurstStep(fresh, { delta: -40, at: 1300 }).intent).toEqual({
       action: "step",
       direction: -1,
     });
