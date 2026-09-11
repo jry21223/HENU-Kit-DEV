@@ -37,12 +37,54 @@ async function swipeFinger(page: Page, from: number, to: number, steps = 1, step
 }
 
 /**
- * 打开首页并等到 7 个整屏模块就位。dev 下首次访问要现编译，生产是预构建，
- * 所以这里给冷编译留出时间，别让它冒充失败。
+ * 打开首页并等到 7 个整屏模块就位、客户端外壳水合完成。dev 下首次访问要现编译，
+ * 生产是预构建，所以给冷编译留出时间，别让它冒充失败。
+ *
+ * 水合标记只说明外壳挂上了：它不证明整屏接管已经生效（ScrollMemory 与 SnapScroll
+ * 是两个 effect，先后提交）。要断言方向或边界的用例接着调 waitForSnapTakeover。
  */
 async function openHomepage(page: Page) {
   await page.goto("/", { waitUntil: "load" });
   await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+  await page.waitForSelector("html[data-scroll-memory='ready']", { timeout: 30_000 });
+}
+
+/**
+ * 等到整屏接管确实生效：键盘路径与触摸路径同属 SnapScroll 的接管，按一次 PageDown
+ * 应当整屏跳一块；没接管时它只会原生滚动若干像素。跑一个来回把状态留在第一屏。
+ *
+ * 没有这一步，触摸事件可能在接管装上之前发出，断言就会在正确代码上变红。
+ */
+async function waitForSnapTakeover(page: Page) {
+  await page.keyboard.press("PageDown");
+  await expect.poll(() => activeSection(page)).toBe(1);
+  // 索引在动画中途就会翻过去，而防连滚锁要等动画走完才释放：先落定再按回去。
+  await waitForSnapSettle(page);
+  await page.keyboard.press("PageUp");
+  await expect.poll(() => activeSection(page)).toBe(0);
+  await waitForSnapSettle(page);
+}
+
+/**
+ * 等滚动落定，替代按动画时长的固定睡眠。
+ *
+ * 要连续 3 次采样相同：缓动尾段的位移会小到两次取整后一样，而这时防连滚锁还没释放，
+ * 紧接着的手势会被吞掉。
+ */
+async function waitForSnapSettle(page: Page) {
+  let previous = -1;
+  let stable = 0;
+  await expect
+    .poll(
+      async () => {
+        const y = Math.round(await readScrollY(page));
+        stable = y === previous ? stable + 1 : 0;
+        previous = y;
+        return stable;
+      },
+      { timeout: 20_000, intervals: [400] }
+    )
+    .toBeGreaterThanOrEqual(2);
 }
 
 async function activeSection(page: Page) {
@@ -55,11 +97,6 @@ async function activeSection(page: Page) {
     });
     return index;
   });
-}
-
-/** 整屏切换约 1.1s，动画期间 Observer 锁住防连滚，手势必须等落位后再发。 */
-async function waitForSnap(page: Page) {
-  await page.waitForTimeout(1400);
 }
 
 async function readScrollY(page: Page) {
@@ -80,42 +117,44 @@ test.describe("首页整屏切换方向", () => {
 
   test("手指上滑进下一屏，手指下滑回上一屏", async ({ page }) => {
     await openHomepage(page);
+    await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 手指上滑 = 读者想往下读
     await swipeFinger(page, 640, 240);
-    await waitForSnap(page);
-    expect(await activeSection(page)).toBe(1);
+    await expect.poll(() => activeSection(page)).toBe(1);
 
-    // 手指下滑 = 读者想读回上一屏
+    // 索引在动画中途就会翻过去，所以下一次手势要等落定（防连滚锁释放）再发，
+    // 否则它会被吞掉——负载越高这个窗口越明显。
+    await waitForSnapSettle(page);
     await swipeFinger(page, 240, 640);
-    await waitForSnap(page);
-    expect(await activeSection(page)).toBe(0);
+    await expect.poll(() => activeSection(page)).toBe(0);
   });
 
   test("一次慢速拖动只切一屏", async ({ page }) => {
     await openHomepage(page);
+    await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 位移一直持续到整屏动画（~1.1s）结束之后：同一次手势不该再起跳一次。
     // 滚轮读者连续滚动仍然一屏一屏走，所以这里只钉触摸手势。
     await swipeFinger(page, 700, 200, 20, 120);
-    await waitForSnap(page);
-    expect(await activeSection(page)).toBe(1);
+    await expect.poll(() => activeSection(page)).toBe(1);
   });
 
   test("同一页面上鼠标滚轮保持原有方向", async ({ page }) => {
     await openHomepage(page);
+    await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     await page.mouse.move(500, 400);
     await page.mouse.wheel(0, 400);
-    await waitForSnap(page);
-    expect(await activeSection(page)).toBe(1);
+    await expect.poll(() => activeSection(page)).toBe(1);
 
+    // 同上：等这一屏的动画走完再滚回去。
+    await waitForSnapSettle(page);
     await page.mouse.wheel(0, -400);
-    await waitForSnap(page);
-    expect(await activeSection(page)).toBe(0);
+    await expect.poll(() => activeSection(page)).toBe(0);
   });
 });
 
@@ -124,24 +163,26 @@ test.describe("首页整屏切换边界", () => {
 
   test("第一屏再回读停在第一屏", async ({ page }) => {
     await openHomepage(page);
+    await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 滚轮上滚 = 键鼠读者回读上一屏；第一屏已经没有上一屏
     await page.mouse.move(500, 400);
     await page.mouse.wheel(0, -400);
-    await waitForSnap(page);
+    await waitForSnapSettle(page);
     expect(await activeSection(page)).toBe(0);
     expect(await readScrollY(page)).toBe(0);
 
     // 手指下滑 = 触摸读者回读上一屏
     await swipeFinger(page, 240, 640);
-    await waitForSnap(page);
+    await waitForSnapSettle(page);
     expect(await activeSection(page)).toBe(0);
     expect(await readScrollY(page)).toBe(0);
   });
 
   test("读到最后一块后再下读停在原地", async ({ page }) => {
     await openHomepage(page);
+    await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 一路下读到位置不再变化（每屏 ~1.1s，所以给足轮次）
@@ -150,7 +191,7 @@ test.describe("首页整屏切换边界", () => {
     for (let step = 0; step < SECTION_COUNT + 2; step += 1) {
       const before = await readScrollY(page);
       await page.mouse.wheel(0, 400);
-      await waitForSnap(page);
+      await waitForSnapSettle(page);
       settled = await readScrollY(page);
       if (settled === before) break;
     }
@@ -159,12 +200,12 @@ test.describe("首页整屏切换边界", () => {
 
     // 滚轮继续下滚：停在原地，不越界
     await page.mouse.wheel(0, 400);
-    await waitForSnap(page);
+    await waitForSnapSettle(page);
     expect(await readScrollY(page)).toBe(settled);
 
     // 手指上滑（触摸读者的下读手势）：同样停在原地
     await swipeFinger(page, 640, 240);
-    await waitForSnap(page);
+    await waitForSnapSettle(page);
     expect(await readScrollY(page)).toBe(settled);
 
     expect(await activeSection(page)).toBe(lastIndex);
@@ -183,7 +224,7 @@ test.describe("未达到接管条件时退回普通滚动", () => {
       const tops = await moduleTops(page);
       await page.mouse.move(200, 300);
       await page.mouse.wheel(0, 120);
-      await waitForSnap(page);
+      await waitForSnapSettle(page);
 
       // 接管时滚轮会被 preventDefault 并整屏跳到下一块；不接管时只滚 deltaY
       const wheelY = await readScrollY(page);
@@ -193,7 +234,7 @@ test.describe("未达到接管条件时退回普通滚动", () => {
       // 触摸同样退回普通滚动：落点不会正好压在模块顶端（这里要真实的连续拖动，
       // 原生滚动才走得动，所以显式多段）
       await swipeFinger(page, 640, 400, 16);
-      await waitForSnap(page);
+      await waitForSnapSettle(page);
       const touchY = await readScrollY(page);
       expect(touchY).toBeGreaterThan(wheelY);
       expect(tops).not.toContain(touchY);
@@ -213,7 +254,7 @@ test.describe("未达到接管条件时退回普通滚动", () => {
       const tops = await moduleTops(page);
       await page.mouse.move(500, 400);
       await page.mouse.wheel(0, 120);
-      await waitForSnap(page);
+      await waitForSnapSettle(page);
 
       const y = await readScrollY(page);
       expect(y).toBeGreaterThan(0);

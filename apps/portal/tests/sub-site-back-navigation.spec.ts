@@ -192,6 +192,23 @@ async function returnToSlowLibrary(page: Page, delayMs: number): Promise<number>
   return departedFrom;
 }
 
+/**
+ * dev 下每条路由首次访问都要现编译，而 CI 的单测上限是 45s：把编译开销挪到断言之前，
+ * 预热一遍本文件会访问的所有路径。生产是预构建，这一步只是抹平 dev 的冷启动。
+ */
+test.beforeAll(async ({ browser }) => {
+  const page = await browser.newPage();
+  const routes = [
+    "/",
+    ...SUB_SITE_INNER_PAGES.map((entry) => entry.route),
+    ...SUB_SITE_HOMES.map((entry) => entry.route),
+  ];
+  for (const route of routes) {
+    await page.goto(route, { waitUntil: "domcontentloaded" });
+  }
+  await page.close();
+});
+
 test.use({ viewport: { width: 390, height: 844 } });
 
 /**
