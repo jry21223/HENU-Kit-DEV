@@ -142,6 +142,19 @@ test.describe("首页整屏切换方向", () => {
     await expect.poll(() => activeSection(page)).toBe(1);
   });
 
+  test("上一屏动画未结束时的手势不会被吞掉", async ({ page }) => {
+    await openHomepage(page);
+    await waitForSnapTakeover(page);
+
+    // 第一下手势开始切屏（动画约 1.1s），紧接着在动画途中开始第二次长拖动，
+    // 并让它的位移持续到动画结束之后。
+    await swipeFinger(page, 700, 200);
+    await swipeFinger(page, 700, 200, 20, 120);
+
+    // 这一次手势必须还能补跳一屏；若它在动画期间就被消费掉，这里会停在 1。
+    await expect.poll(() => activeSection(page)).toBe(2);
+  });
+
   test("同一页面上鼠标滚轮保持原有方向", async ({ page }) => {
     await openHomepage(page);
     await waitForSnapTakeover(page);

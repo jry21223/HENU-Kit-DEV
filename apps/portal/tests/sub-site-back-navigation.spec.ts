@@ -69,18 +69,44 @@ const LIBRARY_MATERIALS = Array.from({ length: 36 }, (_, index) => ({
 
 const materialCards = (page: Page) => page.locator('a[href^="/library/item/"]');
 
+/**
+ * 点一个已经在屏幕里的链接并返回它的 href。
+ *
+ * Playwright 自己的 click 会先把目标滚进视口，那会改动被测的 offset
+ * （理由同 food-scroll-restoration）。调用方自己决定要不要等落点 URL。
+ */
+async function clickOnScreen(page: Page, selector: string, errorMessage: string): Promise<string> {
+  return page.evaluate(
+    ({ selector, errorMessage }) => {
+      const onScreen = Array.from(
+        document.querySelectorAll<HTMLAnchorElement>(selector)
+      ).find((link) => {
+        const box = link.getBoundingClientRect();
+        return box.top >= 0 && box.bottom <= window.innerHeight;
+      });
+      if (!onScreen) throw new Error(errorMessage);
+      onScreen.click();
+      return onScreen.getAttribute("href") ?? "";
+    },
+    { selector, errorMessage }
+  );
+}
+
+/** 点第一个匹配的站内链接（不看位置），用于首页入口这类必然可见的目标。 */
+async function clickFirst(page: Page, selector: string, errorMessage: string) {
+  await page.evaluate(
+    ({ selector, errorMessage }) => {
+      const link = document.querySelector<HTMLAnchorElement>(selector);
+      if (!link) throw new Error(errorMessage);
+      link.click();
+    },
+    { selector, errorMessage }
+  );
+}
+
 /** 点一张已经在屏幕里的资料卡。理由同 clickOnScreenVenue。 */
 async function clickOnScreenMaterial(page: Page) {
-  await page.evaluate(() => {
-    const onScreen = Array.from(
-      document.querySelectorAll<HTMLAnchorElement>('a[href^="/library/item/"]')
-    ).find((link) => {
-      const box = link.getBoundingClientRect();
-      return box.top >= 0 && box.bottom <= window.innerHeight;
-    });
-    if (!onScreen) throw new Error("屏幕上没有可点的资料卡");
-    onScreen.click();
-  });
+  await clickOnScreen(page, 'a[href^="/library/item/"]', "屏幕上没有可点的资料卡");
   await page.waitForURL(/\/library\/item\//);
 }
 
@@ -104,17 +130,7 @@ async function waitForClientShell(page: Page) {
  * click 会先把目标滚进视口，那会改动被测的 offset。
  */
 async function clickOnScreenVenue(page: Page): Promise<string> {
-  const href = await page.evaluate(() => {
-    const onScreen = Array.from(
-      document.querySelectorAll<HTMLAnchorElement>('a[href^="/food/post/"]')
-    ).find((link) => {
-      const box = link.getBoundingClientRect();
-      return box.top >= 0 && box.bottom <= window.innerHeight;
-    });
-    if (!onScreen) throw new Error("屏幕上没有可点的条目");
-    onScreen.click();
-    return onScreen.getAttribute("href") ?? "";
-  });
+  const href = await clickOnScreen(page, 'a[href^="/food/post/"]', "屏幕上没有可点的条目");
   await page.waitForURL(/\/food\/post\//);
   return href;
 }
@@ -246,11 +262,7 @@ test("历史回退落到别处之后，点进列表页不会被拽回旧位置",
   await waitForClientShell(page);
 
   // 首页 → 榜单，留下一个阅读位置
-  await page.evaluate(() => {
-    const entry = document.querySelector<HTMLAnchorElement>('a[href="/food"]');
-    if (!entry) throw new Error("首页没有美食榜入口");
-    entry.click();
-  });
+  await clickFirst(page, 'a[href="/food"]', "首页没有美食榜入口");
   await expect(page).toHaveURL(/\/food$/);
   await expect(page.locator("[data-food-tier]")).toHaveCount(TIER_TAGS.length);
   await scrollTo(page, 1600);
@@ -261,11 +273,7 @@ test("历史回退落到别处之后，点进列表页不会被拽回旧位置",
   await waitForClientShell(page);
 
   // 再点进榜单：这是一次普通进入，必须从顶部开始
-  await page.evaluate(() => {
-    const entry = document.querySelector<HTMLAnchorElement>('a[href="/food"]');
-    if (!entry) throw new Error("首页没有美食榜入口");
-    entry.click();
-  });
+  await clickFirst(page, 'a[href="/food"]', "首页没有美食榜入口");
   await expect(page).toHaveURL(/\/food$/);
   await expect(page.locator("[data-food-tier]")).toHaveCount(TIER_TAGS.length);
   await expect.poll(() => scrollY(page)).toBeLessThan(40);
@@ -288,16 +296,7 @@ test("没走成的点击不会让读者之后的位移被丢掉", async ({ page 
     document.addEventListener("click", swallow, true);
     window.setTimeout(() => document.removeEventListener("click", swallow, true), 1000);
   });
-  await page.evaluate(() => {
-    const onScreen = Array.from(
-      document.querySelectorAll<HTMLAnchorElement>('a[href^="/food/post/"]')
-    ).find((link) => {
-      const box = link.getBoundingClientRect();
-      return box.top >= 0 && box.bottom <= window.innerHeight;
-    });
-    if (!onScreen) throw new Error("屏幕上没有可点的条目");
-    onScreen.click();
-  });
+  await clickOnScreen(page, 'a[href^="/food/post/"]', "屏幕上没有可点的条目");
   await page.waitForTimeout(400);
   expect(new URL(page.url()).pathname).toBe("/food");
 
@@ -370,16 +369,7 @@ test("列表页的返回箭头回模块首页，并落回读者离开时的位�
   const departedFrom = await scrollY(page);
 
   // 点一条已经在屏幕里的条目，理由同上。
-  await page.evaluate(() => {
-    const onScreen = Array.from(
-      document.querySelectorAll<HTMLAnchorElement>('a[href^="/food/post/"]')
-    ).find((link) => {
-      const box = link.getBoundingClientRect();
-      return box.top >= 0 && box.bottom <= window.innerHeight;
-    });
-    if (!onScreen) throw new Error("屏幕上没有可点的条目");
-    onScreen.click();
-  });
+  await clickOnScreen(page, 'a[href^="/food/post/"]', "屏幕上没有可点的条目");
   await page.waitForURL(/\/food\/post\//);
   expect(await scrollY(page)).toBeLessThan(40);
 

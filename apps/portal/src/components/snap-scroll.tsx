@@ -31,11 +31,12 @@ export default function SnapScroll() {
           return idx;
         };
 
-        const go = (dir: 1 | -1) => {
-          if (animating) return;
+        /** 真的起跳并返回 true；动画期间或首末屏边界空转时返回 false。 */
+        const go = (dir: 1 | -1): boolean => {
+          if (animating) return false;
           const from = currentIndex();
           const next = Math.min(sections.length - 1, Math.max(0, from + dir));
-          if (next === from) return;
+          if (next === from) return false;
           animating = true;
 
           const target = sections[next];
@@ -66,6 +67,8 @@ export default function SnapScroll() {
               clearProps: "transform",
             }
           );
+
+          return true;
         };
 
         // Observer 的 deltaY 是「输入自身的位移」，两种输入的方向相反：滚轮 deltaY
@@ -94,11 +97,15 @@ export default function SnapScroll() {
           },
           onChangeY: (self) => {
             const fromWheel = self.event.type === "wheel";
-            if (!fromWheel) {
-              if (gestureSpent) return;
-              gestureSpent = true;
+            const direction = isScrollingDown(self) ? 1 : -1;
+            if (fromWheel) {
+              go(direction);
+              return;
             }
-            go(isScrollingDown(self) ? 1 : -1);
+            if (gestureSpent) return;
+            // 只有真的起跳才消费这次手势：动画期间或首末屏边界的空转不能把读者的
+            // 一次滑动整段吃掉——同一次手势在动画结束后仍应能补跳。
+            if (go(direction)) gestureSpent = true;
           },
         });
 
