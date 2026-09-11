@@ -11,6 +11,60 @@ const packagerSource = fileURLToPath(
 );
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
+function runRuntimePackager(command, args, options) {
+  try {
+    return execFileSync(command, args, options);
+  } catch (error) {
+    error.message += `\nstatus: ${error.status}\nsignal: ${error.signal}\nstdout:\n${error.stdout?.toString() ?? ""}\nstderr:\n${error.stderr?.toString() ?? ""}`;
+    throw error;
+  }
+}
+
+test("runtime packager failures retain the command and exit status without output", () => {
+  assert.throws(
+    () => runRuntimePackager(process.execPath, ["-e", "process.exit(91)"], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.status, 91);
+      assert.match(error.message, /Command failed:/);
+      assert.match(error.message, /process\.exit\(91\)/);
+      assert.match(error.message, /status: 91/);
+      return true;
+    },
+  );
+});
+
+test("runtime packager failures identify signal termination without output", () => {
+  assert.throws(
+    () => runRuntimePackager(process.execPath, ["-e", "process.kill(process.pid, 'SIGTERM')"], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.status, null);
+      assert.equal(error.signal, "SIGTERM");
+      assert.match(error.message, /signal: SIGTERM/);
+      return true;
+    },
+  );
+});
+
+test("runtime packager failures retain captured output and launch errors", () => {
+  assert.throws(
+    () => runRuntimePackager(process.execPath, ["-e", "console.log('packager stdout'); console.error('packager stderr'); process.exit(23)"], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.status, 23);
+      assert.match(error.message, /stdout:\npackager stdout\n/);
+      assert.match(error.message, /stderr:\npackager stderr\n/);
+      return true;
+    },
+  );
+  assert.throws(
+    () => runRuntimePackager(join(tmpdir(), "missing-henukit-packager", "packager"), [], { stdio: "pipe" }),
+    (error) => {
+      assert.equal(error.code, "ENOENT");
+      assert.match(error.message, /ENOENT/);
+      return true;
+    },
+  );
+});
+
 function createCleanSourceCheckout() {
   const root = mkdtempSync(join(tmpdir(), "henukit-runtime-source-"));
   const checkout = join(root, "checkout");
@@ -190,7 +244,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   chmodSync(docker, 0o755);
 
   try {
-    const packaged = spawnSync(packager, [
+    runRuntimePackager(packager, [
       "--sha", releaseSha,
       "--output-dir", outputDirectory,
       "--oauth-gate-receipt", oauthGateReceipt,
@@ -205,7 +259,6 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
       },
       encoding: "utf8",
     });
-    assert.equal(packaged.status, 0, packaged.stderr);
 
   assert.equal(existsSync(runtimeArchive), true);
   assert.equal(existsSync(`${runtimeArchive}.sha256`), true);
