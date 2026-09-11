@@ -21,6 +21,10 @@ import {
  * `tolerance: 12`——位移累加到 12px 就回调一次，于是十几像素的手抖、误触、点击前的位移
  * 都会翻一整屏。判定本身是纯函数，在 `@/lib/navigation/gesture-intent` 里。滚轮与键盘
  * 路径不变；滚轮侧的 burst 聚合留给 #510。
+ *
+ * 下面提到的 `Observer.js:NNN` 都指 `node_modules/gsap/src/Observer.js`（gsap 3.15.0 的
+ * 可读源码）：`import "gsap/Observer"` 解析到的是它的构建产物，同一个文件里行号不同，
+ * 照行号核对时请认准 `src/`。
  */
 export default function SnapScroll() {
   useEffect(() => {
@@ -117,12 +121,12 @@ export default function SnapScroll() {
          * 把手势里的位移并进净位移：**同向累加，反向就以新方向重新起算**。
          *
          * 取样用 Observer 报的指针位置（`self.y`），不用它的 `deltaY`：`deltaY` 只在桶累
-         * 计到 `tolerance` 时才回调一次（`Observer.js:190-193`、`203-210`），松手前不足一桶
-         * 的零头永远拿不到，门槛分辨率也就只有桶粒度（12–16px，占 800 高视口 48px 门槛的
-         * 四分之一）。实测 8px/帧 × 21 帧（真实 168px）只报出 160px，最后 8px 丢掉；
-         * `self.y` 是 Observer 自己在拖动路径上按 `clientY` 维护的位置
-         * （`Observer.js:253-258`），每次回调取值精确到像素。本票不动 Observer 的
-         * `tolerance`（仍为 12）。
+         * 计到 `tolerance` 时才回调一次（`gsap/src/Observer.js:190-193`、`:203-210`），松手
+         * 前不足一桶的零头永远拿不到，门槛分辨率也就只有桶粒度（12–16px，占 800 高视口
+         * 48px 门槛的四分之一）。实测 8px/帧 × 21 帧（真实 168px）只报出 160px，最后 8px
+         * 丢掉；`self.y` 是 Observer 自己在拖动路径上按 `clientY` 维护的位置
+         * （同文件 `:253-258`），每次回调取值精确到像素。本票不动 Observer 的 `tolerance`
+         * （仍为 12）。
          */
         const sampleTouchDisplacement = (self: Observer) => {
           const y = self.y;
@@ -151,8 +155,9 @@ export default function SnapScroll() {
           onRelease: (self) => {
             if (!pressed) return;
             pressed = false;
-            // 系统取消的手势（第二根手指、浏览器接管）不是读者松手，不判定：读者没有表达
-            // 意图的机会，别替他决定翻一屏。净位移留到下一次按下时再重置。
+            // 浏览器/系统打断这次手势（UA 取消，例如多指手势或系统接管滚动）不是读者松手，
+            // 不判定：读者没有表达意图的机会，别替他决定翻一屏。净位移留到下一次按下时再
+            // 重置。
             if (self.event.type === "touchcancel" || self.event.type === "pointercancel") return;
             // 松手补上最后一段：不足一桶的零头也属于这次手势。
             sampleTouchDisplacement(self);
