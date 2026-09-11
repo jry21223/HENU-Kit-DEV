@@ -22,11 +22,32 @@ export default function SnapScroll() {
 
         let animating = false;
 
+        /**
+         * 读者实际待着的那一屏：视口里可见高度最大的 section；恰好各占一半时取靠下
+         * 那一屏。
+         *
+         * 不能用「scrollY + 35% 视口高」的探针：读者并不总停在整屏边界上。视口变大
+         * （旋转、拉窗口、地址栏收放、布局回流）会让每一屏重新长高，而浏览器保持
+         * scrollY 不动，读者于是落到某个边界上方不足半屏处——主要看着下面那一屏，
+         * 探针却仍把他算在上一屏。向上滑因此被判成「已经在上一屏」，go(-1) 空转，
+         * 整段手势被吃掉。
+         */
         const currentIndex = () => {
-          const y = window.scrollY + window.innerHeight * 0.35;
+          const scrollTop = window.scrollY;
+          const viewportBottom = scrollTop + window.innerHeight;
           let idx = 0;
+          let mostVisible = -1;
           sections.forEach((s, i) => {
-            if (s.offsetTop <= y) idx = i;
+            const top = s.offsetTop;
+            const visible = Math.max(
+              0,
+              Math.min(top + s.offsetHeight, viewportBottom) - Math.max(top, scrollTop)
+            );
+            // 平局归靠下那屏：各占一半时上/下两次手势仍分别有屏可去，不留死区。
+            if (visible >= mostVisible) {
+              mostVisible = visible;
+              idx = i;
+            }
           });
           return idx;
         };
