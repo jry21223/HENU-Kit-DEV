@@ -36,6 +36,15 @@ async function swipeFinger(page: Page, from: number, to: number, steps = 1, step
   await cdp.detach();
 }
 
+/**
+ * 打开首页并等到 7 个整屏模块就位。dev 下首次访问要现编译，生产是预构建，
+ * 所以这里给冷编译留出时间，别让它冒充失败。
+ */
+async function openHomepage(page: Page) {
+  await page.goto("/", { waitUntil: "load" });
+  await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+}
+
 async function activeSection(page: Page) {
   return page.evaluate(() => {
     const sections = Array.from(document.querySelectorAll<HTMLElement>(".snap-screen"));
@@ -70,9 +79,7 @@ test.describe("首页整屏切换方向", () => {
   test.use({ viewport: { width: 1024, height: 800 }, hasTouch: true });
 
   test("手指上滑进下一屏，手指下滑回上一屏", async ({ page }) => {
-    await page.goto("/", { waitUntil: "load" });
-    // dev 下首次访问该路由要现编译；生产是预构建，这里只是别让冷编译冒充失败。
-    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+    await openHomepage(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 手指上滑 = 读者想往下读
@@ -87,9 +94,7 @@ test.describe("首页整屏切换方向", () => {
   });
 
   test("一次慢速拖动只切一屏", async ({ page }) => {
-    await page.goto("/", { waitUntil: "load" });
-    // dev 下首次访问该路由要现编译；生产是预构建，这里只是别让冷编译冒充失败。
-    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+    await openHomepage(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 位移一直持续到整屏动画（~1.1s）结束之后：同一次手势不该再起跳一次。
@@ -100,9 +105,7 @@ test.describe("首页整屏切换方向", () => {
   });
 
   test("同一页面上鼠标滚轮保持原有方向", async ({ page }) => {
-    await page.goto("/", { waitUntil: "load" });
-    // dev 下首次访问该路由要现编译；生产是预构建，这里只是别让冷编译冒充失败。
-    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+    await openHomepage(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     await page.mouse.move(500, 400);
@@ -120,9 +123,7 @@ test.describe("首页整屏切换边界", () => {
   test.use({ viewport: { width: 1024, height: 800 }, hasTouch: true });
 
   test("第一屏再回读停在第一屏", async ({ page }) => {
-    await page.goto("/", { waitUntil: "load" });
-    // dev 下首次访问该路由要现编译；生产是预构建，这里只是别让冷编译冒充失败。
-    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+    await openHomepage(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 滚轮上滚 = 键鼠读者回读上一屏；第一屏已经没有上一屏
@@ -140,9 +141,7 @@ test.describe("首页整屏切换边界", () => {
   });
 
   test("读到最后一块后再下读停在原地", async ({ page }) => {
-    await page.goto("/", { waitUntil: "load" });
-    // dev 下首次访问该路由要现编译；生产是预构建，这里只是别让冷编译冒充失败。
-    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+    await openHomepage(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
     // 一路下读到位置不再变化（每屏 ~1.1s，所以给足轮次）
@@ -178,9 +177,7 @@ test.describe("未达到接管条件时退回普通滚动", () => {
     test.use({ viewport: { width: 480, height: 800 }, hasTouch: true });
 
     test("手机竖屏不被接管", async ({ page }) => {
-      await page.goto("/", { waitUntil: "load" });
-      // dev 下首次访问该路由要现编译；生产是预构建，这里只是别让冷编译冒充失败。
-    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+      await openHomepage(page);
       await expect.poll(() => activeSection(page)).toBe(0);
 
       const tops = await moduleTops(page);
@@ -210,9 +207,7 @@ test.describe("未达到接管条件时退回普通滚动", () => {
     });
 
     test("减少动态偏好下不被接管", async ({ page }) => {
-      await page.goto("/", { waitUntil: "load" });
-      // dev 下首次访问该路由要现编译；生产是预构建，这里只是别让冷编译冒充失败。
-    await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
+      await openHomepage(page);
       await expect.poll(() => activeSection(page)).toBe(0);
 
       const tops = await moduleTops(page);

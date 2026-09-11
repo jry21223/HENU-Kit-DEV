@@ -17,11 +17,7 @@ import { cn } from "@/lib/cn";
  */
 const NAV_LINK_CLASS =
   "font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent";
-export default function BackLink({
-  className = NAV_LINK_CLASS,
-}: {
-  className?: string;
-}) {
+export default function BackLink({ className }: { className?: string }) {
   const pathname = usePathname();
   const parent = parentRoute(pathname);
 
