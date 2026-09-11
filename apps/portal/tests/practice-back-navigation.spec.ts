@@ -204,7 +204,7 @@ const SUB_SITE_INNER_PAGES = [
   { route: "/campus/item/h-01", label: "← 市集", destination: "/campus" },
   { route: "/career/history", label: "← 求职雷达", destination: "/career" },
   { route: "/practice/quiz", label: "← 题库", destination: "/practice" },
-  { route: "/practice/favorites/bank-1", label: "← 收藏夹概览", destination: "/practice/favorites" },
+  { route: "/practice/favorites/bank-1", label: "← 收藏夹", destination: "/practice/favorites" },
 ] as const;
 
 /**
@@ -520,7 +520,7 @@ for (const { route, label, destination } of SUB_SITE_INNER_PAGES) {
     await backLink(page).click();
 
     await expect(page).toHaveURL(new RegExp(`${destination.replace(/\//g, "\\/")}$`));
-    // 到了上一级，箭头再往上指一层：子站首页回平台首页，收藏夹概览回题库。
+    // 到了上一级，箭头再往上指一层：子站首页回平台首页，收藏夹回题库。
     await expect(backLink(page)).toHaveText(
       destination === "/practice/favorites" ? "← 题库" : "← henukit"
     );

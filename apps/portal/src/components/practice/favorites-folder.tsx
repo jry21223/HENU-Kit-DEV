@@ -268,7 +268,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
               <p className="mt-4 font-mono text-[10px] leading-5 text-ink/45">
                 不可用的收藏会保留在这里，但不会进入收藏练习，也不展示题目内容。
               </p>
-              <BackLink className="mt-6 inline-block font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent" />
+              <BackLink className="mt-6 inline-block" />
             </>
           )}
         </section>

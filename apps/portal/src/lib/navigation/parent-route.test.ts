@@ -15,11 +15,11 @@ describe("parentRoute", () => {
   });
 
   it("keeps the favorites folder under the favorites overview", () => {
-    // 收藏夹概览本身是 /practice 的内页，再往上一级才是题库。
+    // 收藏夹页本身是 /practice 的内页，再往上一级才是题库。
     expect(parentRoute("/practice/favorites")).toEqual({ href: "/practice", label: "题库" });
     expect(parentRoute("/practice/favorites/abc")).toEqual({
       href: "/practice/favorites",
-      label: "收藏夹概览",
+      label: "收藏夹",
     });
   });
 

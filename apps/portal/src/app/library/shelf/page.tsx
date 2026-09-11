@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useReveal } from "@/components/account/use-reveal";
+import BackLink from "@/components/back-link";
 
 export default function ShelfPage() {
   useReveal();
@@ -17,12 +17,7 @@ export default function ShelfPage() {
       <p data-enter className="mt-6 border border-dashed border-ink/30 px-5 py-12 text-center text-sm leading-7 text-ink/65">
         书架功能即将上线，敬请期待。
       </p>
-      <Link
-        href="/library"
-        className="mt-6 inline-flex border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
-      >
-        返回书库
-      </Link>
+      <BackLink className="mt-6 inline-flex border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper" />
     </main>
   );
 }
