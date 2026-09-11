@@ -88,6 +88,9 @@ const thresholdFor = (viewportHeight: number, ratio: number) =>
  * - 净位移到 3% 且峰值速度到 600 px/s：算（轻扫走这条）。
  * - 其余：不算。
  *
+ * `peakVelocity` 是**松手那一刻**的速度读数，不是整段手势的最大值：意图只能在松手时定下
+ * 来，而 Observer 的速度也只有那一刻读得到（`onStop` 之前已被清零）。
+ *
  * 视口高不是有效正数时不判：比例门槛无从谈起，宁可什么都不做（这也是防误触的方向）。
  */
 export function gestureIntent({

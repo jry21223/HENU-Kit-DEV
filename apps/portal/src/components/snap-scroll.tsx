@@ -67,12 +67,12 @@ export default function SnapScroll() {
           return idx;
         };
 
-        /** 真的起跳并返回 true；动画期间或首末屏边界空转时返回 false。 */
-        const go = (dir: 1 | -1): boolean => {
-          if (animating) return false;
+        /** 起跳一屏；动画期间或首末屏边界空转时什么都不做。 */
+        const go = (dir: 1 | -1): void => {
+          if (animating) return;
           const from = currentIndex();
           const next = Math.min(sections.length - 1, Math.max(0, from + dir));
-          if (next === from) return false;
+          if (next === from) return;
           animating = true;
 
           const target = sections[next];
@@ -103,8 +103,6 @@ export default function SnapScroll() {
               clearProps: "transform",
             }
           );
-
-          return true;
         };
 
         // 这次手势的净位移（输入自身的符号）与上一次取样的指针位置。
@@ -119,16 +117,17 @@ export default function SnapScroll() {
          * 把手势里的位移并进净位移：**同向累加，反向就以新方向重新起算**。
          *
          * 取样用 Observer 报的指针位置（`self.y`），不用它的 `deltaY`：`deltaY` 只在桶累
-         * 计到 `tolerance` 时才回调一次（`Observer.js:190-193`），松手前不足一桶的零头永
-         * 远拿不到，门槛分辨率也就只有桶粒度（12–16px，占 800 高视口 48px 门槛的四分之
-         * 一）。实测 8px/帧 × 21 帧（真实 168px）只报出 160px，最后 8px 丢掉；`self.y` 是
-         * Observer 自己按 `clientY` 维护的位置（`Observer.js:436`），每次回调取值精确到像
-         * 素。本票不改 Observer 配置，`tolerance` 保持 12。
+         * 计到 `tolerance` 时才回调一次（`Observer.js:190-193`、`203-210`），松手前不足一桶
+         * 的零头永远拿不到，门槛分辨率也就只有桶粒度（12–16px，占 800 高视口 48px 门槛的
+         * 四分之一）。实测 8px/帧 × 21 帧（真实 168px）只报出 160px，最后 8px 丢掉；
+         * `self.y` 是 Observer 自己在拖动路径上按 `clientY` 维护的位置
+         * （`Observer.js:253-258`），每次回调取值精确到像素。本票不动 Observer 的
+         * `tolerance`（仍为 12）。
          */
         const sampleTouchDisplacement = (self: Observer) => {
           const y = self.y;
-          // 指针位置缺失时不动净位移（类型里 `y?: number` 是给滚轮路径留的；触摸/指针的
-          // 每次拖动都带着 clientY）。
+          // 指针位置缺失时不动净位移（类型里 `y?: number` 是给不带指针位置的输入留的口
+          // 子；触摸/指针的每次拖动都带着 clientY）。
           if (y === undefined) return;
           const delta = y - lastSampledY;
           lastSampledY = y;
@@ -139,26 +138,29 @@ export default function SnapScroll() {
           type: "wheel,touch",
           preventDefault: true,
           tolerance: 12,
-          // 小于它的位移不构成拖动：轻触、点击前的抖动连拖动状态都进不去（#509 的第一道
-          // 手段；第二道是下面按视口比例取的位移门槛）。
+          // `dragMinimum` 依 #507 的决定取 8：小于它的位移不构成拖动，轻触与点击前的抖动
+          // 连拖动状态都进不去（第一道手段；第二道是下面按视口比例取的位移门槛）。
           dragMinimum: DRAG_MINIMUM_PX,
           onPress: (self) => {
             pressed = true;
             netDisplacement = 0;
-            // Observer 按下时就把 startY 设成指针位置（`Observer.js` 的 `_onPress`）；
+            // Observer 按下时就把 startY 设成指针位置（`Observer.js:273` 的 `_onPress`）；
             // `?? 0` 只用来满足类型里的 `startY?: number`。
             lastSampledY = self.startY ?? 0;
           },
           onRelease: (self) => {
             if (!pressed) return;
             pressed = false;
+            // 系统取消的手势（第二根手指、浏览器接管）不是读者松手，不判定：读者没有表达
+            // 意图的机会，别替他决定翻一屏。净位移留到下一次按下时再重置。
+            if (self.event.type === "touchcancel" || self.event.type === "pointercancel") return;
             // 松手补上最后一段：不足一桶的零头也属于这次手势。
             sampleTouchDisplacement(self);
             const intent = gestureIntent({
               source: "touch",
               netDisplacement,
               // 速度只能在松手回调里读：Observer 进 onStop 之前先把速度清零
-              // （Observer.js:183-188），在 onStop 里读出来恒为 0。
+              // （`Observer.js:183-188`），在 onStop 里读出来恒为 0。
               peakVelocity: self.velocityY,
               viewportHeight: window.innerHeight,
             });
