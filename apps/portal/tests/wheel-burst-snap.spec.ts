@@ -16,15 +16,15 @@ import { expect, test, type Page } from "@playwright/test";
  * - 突发的跨度窗口取 **3500ms**：它要盖住「整段补间（页面内 rAF 采样到视野停止移动为止：
  *   空载 ~980ms、被抢占 ~2000ms；名义 1.1s）+ 落在它之后的惯性尾巴（合成事件复现出的衰减
  *   尾巴实测到 ~2.5s）」，否则就是留了个「动画一结束、尾巴还在流」的缺口，那正是缺陷本身。
- * - 一次突发内部的 tick 间隔实测 min 12–25 / 中位 17–44 / max 44–90ms（合成序列；真实触控板
- *   事件的节流目标是 60Hz ≈ 16.7ms，只会更密）。静默多久算「这次滚动手势结束」取 **600ms**：
- *   它必须远大于尾巴的 tick 间隔（6.7× 实测最大值），这样整段尾巴留在同一个突发里；又必须小于
- *   读者有意一屏一屏滚的节奏（等补间走完 ~1.1s 再加反应时间，本文件用 1.3s 与 1.8s 两种刻度
- *   间隔量它），否则「等动画走完再滚一下」会被吞掉、滚轮变迟滞。
- *
- * 不许退化的对照：**离散鼠标滚轮仍一屏一屏走**——间隔 1.3s / 1.8s 的刻度各是一次手势，每个
- * 刻度走一屏；现状本来就如此（`animating` 会吃掉动画期间的刻度），这里把它钉住。1500ms 的
- * 静默界会把 1.3s 那一档吞掉，所以这条对照正是把界压到 600ms 的理由。
+ * - 静默多久算「这次滚动手势结束」取 **600ms**：下界是尾巴的 tick 间隔——页面收到的事件实测
+ *   min 12–25 / 中位 17–44 / max 44–90ms（判定看到的是 Observer 的桶回调，更粗：尾巴里单个
+ *   事件 5–20px、最坏 3 个事件凑一回调 ≈ 270ms，所以 600ms 是最坏回调间隔的 2.2 倍，见
+ *   `gesture-intent.ts` 的常量注释）；上界是读者有意一屏一屏滚的节奏，必须大于它否则第二下会被
+ *   吞掉。**上界的实测证据在 PR 正文**：把界设成 1500ms 时，1.3s 节奏的 4 个刻度只走 2 屏；
+ *   600ms 下 1.3s / 1.5s / 1.8s 都是 4 个刻度走 4 屏。本文件的「等补间走完再滚一下」与
+ *   「离散鼠标滚轮看到落点就滚下一格」两条用例钉的是这条结论的**行为面**（落点驱动的节奏不被
+ *   吞、不迟滞）；上界的具体取值由常量注释指向 PR 正文那份测量，端到端不断言它——负载高时补间
+ *   会拖长，那是环境而不是被测行为。
  *
  * 近似程度的边界（本文件不掩盖）：合成 wheel 事件无法复现真实触控板的 rAF 去抖与动量曲线，
  * 只能复现「衰减的 tick 序列跨过 1.1s 补间结束」这一结构，尾巴能拖多长也只是本机合成出来的
@@ -44,7 +44,7 @@ const BURST_GAP_MS = 600;
 /**
  * 一次**铺满整个跨度窗口**的衰减突发：从 40 衰减到 5，一直发到 `windowMs` 用完为止，所以
  * 无论 tick 多密、补间多慢，序列一定覆盖「补间结束之后、窗口合上之前」那一段——#510 的缺陷
- * 就发生在那里（实测 pre-fix：页面从第 1 屏走到第 2 屏）。
+ * 就发生在那里（实测改造前：读者从第 0 屏被推到第 3 屏）。
  *
  * 固定长度的突发靠不住：合成事件的实际间隔随机器漂（实测 14–75ms），尾巴落在补间结束之前
  * 还是之后也跟着漂；铺满窗口则把「补间结束之后、窗口合上之前」这一段整个包住。
@@ -166,8 +166,8 @@ async function moduleTops(page: Page) {
  */
 async function expectLandedOn(page: Page, screen: number) {
   const tops = await moduleTops(page);
-  // 采样间隔比 #509 的默认值（100/250/500/1000ms）密：调用方拿它当「补间什么时候结束」的
-  // 时间戳用，默认间隔会让落点被晚发现最多 1s，量出来的补间时长就掺了采样误差。
+  // 采样间隔比 #509 的默认值（100/250/500/1000ms）密：调用方要在补间刚走完时就尽快看到落点
+  // （「离散鼠标滚轮」那条用例还要拿这个时刻量两次刻度之间的静默），默认间隔会晚发现最多 1s。
   await expect
     .poll(async () => Math.round(await readScrollY(page)), {
       timeout: 20_000,
@@ -197,6 +197,18 @@ test.describe("一次滚轮突发只走一屏", () => {
     await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
+    // 监听器只挂一次：每轮只清空缓冲区，否则重试时同一个事件会被记 2、3 次，重建出来的回调
+    // 序列比真实更密，前提检查反而在重试时变松。
+    await page.evaluate(() => {
+      const w = window as unknown as { __ticks?: Array<[number, number]> };
+      w.__ticks = [];
+      window.addEventListener(
+        "wheel",
+        (e) => w.__ticks?.push([Math.round(performance.now()), e.deltaY]),
+        { capture: true, passive: true }
+      );
+    });
+
     let maxGap = Number.POSITIVE_INFINITY;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       if (attempt > 0) {
@@ -209,13 +221,7 @@ test.describe("一次滚轮突发只走一屏", () => {
       }
 
       await page.evaluate(() => {
-        const w = window as unknown as { __ticks?: Array<[number, number]> };
-        w.__ticks = [];
-        window.addEventListener(
-          "wheel",
-          (e) => w.__ticks?.push([Math.round(performance.now()), e.deltaY]),
-          { capture: true, passive: true }
-        );
+        (window as unknown as { __ticks?: Array<[number, number]> }).__ticks = [];
       });
 
       const burstMs = await burstAcrossWindow(page, 2500);
@@ -245,7 +251,7 @@ test.describe("一次滚轮突发只走一屏", () => {
     // **对的**。三次都没铺成时在这里明确失败，而不是让下面的落点断言以假乱真。
     expect(maxGap).toBeLessThan(BURST_GAP_MS);
 
-    // 一次突发 = 一屏：从第 0 屏落到第 1 屏，之后不许再被尾巴上的 tick 推走。
+    // 一个窗口 = 一屏：从第 0 屏落到第 1 屏，之后不许再被尾巴上的 tick 推走。
     await expectLandedOn(page, 1);
   });
 
@@ -302,7 +308,7 @@ test.describe("一次滚轮突发只走一屏", () => {
     }
     await cdp.detach();
 
-    // 1. 一次突发只走一屏：第 2 屏，之后不许再动。
+    // 1. 一个窗口只走一屏：第 2 屏，之后不许再动。
     await expectLandedOn(page, 2);
 
     // 2. 补间一释放就落地。
@@ -323,20 +329,47 @@ test.describe("一次滚轮突发只走一屏", () => {
 test.describe("滚轮方向语义与离散刻度不回退", () => {
   test.use({ viewport: { width: 1024, height: 800 }, hasTouch: true });
 
-  test("离散鼠标滚轮仍然一屏一屏走", async ({ page }) => {
+  test("离散鼠标滚轮看到落点就滚下一格，仍然一屏一屏走", async ({ page }) => {
+    // 「不许迟滞」的对照：滚一格 → 一看到落点就滚下一格（快速轮询，不等落定）→ 再滚一格。
+    // 两次刻度之间的静默是「补间 + 一次轮询」= 1.1s 量级，大于 600ms 的静默界，所以每一格都
+    // 是新的一次手势、各走一屏。
+    //
+    // 注意：这条用例**不再声称**自己钉住了静默界的上界。把界设成 1500ms 时这 1.1–1.3s 的第二格
+    // 会被吞掉——那份实测证据在 PR 正文里（1.3s 节奏的 4 个刻度只走 2 屏），本文件只断言「读者
+    // 看到落点就滚」的节奏不被吞、不迟滞；上界的取值由常量注释指向那份测量。
     test.slow();
     await openHomepage(page);
     await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
 
-    // 读者的真实节奏：滚一格 → 等这一屏的补间走完（落点到位，用轮询等它，不猜时长）→ 再滚一格。
-    // 两次之间的静默必然大于 1.1s 的补间，也就大于 600ms 的静默界，所以每一格都是新的一次
-    // 手势，各走一屏——滚轮不能因为加了聚合就变迟滞。
+    const tops = await moduleTops(page);
+    await page.evaluate(() => {
+      const w = window as unknown as { __ticks?: number[] };
+      w.__ticks = [];
+      window.addEventListener("wheel", () => w.__ticks?.push(Math.round(performance.now())), {
+        capture: true,
+        passive: true,
+      });
+    });
+
     await page.mouse.move(500, 400);
-    for (const screen of [1, 2, 3]) {
-      await page.mouse.wheel(0, 100);
-      await expectLandedOn(page, screen);
-    }
+    await page.mouse.wheel(0, 100);
+    await expect
+      .poll(async () => Math.round(await readScrollY(page)), {
+        timeout: 20_000,
+        intervals: [50, 50, 50, 100, 100, 200],
+      })
+      .toBe(tops[1]);
+    await page.mouse.wheel(0, 100);
+    await expectLandedOn(page, 2);
+
+    // 两次刻度之间的静默必须已经过了静默界——否则这一格会被算进同一次突发，用例就不再是
+    // 「新的一次手势」了。（上界不断言：负载高时补间会拖长，那属于环境，不属于被测行为。）
+    const gap = await page.evaluate(() => {
+      const ticks = (window as unknown as { __ticks?: number[] }).__ticks ?? [];
+      return ticks.length >= 2 ? ticks[1] - ticks[0] : 0;
+    });
+    expect(gap).toBeGreaterThanOrEqual(BURST_GAP_MS);
   });
 
   test("等补间走完再滚一下仍然每个刻度走一屏", async ({ page }) => {

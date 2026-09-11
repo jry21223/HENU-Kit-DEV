@@ -195,7 +195,7 @@ export default function SnapScroll() {
           },
           onChangeY: (self) => {
             if (self.event.type === "wheel") {
-              // 一次突发一屏（#510）：同一次突发的同方向 tick（触控板惯性尾巴）不消费判定。
+              // 一个窗口一屏（#510）：同一次突发的 tick（触控板惯性尾巴）不消费判定。
               // 方向语义不变——仍然是 `readingDirection("wheel", deltaY)`，正数向下。
               //
               // `self.deltaY` 不是一个原始 tick：Observer 把一帧内的刻度累加进桶，凑够
