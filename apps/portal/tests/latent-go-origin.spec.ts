@@ -9,9 +9,10 @@ import { expect, test, type Page } from "@playwright/test";
  *
  * 探针与视觉不一致的是其中 35%~50% 视口高那一段：这时读者主要看着下面那一屏，35%
  * 的探针却仍把他算在上一屏（δ ≤ 35% 时两者本来一致，δ > 50% 时他确实该算上一屏）。
- * 在这个带上向上滑会被判成「已经在第一屏」，`go(-1)` 算出 next === from 直接返回
- * false，整段手势被吃掉——屏幕一动不动，而且再滑几次也不会动，只能先向下滑一屏才
- * 解得开。
+ * 起点少算一屏的下场分两种：第一处边界上向上滑被判成「已经在第一屏」，`go(-1)` 算出
+ * next === from 直接返回 false，整段手势被吃掉——屏幕一动不动，而且再滑几次也不会
+ * 动，只能先向下滑一屏才解得开；更高的边界上 next ≠ from，手势不会空转，但读者会从
+ * 自己看着的那一屏连退两屏。
  *
  * 修复后的起点是「视口里可见高度最大的那一屏」，各占一半时取靠下那屏（见
  * `snap-scroll.tsx` 的 `currentIndex`）：短落点上向上滑回到上一屏，向下滑推进到下一
@@ -44,12 +45,25 @@ async function swipeFinger(page: Page, from: number, to: number, steps = 1, step
   await cdp.detach();
 }
 
+/**
+ * 打开首页并等到 SECTION_COUNT 个整屏模块就位、客户端外壳水合完成。dev 下首次访问要
+ * 现编译，生产是预构建，所以给冷编译留出时间，别让它冒充失败。
+ *
+ * 水合标记只说明外壳挂上了：它不证明整屏接管已经生效（ScrollMemory 与 SnapScroll
+ * 是两个 effect，先后提交）。要断言方向或边界的用例接着调 waitForSnapTakeover。
+ */
 async function openHomepage(page: Page) {
   await page.goto("/", { waitUntil: "load" });
   await expect(page.locator(".snap-screen")).toHaveCount(SECTION_COUNT, { timeout: 30_000 });
   await page.waitForSelector("html[data-scroll-memory='ready']", { timeout: 30_000 });
 }
 
+/**
+ * 等到整屏接管确实生效：键盘路径与触摸路径同属 SnapScroll 的接管，按一次 PageDown
+ * 应当整屏跳一块；没接管时它只会原生滚动若干像素。跑一个来回把状态留在第一屏。
+ *
+ * 没有这一步，触摸事件可能在接管装上之前发出，断言就会在正确代码上变红。
+ */
 async function waitForSnapTakeover(page: Page) {
   await page.keyboard.press("PageDown");
   await expect.poll(() => activeSection(page)).toBe(1);
@@ -59,6 +73,12 @@ async function waitForSnapTakeover(page: Page) {
   await waitForSnapSettle(page);
 }
 
+/**
+ * 等滚动落定，替代按动画时长的固定睡眠。
+ *
+ * 要连续 3 次采样相同：缓动尾段的位移会小到两次取整后一样，而这时防连滚锁还没释放，
+ * 紧接着的手势会被吞掉。
+ */
 async function waitForSnapSettle(page: Page) {
   let previous = -1;
   let stable = 0;
@@ -108,6 +128,7 @@ async function layout(page: Page) {
     const viewportHeight = window.innerHeight;
     let dominant = 0;
     let mostVisible = -1;
+    const visibles: number[] = [];
     sections.forEach((section, position) => {
       const top = section.offsetTop;
       const bottom = top + section.offsetHeight;
@@ -115,12 +136,13 @@ async function layout(page: Page) {
         0,
         Math.min(bottom, scrollY + viewportHeight) - Math.max(top, scrollY)
       );
+      visibles.push(visible);
       if (visible >= mostVisible) {
         mostVisible = visible;
         dominant = position;
       }
     });
-    return { scrollY, tops, dominant, viewportHeight };
+    return { scrollY, tops, dominant, viewportHeight, visibles };
   });
 }
 
@@ -229,20 +251,10 @@ test.describe("短落点上的手势起点", () => {
     await expect.poll(async () => Math.round(await readScrollY(page))).toBe(landing);
 
     // 先确认这真是一个平局，而不是碰巧滑进了别处：上下两屏的可见高度相等。
-    const halves = await page.evaluate(() => {
-      const sections = Array.from(document.querySelectorAll<HTMLElement>(".snap-screen"));
-      const visible = (position: number) => {
-        const top = sections[position].offsetTop;
-        const bottom = top + sections[position].offsetHeight;
-        return (
-          Math.min(bottom, window.scrollY + window.innerHeight) - Math.max(top, window.scrollY)
-        );
-      };
-      return { upper: visible(0), lower: visible(1) };
-    });
-    expect(halves.upper).toBe(halves.lower);
-    expect(halves.lower).toBeGreaterThan(0);
-    expect((await layout(page)).dominant).toBe(1);
+    const before = await layout(page);
+    expect(before.visibles[0]).toBe(before.visibles[1]);
+    expect(before.visibles[1]).toBeGreaterThan(0);
+    expect(before.dominant).toBe(1);
 
     await swipeFinger(page, 600, 900);
     await waitForSnapSettle(page);
