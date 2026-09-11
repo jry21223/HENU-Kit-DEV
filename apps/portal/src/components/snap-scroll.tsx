@@ -199,7 +199,7 @@ export default function SnapScroll() {
               // 方向语义不变——仍然是 `readingDirection("wheel", deltaY)`，正数向下。
               //
               // `self.deltaY` 不是一个原始 tick：Observer 把一帧内的刻度累加进桶，凑够
-              // `tolerance` 才回调一次（`Observer.js:190-210`、`:225-229`），所以这里拿到的是
+              // `tolerance` 才回调一次（`Observer.js:190-210`、`:227-233`），所以这里拿到的是
               // 「这一次回调」的桶值；时刻取回调发生的这一刻（事件自己的 `timeStamp` 也在同一
               // 时基上，差不超过一帧）。
               const at = performance.now();
