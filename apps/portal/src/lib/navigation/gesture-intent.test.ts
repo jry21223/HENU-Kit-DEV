@@ -9,7 +9,10 @@ import {
   gestureIntent,
   netDisplacementAfter,
   readingDirection,
+  WHEEL_BURST_SPAN_MS,
+  wheelBurstBlocked,
   wheelBurstStep,
+  wheelBurstStepped,
   type WheelBurstState,
 } from "./gesture-intent";
 
@@ -155,13 +158,28 @@ describe("gestureIntent", () => {
  * 滚轮的一次突发只走一屏（#510）。窗口与阈值的实测依据写在 `gesture-intent.ts` 的常量注释
  * 里；这里按阈值两侧钉死判定，端到端只负责断言落在第几屏。
  */
+/**
+ * 一次突发的第一个 tick 走成之后的状态（`at` 是它的时刻）。
+ *
+ * 判定本身不消费，所以这里显式补上组件在真的起跳后做的那一步 `wheelBurstStepped`。
+ */
+const openedAt = (at: number) => {
+  const judged = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at });
+  return wheelBurstStepped(judged.state, 1);
+};
+
 describe("wheelBurstStep", () => {
-  /** 把一串 tick 依次喂进去，返回每个 tick 的判定与最终状态。 */
+  /**
+   * 把一串 tick 依次喂进去，**并模拟组件的行为**：判定说走、而且真的走成了（这里假设 `go()`
+   * 总能走成）才调 `wheelBurstStepped` 记账。判定本身不消费，消费由起跳那一刻记——这条与
+   * #509 触摸端「抬手前什么都不消费」是同一个语义。
+   */
   const run = (ticks: Array<[delta: number, at: number]>, from = IDLE_WHEEL_BURST) => {
     let state: WheelBurstState = from;
     return ticks.map(([delta, at]) => {
       const judged = wheelBurstStep(state, { delta, at });
       state = judged.state;
+      if (judged.intent.action === "step") state = wheelBurstStepped(state, judged.intent.direction);
       return judged.intent;
     });
   };
@@ -183,50 +201,60 @@ describe("wheelBurstStep", () => {
     });
   });
 
-  it("consumes the step only once inside the burst, however long the tail is", () => {
+  it("consumes the step only once inside the window, however long the tail is", () => {
     // 60 个 tick、delta 40→5、每 33ms 一个：#510 的测量用的就是这一串（它把页面推了两屏）。
+    // 整个序列 ~1.95s，全在 2000ms 的跨度窗口之内，所以只有第一个 tick 算数。
     const ticks: Array<[number, number]> = Array.from({ length: 60 }, (_, i) => [
       Math.max(5, Math.round(40 * Math.pow(5 / 40, i / 59))),
       i * 33,
     ]);
     const intents = run(ticks);
-    // 前 37 个 tick 覆盖到 ~1.2s，还在跨度窗口（2000ms）之内：只有第一个算数，其余都是同一个
-    // 突发的尾巴。窗口合上之后的 tick（这里从第 37 个起）按新的一次手势处理，不在本用例里。
-    const insideWindow = intents.slice(0, 37);
-    expect(insideWindow[0]).toEqual({ action: "step", direction: 1 });
-    expect(insideWindow.slice(1)).toEqual(Array.from({ length: 36 }, () => ({ action: "none" })));
-  });
-
-  it("opens a new burst once the gap between ticks passes the threshold", () => {
-    const [first] = run([[40, 0]]);
-    expect(first).toEqual({ action: "step", direction: 1 });
-    // 恰好等于阈值：还是同一个突发（判定用「大于」，边界落在外面）。
-    expect(run([[40, WHEEL_BURST_GAP_MS]], wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state)).toEqual([
-      { action: "none" },
-    ]);
-    // 超过阈值一个毫秒：新的一次手势，可以再走一屏。
-    expect(
-      run([[40, WHEEL_BURST_GAP_MS + 1]], wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state)
-    ).toEqual([{ action: "step", direction: 1 }]);
-  });
-
-  it("closes the window once its span passes the threshold", () => {
-    // 密集的连续滚动：每 50ms 一个 tick（远远小于间隔界 120ms），所以窗口只能靠跨度合上。
-    // 阈值之内一个都不许消费，跨过阈值的那一个才重新起跳。
-    const intents = run(
-      Array.from({ length: 25 }, (_, i) => [40, i * 50] as [number, number])
-    );
-    // 0…1200ms 还在跨度窗口（2000ms）之内，是同一个突发：只有第一个 tick 算数。
     expect(intents[0]).toEqual({ action: "step", direction: 1 });
-    expect(intents.slice(1, 25)).toEqual(Array.from({ length: 24 }, () => ({ action: "none" })));
-    // 再往后一个 tick（1250ms）就跨过了跨度阈值——读者还在继续滚，那是新的一次意图。
-    expect(run([[40, 1250]], wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state)).toEqual([
+    expect(intents.slice(1)).toEqual(Array.from({ length: 59 }, () => ({ action: "none" })));
+  });
+
+  it("does not spend the burst when the step never happened", () => {
+    // 判定说走、但组件没走成（`animating` 挡住）时只调 `wheelBurstBlocked`，不调
+    // `wheelBurstStepped`：后面的同向 tick 仍然可以走一屏。
+    const judged = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 });
+    const blocked = wheelBurstBlocked(judged.state, 0);
+    expect(wheelBurstStep(blocked, { delta: 40, at: 200 }).intent).toEqual({
+      action: "step",
+      direction: 1,
+    });
+  });
+
+  it("opens a new burst once the silence between ticks passes the threshold", () => {
+    expect(run([[40, WHEEL_BURST_GAP_MS]], openedAt(0))).toEqual([{ action: "none" }]);
+    // 超过阈值一个毫秒：新的一次手势，可以再走一屏。
+    expect(run([[40, WHEEL_BURST_GAP_MS + 1]], openedAt(0))).toEqual([
       { action: "step", direction: 1 },
     ]);
   });
 
+  it("reopens the window once one window's span is over", () => {
+    // 密集的连续滚动：每 50ms 一个 tick（远远小于静默界 1500ms），所以窗口只能靠跨度合上。
+    // 窗口之内一个都不许再消费，跨过跨度的那个才重新起跳。
+    const intents = run(Array.from({ length: 25 }, (_, i) => [40, i * 50] as [number, number]));
+    expect(intents[0]).toEqual({ action: "step", direction: 1 });
+    expect(intents.slice(1, 25)).toEqual(Array.from({ length: 24 }, () => ({ action: "none" })));
+  });
+
+  it("lets a continuous scroll step again after a whole window has passed", () => {
+    // 读者一直在滚（每 50ms 一个 tick，从没静默够 1500ms）：窗口跨过整个跨度之后可以再走一屏，
+    // 也就是连续滚动大约每 3.5s 一屏——比补间本身（1.1s）保守，但不会被聚合吞成「一直不动」。
+    // 73 个 tick = 0…3600ms，刚好覆盖窗口跨越的那一刻。
+    const ticks: Array<[number, number]> = Array.from(
+      { length: 73 },
+      (_, i) => [40, i * 50] as [number, number]
+    );
+    const steps = run(ticks)
+      .map((intent, i) => (intent.action === "step" ? ticks[i][1] : null))
+      .filter((at): at is number => at !== null);
+    expect(steps).toEqual([0, WHEEL_BURST_SPAN_MS]);
+  });
+
   it("lets the reader turn around inside one burst, once per direction", () => {
-    const opened = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 0 }).state;
     const intents = run(
       [
         [-40, 100],
@@ -234,7 +262,7 @@ describe("wheelBurstStep", () => {
         [40, 300],
         [40, 400],
       ],
-      opened
+      openedAt(0)
     );
     // 前两个反向 tick：第一个按新方向走一屏（读者最新的意图），第二个不再消费。
     expect(intents).toEqual([
@@ -246,15 +274,41 @@ describe("wheelBurstStep", () => {
   });
 
   it("leaves the state it was given untouched", () => {
-    const opened = wheelBurstStep(IDLE_WHEEL_BURST, { delta: 40, at: 1000 }).state;
+    const opened = openedAt(1000);
     const snapshot = { ...opened };
     wheelBurstStep(opened, { delta: 40, at: 1100 });
+    wheelBurstStepped(opened, 1);
+    wheelBurstBlocked(opened, 1200);
     expect(opened).toEqual(snapshot);
   });
 
   it("does not read a zero delta as a direction", () => {
     // deltaY 为 0 不是一次滚动；`readingDirection` 把它归成「往上」，与改造前一致。
     expect(wheelBurstStep(IDLE_WHEEL_BURST, { delta: 0, at: 0 }).intent).toEqual({
+      action: "step",
+      direction: -1,
+    });
+  });
+});
+
+/**
+ * 被 `animating` 挡下的 tick 要把窗口重新起算（#510）：补间在负载高时会比名义的 1.1s 长得多、
+ * 甚至长过跨度窗口，不这样做，尾巴上落在补间结束之后的 tick 就会另开一次手势。
+ */
+describe("wheelBurstBlocked", () => {
+  it("restarts the window from the tick the animation swallowed", () => {
+    const opened = openedAt(0);
+    const blocked = wheelBurstBlocked(opened, 2200);
+    expect(blocked).toEqual({ ...opened, startedAt: 2200, lastTickAt: 2200 });
+    // 再来的 tick 仍在这个突发里：跨度从被挡下的那一下重新起算，同方向不再消费。
+    expect(wheelBurstStep(blocked, { delta: 30, at: 2500 }).intent).toEqual({ action: "none" });
+  });
+
+  it("keeps the direction the reader already took open for the other way", () => {
+    const opened = openedAt(0);
+    const blocked = wheelBurstBlocked(opened, 1200);
+    // 补间期间读者反手往上滚：新方向可以走一屏（原来那个方向已经走过一屏）。
+    expect(wheelBurstStep(blocked, { delta: -40, at: 1250 }).intent).toEqual({
       action: "step",
       direction: -1,
     });

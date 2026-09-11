@@ -124,52 +124,51 @@ export function gestureIntent({
 }
 
 /**
- * 滚轮突发里两个 tick 之间的最大间隔（ms）：**静默超过它就是一个新突发**。
+ * 滚轮突发里两个 tick 之间的最大静默（ms）：**超过它就是一个新突发**。
  *
- * 取 1500ms 的依据：这个界要挡住的是「同一次物理滚动在补间结束后又被算一次」，而补间本身
- * 就要 1.1s（`snap-scroll.tsx` 的 `duration: 1.1`，实测 ~1.07s）——一次突发至少要能安静地
- * 跨过整段补间，否则尾巴上任何一个落在补间结束之后的 tick 都会另开一次手势，那正是 #510 要
- * 修的缺陷。1500ms ≈ 补间时长的 1.36 倍，留出实测抖动与慢帧的余量（本机合成的突发内部间隔
- * 实测 min 25.2 / 中位 33.3–41.7 / max 52.6ms，机器忙时更长）。
- *
- * 另一头不能无限大：离散鼠标滚轮刻意滚动、以及读者真的在连续滚时，刻度之间隔的是「一屏动画
- * 走完」的量级。1500ms 落在两种物理现实之间——触控板的惯性尾巴是连续流（间隔远小于它），
- * 刻意一屏一屏滚则要等补间结束再看下一屏（间隔大于它）。
+ * 取 1500ms 的依据：一次突发至少要能安静地跨过整段补间（1.1s），否则尾巴上任何一个落在补间
+ * 结束之后的 tick 都会另开一次手势——那正是 #510 要修的缺陷。本机合成的突发内部 tick 间隔
+ * 实测 min 14–25 / 中位 18–44 / max 44–90ms（机器被抢占时更长），真实触控板按帧节流到
+ * 60Hz（≈16.7ms），都远在这个界之内；而读者有意一屏一屏滚时，刻度之间隔的是「一屏动画走完 +
+ * 眼睛确认」的量级——e2e 用 1.8s 的刻度间隔量这一侧（离散鼠标滚轮的验收用例）。
  */
 export const WHEEL_BURST_GAP_MS = 1500;
 
 /**
- * 一次滚轮突发的最长跨度（ms）：从这次突发的第一个 tick 起算，**跨过它之后 tick 重新开窗**。
+ * 一次滚轮突发里**一个窗口**的最长跨度（ms）。窗口从它收下的第一个 tick 起算；跨度之内这次
+ * 突发最多在一个方向上消费一次判定，跨过它之后 tick 重新开窗（读者还在继续滚，那是继续往下
+ * 读的新意图，重叠的那一下仍会被动画锁挡在外面）。
  *
- * 这个数不能小于整屏补间时长，否则就是留了个缺口：补间 1.1s 一结束、惯性尾巴还在流，下一个
- * tick 就开新窗再跳一屏——那正是 #510 要修的缺陷（实测：一次 60 tick 的衰减序列把页面从第
- * 1 屏推到第 3 屏，第二次起跳由补间结束之后到达的 tick 触发）。
+ * 取 3500ms 的依据有两头。下界是**一次惯性尾巴的长度**：窗口必须盖住「整段补间 + 落在它之后
+ * 的尾巴」，否则补间一结束、尾巴还在流，下一个 tick 就另开一次手势再走一屏——那正是 #510 要修
+ * 的缺陷。补间时长是名义值，帧被节流时它会明显变长（#510 用页面内 rAF 采样量到：空载 980ms、
+ * 被抢占时 2000ms）；而合成事件复现出的一次衰减尾巴实测能到 ~2.5s（60–72 个 tick，delta
+ * 40→5），窗口比这更长才不会在尾巴中途合上。3500ms ≈ 名义补间时长的 3.2 倍、实测尾巴的
+ * 1.4 倍。补间被 `animating` 挡住的那一段另有 `wheelBurstBlocked` 把窗口重新起算，两者一起
+ * 保证突发覆盖到动画真的走完。
  *
- * 取 2000ms 的依据：补间时长实测 ~1.07s（名义 1.1s，见 `snap-scroll.tsx` 的
- * `duration: 1.1`），窗口要**盖住整段补间**，否则尾巴一定能在补间刚结束时补一屏；而按
- * `40 → 5` 的指数衰减算，delta 掉到 Observer 的 `tolerance: 12` 以下大约在第 1.5s，之后
- * 即使还有 tick 也不再触发判定。2000ms 同时是长于一次惯性尾巴（不再留缺口）与短于「读者还在
- * 有意连续滚」之间的分界：跨度更长的连续滚动会在窗口合上后按新的一次手势再走一屏。
- *
- * 代价写在明处：比真实触控板惯性尾巴更长的连续滚动会在窗口合上后再走一屏——合成事件无法复现
- * 真实触控板的动量曲线，这一条留给 #510 的生产实机验收。
+ * 上界是**静默界**：`WHEEL_BURST_GAP_MS` 负责拦住「停下来又滚」（读者有意一屏一屏滚、离散
+ * 鼠标滚轮的刻度都走这条），跨度界只负责拦住「一直滚个不停」的那种——代价写在明处：持续滚过
+ * 3500ms 之后才会再走一屏。合成事件无法复现真实触控板的动量曲线，比这更长的尾巴会不会多走
+ * 一屏留给 #510 的生产实机验收。
  */
-export const WHEEL_BURST_SPAN_MS = 2000;
+export const WHEEL_BURST_SPAN_MS = 3500;
 
 /**
  * 一次滚轮突发的聚合状态。纯数据：调用方（`snap-scroll.tsx`）持有它并把它交回
- * `wheelBurstStep`，判定本身不碰 DOM、不认识 `Observer`。
+ * `wheelBurstStep` / `wheelBurstStepped` / `wheelBurstBlocked`，判定本身不碰 DOM、不认识
+ * `Observer`。
  *
- * `active` 为 false 时其余字段无意义；`wheelBurstStep` 遇到新突发会整份重建，不必手工重置。
+ * `active` 为 false 时其余字段无意义；判定遇到新突发会整份重建，不必手工重置。
  */
 export type WheelBurstState = {
   active: boolean;
-  /** 这次突发的第一个 tick 的时刻（ms，时钟由调用方决定，只需单调）。 */
+  /** 当前窗口收下的第一个 tick 的时刻（ms，时钟由调用方决定，只需单调）。 */
   startedAt: number;
-  /** 上一个被这次突发收下的 tick 的时刻（ms）。 */
+  /** 上一个被这个突发收下的 tick 的时刻（ms）。 */
   lastTickAt: number;
-  /** 这次突发在当前方向上已经消费过判定没有。方向翻转会把它重置。 */
-  consumed: boolean;
+  /** 这个窗口已经在哪个方向上走了一屏；`null` 表示还没走过。 */
+  consumedDirection: 1 | -1 | null;
   /** 这次突发当前的方向；`null` 表示还没定过（第一个 tick 定方向）。 */
   direction: 1 | -1 | null;
 };
@@ -179,7 +178,7 @@ export const IDLE_WHEEL_BURST: WheelBurstState = {
   active: false,
   startedAt: 0,
   lastTickAt: 0,
-  consumed: false,
+  consumedDirection: null,
   direction: null,
 };
 
@@ -187,14 +186,17 @@ export const IDLE_WHEEL_BURST: WheelBurstState = {
  * 滚轮的一次 tick 该怎么判（#510）——**时间窗聚合**版的「一次手势一屏」。
  *
  * 滚轮没有「松手」事件（`Observer` 的 `onStop` 要等 250ms 静默，且速度已被清零），也读不到
- * 峰值速度，所以判定只能按 tick 的时刻来聚合：
+ * 峰值速度，所以判定只能按 tick 的时刻把一次突发聚合起来：
  *
- * - 距上一个 tick 超过 `WHEEL_BURST_GAP_MS`：新的一次手势，开新窗。
- * - 距第一个 tick 超过 `WHEEL_BURST_SPAN_MS`：窗口合上，这一 tick 也开新窗（读者还在滚，
- *   但已经跨过了一整段补间，算他继续往下读的新意图）。
- * - 两者都不是：同一个突发。**只有这个突发的第一个 tick 消费判定**，之后同方向的 tick 一律
+ * - 距上一个 tick 静默超过 `WHEEL_BURST_GAP_MS`，或距当前窗口的第一个 tick 超过
+ *   `WHEEL_BURST_SPAN_MS`：新的一次手势，开新窗，可以走一屏。
+ * - 两者都不是：同一个突发。这个窗口**在每个方向上最多走一屏**，已经走过的方向上的 tick 一律
  *   不消费——这就是「一次突发一屏」，也是修掉「惯性尾巴在补间结束后又跳一屏」的那道门。
- * - 突发中途反向：方向是读者最新的意图，重置消费，让新方向能走一屏（同一方向仍然只走一屏）。
+ * - 突发中途反向：方向是读者最新的意图，可以往新方向走一屏（原来那个方向仍然只走过一次）。
+ *
+ * **判定本身不消费**：判定说「可以走」而实际没走成（`animating` 挡住、首末屏空转）时，这次
+ * 突发不该被花掉——`snap-scroll.tsx` 只在真的起跳之后才调 `wheelBurstStepped` 记账。这也与
+ * #509 触摸端「抬手前什么都不消费」的语义对齐。
  *
  * 返回新的状态，不修改传入的那个：判定是纯的，组件那边的 `animating` 锁、补间、滚动写入
  * 照旧。
@@ -208,20 +210,47 @@ export function wheelBurstStep(
 ): { intent: GestureIntent; state: WheelBurstState } {
   const { delta, at } = tick;
   const direction = readingDirection("wheel", delta);
-  const fresh =
-    !state.active ||
-    at - state.lastTickAt > WHEEL_BURST_GAP_MS ||
-    at - state.startedAt > WHEEL_BURST_SPAN_MS;
+  const inBurst =
+    state.active &&
+    at - state.lastTickAt <= WHEEL_BURST_GAP_MS &&
+    at - state.startedAt < WHEEL_BURST_SPAN_MS;
 
-  if (fresh) {
+  if (!inBurst) {
     return {
       intent: { action: "step", direction },
-      state: { active: true, startedAt: at, lastTickAt: at, consumed: true, direction },
+      state: { active: true, startedAt: at, lastTickAt: at, consumedDirection: null, direction },
     };
   }
 
   const turned = state.direction !== null && direction !== state.direction;
-  const before = { ...state, lastTickAt: at, consumed: turned ? false : state.consumed, direction };
-  if (before.consumed) return { intent: { action: "none" }, state: before };
-  return { intent: { action: "step", direction }, state: { ...before, consumed: true } };
+  // 换方向就是新意图：消费记录跟着清掉，让新方向能走一屏。
+  const consumedDirection = turned ? null : state.consumedDirection;
+  const next: WheelBurstState = { ...state, lastTickAt: at, consumedDirection, direction };
+  if (consumedDirection !== null && consumedDirection === direction) {
+    return { intent: { action: "none" }, state: next };
+  }
+  return { intent: { action: "step", direction }, state: next };
+}
+
+/** 这次判定真的起跳了：把这个方向记进当前窗口，之后的同向 tick 不再消费。 */
+export function wheelBurstStepped(
+  state: WheelBurstState,
+  direction: 1 | -1
+): WheelBurstState {
+  return { ...state, consumedDirection: direction };
+}
+
+/**
+ * 判定说要走一屏、但这一下没走成（`animating` 挡住了）时的收尾：**把这个 tick 记进当前突发**。
+ *
+ * 为什么需要它：补间时长是名义值，帧被节流时它会明显变长——#510 用页面内 rAF 采样量到同一段
+ * `duration: 1.1` 的补间在空载时 980ms、被抢占时 2000ms，已经长过静默界。不把被挡下的 tick
+ * 记进来的话，补间真正结束的那一刻，读者还在流的那段滚动会被当成新的一次手势——缺陷换个位置
+ * 又回来了。记进来之后窗口从这一下重新起算，一次突发就一直覆盖到动画真的走完，而读者仍然要
+ * 等到静默超过 `WHEEL_BURST_GAP_MS` 才算新的一次意图。
+ *
+ * 被挡下的那一下本来就与当前方向同向，方向与消费记录都不动。
+ */
+export function wheelBurstBlocked(state: WheelBurstState, at: number): WheelBurstState {
+  return { ...state, startedAt: at, lastTickAt: at };
 }

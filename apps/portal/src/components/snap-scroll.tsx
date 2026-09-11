@@ -8,7 +8,9 @@ import {
   IDLE_WHEEL_BURST,
   gestureIntent,
   netDisplacementAfter,
+  wheelBurstBlocked,
   wheelBurstStep,
+  wheelBurstStepped,
 } from "@/lib/navigation/gesture-intent";
 
 /**
@@ -86,12 +88,12 @@ export default function SnapScroll() {
           return idx;
         };
 
-        /** 起跳一屏；动画期间或首末屏边界空转时什么都不做。 */
-        const go = (dir: 1 | -1): void => {
-          if (animating) return;
+        /** 起跳一屏；返回这次到底有没有走成（动画期间或首末屏边界空转时什么都不做）。 */
+        const go = (dir: 1 | -1): boolean => {
+          if (animating) return false;
           const from = currentIndex();
           const next = Math.min(sections.length - 1, Math.max(0, from + dir));
-          if (next === from) return;
+          if (next === from) return false;
           animating = true;
 
           const target = sections[next];
@@ -122,6 +124,7 @@ export default function SnapScroll() {
               clearProps: "transform",
             }
           );
+          return true;
         };
 
         // 这次手势的净位移（输入自身的符号）与上一次取样的指针位置。
@@ -192,15 +195,28 @@ export default function SnapScroll() {
           },
           onChangeY: (self) => {
             if (self.event.type === "wheel") {
-              // 一次突发一屏（#510）：只有这次突发的第一个 tick 起跳，之后同方向、同窗口内的
-              // tick（触控板惯性尾巴）不消费判定。方向语义不变——仍然是
-              // `readingDirection("wheel", deltaY)`，正数向下。
-              const judged = wheelBurstStep(wheelBurst, {
-                delta: self.deltaY,
-                at: performance.now(),
-              });
+              // 一次突发一屏（#510）：同一次突发的同方向 tick（触控板惯性尾巴）不消费判定。
+              // 方向语义不变——仍然是 `readingDirection("wheel", deltaY)`，正数向下。
+              //
+              // `self.deltaY` 不是一个原始 tick：Observer 把一帧内的刻度累加进桶，凑够
+              // `tolerance` 才回调一次（`Observer.js:190-210`、`:225-229`），所以这里拿到的是
+              // 「这一次回调」的桶值，时刻也只能是回调发生的时刻。
+              const at = performance.now();
+              const judged = wheelBurstStep(wheelBurst, { delta: self.deltaY, at });
               wheelBurst = judged.state;
-              if (judged.intent.action === "step") go(judged.intent.direction);
+              if (judged.intent.action !== "step") return;
+              if (animating) {
+                // 补间还占着：这一下没走成，不算花掉这次突发（`go()` 自己会因为 `animating`
+                // 直接返回）。补间在负载高时会比名义的 1.1s 长得多，把这一下记进窗口，读者
+                // 流到补间结束之后的那段滚动才不会被当成新的一次手势。
+                wheelBurst = wheelBurstBlocked(wheelBurst, at);
+                return;
+              }
+              // 真的起跳了才记账：没走成（上面那条，或首末屏空转）不该把这次突发花掉——
+              // 与 #509 触摸端「抬手前什么都不消费」的语义一致。
+              if (go(judged.intent.direction)) {
+                wheelBurst = wheelBurstStepped(wheelBurst, judged.intent.direction);
+              }
               return;
             }
             sampleTouchDisplacement(self);
