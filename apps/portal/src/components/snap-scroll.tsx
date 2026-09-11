@@ -200,20 +200,22 @@ export default function SnapScroll() {
               //
               // `self.deltaY` 不是一个原始 tick：Observer 把一帧内的刻度累加进桶，凑够
               // `tolerance` 才回调一次（`Observer.js:190-210`、`:225-229`），所以这里拿到的是
-              // 「这一次回调」的桶值，时刻也只能是回调发生的时刻。
+              // 「这一次回调」的桶值；时刻取回调发生的这一刻（事件自己的 `timeStamp` 也在同一
+              // 时基上，差不超过一帧）。
               const at = performance.now();
               const judged = wheelBurstStep(wheelBurst, { delta: self.deltaY, at });
               wheelBurst = judged.state;
-              if (judged.intent.action !== "step") return;
               if (animating) {
-                // 补间还占着：这一下没走成，不算花掉这次突发（`go()` 自己会因为 `animating`
-                // 直接返回）。补间在负载高时会比名义的 1.1s 长得多，把这一下记进窗口，读者
-                // 流到补间结束之后的那段滚动才不会被当成新的一次手势。
+                // 补间还占着，这一下走不成：把窗口从这一刻重新起算（`go()` 自己也会因为
+                // `animating` 直接返回）。补间在负载高时会比名义的 1.1s 长得多，不这样做，
+                // 窗口会从动画开始那刻起算，读者还在流的那段滚动就会被当成新的一次手势。
+                // 判定本身不记账，所以「动画期间滚了一下、落定后应该走一屏」仍然成立。
                 wheelBurst = wheelBurstBlocked(wheelBurst, at);
                 return;
               }
-              // 真的起跳了才记账：没走成（上面那条，或首末屏空转）不该把这次突发花掉——
-              // 与 #509 触摸端「抬手前什么都不消费」的语义一致。
+              if (judged.intent.action !== "step") return;
+              // 真的起跳了才记账：没走成（首末屏空转）不该把这次突发花掉——与 #509 触摸端
+              // 「抬手前什么都不消费」的语义一致。
               if (go(judged.intent.direction)) {
                 wheelBurst = wheelBurstStepped(wheelBurst, judged.intent.direction);
               }

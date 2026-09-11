@@ -126,31 +126,35 @@ export function gestureIntent({
 /**
  * 滚轮突发里两个 tick 之间的最大静默（ms）：**超过它就是一个新突发**。
  *
- * 取 1500ms 的依据：一次突发至少要能安静地跨过整段补间（1.1s），否则尾巴上任何一个落在补间
- * 结束之后的 tick 都会另开一次手势——那正是 #510 要修的缺陷。本机合成的突发内部 tick 间隔
- * 实测 min 14–25 / 中位 18–44 / max 44–90ms（机器被抢占时更长），真实触控板按帧节流到
- * 60Hz（≈16.7ms），都远在这个界之内；而读者有意一屏一屏滚时，刻度之间隔的是「一屏动画走完 +
- * 眼睛确认」的量级——e2e 用 1.8s 的刻度间隔量这一侧（离散鼠标滚轮的验收用例）。
+ * 这个界要把两种物理现实分开，两头都有实测/名义值撑着：
+ *
+ * - **下界：一次惯性尾巴内部的 tick 间隔。** 本机合成的突发实测 min 12–25 / 中位 17–44 /
+ *   max 44–90ms（`#510` 的测量数据；真实触控板由 UA 按帧节流到 60Hz ≈ 16.7ms，只会更密）。
+ *   尾巴在流的时候间隔远小于这个界，所以整段尾巴留在同一个突发里——补间结束时那一下也一样。
+ *   取 600ms ≈ 实测最大间隔的 6.7 倍，容得下机器被抢占时的成帧抖动。
+ * - **上界：读者有意一屏一屏滚的节奏。** 补间名义 1.1s，读者要等它走完、看清落点再滚下一格，
+ *   加上反应时间就是 ~1.2s 量级；界必须小于它，否则「等动画走完再滚一下」会被吞掉（那样滚轮
+ *   就变迟滞了——#507 用户故事 9 明确不许）。600ms 远小于这个节奏，所以每个刻度都算新的一次
+ *   手势。
+ *
+ * 于是两个界之间有一段很宽的安全区（90ms ≪ 600ms ≪ 1200ms），两种情形都落在正确的一侧。
  */
-export const WHEEL_BURST_GAP_MS = 1500;
+export const WHEEL_BURST_GAP_MS = 600;
 
 /**
  * 一次滚轮突发里**一个窗口**的最长跨度（ms）。窗口从它收下的第一个 tick 起算；跨度之内这次
- * 突发最多在一个方向上消费一次判定，跨过它之后 tick 重新开窗（读者还在继续滚，那是继续往下
- * 读的新意图，重叠的那一下仍会被动画锁挡在外面）。
+ * 突发在每个方向上最多走一屏，跨过它之后 tick 重新开窗（读者还在继续滚，那是继续往下读的新
+ * 意图，重叠的那一下仍会被动画锁挡在外面）。
  *
- * 取 3500ms 的依据有两头。下界是**一次惯性尾巴的长度**：窗口必须盖住「整段补间 + 落在它之后
- * 的尾巴」，否则补间一结束、尾巴还在流，下一个 tick 就另开一次手势再走一屏——那正是 #510 要修
- * 的缺陷。补间时长是名义值，帧被节流时它会明显变长（#510 用页面内 rAF 采样量到：空载 980ms、
- * 被抢占时 2000ms）；而合成事件复现出的一次衰减尾巴实测能到 ~2.5s（60–72 个 tick，delta
- * 40→5），窗口比这更长才不会在尾巴中途合上。3500ms ≈ 名义补间时长的 3.2 倍、实测尾巴的
- * 1.4 倍。补间被 `animating` 挡住的那一段另有 `wheelBurstBlocked` 把窗口重新起算，两者一起
- * 保证突发覆盖到动画真的走完。
+ * 取 3500ms 的依据：窗口要盖住「整段补间 + 落在它之后的惯性尾巴」。补间名义 1.1s
+ * （`snap-scroll.tsx` 的 `duration: 1.1`）；页面内 rAF 采样到「视野停止移动」为止的实测值是
+ * 空载 ~980ms（power2.inOut 尾段位移不足一像素，所以早于名义时长看起来就停了）、帧被节流时
+ * ~2000ms；而合成的衰减尾巴实测能到 ~2.5s。3500ms 覆盖了最坏观测值再加一段尾巴。
  *
- * 上界是**静默界**：`WHEEL_BURST_GAP_MS` 负责拦住「停下来又滚」（读者有意一屏一屏滚、离散
- * 鼠标滚轮的刻度都走这条），跨度界只负责拦住「一直滚个不停」的那种——代价写在明处：持续滚过
- * 3500ms 之后才会再走一屏。合成事件无法复现真实触控板的动量曲线，比这更长的尾巴会不会多走
- * 一屏留给 #510 的生产实机验收。
+ * 同时它是「同一次突发」与「读者又滚了一次」的最后一道界，所以不能无穷大：静默界
+ * `WHEEL_BURST_GAP_MS` 拦住「停下来又滚」，跨度界只拦住「一直滚个不停」的那种——代价写在
+ * 明处：持续滚过 3500ms 之后才会再走一屏。合成事件无法复现真实触控板的动量曲线，比这更长的
+ * 尾巴会不会多走一屏留给 #510 的生产实机验收。
  */
 export const WHEEL_BURST_SPAN_MS = 3500;
 
@@ -167,8 +171,12 @@ export type WheelBurstState = {
   startedAt: number;
   /** 上一个被这个突发收下的 tick 的时刻（ms）。 */
   lastTickAt: number;
-  /** 这个窗口已经在哪个方向上走了一屏；`null` 表示还没走过。 */
-  consumedDirection: 1 | -1 | null;
+  /**
+   * 这个窗口已经走过一屏的方向，**一个方向最多记一次，中途换向也不清**——这样「同一次突发在
+   * 同一个方向上永远只走一屏」才成立（不换向的话，来回翻转会变成同一个方向走两屏）。窗口里
+   * 最多两个方向，所以一次突发最多走两屏：一上一下。
+   */
+  consumedDirections: ReadonlyArray<1 | -1>;
   /** 这次突发当前的方向；`null` 表示还没定过（第一个 tick 定方向）。 */
   direction: 1 | -1 | null;
 };
@@ -178,7 +186,7 @@ export const IDLE_WHEEL_BURST: WheelBurstState = {
   active: false,
   startedAt: 0,
   lastTickAt: 0,
-  consumedDirection: null,
+  consumedDirections: [],
   direction: null,
 };
 
@@ -188,11 +196,12 @@ export const IDLE_WHEEL_BURST: WheelBurstState = {
  * 滚轮没有「松手」事件（`Observer` 的 `onStop` 要等 250ms 静默，且速度已被清零），也读不到
  * 峰值速度，所以判定只能按 tick 的时刻把一次突发聚合起来：
  *
- * - 距上一个 tick 静默超过 `WHEEL_BURST_GAP_MS`，或距当前窗口的第一个 tick 超过
- *   `WHEEL_BURST_SPAN_MS`：新的一次手势，开新窗，可以走一屏。
+ * - 距上一个 tick 静默**达到或超过** `WHEEL_BURST_GAP_MS`，或距当前窗口的第一个 tick 达到或
+ *   超过 `WHEEL_BURST_SPAN_MS`：新的一次手势，开新窗，可以走一屏。
  * - 两者都不是：同一个突发。这个窗口**在每个方向上最多走一屏**，已经走过的方向上的 tick 一律
  *   不消费——这就是「一次突发一屏」，也是修掉「惯性尾巴在补间结束后又跳一屏」的那道门。
- * - 突发中途反向：方向是读者最新的意图，可以往新方向走一屏（原来那个方向仍然只走过一次）。
+ * - 突发中途反向：方向是读者最新的意图，可以往新方向走一屏；**原来那个方向仍然记着**，所以
+ *   来回翻转也不会让同一个方向再走一屏。
  *
  * **判定本身不消费**：判定说「可以走」而实际没走成（`animating` 挡住、首末屏空转）时，这次
  * 突发不该被花掉——`snap-scroll.tsx` 只在真的起跳之后才调 `wheelBurstStepped` 记账。这也与
@@ -212,44 +221,45 @@ export function wheelBurstStep(
   const direction = readingDirection("wheel", delta);
   const inBurst =
     state.active &&
-    at - state.lastTickAt <= WHEEL_BURST_GAP_MS &&
+    at - state.lastTickAt < WHEEL_BURST_GAP_MS &&
     at - state.startedAt < WHEEL_BURST_SPAN_MS;
 
   if (!inBurst) {
     return {
       intent: { action: "step", direction },
-      state: { active: true, startedAt: at, lastTickAt: at, consumedDirection: null, direction },
+      state: { active: true, startedAt: at, lastTickAt: at, consumedDirections: [], direction },
     };
   }
 
-  const turned = state.direction !== null && direction !== state.direction;
-  // 换方向就是新意图：消费记录跟着清掉，让新方向能走一屏。
-  const consumedDirection = turned ? null : state.consumedDirection;
-  const next: WheelBurstState = { ...state, lastTickAt: at, consumedDirection, direction };
-  if (consumedDirection !== null && consumedDirection === direction) {
+  const next: WheelBurstState = { ...state, lastTickAt: at, direction };
+  if (state.consumedDirections.includes(direction)) {
     return { intent: { action: "none" }, state: next };
   }
   return { intent: { action: "step", direction }, state: next };
 }
 
-/** 这次判定真的起跳了：把这个方向记进当前窗口，之后的同向 tick 不再消费。 */
+/** 这次判定真的起跳了：把这个方向记进当前窗口，之后的同向 tick 不再消费（换向也不清）。 */
 export function wheelBurstStepped(
   state: WheelBurstState,
   direction: 1 | -1
 ): WheelBurstState {
-  return { ...state, consumedDirection: direction };
+  if (state.consumedDirections.includes(direction)) return state;
+  return { ...state, consumedDirections: [...state.consumedDirections, direction] };
 }
 
 /**
- * 判定说要走一屏、但这一下没走成（`animating` 挡住了）时的收尾：**把这个 tick 记进当前突发**。
+ * 一次 tick 被 `animating` 吞掉时的收尾：**把这个 tick 记进当前突发，把窗口从它重新起算**。
  *
- * 为什么需要它：补间时长是名义值，帧被节流时它会明显变长——#510 用页面内 rAF 采样量到同一段
- * `duration: 1.1` 的补间在空载时 980ms、被抢占时 2000ms，已经长过静默界。不把被挡下的 tick
- * 记进来的话，补间真正结束的那一刻，读者还在流的那段滚动会被当成新的一次手势——缺陷换个位置
- * 又回来了。记进来之后窗口从这一下重新起算，一次突发就一直覆盖到动画真的走完，而读者仍然要
- * 等到静默超过 `WHEEL_BURST_GAP_MS` 才算新的一次意图。
+ * 为什么需要它：补间时长是名义值，帧被节流时会明显变长——#510 用页面内 rAF 采样量到同一段
+ * `duration: 1.1` 的补间在空载时约 980ms 就看起来停住了、被抢占时约 2000ms。动画还在跑的时候
+ * 读者看不到结果，这段滚动属于同一次意图：不把它记进来的话，窗口会从**动画开始那一刻**起算
+ * 3500ms，动画一旦拖长，读者还在流的那段滚动就会被当成新的一次手势——缺陷换个位置又回来。
+ * 记进来之后窗口一路覆盖到动画真的走完，而读者仍然要等到静默超过 `WHEEL_BURST_GAP_MS` 才算
+ * 新的一次意图。
  *
- * 被挡下的那一下本来就与当前方向同向，方向与消费记录都不动。
+ * 被吞掉的 tick 可能是同向的，也可能是读者在动画期间反手往回滚的那一下（那时判定会给新方向
+ * 一屏）；两种都只是把窗口顺延，**不记账**（记账只在 `wheelBurstStepped`），所以那次没走成的
+ * 判定没有被花掉。
  */
 export function wheelBurstBlocked(state: WheelBurstState, at: number): WheelBurstState {
   return { ...state, startedAt: at, lastTickAt: at };
