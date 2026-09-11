@@ -313,6 +313,9 @@ test.describe("三种输入的方向语义对照", () => {
   test.use({ viewport: { width: 1024, height: 800 }, hasTouch: true });
 
   test("同一物理意图在触摸、键盘与滚轮上都不反向", async ({ page }) => {
+    // 这一条要走四次完整切屏（触摸、键盘、滚轮下、滚轮上），每次都是 1.1s 缓动加落定采样，
+    // 默认 45s 预算在负载高的机器上不够稳；给它三倍预算，断言不放宽。
+    test.slow();
     await openHomepage(page);
     await waitForSnapTakeover(page);
     await expect.poll(() => activeSection(page)).toBe(0);
