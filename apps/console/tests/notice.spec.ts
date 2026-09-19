@@ -13,6 +13,8 @@ test.beforeEach(async ({ page }) => {
   resolveState = "approved";
   lastReviewBody = {};
   distributionCalls = 0;
+  await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
+  await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
   await page.route("**/api/v1/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_notice_session" }) }));
   await page.route("**/api/v1/notices", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: snapshot(), request_id: "req_notice_snapshot" }) }));
   await page.route("**/api/v1/notices/sources", async (route) => {
@@ -126,3 +128,74 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByText("当前没有待处理的通知版本。")).toHaveCount(0);
   });
 }
+
+test("Notice distribution reload reconciles the original audience, revision, and key", async ({ page }) => {
+  state = "approved";
+  let originalKey = "";
+  let originalBody: unknown;
+  const resolvedKeys: string[] = [];
+  await page.route("**/api/v1/notices/versions/*/distributions", async (route) => {
+    distributionCalls += 1;
+    originalKey = route.request().headers()["idempotency-key"] ?? "";
+    originalBody = await route.request().postDataJSON();
+    await route.abort("connectionreset");
+  });
+  await page.route("**/api/v1/notices/operations/distribution", (route) => {
+    resolvedKeys.push(route.request().headers()["idempotency-key"] ?? "");
+    const succeeded = resolvedKeys.length > 1;
+    if (succeeded) state = "distributed";
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { status: succeeded ? "succeeded" : "unknown", resource_id: snapshot().items[0].id, ...(succeeded ? { resource_version: 3 } : {}) }, request_id: "req_notice_distribution_reload" }) });
+  });
+  await page.goto("/notices");
+  await page.getByLabel("渠道").selectOption("email");
+  await page.getByLabel("受众").selectOption("college");
+  await page.getByLabel("受众值").fill("software-college");
+  await page.getByRole("button", { name: "创建分发任务" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "确认分发" }).click();
+  await expect(page.getByRole("status")).toContainText("结果仍未确认");
+  await expect(page.getByRole("button", { name: "创建分发任务" })).toBeDisabled();
+  const stored = await page.evaluate(() => sessionStorage.getItem("henukit.console.pending-notice-operation.v1"));
+  expect(stored).toContain(originalKey);
+  expect(stored).toContain("software-college");
+  expect(originalBody).toEqual({ channel: "email", audience: { kind: "college", value: "software-college" }, expected_revision: 2 });
+  expect(JSON.parse(stored ?? "{}").distribution).toEqual(originalBody);
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText("之前的分发请求已确认");
+  await expect(page.getByText("已分发 · 版本 v3", { exact: true })).toBeVisible();
+  expect(distributionCalls).toBe(1);
+  expect(resolvedKeys).toEqual([originalKey, originalKey]);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-notice-operation.v1"))).toBeNull();
+});
+
+test("Notice discards pending distribution state owned by another operator", async ({ page }) => {
+  state = "approved";
+  let resolveCalls = 0;
+  await page.addInitScript(() => sessionStorage.setItem("henukit.console.pending-notice-operation.v1", JSON.stringify({ version: 1, operator_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", operation: "distribution", idempotency_key: "idem_notice_distribution_11111111-1111-4111-8111-111111111111", resource_id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", target_label: "其他运营员的通知", distribution: { channel: "email", audience: { kind: "college", value: "software-college" }, expected_revision: 2 } })));
+  await page.route("**/api/v1/notices/operations/distribution", (route) => { resolveCalls += 1; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { status: "unknown" }, request_id: "req_notice_foreign_pending" }) }); });
+  await page.goto("/notices");
+  await expect(page.getByRole("button", { name: "创建分发任务" })).toBeEnabled();
+  expect(resolveCalls).toBe(0);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-notice-operation.v1"))).toBeNull();
+});
+
+test("Notice clears a known denied write and allows a corrected retry", async ({ page }) => {
+  await page.route("**/api/v1/notices/versions/*/reviews", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { code: "PERMISSION_DENIED", message: "denied" }, request_id: "req_notice_denied" }) }));
+  await page.goto("/notices");
+  await page.getByRole("button", { name: "批准" }).click();
+  await expect(page.getByRole("status")).toContainText("操作被拒绝");
+  await expect(page.getByRole("button", { name: "批准" })).toBeEnabled();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-notice-operation.v1"))).toBeNull();
+});
+
+test("Notice does not write when pending-command storage is unavailable", async ({ page }) => {
+  let writes = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(Storage.prototype, "setItem", { configurable: true, value: () => { throw new DOMException("blocked", "SecurityError"); } });
+  });
+  await page.route("**/api/v1/notices/versions/*/reviews", (route) => { writes += 1; return route.abort(); });
+  await page.goto("/notices");
+  await page.getByRole("button", { name: "批准" }).click();
+  await expect(page.getByRole("status")).toContainText("操作未提交");
+  expect(writes).toBe(0);
+  await expect(page.getByRole("button", { name: "批准" })).toBeEnabled();
+});

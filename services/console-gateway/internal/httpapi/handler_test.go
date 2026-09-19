@@ -41,6 +41,7 @@ type fakePlatform struct {
 	operationToken          string
 	operationKey            string
 	libraryPermissions      []string
+	noticePermissions       []string
 	foodPermissions         []string
 	accountPermissions      []string
 	accountErrors           map[string]error
@@ -265,10 +266,11 @@ func (fake *fakePlatform) UserIdentities(_ context.Context, token, permission st
 	return payload, nil
 }
 
-func (fake *fakePlatform) CheckNotice(_ context.Context, token, _ string) error {
+func (fake *fakePlatform) CheckNotice(_ context.Context, token, permission string) error {
 	if token != fake.exchange.ExchangeToken {
 		return platformcore.ErrUnauthorized
 	}
+	fake.noticePermissions = append(fake.noticePermissions, permission)
 	return fake.checkErr
 }
 
@@ -496,6 +498,28 @@ func TestNoticeForwardingUsesServerActorAndPreservesIdempotency(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || owner.key != "idem_notice_review_test" {
 		t.Fatalf("Notice review status/key=%d/%s", response.StatusCode, owner.key)
+	}
+	operation, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/notices/operations/review", nil)
+	operation.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	operation.Header.Set("Idempotency-Key", "idem_notice_review_test")
+	response, err = server.Client().Do(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || platform.noticePermissions[len(platform.noticePermissions)-1] != "notice.review" {
+		t.Fatalf("Notice operation status/permission=%d/%v", response.StatusCode, platform.noticePermissions)
+	}
+	invalid, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/notices/operations/not-real", nil)
+	invalid.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	invalid.Header.Set("Idempotency-Key", "idem_notice_invalid_test")
+	response, err = server.Client().Do(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid Notice operation status=%d, want 400", response.StatusCode)
 	}
 }
 

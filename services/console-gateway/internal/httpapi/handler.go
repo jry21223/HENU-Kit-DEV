@@ -952,7 +952,13 @@ func (h *Handler) distributeNoticeVersion(writer http.ResponseWriter, request *h
 }
 
 func (h *Handler) getNoticeOperation(writer http.ResponseWriter, request *http.Request) {
-	value, ok := h.authorizeNotice(writer, request, "notice.read")
+	operation := chi.URLParam(request, "operation")
+	permission, ok := noticeOperationPermission(operation)
+	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作类型无效，请刷新后重试")
+		return
+	}
+	value, ok := h.authorizeNotice(writer, request, permission)
 	if !ok {
 		return
 	}
@@ -961,8 +967,21 @@ func (h *Handler) getNoticeOperation(writer http.ResponseWriter, request *http.R
 		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
 		return
 	}
-	data, err := h.notice.Operation(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, chi.URLParam(request, "operation"), key)
+	data, err := h.notice.Operation(noticeapi.WithRequestID(request.Context(), requestID(request)), value.UserID, operation, key)
 	h.writeNoticeResult(writer, request, data, err)
+}
+
+func noticeOperationPermission(operation string) (string, bool) {
+	switch operation {
+	case "source_create", "version_create":
+		return "notice.manage", true
+	case "review":
+		return "notice.review", true
+	case "distribution":
+		return "notice.distribute", true
+	default:
+		return "", false
+	}
 }
 
 func (h *Handler) authorizeNotice(writer http.ResponseWriter, request *http.Request, permission string) (session.Value, bool) {

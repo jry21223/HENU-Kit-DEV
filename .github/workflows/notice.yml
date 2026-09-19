@@ -66,12 +66,34 @@ jobs:
           psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -c "CREATE TABLE baseline_probe (id integer PRIMARY KEY); INSERT INTO baseline_probe VALUES (1)"
           psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.up.sql
           psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.up.sql
-          test "$(psql -h localhost -U notice -d notice_test -Atc "SELECT to_regclass('public.notice_versions') IS NOT NULL AND to_regclass('public.notice_distributions') IS NOT NULL AND (SELECT count(*) FROM baseline_probe)=1")" = t
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -c "INSERT INTO notice_operations (client_id,method,normalized_route,idempotency_key,operation,request_hash,response) VALUES ('legacy','POST','/legacy','legacy-key','review',repeat('a',64),'{}')"
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000002_notice_operation_actor.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000003_notice_operation_actor_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000004_notice_operation_legacy_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000005_notice_operation_legacy_key.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000002_notice_operation_actor.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000003_notice_operation_actor_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000004_notice_operation_legacy_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000005_notice_operation_legacy_key.up.sql
+          test "$(psql -h localhost -U notice -d notice_test -Atc "SELECT to_regclass('public.notice_versions') IS NOT NULL AND to_regclass('public.notice_distributions') IS NOT NULL AND (SELECT count(*)=2 FROM pg_index WHERE indexrelid IN ('public.notice_operations_actor_key_idx'::regclass,'public.notice_operations_legacy_key_idx'::regclass) AND indisunique AND indisvalid AND indisready) AND (SELECT actor_user_id IS NULL FROM notice_operations WHERE client_id='legacy') AND (SELECT count(*) FROM baseline_probe)=1")" = t
           psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -c "INSERT INTO notice_sources (id,code,name,canonical_url,created_by) VALUES ('00000000-0000-4000-8000-000000000001','recovery-probe','Recovery probe','https://example.edu/recovery','00000000-0000-4000-8000-000000000002')"
           pg_dump -h localhost -U notice -d notice_test --format=custom --file=/tmp/notice-recovery.dump
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000005_notice_operation_legacy_key.down.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000004_notice_operation_legacy_index.down.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000003_notice_operation_actor_index.down.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000002_notice_operation_actor.down.sql
+          test "$(psql -h localhost -U notice -d notice_test -Atc "SELECT NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notice_operations' AND column_name='actor_user_id') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='notice_operations'::regclass AND conname='notice_operations_pkey')")" = t
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000002_notice_operation_actor.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000003_notice_operation_actor_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000004_notice_operation_legacy_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000005_notice_operation_legacy_key.up.sql
           psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.down.sql
           test "$(psql -h localhost -U notice -d notice_test -Atc "SELECT to_regclass('public.notice_versions') IS NULL")" = t
           psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000001_notice.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000002_notice_operation_actor.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000003_notice_operation_actor_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000004_notice_operation_legacy_index.up.sql
+          psql -h localhost -U notice -d notice_test -v ON_ERROR_STOP=1 -f services/notice/db/migrations/000005_notice_operation_legacy_key.up.sql
           createdb -h localhost -U notice notice_recovery
           pg_restore -h localhost -U notice -d notice_recovery --no-owner /tmp/notice-recovery.dump
           test "$(psql -h localhost -U notice -d notice_recovery -Atc "SELECT count(*) FROM notice_sources WHERE code='recovery-probe'")" = 1
@@ -110,6 +132,10 @@ jobs:
           set -euo pipefail
           createdb -h localhost -U notice notice_gateway_integration
           psql -h localhost -U notice -d notice_gateway_integration -v ON_ERROR_STOP=1 -f ../../../notice/db/migrations/000001_notice.up.sql
+          psql -h localhost -U notice -d notice_gateway_integration -v ON_ERROR_STOP=1 -f ../../../notice/db/migrations/000002_notice_operation_actor.up.sql
+          psql -h localhost -U notice -d notice_gateway_integration -v ON_ERROR_STOP=1 -f ../../../notice/db/migrations/000003_notice_operation_actor_index.up.sql
+          psql -h localhost -U notice -d notice_gateway_integration -v ON_ERROR_STOP=1 -f ../../../notice/db/migrations/000004_notice_operation_legacy_index.up.sql
+          psql -h localhost -U notice -d notice_gateway_integration -v ON_ERROR_STOP=1 -f ../../../notice/db/migrations/000005_notice_operation_legacy_key.up.sql
           go test -race -count=1 ./...
       - name: Build image
         run: |

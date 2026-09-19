@@ -68,7 +68,24 @@ func (c *Client) Distribute(ctx context.Context, actorID, versionID, key string,
 	return c.request(ctx, http.MethodPost, strings.ReplaceAll(DistributionPath, "{version_id}", versionID), actorID, "notice.distribute", key, body)
 }
 func (c *Client) Operation(ctx context.Context, actorID, operation, key string) (json.RawMessage, error) {
-	return c.request(ctx, http.MethodGet, strings.ReplaceAll(OperationPath, "{operation}", operation), actorID, "notice.read", key, nil)
+	permission, ok := operationPermission(operation)
+	if !ok {
+		return nil, ErrInvalid
+	}
+	return c.request(ctx, http.MethodGet, strings.ReplaceAll(OperationPath, "{operation}", operation), actorID, permission, key, nil)
+}
+
+func operationPermission(operation string) (string, bool) {
+	switch operation {
+	case "source_create", "version_create":
+		return "notice.manage", true
+	case "review":
+		return "notice.review", true
+	case "distribution":
+		return "notice.distribute", true
+	default:
+		return "", false
+	}
 }
 
 func (c *Client) request(ctx context.Context, method, path, actorID, permission, key string, body []byte) (json.RawMessage, error) {

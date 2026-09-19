@@ -79,6 +79,19 @@ func TestGatewayClientReadsReviewsAndDistributesThroughRealNoticeOwner(t *testin
 	if stringValue(t, review, "state") != "approved" || numberValue(t, review, "revision") != 2 {
 		t.Fatalf("review result = %s", review)
 	}
+	resolvedPayload, err := client.Operation(requestContext, actorID, "review", "idem_notice_gateway_review_"+runID)
+	resolved := call(t, resolvedPayload, err)
+	if stringValue(t, resolved, "state") != "approved" {
+		t.Fatalf("review operation result = %s", resolved)
+	}
+	otherActorPayload, err := client.Operation(requestContext, uuid.NewString(), "review", "idem_notice_gateway_review_"+runID)
+	otherActor := call(t, otherActorPayload, err)
+	if stringValue(t, otherActor, "status") != "unknown" {
+		t.Fatalf("other actor discovered review operation = %s", otherActor)
+	}
+	if _, err := client.Operation(requestContext, actorID, "not-real", "idem_notice_gateway_review_"+runID); !errors.Is(err, noticeclient.ErrInvalid) {
+		t.Fatalf("invalid operation error = %v, want invalid", err)
+	}
 	if _, err := client.Review(requestContext, actorID, versionID, "idem_notice_gateway_stale_review_"+runID, []byte(`{"decision":"rejected","note":"过期审核","expected_revision":1}`)); !errors.Is(err, noticeclient.ErrConflict) {
 		t.Fatalf("stale review error = %v, want Notice conflict", err)
 	}
