@@ -10,6 +10,7 @@ const (
 	SessionRoute                        = "/api/v1/session"
 	OverviewRoute                       = "/api/v1/overview"
 	OperationsRoute                     = "/api/v1/operations"
+	AccountSearchRoute                  = "/api/v1/operations/accounts/search"
 	RevokeSessionRoute                  = "/api/v1/operations/sessions/{session_id}/revocations"
 	UpdateAccessRoute                   = "/api/v1/operations/users/{user_id}/access-updates"
 	OperationStatusRoute                = "/api/v1/operations/results/{operation}"
@@ -39,7 +40,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "f2ee851d04c317355fc0a9f2cecb535552031ae936fbb3d881d8e9cec00eceba"
+	SourceSHA256                        = "a15088c1e5efdd7ca8693e4f6d8893e33c8b2e481f52c24d7788fb2d56665d49"
 )
 
 type ConsoleAccessContext struct {
@@ -574,6 +575,19 @@ type PlatformOperationsAccount struct {
 	Status                string                     `json:"status"`
 }
 
+type PlatformOperationsAccountPage struct {
+	Accounts   []PlatformOperationsAccount `json:"accounts"`
+	NextCursor any                         `json:"next_cursor"`
+	NextPage   any                         `json:"next_page"`
+}
+
+type PlatformOperationsAccountSearchRequest struct {
+	Cursor     *string   `json:"cursor,omitempty"`
+	Page       int64     `json:"page"`
+	Query      string    `json:"query"`
+	SnapshotAt time.Time `json:"snapshot_at"`
+}
+
 type PlatformOperationsAuditEvent struct {
 	ActorUserID        string    `json:"actor_user_id"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -619,6 +633,19 @@ type PlatformOperationsMailStatus struct {
 	RetryDue    int64 `json:"retry_due"`
 }
 
+type PlatformOperationsPageState struct {
+	NextCursor any   `json:"next_cursor"`
+	NextPage   any   `json:"next_page"`
+	Page       int64 `json:"page"`
+}
+
+type PlatformOperationsPagination struct {
+	Accounts   PlatformOperationsPageState `json:"accounts"`
+	Audit      PlatformOperationsPageState `json:"audit"`
+	InboxItems PlatformOperationsPageState `json:"inbox_items"`
+	Sessions   PlatformOperationsPageState `json:"sessions"`
+}
+
 type PlatformOperationsSession struct {
 	ClientID    *string    `json:"client_id,omitempty"`
 	DisplayName *string    `json:"display_name,omitempty"`
@@ -639,6 +666,7 @@ type PlatformOperationsSnapshot struct {
 	GeneratedAt   time.Time                      `json:"generated_at"`
 	InboxItems    []PlatformOperationsInboxItem  `json:"inbox_items"`
 	Mail          PlatformOperationsMailStatus   `json:"mail"`
+	Pagination    PlatformOperationsPagination   `json:"pagination"`
 	Sessions      []PlatformOperationsSession    `json:"sessions"`
 }
 

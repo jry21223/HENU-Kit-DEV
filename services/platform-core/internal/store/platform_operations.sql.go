@@ -290,9 +290,7 @@ SELECT grants.user_id, roles.code AS role_code, grants.scope_kind,
 FROM user_role_grants AS grants
 JOIN authorization_roles AS roles ON roles.id = grants.role_id
 WHERE grants.status = 'active'
-  AND grants.user_id IN (
-      SELECT id FROM users ORDER BY created_at DESC, id LIMIT 20
-  )
+  AND grants.user_id = ANY($1::uuid[])
 ORDER BY grants.user_id, roles.code, grants.scope_kind,
          grants.product_code NULLS FIRST, grants.resource_type NULLS FIRST,
          grants.resource_id NULLS FIRST
@@ -307,8 +305,8 @@ type ListPlatformOperationAccountGrantsRow struct {
 	ResourceID   pgtype.Text `json:"resource_id"`
 }
 
-func (q *Queries) ListPlatformOperationAccountGrants(ctx context.Context) ([]ListPlatformOperationAccountGrantsRow, error) {
-	rows, err := q.db.Query(ctx, listPlatformOperationAccountGrants)
+func (q *Queries) ListPlatformOperationAccountGrants(ctx context.Context, userIds []pgtype.UUID) ([]ListPlatformOperationAccountGrantsRow, error) {
+	rows, err := q.db.Query(ctx, listPlatformOperationAccountGrants, userIds)
 	if err != nil {
 		return nil, err
 	}
@@ -338,9 +336,21 @@ const listPlatformOperationAccounts = `-- name: ListPlatformOperationAccounts :m
 SELECT users.id, users.display_name, identities.email_ciphertext, users.email_verified, users.status, users.authorization_revision, users.created_at
 FROM users
 JOIN email_identities AS identities ON identities.user_id = users.id
+WHERE users.created_at <= $1
+  AND ($2::timestamptz IS NULL
+       OR users.created_at < $2::timestamptz
+       OR (users.created_at = $2::timestamptz
+           AND users.id > $3::uuid))
 ORDER BY users.created_at DESC, users.id
-LIMIT 20
+LIMIT $4
 `
+
+type ListPlatformOperationAccountsParams struct {
+	SnapshotAt      pgtype.Timestamptz `json:"snapshot_at"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageLimit       int32              `json:"page_limit"`
+}
 
 type ListPlatformOperationAccountsRow struct {
 	ID                    pgtype.UUID        `json:"id"`
@@ -352,8 +362,13 @@ type ListPlatformOperationAccountsRow struct {
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) ListPlatformOperationAccounts(ctx context.Context) ([]ListPlatformOperationAccountsRow, error) {
-	rows, err := q.db.Query(ctx, listPlatformOperationAccounts)
+func (q *Queries) ListPlatformOperationAccounts(ctx context.Context, arg ListPlatformOperationAccountsParams) ([]ListPlatformOperationAccountsRow, error) {
+	rows, err := q.db.Query(ctx, listPlatformOperationAccounts,
+		arg.SnapshotAt,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -381,29 +396,50 @@ func (q *Queries) ListPlatformOperationAccounts(ctx context.Context) ([]ListPlat
 }
 
 const listPlatformOperationAuditEvents = `-- name: ListPlatformOperationAuditEvents :many
-SELECT events.request_id, events.actor_user_id, users.display_name, identities.email_ciphertext,
+SELECT events.event_id, events.event_source,
+       events.request_id, events.actor_user_id, users.display_name, identities.email_ciphertext,
        events.permission_code, events.target_kind,
        events.target_product_code, events.target_resource_type,
        events.target_resource_id, events.decision, events.reason_code,
        events.created_at
 FROM (
-    SELECT request_id, actor_user_id, permission_code, target_kind,
+    SELECT id AS event_id, 0::smallint AS event_source,
+           request_id, actor_user_id, permission_code, target_kind,
            target_product_code, target_resource_type, target_resource_id,
            decision, reason_code, created_at
     FROM authorization_audit_events
+    WHERE authorization_audit_events.created_at <= $1
     UNION ALL
-    SELECT request_id, actor_user_id, 'platform.operations.write'::text,
+    SELECT id AS event_id, 1::smallint AS event_source,
+           request_id, actor_user_id, 'platform.operations.write'::text,
            'resource'::text, NULL::text, resource_kind,
            resource_id::text, 'allowed'::text, operation || '_succeeded', created_at
     FROM platform_operations_audit_events
+    WHERE platform_operations_audit_events.created_at <= $1
 ) AS events
 LEFT JOIN users ON users.id = events.actor_user_id
 LEFT JOIN email_identities AS identities ON identities.user_id = events.actor_user_id
-ORDER BY events.created_at DESC, events.request_id
-LIMIT 20
+WHERE $2::timestamptz IS NULL
+   OR events.created_at < $2::timestamptz
+   OR (events.created_at = $2::timestamptz
+       AND (events.request_id, events.event_source, events.event_id) >
+           ($3::text, $4::smallint, $5::uuid))
+ORDER BY events.created_at DESC, events.request_id, events.event_source, events.event_id
+LIMIT $6
 `
 
+type ListPlatformOperationAuditEventsParams struct {
+	SnapshotAt      pgtype.Timestamptz `json:"snapshot_at"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorRequestID pgtype.Text        `json:"cursor_request_id"`
+	CursorSource    pgtype.Int2        `json:"cursor_source"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageLimit       int32              `json:"page_limit"`
+}
+
 type ListPlatformOperationAuditEventsRow struct {
+	EventID            pgtype.UUID        `json:"event_id"`
+	EventSource        int16              `json:"event_source"`
 	RequestID          string             `json:"request_id"`
 	ActorUserID        pgtype.UUID        `json:"actor_user_id"`
 	DisplayName        pgtype.Text        `json:"display_name"`
@@ -418,8 +454,15 @@ type ListPlatformOperationAuditEventsRow struct {
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) ListPlatformOperationAuditEvents(ctx context.Context) ([]ListPlatformOperationAuditEventsRow, error) {
-	rows, err := q.db.Query(ctx, listPlatformOperationAuditEvents)
+func (q *Queries) ListPlatformOperationAuditEvents(ctx context.Context, arg ListPlatformOperationAuditEventsParams) ([]ListPlatformOperationAuditEventsRow, error) {
+	rows, err := q.db.Query(ctx, listPlatformOperationAuditEvents,
+		arg.SnapshotAt,
+		arg.CursorCreatedAt,
+		arg.CursorRequestID,
+		arg.CursorSource,
+		arg.CursorID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -428,6 +471,8 @@ func (q *Queries) ListPlatformOperationAuditEvents(ctx context.Context) ([]ListP
 	for rows.Next() {
 		var i ListPlatformOperationAuditEventsRow
 		if err := rows.Scan(
+			&i.EventID,
+			&i.EventSource,
 			&i.RequestID,
 			&i.ActorUserID,
 			&i.DisplayName,
@@ -456,9 +501,21 @@ SELECT id, source_product_code, source_resource_type, source_resource_id,
        source_resource_url, owner_user_id, priority, sla_due_at, status,
        version, created_at, updated_at
 FROM operations_inbox_items
-ORDER BY updated_at DESC, id
-LIMIT 20
+WHERE created_at <= $1
+  AND ($2::timestamptz IS NULL
+       OR created_at < $2::timestamptz
+       OR (created_at = $2::timestamptz
+           AND id > $3::uuid))
+ORDER BY created_at DESC, id
+LIMIT $4
 `
+
+type ListPlatformOperationInboxItemsParams struct {
+	SnapshotAt      pgtype.Timestamptz `json:"snapshot_at"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageLimit       int32              `json:"page_limit"`
+}
 
 type ListPlatformOperationInboxItemsRow struct {
 	ID                 pgtype.UUID        `json:"id"`
@@ -475,8 +532,13 @@ type ListPlatformOperationInboxItemsRow struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
-func (q *Queries) ListPlatformOperationInboxItems(ctx context.Context) ([]ListPlatformOperationInboxItemsRow, error) {
-	rows, err := q.db.Query(ctx, listPlatformOperationInboxItems)
+func (q *Queries) ListPlatformOperationInboxItems(ctx context.Context, arg ListPlatformOperationInboxItemsParams) ([]ListPlatformOperationInboxItemsRow, error) {
+	rows, err := q.db.Query(ctx, listPlatformOperationInboxItems,
+		arg.SnapshotAt,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -566,13 +628,25 @@ func (q *Queries) ListPlatformOperationMembershipAccounts(ctx context.Context, a
 
 const listPlatformOperationSessions = `-- name: ListPlatformOperationSessions :many
 SELECT sessions.id, sessions.user_id, users.display_name, identities.email_ciphertext, sessions.kind,
-       sessions.client_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at
+       sessions.client_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at, sessions.created_at
 FROM sessions
 LEFT JOIN users ON users.id = sessions.user_id
 LEFT JOIN email_identities AS identities ON identities.user_id = sessions.user_id
+WHERE sessions.created_at <= $1
+  AND ($2::timestamptz IS NULL
+       OR sessions.created_at < $2::timestamptz
+       OR (sessions.created_at = $2::timestamptz
+           AND sessions.id > $3::uuid))
 ORDER BY sessions.created_at DESC, sessions.id
-LIMIT 20
+LIMIT $4
 `
+
+type ListPlatformOperationSessionsParams struct {
+	SnapshotAt      pgtype.Timestamptz `json:"snapshot_at"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageLimit       int32              `json:"page_limit"`
+}
 
 type ListPlatformOperationSessionsRow struct {
 	ID              pgtype.UUID        `json:"id"`
@@ -584,10 +658,16 @@ type ListPlatformOperationSessionsRow struct {
 	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
 	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) ListPlatformOperationSessions(ctx context.Context) ([]ListPlatformOperationSessionsRow, error) {
-	rows, err := q.db.Query(ctx, listPlatformOperationSessions)
+func (q *Queries) ListPlatformOperationSessions(ctx context.Context, arg ListPlatformOperationSessionsParams) ([]ListPlatformOperationSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listPlatformOperationSessions,
+		arg.SnapshotAt,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -605,6 +685,7 @@ func (q *Queries) ListPlatformOperationSessions(ctx context.Context) ([]ListPlat
 			&i.LastSeenAt,
 			&i.ExpiresAt,
 			&i.RevokedAt,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -639,6 +720,76 @@ WHERE user_id = $1 AND status = 'active'
 func (q *Queries) RevokePlatformOperationUserGrants(ctx context.Context, userID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, revokePlatformOperationUserGrants, userID)
 	return err
+}
+
+const searchPlatformOperationAccounts = `-- name: SearchPlatformOperationAccounts :many
+SELECT users.id, users.display_name, identities.email_ciphertext, users.email_verified, users.status, users.authorization_revision, users.created_at
+FROM users
+JOIN email_identities AS identities ON identities.user_id = users.id
+WHERE users.created_at <= $1
+  AND (strpos(lower(coalesce(users.display_name, '')), lower($2::text)) > 0
+       OR ($3::bytea IS NOT NULL
+           AND identities.email_lookup_hash = $3::bytea))
+  AND ($4::timestamptz IS NULL
+       OR users.created_at < $4::timestamptz
+       OR (users.created_at = $4::timestamptz
+           AND users.id > $5::uuid))
+ORDER BY users.created_at DESC, users.id
+LIMIT $6
+`
+
+type SearchPlatformOperationAccountsParams struct {
+	SnapshotAt      pgtype.Timestamptz `json:"snapshot_at"`
+	Search          string             `json:"search"`
+	EmailLookupHash []byte             `json:"email_lookup_hash"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        pgtype.UUID        `json:"cursor_id"`
+	PageLimit       int32              `json:"page_limit"`
+}
+
+type SearchPlatformOperationAccountsRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	DisplayName           pgtype.Text        `json:"display_name"`
+	EmailCiphertext       []byte             `json:"email_ciphertext"`
+	EmailVerified         bool               `json:"email_verified"`
+	Status                string             `json:"status"`
+	AuthorizationRevision int64              `json:"authorization_revision"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) SearchPlatformOperationAccounts(ctx context.Context, arg SearchPlatformOperationAccountsParams) ([]SearchPlatformOperationAccountsRow, error) {
+	rows, err := q.db.Query(ctx, searchPlatformOperationAccounts,
+		arg.SnapshotAt,
+		arg.Search,
+		arg.EmailLookupHash,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchPlatformOperationAccountsRow{}
+	for rows.Next() {
+		var i SearchPlatformOperationAccountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.EmailCiphertext,
+			&i.EmailVerified,
+			&i.Status,
+			&i.AuthorizationRevision,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updatePlatformOperationUser = `-- name: UpdatePlatformOperationUser :one

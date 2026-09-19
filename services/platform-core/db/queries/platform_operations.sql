@@ -2,8 +2,28 @@
 SELECT users.id, users.display_name, identities.email_ciphertext, users.email_verified, users.status, users.authorization_revision, users.created_at
 FROM users
 JOIN email_identities AS identities ON identities.user_id = users.id
+WHERE users.created_at <= sqlc.arg(snapshot_at)
+  AND (sqlc.narg(cursor_created_at)::timestamptz IS NULL
+       OR users.created_at < sqlc.narg(cursor_created_at)::timestamptz
+       OR (users.created_at = sqlc.narg(cursor_created_at)::timestamptz
+           AND users.id > sqlc.narg(cursor_id)::uuid))
 ORDER BY users.created_at DESC, users.id
-LIMIT 20;
+LIMIT sqlc.arg(page_limit);
+
+-- name: SearchPlatformOperationAccounts :many
+SELECT users.id, users.display_name, identities.email_ciphertext, users.email_verified, users.status, users.authorization_revision, users.created_at
+FROM users
+JOIN email_identities AS identities ON identities.user_id = users.id
+WHERE users.created_at <= sqlc.arg(snapshot_at)
+  AND (strpos(lower(coalesce(users.display_name, '')), lower(sqlc.arg(search)::text)) > 0
+       OR (sqlc.narg(email_lookup_hash)::bytea IS NOT NULL
+           AND identities.email_lookup_hash = sqlc.narg(email_lookup_hash)::bytea))
+  AND (sqlc.narg(cursor_created_at)::timestamptz IS NULL
+       OR users.created_at < sqlc.narg(cursor_created_at)::timestamptz
+       OR (users.created_at = sqlc.narg(cursor_created_at)::timestamptz
+           AND users.id > sqlc.narg(cursor_id)::uuid))
+ORDER BY users.created_at DESC, users.id
+LIMIT sqlc.arg(page_limit);
 
 -- name: ListPlatformOperationAccountGrants :many
 SELECT grants.user_id, roles.code AS role_code, grants.scope_kind,
@@ -11,9 +31,7 @@ SELECT grants.user_id, roles.code AS role_code, grants.scope_kind,
 FROM user_role_grants AS grants
 JOIN authorization_roles AS roles ON roles.id = grants.role_id
 WHERE grants.status = 'active'
-  AND grants.user_id IN (
-      SELECT id FROM users ORDER BY created_at DESC, id LIMIT 20
-  )
+  AND grants.user_id = ANY(sqlc.arg(user_ids)::uuid[])
 ORDER BY grants.user_id, roles.code, grants.scope_kind,
          grants.product_code NULLS FIRST, grants.resource_type NULLS FIRST,
          grants.resource_id NULLS FIRST;
@@ -99,12 +117,17 @@ INSERT INTO platform_operations_audit_events (
 
 -- name: ListPlatformOperationSessions :many
 SELECT sessions.id, sessions.user_id, users.display_name, identities.email_ciphertext, sessions.kind,
-       sessions.client_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at
+       sessions.client_id, sessions.last_seen_at, sessions.expires_at, sessions.revoked_at, sessions.created_at
 FROM sessions
 LEFT JOIN users ON users.id = sessions.user_id
 LEFT JOIN email_identities AS identities ON identities.user_id = sessions.user_id
+WHERE sessions.created_at <= sqlc.arg(snapshot_at)
+  AND (sqlc.narg(cursor_created_at)::timestamptz IS NULL
+       OR sessions.created_at < sqlc.narg(cursor_created_at)::timestamptz
+       OR (sessions.created_at = sqlc.narg(cursor_created_at)::timestamptz
+           AND sessions.id > sqlc.narg(cursor_id)::uuid))
 ORDER BY sessions.created_at DESC, sessions.id
-LIMIT 20;
+LIMIT sqlc.arg(page_limit);
 
 -- name: CountPlatformOperationMailStatuses :one
 SELECT
@@ -122,27 +145,42 @@ SELECT id, source_product_code, source_resource_type, source_resource_id,
        source_resource_url, owner_user_id, priority, sla_due_at, status,
        version, created_at, updated_at
 FROM operations_inbox_items
-ORDER BY updated_at DESC, id
-LIMIT 20;
+WHERE created_at <= sqlc.arg(snapshot_at)
+  AND (sqlc.narg(cursor_created_at)::timestamptz IS NULL
+       OR created_at < sqlc.narg(cursor_created_at)::timestamptz
+       OR (created_at = sqlc.narg(cursor_created_at)::timestamptz
+           AND id > sqlc.narg(cursor_id)::uuid))
+ORDER BY created_at DESC, id
+LIMIT sqlc.arg(page_limit);
 
 -- name: ListPlatformOperationAuditEvents :many
-SELECT events.request_id, events.actor_user_id, users.display_name, identities.email_ciphertext,
+SELECT events.event_id, events.event_source,
+       events.request_id, events.actor_user_id, users.display_name, identities.email_ciphertext,
        events.permission_code, events.target_kind,
        events.target_product_code, events.target_resource_type,
        events.target_resource_id, events.decision, events.reason_code,
        events.created_at
 FROM (
-    SELECT request_id, actor_user_id, permission_code, target_kind,
+    SELECT id AS event_id, 0::smallint AS event_source,
+           request_id, actor_user_id, permission_code, target_kind,
            target_product_code, target_resource_type, target_resource_id,
            decision, reason_code, created_at
     FROM authorization_audit_events
+    WHERE authorization_audit_events.created_at <= sqlc.arg(snapshot_at)
     UNION ALL
-    SELECT request_id, actor_user_id, 'platform.operations.write'::text,
+    SELECT id AS event_id, 1::smallint AS event_source,
+           request_id, actor_user_id, 'platform.operations.write'::text,
            'resource'::text, NULL::text, resource_kind,
            resource_id::text, 'allowed'::text, operation || '_succeeded', created_at
     FROM platform_operations_audit_events
+    WHERE platform_operations_audit_events.created_at <= sqlc.arg(snapshot_at)
 ) AS events
 LEFT JOIN users ON users.id = events.actor_user_id
 LEFT JOIN email_identities AS identities ON identities.user_id = events.actor_user_id
-ORDER BY events.created_at DESC, events.request_id
-LIMIT 20;
+WHERE sqlc.narg(cursor_created_at)::timestamptz IS NULL
+   OR events.created_at < sqlc.narg(cursor_created_at)::timestamptz
+   OR (events.created_at = sqlc.narg(cursor_created_at)::timestamptz
+       AND (events.request_id, events.event_source, events.event_id) >
+           (sqlc.narg(cursor_request_id)::text, sqlc.narg(cursor_source)::smallint, sqlc.narg(cursor_id)::uuid))
+ORDER BY events.created_at DESC, events.request_id, events.event_source, events.event_id
+LIMIT sqlc.arg(page_limit);

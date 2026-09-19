@@ -805,6 +805,15 @@ paths:
         - $ref: "#/components/parameters/Timestamp"
         - $ref: "#/components/parameters/Nonce"
         - $ref: "#/components/parameters/SessionExchangeToken"
+        - { name: accounts_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: accounts_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: sessions_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: sessions_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: inbox_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: inbox_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: audit_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: audit_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: snapshot_at, in: query, required: false, description: Fixed RFC 3339 boundary returned as generated_at by the first page, schema: { type: string, format: date-time } }
       responses:
         "200":
           description: Bounded Platform Operations workspace
@@ -820,6 +829,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /platform-operations/account-lookups:
@@ -858,6 +868,32 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: "#/components/schemas/PlatformOperationsAccountLookupResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /platform-operations/accounts/search:
+    post:
+      tags: [Platform Operations]
+      operationId: searchPlatformOperationAccounts
+      summary: Search a bounded page of Platform Operations accounts
+      description: Full email identities stay in the JSON body and never enter URLs or query logs. Display-name matching is case-insensitive; email matching is exact after login-path normalization.
+      security: [{ clientSecret: [], serviceHmac: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/SessionExchangeToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlatformOperationsAccountSearchRequest" }
+      responses:
+        "200": { description: Bounded account page with complete editable grants, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/PlatformOperationsAccountPage" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1572,7 +1608,7 @@ components:
     PlatformOperationsSnapshot:
       type: object
       additionalProperties: false
-      required: [accounts, sessions, mail, inbox_items, audit, dependencies, generated_at]
+      required: [accounts, sessions, mail, inbox_items, audit, pagination, dependencies, generated_at]
       properties:
         accounts:
           type: array
@@ -1591,8 +1627,34 @@ components:
           type: array
           maxItems: 20
           items: { $ref: "#/components/schemas/PlatformOperationsAuditEvent" }
+        pagination: { $ref: "#/components/schemas/PlatformOperationsPagination" }
         dependencies: { $ref: "#/components/schemas/PlatformOperationsDependencies" }
         generated_at: { type: string, format: date-time }
+
+    PlatformOperationsPagination:
+      type: object
+      additionalProperties: false
+      required: [accounts, sessions, inbox_items, audit]
+      properties:
+        accounts: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+        sessions: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+        inbox_items: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+        audit: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+
+    PlatformOperationsPageState:
+      type: object
+      additionalProperties: false
+      required: [page, next_page, next_cursor]
+      properties:
+        page: { type: integer, minimum: 1 }
+        next_page:
+          oneOf:
+            - { type: integer, minimum: 2 }
+            - { type: "null" }
+        next_cursor:
+          oneOf:
+            - { type: string, minLength: 1, maxLength: 512 }
+            - { type: "null" }
 
     PlatformOperationsAccount:
       type: object
@@ -1685,6 +1747,31 @@ components:
           minLength: 5
           maxLength: 320
           description: Complete student mailbox address; normalized exactly like the login path before matching.
+
+    PlatformOperationsAccountSearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query, page, snapshot_at]
+      properties:
+        query: { type: string, minLength: 2, maxLength: 100 }
+        page: { type: integer, minimum: 1 }
+        snapshot_at: { type: string, format: date-time }
+        cursor: { type: string, maxLength: 512 }
+
+    PlatformOperationsAccountPage:
+      type: object
+      additionalProperties: false
+      required: [accounts, next_page, next_cursor]
+      properties:
+        accounts: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsAccount" } }
+        next_page:
+          oneOf:
+            - { type: integer, minimum: 2 }
+            - { type: "null" }
+        next_cursor:
+          oneOf:
+            - { type: string, minLength: 1, maxLength: 512 }
+            - { type: "null" }
 
     PlatformOperationsAccountLookupAccount:
       type: object

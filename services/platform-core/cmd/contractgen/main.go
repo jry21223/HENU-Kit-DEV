@@ -101,10 +101,11 @@ func main() {
 	updatePlatformAccessPath, updatePlatformAccess := findOperation(spec.Paths, "updatePlatformOperationAccess")
 	platformOperationStatusPath, platformOperationStatus := findOperation(spec.Paths, "getPlatformOperationStatus")
 	accountLookupPath, accountLookup := findOperation(spec.Paths, "lookupPlatformOperationAccount")
+	accountSearchPath, accountSearch := findOperation(spec.Paths, "searchPlatformOperationAccounts")
 	consoleIdentityResolutionPath, consoleIdentityResolution := findOperation(spec.Paths, "resolveConsoleUserIdentities")
 	membershipAccountsPath, membershipAccounts := findOperation(spec.Paths, "listPlatformOperationMembershipAccounts")
 	displayNamesPath, displayNames := findOperation(spec.Paths, "resolveUserDisplayNames")
-	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil || platformOperations == nil || revokePlatformSession == nil || updatePlatformAccess == nil || platformOperationStatus == nil || accountLookup == nil || consoleIdentityResolution == nil || membershipAccounts == nil || displayNames == nil {
+	if authorize == nil || token == nil || authorizationCheck == nil || requestVerification == nil || verifyVerification == nil || recordDelivery == nil || listInbox == nil || getInbox == nil || createInbox == nil || updateInbox == nil || operationStatus == nil || platformOperations == nil || revokePlatformSession == nil || updatePlatformAccess == nil || platformOperationStatus == nil || accountLookup == nil || accountSearch == nil || consoleIdentityResolution == nil || membershipAccounts == nil || displayNames == nil {
 		fail(fmt.Errorf("required authorization operations are missing"))
 	}
 	validateTokenOperation(token, spec.Components.Parameters, spec.Components.SecuritySchemes)
@@ -122,6 +123,7 @@ func main() {
 	validateInboxOperation(updatePlatformAccess, spec.Components.Parameters, true, true)
 	validateInboxOperation(platformOperationStatus, spec.Components.Parameters, true, false)
 	validateInboxOperation(accountLookup, spec.Components.Parameters, false, true)
+	validateInboxOperation(accountSearch, spec.Components.Parameters, false, true)
 	validateInboxOperation(consoleIdentityResolution, spec.Components.Parameters, false, false)
 	validateInboxOperation(membershipAccounts, spec.Components.Parameters, false, true)
 	validateDisplayNamesOperation(displayNames, spec.Components.Parameters)
@@ -199,8 +201,9 @@ const (
 	RevokePlatformOperationSessionRoute = %q
 	UpdatePlatformOperationAccessRoute = %q
 	PlatformOperationStatusRoute = %q
-	PlatformOperationsAccountLookupRoute = %q
-	ConsoleUserIdentityResolutionRoute = %q
+		PlatformOperationsAccountLookupRoute = %q
+		PlatformOperationsAccountSearchRoute = %q
+		ConsoleUserIdentityResolutionRoute = %q
 	PlatformOperationsMembershipAccountsRoute = %q
 	DisplayNamesRoute = %q
 	SourceSHA256 = %q
@@ -257,7 +260,7 @@ const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
 %s
 `, authorizePath, tokenPath, authorizationCheckPath, requestVerificationPath, verifyVerificationPath, recordDeliveryPath,
 		listInboxPath, getInboxPath, createInboxPath, updateInboxPath, operationStatusPath,
-		platformOperationsPath, revokePlatformSessionPath, updatePlatformAccessPath, platformOperationStatusPath, accountLookupPath, consoleIdentityResolutionPath, membershipAccountsPath, displayNamesPath, fmt.Sprintf("%x", digest),
+		platformOperationsPath, revokePlatformSessionPath, updatePlatformAccessPath, platformOperationStatusPath, accountLookupPath, accountSearchPath, consoleIdentityResolutionPath, membershipAccountsPath, displayNamesPath, fmt.Sprintf("%x", digest),
 		headerSupport,
 		renderQuery("AuthorizeOAuthClientQuery", authorize.Parameters),
 		renderStruct("ExchangeAuthorizationCodeRequest", requestSchema),
