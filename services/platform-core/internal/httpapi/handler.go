@@ -112,6 +112,7 @@ func New(flow *identity.Service, verificationFlow *verification.Service, continu
 	router.Get(contract.OperationsInboxOperationStatusRoute, handler.getOperationsInboxOperationStatus)
 	router.Get(contract.PlatformOperationsRoute, handler.getPlatformOperations)
 	router.Post(contract.PlatformOperationsAccountLookupRoute, handler.lookupPlatformOperationAccount)
+	router.Post(contract.PlatformOperationsAccountSearchRoute, handler.searchPlatformOperationAccounts)
 	router.Post(contract.ConsoleUserIdentityResolutionRoute, handler.resolveConsoleUserIdentities)
 	router.Post(contract.DisplayNamesRoute, handler.resolveUserDisplayNames)
 	router.Post(contract.PlatformOperationsMembershipAccountsRoute, handler.listPlatformOperationMembershipAccounts)
@@ -181,19 +182,70 @@ func (h *Handler) revokeCurrentSession(writer http.ResponseWriter, request *http
 }
 
 func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *http.Request) {
+	pages, ok := platformOperationsPages(request)
+	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation paging request is invalid")
+		return
+	}
 	decision, err := h.authorizeInbox(request, nil, "platform.operations.read", "platform", "", "", "")
 	if err != nil {
 		h.writeFlowError(writer, request, err)
 		return
 	}
-	snapshot, err := h.platformOps.Snapshot(request.Context())
+	snapshot, err := h.platformOps.Snapshot(request.Context(), request.Header.Get(contract.ServiceIDHeader), decision.ActorUserID, pages)
 	if err != nil {
-		h.logger.Error("platform_operations_snapshot_error", "request_id", requestIDFrom(request.Context()), "error", err)
-		writeError(writer, request, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "service dependency is unavailable")
+		h.writePlatformOperationError(writer, request, err)
 		return
 	}
 	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
 	writeSuccess(writer, request, http.StatusOK, snapshot)
+}
+
+func platformOperationsPages(request *http.Request) (platformoperations.PageRequest, bool) {
+	pages := platformoperations.DefaultPageRequest()
+	values := request.URL.Query()
+	allowed := map[string]*int{
+		"accounts_page": &pages.Accounts,
+		"sessions_page": &pages.Sessions,
+		"inbox_page":    &pages.InboxItems,
+		"audit_page":    &pages.Audit,
+	}
+	cursors := map[string]*string{
+		"accounts_cursor": &pages.AccountsCursor,
+		"sessions_cursor": &pages.SessionsCursor,
+		"inbox_cursor":    &pages.InboxItemsCursor,
+		"audit_cursor":    &pages.AuditCursor,
+	}
+	for name, entries := range values {
+		if name == "snapshot_at" {
+			if len(entries) != 1 {
+				return platformoperations.PageRequest{}, false
+			}
+			parsed, err := time.Parse(time.RFC3339Nano, entries[0])
+			if err != nil {
+				return platformoperations.PageRequest{}, false
+			}
+			pages.SnapshotAt = parsed
+			continue
+		}
+		if target, exists := cursors[name]; exists {
+			if len(entries) != 1 || entries[0] == "" || len(entries[0]) > 512 {
+				return platformoperations.PageRequest{}, false
+			}
+			*target = entries[0]
+			continue
+		}
+		target, exists := allowed[name]
+		if !exists || len(entries) != 1 {
+			return platformoperations.PageRequest{}, false
+		}
+		parsed, err := strconv.Atoi(entries[0])
+		if err != nil {
+			return platformoperations.PageRequest{}, false
+		}
+		*target = parsed
+	}
+	return pages, pages.Valid()
 }
 
 func (h *Handler) lookupPlatformOperationAccount(writer http.ResponseWriter, request *http.Request) {
@@ -208,6 +260,31 @@ func (h *Handler) lookupPlatformOperationAccount(writer http.ResponseWriter, req
 		return
 	}
 	result, err := h.platformOps.LookupAccount(request.Context(), request.Header.Get(contract.ServiceIDHeader), body.Email)
+	if err != nil {
+		h.writePlatformOperationError(writer, request, err)
+		return
+	}
+	auditFrom(request.Context()).subjectUserID = maskSubject(decision.ActorUserID)
+	writeSuccess(writer, request, http.StatusOK, result)
+}
+
+func (h *Handler) searchPlatformOperationAccounts(writer http.ResponseWriter, request *http.Request) {
+	rawBody, body, ok := decodeInboxBody[struct {
+		Query      string    `json:"query"`
+		Page       int       `json:"page"`
+		SnapshotAt time.Time `json:"snapshot_at"`
+		Cursor     string    `json:"cursor"`
+	}](writer, request)
+	if !ok || len([]rune(strings.TrimSpace(body.Query))) < 2 || len([]rune(body.Query)) > 100 || body.Page < 1 || body.SnapshotAt.IsZero() || len(body.Cursor) > 512 || (body.Page > 1) != (body.Cursor != "") {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "Platform Operation account search is invalid")
+		return
+	}
+	decision, err := h.authorizeInbox(request, rawBody, "platform.operations.read", "platform", "", "", "")
+	if err != nil {
+		h.writeFlowError(writer, request, err)
+		return
+	}
+	result, err := h.platformOps.SearchAccounts(request.Context(), request.Header.Get(contract.ServiceIDHeader), decision.ActorUserID, body.Query, body.Page, body.SnapshotAt, body.Cursor)
 	if err != nil {
 		h.writePlatformOperationError(writer, request, err)
 		return

@@ -238,15 +238,16 @@ test("overview navigation exposes each permitted operational target once", async
       }),
     }),
   );
-  await page.route("**/api/v1/operations", (route) =>
+  await page.route("**/api/v1/operations?*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         data: {
+          access_context: { permissions: ["platform.operations.read"], scopes: [{ kind: "platform" }], verified_at: "2026-07-19T00:00:00Z" },
           accounts: [], sessions: [],
           mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 0, failed: 0, dead_letters: 0 },
-          inbox_items: [], audit: [], dependencies: { postgres: "ready", redis: "ready" },
+          inbox_items: [], audit: [], pagination: { accounts: { page: 1, next_page: null, next_cursor: null }, sessions: { page: 1, next_page: null, next_cursor: null }, inbox_items: { page: 1, next_page: null, next_cursor: null }, audit: { page: 1, next_page: null, next_cursor: null } }, dependencies: { postgres: "ready", redis: "ready" },
           generated_at: "2026-07-19T00:00:00Z",
         },
         request_id: "req_operations_envelope",
@@ -309,15 +310,16 @@ test("390px navigation exposes distinct permitted operational targets without ho
       }),
     }),
   );
-  await page.route("**/api/v1/operations", (route) =>
+  await page.route("**/api/v1/operations?*", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         data: {
+          access_context: { permissions: ["platform.operations.read"], scopes: [{ kind: "platform" }], verified_at: "2026-07-19T00:00:00Z" },
           accounts: [], sessions: [],
           mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 0, failed: 0, dead_letters: 0 },
-          inbox_items: [], audit: [], dependencies: { postgres: "ready", redis: "ready" },
+          inbox_items: [], audit: [], pagination: { accounts: { page: 1, next_page: null, next_cursor: null }, sessions: { page: 1, next_page: null, next_cursor: null }, inbox_items: { page: 1, next_page: null, next_cursor: null }, audit: { page: 1, next_page: null, next_cursor: null } }, dependencies: { postgres: "ready", redis: "ready" },
           generated_at: "2026-07-19T00:00:00Z",
         },
         request_id: "req_operations_mobile_envelope",

@@ -36,6 +36,12 @@ describe("operator-bound pending operations", () => {
       access_context: { permissions: ["platform.operations.read", "platform.operations.write"], scopes: [{ kind: "platform" }], verified_at: "2026-09-20T00:00:00Z" },
       accounts: [{ id: accountID, display_name: "张老师", email: "operator@henu.edu.cn", email_verified: true, status: "active", authorization_revision: 1, created_at: "2026-09-20T00:00:00Z", grants: [] }],
       sessions: [], mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 0, failed: 0, dead_letters: 0 }, inbox_items: [], audit: [], dependencies: { postgres: "ready", redis: "ready" }, generated_at: "2026-09-20T00:00:00Z",
+      pagination: {
+        accounts: { page: 1, next_page: null, next_cursor: null },
+        sessions: { page: 1, next_page: null, next_cursor: null },
+        inbox_items: { page: 1, next_page: null, next_cursor: null },
+        audit: { page: 1, next_page: null, next_cursor: null },
+      },
     } });
     mocks.fetchNoticeSnapshot.mockResolvedValue({ state: "authenticated", snapshot: { items: [{ id: noticeID, source: { id: accountID, code: "henu-office", name: "学校办公室" }, version: 1, title: "暑期安排", body: "正文", source_url: "https://example.edu/notice", content_hash: "a".repeat(64), state: "approved", revision: 2, created_at: "2026-09-20T00:00:00Z", distribution_count: 0 }], generated_at: "2026-09-20T00:00:00Z" } });
   });

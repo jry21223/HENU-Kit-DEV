@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,7 +47,8 @@ type platformClient interface {
 	CheckOverview(context.Context, string) error
 	CheckPlatformOperations(context.Context, string) error
 	CheckPlatformOperationsWrite(context.Context, string) error
-	PlatformOperations(context.Context, string) (json.RawMessage, error)
+	PlatformOperations(context.Context, string, platformcore.PlatformOperationPages) (json.RawMessage, error)
+	SearchPlatformOperationAccounts(context.Context, string, []byte) (json.RawMessage, error)
 	RevokeSession(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	UpdateAccess(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	OperationStatus(context.Context, string, string, string) (json.RawMessage, error)
@@ -200,6 +202,7 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.SessionRoute, handler.getSession)
 	router.Get(contract.OverviewRoute, handler.getOverview)
 	router.Get(contract.OperationsRoute, handler.getPlatformOperations)
+	router.Post(contract.AccountSearchRoute, handler.searchPlatformOperationAccounts)
 	router.Post(contract.RevokeSessionRoute, handler.revokePlatformSession)
 	router.Post(contract.UpdateAccessRoute, handler.updatePlatformAccess)
 	router.Get(contract.OperationStatusRoute, handler.getPlatformOperationStatus)
@@ -1022,11 +1025,16 @@ func (h *Handler) writeNoticeResult(writer http.ResponseWriter, request *http.Re
 }
 
 func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *http.Request) {
+	pages, ok := consolePlatformOperationPages(request)
+	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "分页参数无效，请刷新后重试")
+		return
+	}
 	value, ok := h.readSession(writer, request)
 	if !ok {
 		return
 	}
-	data, err := h.platform.PlatformOperations(request.Context(), value.ExchangeToken)
+	data, err := h.platform.PlatformOperations(request.Context(), value.ExchangeToken, pages)
 	if err != nil {
 		h.handlePlatformSessionError(writer, request, err)
 		return
@@ -1045,6 +1053,91 @@ func (h *Handler) getPlatformOperations(writer http.ResponseWriter, request *htt
 	}
 	snapshot.AccessContext = contract.ConsoleAccessContext{Permissions: permissions, Scopes: []contract.ConsoleScope{{Kind: "platform"}}, VerifiedAt: h.now().UTC()}
 	writeJSON(writer, request, http.StatusOK, snapshot)
+}
+
+func (h *Handler) searchPlatformOperationAccounts(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.readSession(writer, request)
+	if !ok {
+		return
+	}
+	var input contract.PlatformOperationsAccountSearchRequest
+	body, ok := decodePlatformAccountSearch(writer, request, &input)
+	if !ok {
+		return
+	}
+	data, err := h.platform.SearchPlatformOperationAccounts(request.Context(), value.ExchangeToken, body)
+	if err != nil {
+		h.handlePlatformSessionError(writer, request, err)
+		return
+	}
+	writeJSON(writer, request, http.StatusOK, data)
+}
+
+func decodePlatformAccountSearch(writer http.ResponseWriter, request *http.Request, target *contract.PlatformOperationsAccountSearchRequest) ([]byte, bool) {
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	cursor := ""
+	decodeErr := decoder.Decode(target)
+	if decodeErr == nil && target.Cursor != nil {
+		cursor = *target.Cursor
+	}
+	if decodeErr != nil || len([]rune(strings.TrimSpace(target.Query))) < 2 || len([]rune(target.Query)) > 100 || target.Page < 1 || target.SnapshotAt.IsZero() || len(cursor) > 512 || (target.Page > 1) != (cursor != "") || decoder.Decode(&struct{}{}) != io.EOF {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请输入有效的账户搜索条件")
+		return nil, false
+	}
+	body, err := json.Marshal(target)
+	if err != nil {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "请输入有效的账户搜索条件")
+		return nil, false
+	}
+	return body, true
+}
+
+func consolePlatformOperationPages(request *http.Request) (platformcore.PlatformOperationPages, bool) {
+	pages := platformcore.DefaultPlatformOperationPages()
+	values := request.URL.Query()
+	allowed := map[string]*int{
+		"accounts_page": &pages.Accounts,
+		"sessions_page": &pages.Sessions,
+		"inbox_page":    &pages.Inbox,
+		"audit_page":    &pages.Audit,
+	}
+	cursors := map[string]*string{
+		"accounts_cursor": &pages.AccountsCursor,
+		"sessions_cursor": &pages.SessionsCursor,
+		"inbox_cursor":    &pages.InboxCursor,
+		"audit_cursor":    &pages.AuditCursor,
+	}
+	for name, entries := range values {
+		if name == "snapshot_at" {
+			if len(entries) != 1 {
+				return platformcore.PlatformOperationPages{}, false
+			}
+			parsed, err := time.Parse(time.RFC3339Nano, entries[0])
+			if err != nil {
+				return platformcore.PlatformOperationPages{}, false
+			}
+			pages.SnapshotAt = parsed
+			continue
+		}
+		if target, exists := cursors[name]; exists {
+			if len(entries) != 1 || entries[0] == "" || len(entries[0]) > 512 {
+				return platformcore.PlatformOperationPages{}, false
+			}
+			*target = entries[0]
+			continue
+		}
+		target, exists := allowed[name]
+		if !exists || len(entries) != 1 {
+			return platformcore.PlatformOperationPages{}, false
+		}
+		parsed, err := strconv.Atoi(entries[0])
+		if err != nil {
+			return platformcore.PlatformOperationPages{}, false
+		}
+		*target = parsed
+	}
+	return pages, pages.Valid()
 }
 
 func (h *Handler) revokePlatformSession(writer http.ResponseWriter, request *http.Request) {
@@ -1333,6 +1426,7 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	}
 	overviewErr := h.platform.CheckOverview(request.Context(), value.ExchangeToken)
 	operationsErr := h.platform.CheckPlatformOperations(request.Context(), value.ExchangeToken)
+	operationsWriteErr := h.platform.CheckPlatformOperationsWrite(request.Context(), value.ExchangeToken)
 	noticeErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.read")
 	noticeManageErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.manage")
 	noticeReviewErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.review")
@@ -1358,7 +1452,7 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		accountReplyErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.reply")
 		accountTransitionErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.transition")
 	}
-	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) || errors.Is(accountMembershipErr, platformcore.ErrUnauthorized) || errors.Is(accountPointsAdjustErr, platformcore.ErrUnauthorized) || errors.Is(accountReadErr, platformcore.ErrUnauthorized) || errors.Is(accountReplyErr, platformcore.ErrUnauthorized) || errors.Is(accountTransitionErr, platformcore.ErrUnauthorized) {
+	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(operationsWriteErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) || errors.Is(accountMembershipErr, platformcore.ErrUnauthorized) || errors.Is(accountPointsAdjustErr, platformcore.ErrUnauthorized) || errors.Is(accountReadErr, platformcore.ErrUnauthorized) || errors.Is(accountReplyErr, platformcore.ErrUnauthorized) || errors.Is(accountTransitionErr, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
 		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
 		return
@@ -1369,6 +1463,9 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	}
 	if operationsErr == nil {
 		permissions = append(permissions, "platform.operations.read")
+	}
+	if operationsWriteErr == nil {
+		permissions = append(permissions, "platform.operations.write")
 	}
 	if noticeErr == nil {
 		permissions = append(permissions, "notice.read")
@@ -1499,6 +1596,8 @@ func (h *Handler) writePlatformError(writer http.ResponseWriter, request *http.R
 		writeError(writer, request, http.StatusNotFound, "PLATFORM_RESOURCE_NOT_FOUND", "内容不存在或已下架")
 	case errors.Is(err, platformcore.ErrInvalid):
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作内容无效，请检查填写后重试")
+	case errors.Is(err, platformcore.ErrRateLimited):
+		writeError(writer, request, http.StatusTooManyRequests, "RATE_LIMITED", "请求过于频繁，请稍后重试")
 	default:
 		h.unavailable(writer, request, err)
 	}

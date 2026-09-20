@@ -33,12 +33,17 @@ type fakePlatform struct {
 	exchangeCalls           int
 	checkCalls              int
 	checkErr                error
+	platformWriteErr        error
 	verifier, redirect      string
 	idempotencyKey          string
 	exchange                platformcore.Exchange
 	operations              json.RawMessage
 	operationResult         json.RawMessage
 	operationToken          string
+	operationPages          platformcore.PlatformOperationPages
+	accountSearchBody       []byte
+	accountSearch           json.RawMessage
+	accountSearchErr        error
 	operationKey            string
 	libraryPermissions      []string
 	noticePermissions       []string
@@ -242,6 +247,9 @@ func (fake *fakePlatform) CheckPlatformOperationsWrite(_ context.Context, token 
 	if token != fake.exchange.ExchangeToken {
 		return platformcore.ErrUnauthorized
 	}
+	if fake.platformWriteErr != nil {
+		return fake.platformWriteErr
+	}
 	return fake.checkErr
 }
 
@@ -301,9 +309,15 @@ func (fake *fakePlatform) CheckAccount(_ context.Context, token, permission stri
 	return fake.checkErr
 }
 
-func (fake *fakePlatform) PlatformOperations(_ context.Context, token string) (json.RawMessage, error) {
-	fake.operationToken = token
+func (fake *fakePlatform) PlatformOperations(_ context.Context, token string, pages platformcore.PlatformOperationPages) (json.RawMessage, error) {
+	fake.operationToken, fake.operationPages = token, pages
 	return fake.operations, fake.checkErr
+}
+
+func (fake *fakePlatform) SearchPlatformOperationAccounts(_ context.Context, token string, body []byte) (json.RawMessage, error) {
+	fake.operationToken = token
+	fake.accountSearchBody = append([]byte(nil), body...)
+	return fake.accountSearch, fake.accountSearchErr
 }
 
 func (fake *fakePlatform) AccountLookup(_ context.Context, token string, body []byte) (json.RawMessage, error) {
@@ -433,7 +447,7 @@ func TestPlatformOperationsUsesServerSessionAndForwardsIdempotency(t *testing.T)
 	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
 	fake := &fakePlatform{
 		exchange:        platformcore.Exchange{ExchangeToken: "exchange_token_with_at_least_32_characters"},
-		operations:      json.RawMessage(`{"accounts":[],"sessions":[],"mail":{"pending":0,"processing":0,"retry_due":0,"accepted":0,"delivered":0,"failed":0,"dead_letters":0},"inbox_items":[],"audit":[],"dependencies":{"postgres":"ready","redis":"ready"},"generated_at":"2026-07-19T00:00:00Z"}`),
+		operations:      json.RawMessage(`{"accounts":[],"sessions":[],"mail":{"pending":0,"processing":0,"retry_due":0,"accepted":0,"delivered":0,"failed":0,"dead_letters":0},"inbox_items":[],"audit":[],"pagination":{"accounts":{"page":2,"next_page":3,"next_cursor":"accounts-next"},"sessions":{"page":4,"next_page":null,"next_cursor":null},"inbox_items":{"page":5,"next_page":6,"next_cursor":"inbox-next"},"audit":{"page":7,"next_page":8,"next_cursor":"audit-next"}},"dependencies":{"postgres":"ready","redis":"ready"},"generated_at":"2026-07-19T00:00:00Z"}`),
 		operationResult: json.RawMessage(`{"operation":"session_revoke","status":"succeeded","resource_id":"171f1c6f-7b10-4c92-91a2-b39bf5af5302"}`),
 	}
 	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", fake, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
@@ -441,7 +455,8 @@ func TestPlatformOperationsUsesServerSessionAndForwardsIdempotency(t *testing.T)
 	defer server.Close()
 	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: fake.exchange.ExchangeToken, ExpiresAt: time.Now().Add(time.Minute)})
 
-	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/operations", nil)
+	snapshotAt := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
+	read, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/operations?accounts_page=2&accounts_cursor=accounts-current&sessions_page=4&sessions_cursor=sessions-current&inbox_page=5&inbox_cursor=inbox-current&audit_page=7&audit_cursor=audit-current&snapshot_at="+url.QueryEscape(snapshotAt.Format(time.RFC3339Nano)), nil)
 	read.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
 	readResponse, err := server.Client().Do(read)
 	if err != nil {
@@ -452,6 +467,41 @@ func TestPlatformOperationsUsesServerSessionAndForwardsIdempotency(t *testing.T)
 	if readResponse.StatusCode != http.StatusOK || strings.Contains(string(readPayload), fake.exchange.ExchangeToken) || fake.operationToken != fake.exchange.ExchangeToken {
 		t.Fatalf("operations read = %d %s token-forwarded=%t", readResponse.StatusCode, readPayload, fake.operationToken == fake.exchange.ExchangeToken)
 	}
+	if fake.operationPages != (platformcore.PlatformOperationPages{Accounts: 2, Sessions: 4, Inbox: 5, Audit: 7, SnapshotAt: snapshotAt, AccountsCursor: "accounts-current", SessionsCursor: "sessions-current", InboxCursor: "inbox-current", AuditCursor: "audit-current"}) {
+		t.Fatalf("operations pages = %+v", fake.operationPages)
+	}
+	invalidPage, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/operations?accounts_page=2", nil)
+	invalidPage.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	invalidResponse, err := server.Client().Do(invalidPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidResponse.Body.Close()
+	if invalidResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("operations page without snapshot = %d, want 400", invalidResponse.StatusCode)
+	}
+	oversizedPage, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/operations?accounts_page=2&accounts_cursor="+strings.Repeat("x", 513)+"&snapshot_at="+url.QueryEscape(snapshotAt.Format(time.RFC3339Nano)), nil)
+	oversizedPage.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	oversizedResponse, err := server.Client().Do(oversizedPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversizedResponse.Body.Close()
+	if oversizedResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("oversized operations cursor = %d, want 400", oversizedResponse.StatusCode)
+	}
+	fake.checkErr = platformcore.ErrRateLimited
+	rateLimited, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/operations", nil)
+	rateLimited.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	rateLimitedResponse, err := server.Client().Do(rateLimited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rateLimitedResponse.Body.Close()
+	if rateLimitedResponse.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited operations read = %d, want 429", rateLimitedResponse.StatusCode)
+	}
+	fake.checkErr = nil
 
 	revoke, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/sessions/171f1c6f-7b10-4c92-91a2-b39bf5af5302/revocations", strings.NewReader(`{"expected_active":true}`))
 	revoke.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
@@ -463,6 +513,51 @@ func TestPlatformOperationsUsesServerSessionAndForwardsIdempotency(t *testing.T)
 	revokeResponse.Body.Close()
 	if revokeResponse.StatusCode != http.StatusOK || fake.operationKey != "idem_console_operation" {
 		t.Fatalf("operations write = %d key=%q", revokeResponse.StatusCode, fake.operationKey)
+	}
+}
+
+func TestPlatformOperationsAccountSearchKeepsIdentityTextInBody(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	snapshotAt := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
+	platform := &fakePlatform{
+		exchange:      platformcore.Exchange{ExchangeToken: token},
+		accountSearch: json.RawMessage(`{"accounts":[{"id":"33333333-3333-4333-8333-333333333333","display_name":"目标账户","email":"target.operator@henu.edu.cn","email_verified":true,"status":"active","authorization_revision":1,"created_at":"2026-07-19T00:00:00Z","grants":[]}],"next_page":null,"next_cursor":null}`),
+	}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/accounts/search", strings.NewReader(`{"query":"target.operator@henu.edu.cn","page":1,"snapshot_at":"2026-07-19T00:00:00Z"}`))
+	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	request.Header.Set("Content-Type", "application/json")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	payload, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(payload), "目标账户") {
+		t.Fatalf("account search = %d: %s", response.StatusCode, payload)
+	}
+	var forwarded contract.PlatformOperationsAccountSearchRequest
+	decodeErr := json.Unmarshal(platform.accountSearchBody, &forwarded)
+	if strings.Contains(request.URL.RawQuery, "target.operator") || decodeErr != nil || forwarded.Query != "target.operator@henu.edu.cn" || forwarded.Page != 1 || !forwarded.SnapshotAt.Equal(snapshotAt) || platform.operationToken != token {
+		t.Fatalf("account search leaked or changed identity: url=%q body=%s token=%t", request.URL.String(), platform.accountSearchBody, platform.operationToken == token)
+	}
+	platform.accountSearchErr = platformcore.ErrRateLimited
+	retry, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/operations/accounts/search", strings.NewReader(`{"query":"target.operator@henu.edu.cn","page":1,"snapshot_at":"2026-07-19T00:00:00Z"}`))
+	retry.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+	retry.Header.Set("Content-Type", "application/json")
+	retryResponse, err := server.Client().Do(retry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryResponse.Body.Close()
+	if retryResponse.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited account search = %d, want 429", retryResponse.StatusCode)
 	}
 }
 
@@ -1068,6 +1163,46 @@ func TestConsoleSessionAdvertisesPointAdjustmentPermissionOnlyAfterVerifiedCheck
 	}
 }
 
+func TestConsoleSessionAdvertisesPlatformWritePermissionOnlyAfterVerifiedCheck(t *testing.T) {
+	redisClient := testRedis(t)
+	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
+	token := "exchange_token_with_at_least_32_characters"
+	platform := &fakePlatform{exchange: platformcore.Exchange{ExchangeToken: token}}
+	handler, _ := New("https://account.henukit.test", "console-gateway", "https://console.henukit.test/api/v1/auth/callback", platform, nil, fakeOverview{}, redisClient, codec, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	encoded, _ := codec.Encode(session.Value{UserID: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
+
+	readSession := func() contract.ConsoleSession {
+		t.Helper()
+		request, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/session", nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookie, Value: encoded})
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		var envelope struct {
+			Data contract.ConsoleSession `json:"data"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("Console platform Session response=%d err=%v", response.StatusCode, err)
+		}
+		return envelope.Data
+	}
+
+	permissions := strings.Join(readSession().AccessContext.Permissions, ",")
+	if !strings.Contains(permissions, "platform.operations.write") {
+		t.Fatalf("Console Session omitted verified Platform Operations write permission: %s", permissions)
+	}
+
+	platform.platformWriteErr = platformcore.ErrForbidden
+	permissions = strings.Join(readSession().AccessContext.Permissions, ",")
+	if strings.Contains(permissions, "platform.operations.write") {
+		t.Fatalf("Console Session advertised unverified Platform Operations write permission: %s", permissions)
+	}
+}
+
 func TestConsoleSessionAdvertisesOnlyVerifiedAccountTicketPermissions(t *testing.T) {
 	redisClient := testRedis(t)
 	codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
@@ -1227,7 +1362,7 @@ func TestConsoleAuthorizationCodeFlowUsesPublicAccountCenterAndConformsToContrac
 	var envelope struct {
 		Data contract.ConsoleSession `json:"data"`
 	}
-	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Data.User.ID != fake.exchange.UserID || len(envelope.Data.AccessContext.Permissions) != 6 || len(envelope.Data.AccessContext.Scopes) != 2 || envelope.Data.AccessContext.Scopes[0].Kind != "platform" || envelope.Data.AccessContext.Scopes[1].ProductCode == nil || *envelope.Data.AccessContext.Scopes[1].ProductCode != "notice" {
+	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Data.User.ID != fake.exchange.UserID || len(envelope.Data.AccessContext.Permissions) != 7 || len(envelope.Data.AccessContext.Scopes) != 2 || envelope.Data.AccessContext.Scopes[0].Kind != "platform" || envelope.Data.AccessContext.Scopes[1].ProductCode == nil || *envelope.Data.AccessContext.Scopes[1].ProductCode != "notice" {
 		t.Fatalf("invalid access context: %s (%v)", payload, err)
 	}
 	overviewRequest, _ := http.NewRequest(http.MethodGet, server.URL+"/api/v1/overview", nil)

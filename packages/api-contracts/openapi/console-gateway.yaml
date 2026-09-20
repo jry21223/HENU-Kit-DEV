@@ -174,6 +174,16 @@ paths:
       description: Platform Core rechecks platform.operations.read with platform Scope. Sensitive mail and Session fields are excluded.
       security:
         - consoleSession: []
+      parameters:
+        - { name: accounts_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: accounts_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: sessions_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: sessions_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: inbox_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: inbox_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: audit_page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: audit_cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: snapshot_at, in: query, required: false, description: Stable paging boundary returned as generated_at by the first page, schema: { type: string, format: date-time } }
       responses:
         "200":
           description: Operational metadata
@@ -187,6 +197,7 @@ paths:
                       data: { $ref: "#/components/schemas/PlatformOperationsSnapshot" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /operations/account-lookups:
     post:
@@ -201,6 +212,22 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /operations/accounts/search:
+    post:
+      tags: [Platform Operations]
+      operationId: searchConsolePlatformOperationAccounts
+      summary: Search a bounded page of Platform Operations accounts
+      description: Full email identities remain in the JSON body and are never placed in URLs or query logs.
+      security: [{ consoleSession: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PlatformOperationsAccountSearchRequest" } } } }
+      responses:
+        "200": { description: Bounded account page, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/PlatformOperationsAccountPage" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /operations/sessions/{session_id}/revocations:
     post:
@@ -1385,6 +1412,29 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ConsoleLookedUpAccount"
             - type: "null"
+    PlatformOperationsAccountSearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query, page, snapshot_at]
+      properties:
+        query: { type: string, minLength: 2, maxLength: 100 }
+        page: { type: integer, minimum: 1 }
+        snapshot_at: { type: string, format: date-time }
+        cursor: { type: string, maxLength: 512 }
+    PlatformOperationsAccountPage:
+      type: object
+      additionalProperties: false
+      required: [accounts, next_page, next_cursor]
+      properties:
+        accounts: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsAccount" } }
+        next_page:
+          oneOf:
+            - { type: integer, minimum: 2 }
+            - { type: "null" }
+        next_cursor:
+          oneOf:
+            - { type: string, minLength: 1, maxLength: 512 }
+            - { type: "null" }
     ConsoleLookedUpAccount:
       type: object
       additionalProperties: false
@@ -1591,7 +1641,7 @@ components:
     PlatformOperationsSnapshot:
       type: object
       additionalProperties: false
-      required: [access_context, accounts, sessions, mail, inbox_items, audit, dependencies, generated_at]
+      required: [access_context, accounts, sessions, mail, inbox_items, audit, pagination, dependencies, generated_at]
       properties:
         access_context: { $ref: "#/components/schemas/ConsoleAccessContext" }
         accounts: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsAccount" } }
@@ -1599,8 +1649,32 @@ components:
         mail: { $ref: "#/components/schemas/PlatformOperationsMailStatus" }
         inbox_items: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsInboxItem" } }
         audit: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/PlatformOperationsAuditEvent" } }
+        pagination: { $ref: "#/components/schemas/PlatformOperationsPagination" }
         dependencies: { $ref: "#/components/schemas/PlatformOperationsDependencies" }
         generated_at: { type: string, format: date-time }
+    PlatformOperationsPagination:
+      type: object
+      additionalProperties: false
+      required: [accounts, sessions, inbox_items, audit]
+      properties:
+        accounts: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+        sessions: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+        inbox_items: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+        audit: { $ref: "#/components/schemas/PlatformOperationsPageState" }
+    PlatformOperationsPageState:
+      type: object
+      additionalProperties: false
+      required: [page, next_page, next_cursor]
+      properties:
+        page: { type: integer, minimum: 1 }
+        next_page:
+          oneOf:
+            - { type: integer, minimum: 2 }
+            - { type: "null" }
+        next_cursor:
+          oneOf:
+            - { type: string, minLength: 1, maxLength: 512 }
+            - { type: "null" }
     PlatformOperationsAccount:
       type: object
       additionalProperties: false
@@ -1747,6 +1821,12 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     NotFound:
       description: Platform resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    TooManyRequests:
+      description: The bounded Platform Operations read limit was exceeded
       content:
         application/json:
           schema:

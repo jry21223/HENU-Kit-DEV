@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ var (
 	ErrConflict     = errors.New("platform core conflict")
 	ErrNotFound     = errors.New("platform core resource not found")
 	ErrInvalid      = errors.New("platform core rejected request")
+	ErrRateLimited  = errors.New("platform core rate limited request")
 )
 
 type Client struct {
@@ -32,8 +34,62 @@ type Client struct {
 	httpClient        *http.Client
 }
 
-func (c *Client) PlatformOperations(ctx context.Context, exchangeToken string) (json.RawMessage, error) {
-	return c.operationRequest(ctx, http.MethodGet, "/api/v1/platform-operations", exchangeToken, "", nil)
+type PlatformOperationPages struct {
+	Accounts, Sessions, Inbox, Audit int
+	SnapshotAt                       time.Time
+	AccountsCursor, SessionsCursor   string
+	InboxCursor, AuditCursor         string
+}
+
+func DefaultPlatformOperationPages() PlatformOperationPages {
+	return PlatformOperationPages{Accounts: 1, Sessions: 1, Inbox: 1, Audit: 1}
+}
+
+func (pages PlatformOperationPages) Valid() bool {
+	needsSnapshot := false
+	for _, page := range []int{pages.Accounts, pages.Sessions, pages.Inbox, pages.Audit} {
+		if page < 1 {
+			return false
+		}
+		needsSnapshot = needsSnapshot || page > 1
+	}
+	for _, cursor := range []string{pages.AccountsCursor, pages.SessionsCursor, pages.InboxCursor, pages.AuditCursor} {
+		if len(cursor) > 512 {
+			return false
+		}
+		needsSnapshot = needsSnapshot || cursor != ""
+	}
+	if (pages.Accounts > 1) != (pages.AccountsCursor != "") || (pages.Sessions > 1) != (pages.SessionsCursor != "") || (pages.Inbox > 1) != (pages.InboxCursor != "") || (pages.Audit > 1) != (pages.AuditCursor != "") {
+		return false
+	}
+	if needsSnapshot && pages.SnapshotAt.IsZero() {
+		return false
+	}
+	return pages.SnapshotAt.IsZero() || !pages.SnapshotAt.After(time.Now().UTC().Add(time.Minute))
+}
+
+func (c *Client) PlatformOperations(ctx context.Context, exchangeToken string, pages PlatformOperationPages) (json.RawMessage, error) {
+	if !pages.Valid() {
+		return nil, ErrInvalid
+	}
+	query := url.Values{}
+	query.Set("accounts_page", strconv.Itoa(pages.Accounts))
+	query.Set("sessions_page", strconv.Itoa(pages.Sessions))
+	query.Set("inbox_page", strconv.Itoa(pages.Inbox))
+	query.Set("audit_page", strconv.Itoa(pages.Audit))
+	for name, cursor := range map[string]string{"accounts_cursor": pages.AccountsCursor, "sessions_cursor": pages.SessionsCursor, "inbox_cursor": pages.InboxCursor, "audit_cursor": pages.AuditCursor} {
+		if cursor != "" {
+			query.Set(name, cursor)
+		}
+	}
+	if !pages.SnapshotAt.IsZero() {
+		query.Set("snapshot_at", pages.SnapshotAt.UTC().Format(time.RFC3339Nano))
+	}
+	return c.operationRequest(ctx, http.MethodGet, "/api/v1/platform-operations?"+query.Encode(), exchangeToken, "", nil)
+}
+
+func (c *Client) SearchPlatformOperationAccounts(ctx context.Context, exchangeToken string, body []byte) (json.RawMessage, error) {
+	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/accounts/search", exchangeToken, "", body)
 }
 
 func (c *Client) RevokeSession(ctx context.Context, exchangeToken, sessionID, idempotencyKey string, body []byte) (json.RawMessage, error) {
@@ -272,6 +328,8 @@ func responseError(response *http.Response) error {
 		return ErrNotFound
 	case http.StatusBadRequest:
 		return ErrInvalid
+	case http.StatusTooManyRequests:
+		return ErrRateLimited
 	default:
 		return fmt.Errorf("platform core returned %d", response.StatusCode)
 	}
