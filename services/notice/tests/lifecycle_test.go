@@ -103,7 +103,18 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	if bytes.Contains(snapshot, []byte(`"source_published_at"`)) {
 		t.Fatalf("snapshot emitted nullable source_published_at: %s", snapshot)
 	}
-	operation := send(t, server.URL, actor, "notice.read", http.MethodGet, "/api/v1/operations/review", "", "idem_review_1")
+	if status := sendStatus(t, server.URL, actor, "notice.read", "product", http.MethodGet, "/api/v1/operations/review", "", "idem_review_1"); status != http.StatusForbidden {
+		t.Fatalf("operation status with notice.read = %d, want 403", status)
+	}
+	otherActor := uuid.NewString()
+	otherOperation := send(t, server.URL, otherActor, "notice.review", http.MethodGet, "/api/v1/operations/review", "", "idem_review_1")
+	if dataString(t, otherOperation, "status") != "unknown" {
+		t.Fatalf("other actor discovered stored review: %s", otherOperation)
+	}
+	if status := sendStatus(t, server.URL, otherActor, "notice.review", "product", http.MethodPost, "/api/v1/versions/"+versionID+"/reviews", reviewBody, "idem_review_1"); status != http.StatusConflict {
+		t.Fatalf("other actor replayed stored review = %d, want lifecycle conflict", status)
+	}
+	operation := send(t, server.URL, actor, "notice.review", http.MethodGet, "/api/v1/operations/review", "", "idem_review_1")
 	if dataString(t, operation, "state") != "approved" {
 		t.Fatalf("operation status omitted stored review: %s", operation)
 	}

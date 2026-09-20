@@ -105,6 +105,7 @@ paths:
   /api/v1/operations/{operation}:
     get:
       summary: Resolve a Notice write by idempotency key
+      description: Requires the write permission corresponding to the operation and returns only history owned by X-Actor-User-Id.
       operationId: getNoticeOperation
       parameters:
         - name: operation

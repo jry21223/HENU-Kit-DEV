@@ -3,8 +3,9 @@ import { computed, nextTick, ref, watch } from "vue";
 
 import { Button, Input, Label, PageHeader, Textarea } from "@/components/ui";
 import { createNoticeSource, createNoticeVersion, distributeNoticeVersion, fetchNoticeSnapshot, resolveNoticeOperation, reviewNoticeVersion, type NoticeAudience, type NoticeSnapshot, type NoticeVersion, type NoticeWriteResult } from "@/lib/console-gateway";
+import { clearPendingNoticeOperation, readPendingNoticeOperation, writePendingNoticeOperation, type PendingNoticeOperation } from "@/lib/pending-operations";
 
-const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; permissions: string[] }>();
+const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; operatorID?: string; permissions: string[] }>();
 const snapshot = ref<NoticeSnapshot>();
 const state = ref<"loading" | "ready" | "denied" | "unavailable">("loading");
 const feedback = ref("");
@@ -23,6 +24,8 @@ const audienceValue = ref("");
 const reviewReasons = ref<Record<string, string>>({});
 const pendingDistribution = ref<{ item: NoticeVersion; channel: "in_app" | "email"; audience: NoticeAudience }>();
 const confirmDialog = ref<HTMLDialogElement>();
+const pendingOperation = ref<PendingNoticeOperation>();
+const restoredOperator = ref("");
 const canManage = computed(() => props.permissions.includes("notice.manage"));
 const canReview = computed(() => props.permissions.includes("notice.review"));
 const canDistribute = computed(() => props.permissions.includes("notice.distribute"));
@@ -68,27 +71,55 @@ async function refresh() {
   else state.value = result.state === "denied" ? "denied" : "unavailable";
 }
 
-async function finishOperation(kind: "source_create" | "version_create" | "review" | "distribution", key: string, initial: Promise<NoticeWriteResult>, successMessage: string, onSuccess?: (result: Record<string, unknown>) => void) {
-  let result = await initial;
-  if (result.state === "unknown") { feedback.value = "操作结果待确认，正在核对…"; result = await resolveNoticeOperation(kind, key); }
-  if (result.state === "succeeded") { onSuccess?.(result.result); feedback.value = successMessage; await refresh(); }
-  else if (result.state === "conflict") { feedback.value = "内容已更新，请基于最新状态操作。"; await refresh(); }
-  else feedback.value = "操作没有完成，请刷新页面后重试；如仍失败请联系管理员。";
-  busyID.value = "";
+function clearPendingOperation() {
+  pendingOperation.value = undefined;
+  clearPendingNoticeOperation();
+}
+
+async function finishOperation(command: PendingNoticeOperation, initial: () => Promise<NoticeWriteResult>, successMessage: string, onSuccess?: (result: Record<string, unknown>) => void) {
+  pendingOperation.value = command;
+  if (!writePendingNoticeOperation(command)) {
+    pendingOperation.value = undefined;
+    busyID.value = "";
+    feedback.value = "浏览器无法安全保存原请求，操作未提交。请允许会话存储后重试。";
+    return;
+  }
+  let result = await initial();
+  let reconciling = false;
+  if (result.state === "unknown") {
+    feedback.value = "结果尚未确认，已保留原请求；请勿重复提交。";
+    reconciling = true;
+    result = await resolveNoticeOperation(command.operation, command.idempotency_key);
+  }
+  if (result.state === "succeeded") { clearPendingOperation(); onSuccess?.(result.result); feedback.value = successMessage; busyID.value = ""; await refresh(); }
+  else if (result.state === "conflict") { clearPendingOperation(); feedback.value = "内容已更新，请基于最新状态操作。"; busyID.value = ""; await refresh(); }
+  else if (reconciling && (result.state === "unknown" || result.state === "unavailable" || result.state === "signed_out" || result.state === "denied" || result.state === "not_found")) { feedback.value = result.state === "unknown" ? "结果仍未确认，原请求已保留；请勿重复提交。" : result.state === "denied" ? "核对请求被拒绝，原请求仍已保留；请联系管理员。" : "暂时无法核对结果，原请求仍已保留；请勿重复提交。"; }
+  else {
+    clearPendingOperation();
+    busyID.value = "";
+    feedback.value = result.state === "denied" ? "操作被拒绝，请联系管理员确认权限。" : result.state === "signed_out" ? "登录已失效，操作未提交；请重新登录后再试。" : result.state === "not_found" ? "目标不存在或已不可操作，请刷新后核对。" : result.state === "invalid" ? "操作内容无效，请检查后重试。" : "操作没有完成，请基于最新状态再试。";
+  }
+}
+
+function pendingCommand(operation: PendingNoticeOperation["operation"], resourceID: string, targetLabel: string, distribution?: PendingNoticeOperation["distribution"]): PendingNoticeOperation | undefined {
+  if (!props.operatorID) { feedback.value = "当前登录身份尚未确认，请刷新后重试。"; return undefined; }
+  return { version: 1, operator_id: props.operatorID, operation, idempotency_key: operationKey(operation), resource_id: resourceID, target_label: targetLabel, ...(distribution ? { distribution } : {}) };
 }
 
 async function addSource() {
-  busyID.value = "source"; feedback.value = "正在创建通知来源…"; const key = operationKey("source_create");
-  await finishOperation("source_create", key, createNoticeSource({ code: sourceCode.value, name: sourceName.value, canonical_url: sourceCanonicalURL.value }, key), "通知来源已创建。", (result) => {
+  const command = pendingCommand("source_create", sourceCode.value, `${sourceName.value} · ${sourceCode.value}`); if (!command) return;
+  busyID.value = "source"; feedback.value = "正在创建通知来源…";
+  await finishOperation(command, () => createNoticeSource({ code: sourceCode.value, name: sourceName.value, canonical_url: sourceCanonicalURL.value }, command.idempotency_key), "通知来源已创建。", (result) => {
     if (typeof result.id === "string") versionSourceID.value = result.id;
     sourceCode.value = ""; sourceName.value = ""; sourceCanonicalURL.value = "";
   });
 }
 
 async function addVersion() {
-  busyID.value = "version"; feedback.value = "正在创建通知版本…"; const key = operationKey("version_create");
+  const command = pendingCommand("version_create", versionSourceID.value, versionTitle.value); if (!command) return;
+  busyID.value = "version"; feedback.value = "正在创建通知版本…";
   const published = versionPublishedAt.value ? new Date(versionPublishedAt.value).toISOString() : undefined;
-  await finishOperation("version_create", key, createNoticeVersion(versionSourceID.value, { title: versionTitle.value, body: versionBody.value, source_url: versionSourceURL.value, ...(published ? { source_published_at: published } : {}) }, key), "通知版本已创建并进入待审核状态。", () => {
+  await finishOperation(command, () => createNoticeVersion(versionSourceID.value, { title: versionTitle.value, body: versionBody.value, source_url: versionSourceURL.value, ...(published ? { source_published_at: published } : {}) }, command.idempotency_key), "通知版本已创建并进入待审核状态。", () => {
     versionTitle.value = ""; versionBody.value = ""; versionSourceURL.value = ""; versionPublishedAt.value = "";
   });
 }
@@ -96,16 +127,63 @@ async function addVersion() {
 async function review(item: NoticeVersion, decision: "approved" | "rejected") {
   const reason = reviewReason(item);
   if (decision === "rejected" && !reason) { feedback.value = "请填写驳回理由后再提交。"; return; }
-  busyID.value = item.id; feedback.value = "正在提交审核…"; const key = operationKey("review");
-  await finishOperation("review", key, reviewNoticeVersion(item.id, { decision, note: reason || undefined, expected_revision: item.revision }, key), decision === "approved" ? "审核已批准。" : "审核已拒绝。", () => { reviewReasons.value[item.id] = ""; });
+  const command = pendingCommand("review", item.id, `${item.title} · ${decision === "approved" ? "批准" : "拒绝"}`); if (!command) return;
+  busyID.value = item.id; feedback.value = "正在提交审核…";
+  await finishOperation(command, () => reviewNoticeVersion(item.id, { decision, note: reason || undefined, expected_revision: item.revision }, command.idempotency_key), decision === "approved" ? "审核已批准。" : "审核已拒绝。", () => { reviewReasons.value[item.id] = ""; });
 }
 
 async function confirmDistribution() {
   const action = pendingDistribution.value;
   if (!action) return;
-  busyID.value = action.item.id; feedback.value = "正在创建分发…"; const key = operationKey("distribution");
-  await finishOperation("distribution", key, distributeNoticeVersion(action.item.id, { channel: action.channel, audience: action.audience, expected_revision: action.item.revision }, key), "分发任务已创建，将陆续推送给用户。");
+  const audience = action.audience.kind === "college" || action.audience.kind === "role" ? { kind: action.audience.kind, value: action.audience.value } : { kind: "all_students" as const };
+  const distribution = { channel: action.channel, audience, expected_revision: action.item.revision };
+  const command = pendingCommand("distribution", action.item.id, action.item.title, distribution); if (!command) return;
+  busyID.value = action.item.id; feedback.value = "正在创建分发…";
+  await finishOperation(command, () => distributeNoticeVersion(action.item.id, distribution, command.idempotency_key), "分发任务已创建，将陆续推送给用户。");
   closeDistributionConfirm();
+}
+
+async function resolvePendingOperationStatus() {
+  const restored = pendingOperation.value;
+  if (!restored) return;
+  busyID.value = restored.resource_id;
+  feedback.value = `正在核对之前未确认的操作：${restored.target_label}`;
+  const result = await resolveNoticeOperation(restored.operation, restored.idempotency_key);
+  if (result.state === "succeeded") {
+    clearPendingOperation();
+    busyID.value = "";
+    feedback.value = restored.operation === "distribution" ? "之前的分发请求已确认，分发任务已创建。" : "之前的操作已确认完成。";
+    await refresh();
+  } else if (result.state === "unknown" || result.state === "unavailable" || result.state === "signed_out" || result.state === "denied" || result.state === "not_found") {
+    feedback.value = result.state === "unknown" ? "结果仍未确认，原请求已保留；请勿重复提交，可稍后再次查询。" : result.state === "denied" ? "核对请求被拒绝，原请求仍已保留；请联系管理员。" : "暂时无法核对结果，原请求仍已保留；请勿重复提交，可稍后再次查询。";
+  } else {
+    clearPendingOperation();
+    busyID.value = "";
+    feedback.value = result.state === "conflict" ? "原请求与最新状态冲突，请核对后再操作。" : "原请求未完成，请基于最新状态再试。";
+  }
+}
+
+async function restorePendingOperation() {
+  const operatorID = props.operatorID;
+  if (!operatorID) {
+    pendingOperation.value = undefined;
+    busyID.value = "";
+    feedback.value = "";
+    closeDistributionConfirm();
+    restoredOperator.value = "";
+    return;
+  }
+  if (restoredOperator.value === operatorID) return;
+  pendingOperation.value = undefined;
+  busyID.value = "";
+  feedback.value = "";
+  closeDistributionConfirm();
+  restoredOperator.value = operatorID;
+  const restored = readPendingNoticeOperation(operatorID);
+  if (!restored) return;
+  pendingOperation.value = restored;
+  busyID.value = restored.resource_id;
+  await resolvePendingOperationStatus();
 }
 
 watch(() => props.authState, (value) => {
@@ -113,12 +191,13 @@ watch(() => props.authState, (value) => {
   snapshot.value = undefined;
   state.value = value === "denied" ? "denied" : value === "loading" ? "loading" : "unavailable";
 }, { immediate: true });
+watch(() => props.operatorID, () => { void restorePendingOperation(); }, { immediate: true });
 </script>
 
 <template>
   <section aria-labelledby="notice-heading">
     <PageHeader eyebrow="通知流程" title="校园通知审核与分发" description="通知正文不可更改；审核与分发均由服务端记录。" title-id="notice-heading"><div class="access-context"><strong>{{ snapshotLabel }}</strong></div></PageHeader>
-    <p v-if="feedback" class="mt-4 rounded-lg border border-border bg-white px-4 py-3" role="status">{{ feedback }}</p>
+    <p v-if="feedback" class="mt-4 rounded-lg border border-border bg-white px-4 py-3" role="status">{{ feedback }} <Button v-if="pendingOperation" type="button" variant="ghost" @click="resolvePendingOperationStatus">再次查询结果</Button></p>
     <div v-if="state === 'loading'" class="mt-6 rounded-lg bg-white p-6" aria-busy="true">正在读取通知数据…</div>
     <div v-else-if="state === 'denied'" class="mt-6 rounded-lg bg-white p-6">当前账户没有通知审核权限，请联系管理员。</div>
     <div v-else-if="state === 'unavailable'" class="mt-6 rounded-lg bg-white p-6"><p>通知服务暂时不可用，请稍后重试。</p><Button class="mt-4" @click="refresh">重新加载</Button></div>

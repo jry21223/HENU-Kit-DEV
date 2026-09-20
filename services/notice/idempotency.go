@@ -16,7 +16,7 @@ import (
 
 var errConflict = errors.New("notice state conflict")
 
-func (h *service) writeOperation(w http.ResponseWriter, r *http.Request, operation string, body []byte, apply func(pgx.Tx) (map[string]any, error)) {
+func (h *service) writeOperation(w http.ResponseWriter, r *http.Request, value actor, operation string, body []byte, apply func(pgx.Tx) (map[string]any, error)) {
 	key := r.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
 		writeError(w, r, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
@@ -31,18 +31,18 @@ func (h *service) writeOperation(w http.ResponseWriter, r *http.Request, operati
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
-	lockScope := strings.Join([]string{h.clientID, r.Method, route, key}, "\n")
+	lockScope := strings.Join([]string{h.clientID, value.userID, r.Method, route, key}, "\n")
 	if _, err := tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, lockScope); err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Notice idempotency lock is unavailable")
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `DELETE FROM notice_operations WHERE client_id=$1 AND method=$2 AND normalized_route=$3 AND idempotency_key=$4 AND expires_at <= now()`, h.clientID, r.Method, route, key); err != nil {
+	if _, err := tx.Exec(r.Context(), `DELETE FROM notice_operations WHERE client_id=$1 AND actor_user_id=$2 AND method=$3 AND normalized_route=$4 AND idempotency_key=$5 AND expires_at <= now()`, h.clientID, value.userID, r.Method, route, key); err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Notice idempotency history is unavailable")
 		return
 	}
 	var storedHash, storedOperation string
 	var stored []byte
-	err = tx.QueryRow(r.Context(), `SELECT request_hash,operation,response FROM notice_operations WHERE client_id=$1 AND method=$2 AND normalized_route=$3 AND idempotency_key=$4 AND expires_at > now()`, h.clientID, r.Method, route, key).Scan(&storedHash, &storedOperation, &stored)
+	err = tx.QueryRow(r.Context(), `SELECT request_hash,operation,response FROM notice_operations WHERE client_id=$1 AND actor_user_id=$2 AND method=$3 AND normalized_route=$4 AND idempotency_key=$5 AND expires_at > now()`, h.clientID, value.userID, r.Method, route, key).Scan(&storedHash, &storedOperation, &stored)
 	if err == nil {
 		if storedHash != requestHash || storedOperation != operation {
 			writeError(w, r, http.StatusConflict, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key was used for another request")
@@ -74,7 +74,7 @@ func (h *service) writeOperation(w http.ResponseWriter, r *http.Request, operati
 		return
 	}
 	payload, _ := json.Marshal(data)
-	if _, err := tx.Exec(r.Context(), `INSERT INTO notice_operations (client_id,method,normalized_route,idempotency_key,operation,request_hash,response) VALUES ($1,$2,$3,$4,$5,$6,$7)`, h.clientID, r.Method, route, key, operation, requestHash, payload); err != nil {
+	if _, err := tx.Exec(r.Context(), `INSERT INTO notice_operations (client_id,actor_user_id,method,normalized_route,idempotency_key,operation,request_hash,response) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, h.clientID, value.userID, r.Method, route, key, operation, requestHash, payload); err != nil {
 		writeError(w, r, http.StatusConflict, "NOTICE_CONFLICT", "Notice operation conflicts with idempotency history")
 		return
 	}
@@ -86,22 +86,23 @@ func (h *service) writeOperation(w http.ResponseWriter, r *http.Request, operati
 }
 
 func (h *service) operationStatus(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.require(w, r, "notice.read"); !ok {
-		return
-	}
 	operation, key := chi.URLParam(r, "operation"), r.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
 		writeError(w, r, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key is required")
 		return
 	}
-	method, route, ok := operationRoute(operation)
+	method, route, permission, ok := operationRoute(operation)
 	if !ok {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "operation is invalid")
 		return
 	}
+	value, ok := h.require(w, r, permission)
+	if !ok {
+		return
+	}
 	var storedOperation string
 	var stored []byte
-	err := h.database.QueryRow(r.Context(), `SELECT operation,response FROM notice_operations WHERE client_id=$1 AND method=$2 AND normalized_route=$3 AND idempotency_key=$4 AND expires_at > now()`, h.clientID, method, route, key).Scan(&storedOperation, &stored)
+	err := h.database.QueryRow(r.Context(), `SELECT operation,response FROM notice_operations WHERE client_id=$1 AND actor_user_id=$2 AND method=$3 AND normalized_route=$4 AND idempotency_key=$5 AND expires_at > now()`, h.clientID, value.userID, method, route, key).Scan(&storedOperation, &stored)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeData(w, r, http.StatusOK, map[string]any{"operation": operation, "status": "unknown"})
 		return
@@ -122,8 +123,13 @@ func (h *service) operationStatus(w http.ResponseWriter, r *http.Request) {
 	writeData(w, r, http.StatusOK, data)
 }
 
-func operationRoute(operation string) (string, string, bool) {
-	routes := map[string]string{"source_create": contract.SourceCreateRoute, "version_create": contract.VersionCreateRoute, "review": contract.ReviewRoute, "distribution": contract.DistributionRoute}
-	route, ok := routes[operation]
-	return http.MethodPost, route, ok
+func operationRoute(operation string) (string, string, string, bool) {
+	routes := map[string]struct{ route, permission string }{
+		"source_create":  {contract.SourceCreateRoute, "notice.manage"},
+		"version_create": {contract.VersionCreateRoute, "notice.manage"},
+		"review":         {contract.ReviewRoute, "notice.review"},
+		"distribution":   {contract.DistributionRoute, "notice.distribute"},
+	}
+	entry, ok := routes[operation]
+	return http.MethodPost, entry.route, entry.permission, ok
 }

@@ -1,18 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { PageHeader } from "@/components/ui";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import { fetchPlatformOperations, resolvePlatformOperation, revokePlatformSession, searchPlatformOperationAccounts, updatePlatformAccess, type PlatformAccessGrantInput, type PlatformOperationWriteResult, type PlatformOperationsAuditEvent, type PlatformOperationsPageRequest, type PlatformOperationsSnapshot } from "@/lib/console-gateway";
 import { localDateTime } from "@/lib/format";
+import { clearPendingPlatformOperation, readPendingPlatformOperation, writePendingPlatformOperation, type PendingPlatformOperation } from "@/lib/pending-operations";
 
-const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable" }>();
+const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; operatorID?: string }>();
 const operations = ref<PlatformOperationsSnapshot>();
 const state = ref<"loading" | "ready" | "denied" | "rate_limited" | "unavailable">("loading");
 const notice = ref("");
-const pending = ref<{ operation: "session_revoke" | "access_update"; key: string }>();
+const pending = ref<PendingPlatformOperation>();
 const statuses = ref<Record<string, "active" | "suspended" | "deleted">>({});
 const grants = ref<Record<string, PlatformAccessGrantInput[]>>({});
-const confirmTarget = ref<string>();
+type Confirmation =
+  | { kind: "session_revoke"; resourceID: string; targetLabel: string; changeSummary: string }
+  | { kind: "access_update"; resourceID: string; targetLabel: string; changeSummary: string; expectedRevision: number; status: "active" | "suspended" | "deleted"; grants: PlatformAccessGrantInput[] };
+const confirmation = ref<Confirmation>();
+const confirmationDialog = ref<HTMLDialogElement>();
+const restoredOperator = ref("");
+const submittingResourceID = ref("");
 const pages = ref<PlatformOperationsPageRequest>({ accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 });
 const accountQueryInput = ref("");
 const submittedAccountQuery = ref("");
@@ -50,12 +57,7 @@ async function load(nextPages: PlatformOperationsPageRequest = pages.value, pres
   const previousAccountPagination = preserveAccountDrafts ? operations.value?.pagination.accounts : undefined;
   const result = await fetchPlatformOperations(nextPages);
   if (result.state === "authenticated") {
-    operations.value = result.operations;
-    if (previousAccounts && previousAccountPagination) {
-      operations.value.accounts = previousAccounts;
-      operations.value.pagination.accounts = previousAccountPagination;
-    }
-    pages.value = {
+    const canonicalPages: PlatformOperationsPageRequest = {
       accounts_page: result.operations.pagination.accounts.page,
       sessions_page: result.operations.pagination.sessions.page,
       inbox_page: result.operations.pagination.inbox_items.page,
@@ -66,6 +68,12 @@ async function load(nextPages: PlatformOperationsPageRequest = pages.value, pres
       inbox_cursor: nextPages.inbox_cursor,
       audit_cursor: nextPages.audit_cursor,
     };
+    operations.value = result.operations;
+    if (previousAccounts && previousAccountPagination) {
+      operations.value.accounts = previousAccounts;
+      operations.value.pagination.accounts = previousAccountPagination;
+    }
+    pages.value = canonicalPages;
     if (!preserveAccountDrafts) {
       statuses.value = Object.fromEntries(result.operations.accounts.map((account) => [account.id, account.status]));
       grants.value = Object.fromEntries(result.operations.accounts.map((account) => [account.id, structuredClone(account.grants)]));
@@ -97,7 +105,7 @@ async function searchAccounts(page = 1, cursor?: string) {
     grants.value = Object.fromEntries(result.page.accounts.map((account) => [account.id, structuredClone(account.grants)]));
     notice.value = result.page.accounts.length ? "账户搜索结果已更新。" : "没有匹配的账户。";
   } else {
-    notice.value = result.state === "denied" ? "当前账户没有平台运营读取权限。" : result.state === "invalid" ? "请输入有效的账户搜索条件。" : result.state === "rate_limited" ? "请求过于频繁，请稍后重试。" : "账户搜索暂不可用，请稍后重试。";
+    notice.value = result.state === "signed_out" ? "登录状态已过期，请重新登录后再操作。" : result.state === "denied" ? "当前账户没有平台运营读取权限。" : result.state === "invalid" ? "请输入有效的账户搜索条件。" : result.state === "rate_limited" ? "请求过于频繁，请稍后重试。" : "账户搜索暂不可用，请稍后重试。";
   }
   accountSearchBusy.value = false;
 }
@@ -142,16 +150,23 @@ async function refreshAfterWrite() {
   }
 }
 
-function handleWrite(result: PlatformOperationWriteResult, operation: "session_revoke" | "access_update", key: string) {
+function clearPending() {
+  pending.value = undefined;
+  clearPendingPlatformOperation();
+}
+
+function handleWrite(result: PlatformOperationWriteResult, command: PendingPlatformOperation, reconciling = false) {
   if (result.state === "succeeded") {
-    pending.value = undefined;
+    clearPending();
     notice.value = "操作已完成并写入审计记录。";
     void refreshAfterWrite();
-  } else if (result.state === "unknown") {
-    pending.value = { operation, key };
-    notice.value = "结果还没确认，请勿重复提交，稍后刷新查看。";
+  } else if (result.state === "unknown" || (reconciling && (result.state === "unavailable" || result.state === "signed_out" || result.state === "denied" || result.state === "not_found"))) {
+    pending.value = command;
+    const saved = writePendingPlatformOperation(command);
+    notice.value = saved ? (result.state === "unknown" ? "结果尚未确认，已保留原请求；请勿重复提交。" : "暂时无法核对结果，原请求仍已保留；请勿重复提交。") : "结果未确认，且浏览器无法保存原请求；请勿刷新或重复提交，并联系管理员。";
   } else {
-    notice.value = result.state === "conflict" ? "数据有变化，请刷新后重试。" : "操作没有完成，请稍后刷新页面重试。";
+    clearPending();
+    notice.value = result.state === "conflict" ? "数据有变化，请刷新后重试。" : result.state === "denied" ? "操作被拒绝，请联系管理员确认权限。" : result.state === "not_found" ? "目标不存在或已不可操作，请刷新后核对。" : result.state === "invalid" ? "操作内容无效，请检查后重试。" : "操作没有完成，请稍后刷新页面重试。";
   }
 }
 
@@ -214,31 +229,90 @@ function targetLabel(event: PlatformOperationsAuditEvent) {
   return parts.join(" / ");
 }
 
-async function revoke(sessionID: string) {
-  if (accountSearchBusy.value) return;
-  const key = idempotencyKey("revoke");
-  handleWrite(await revokePlatformSession(sessionID, key), "session_revoke", key);
+function hasPending(resourceID: string) {
+  return pending.value?.resource_id === resourceID;
 }
 
-function accountStatus(accountID: string): "active" | "suspended" | "deleted" | undefined {
-  return operations.value?.accounts.find((account) => account.id === accountID)?.status;
+function isResourceBusy(resourceID: string) {
+  return Boolean(pending.value) || submittingResourceID.value !== "";
 }
 
-// 改为「已删除」是高风险写操作：未确认前不发起任何写入，取消则完全不落库。
-async function saveAccess(account: PlatformOperationsSnapshot["accounts"][number], confirmed = false) {
-  if (accountSearchBusy.value) return;
+function isCurrentResourceBusy(resourceID: string) {
+  return hasPending(resourceID) || submittingResourceID.value === resourceID;
+}
+
+function busyLabel(resourceID: string, idleLabel: string) {
+  if (isCurrentResourceBusy(resourceID)) return "等待结果";
+  return isResourceBusy(resourceID) ? "已有操作待确认" : idleLabel;
+}
+
+function statusLabel(value: "active" | "suspended" | "deleted") {
+  return value === "active" ? "正常" : value === "suspended" ? "已停用" : "已删除";
+}
+
+function grantLabel(grant: PlatformAccessGrantInput) {
+  const scope = grant.scope.kind === "platform" ? "平台" : grant.scope.kind === "product" ? `产品 ${grant.scope.product_code ?? "未填写"}` : `资源 ${grant.scope.product_code ?? "未填写"}/${grant.scope.resource_type ?? "未填写"}/${grant.scope.resource_id ?? "未填写"}`;
+  return `${grant.role_code}（${scope}）`;
+}
+
+function openConfirmation(value: Confirmation) {
+  confirmation.value = value;
+  void nextTick(() => {
+    if (confirmationDialog.value && !confirmationDialog.value.open) confirmationDialog.value.showModal();
+  });
+}
+
+function requestRevoke(session: PlatformOperationsSnapshot["sessions"][number]) {
+  if (accountSearchBusy.value || isResourceBusy(session.id)) return;
+  openConfirmation({ kind: "session_revoke", resourceID: session.id, targetLabel: `${personLabel(session)} · ${personEmail(session)}`, changeSummary: `撤销${sessionKindLabel(session.kind)}登录；当前会话到期时间 ${localDateTime(session.expires_at)}` });
+}
+
+function requestAccessSave(account: PlatformOperationsSnapshot["accounts"][number]) {
+  if (accountSearchBusy.value || isResourceBusy(account.id)) return;
   const nextStatus = statuses.value[account.id];
-  if (!confirmed && nextStatus === "deleted" && accountStatus(account.id) !== "deleted") {
-    confirmTarget.value = account.id;
+  const nextGrants = grants.value[account.id].map((grant) => ({ role_code: grant.role_code, scope: { ...grant.scope } }));
+  const changes: string[] = [];
+  if (nextStatus !== account.status) changes.push(`账户状态：${statusLabel(account.status)} → ${statusLabel(nextStatus)}`);
+  if (JSON.stringify(nextGrants) !== JSON.stringify(account.grants)) changes.push(`授权集合：${account.grants.length ? account.grants.map(grantLabel).join("、") : "无"} → ${nextGrants.length ? nextGrants.map(grantLabel).join("、") : "无"}`);
+  if (!changes.length) {
+    notice.value = "没有需要保存的访问设置变更。";
     return;
   }
-  confirmTarget.value = undefined;
-  const key = idempotencyKey("access");
-  handleWrite(await updatePlatformAccess(account.id, { expected_revision: account.authorization_revision, status: nextStatus, grants: grants.value[account.id] }, key), "access_update", key);
+  openConfirmation({ kind: "access_update", resourceID: account.id, targetLabel: `${personLabel(account)} · ${personEmail(account)}`, changeSummary: changes.join("；"), expectedRevision: account.authorization_revision, status: nextStatus, grants: nextGrants });
 }
 
 function cancelConfirm() {
-  confirmTarget.value = undefined;
+  if (confirmationDialog.value?.open) confirmationDialog.value.close();
+  confirmation.value = undefined;
+}
+
+async function confirmOperation() {
+  const action = confirmation.value;
+  const operatorID = props.operatorID;
+  if (!action || !operatorID || isResourceBusy(action.resourceID)) {
+    notice.value = "当前登录身份尚未确认，请刷新后重试。";
+    return;
+  }
+  if (confirmationDialog.value?.open) confirmationDialog.value.close();
+  confirmation.value = undefined;
+  submittingResourceID.value = action.resourceID;
+  const operation = action.kind;
+  const key = idempotencyKey(operation === "session_revoke" ? "revoke" : "access");
+  const command: PendingPlatformOperation = { version: 1, operator_id: operatorID, operation, idempotency_key: key, resource_id: action.resourceID };
+  pending.value = command;
+  const saved = writePendingPlatformOperation(command);
+  if (!saved) {
+    pending.value = undefined;
+    submittingResourceID.value = "";
+    notice.value = "浏览器无法安全保存原请求，操作未提交。请允许会话存储后重试。";
+    return;
+  }
+  notice.value = `正在提交：${action.targetLabel} · ${action.changeSummary}`;
+  const result = action.kind === "session_revoke"
+    ? await revokePlatformSession(action.resourceID, key)
+    : await updatePlatformAccess(action.resourceID, { expected_revision: action.expectedRevision, status: action.status, grants: action.grants }, key);
+  handleWrite(result, command, false);
+  submittingResourceID.value = "";
 }
 
 function addGrant(accountID: string) {
@@ -261,12 +335,37 @@ function normalizeScope(grant: PlatformAccessGrantInput) {
 
 async function resolveUnknown() {
   if (!pending.value) return;
-  handleWrite(await resolvePlatformOperation(pending.value.operation, pending.value.key), pending.value.operation, pending.value.key);
+  const command = pending.value;
+  handleWrite(await resolvePlatformOperation(command.operation, command.idempotency_key), command, true);
+}
+
+async function restorePending() {
+  const operatorID = props.operatorID;
+  if (!operatorID) {
+    pending.value = undefined;
+    submittingResourceID.value = "";
+    notice.value = "";
+    cancelConfirm();
+    restoredOperator.value = "";
+    return;
+  }
+  if (restoredOperator.value === operatorID) return;
+  pending.value = undefined;
+  submittingResourceID.value = "";
+  notice.value = "";
+  cancelConfirm();
+  restoredOperator.value = operatorID;
+  const restored = readPendingPlatformOperation(operatorID);
+  if (!restored) return;
+  pending.value = restored;
+  notice.value = "正在核对之前未确认的平台操作。";
+  await resolveUnknown();
 }
 
 const mailTotal = computed(() => operations.value ? Object.values(operations.value.mail).reduce((sum, value) => sum + value, 0) : 0);
 const canWrite = computed(() => operations.value?.access_context.permissions.includes("platform.operations.write") ?? false);
-onMounted(() => { if (props.authState !== "signed_out") void load(); });
+watch(() => props.operatorID, () => { void restorePending(); });
+onMounted(() => { if (props.authState !== "signed_out") void load(); void restorePending(); });
 </script>
 
 <template>
@@ -281,6 +380,22 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); });
     </PageHeader>
 
     <p v-if="notice" class="operation-notice" role="status">{{ notice }} <button v-if="pending" type="button" @click="resolveUnknown">查询结果</button></p>
+    <dialog
+      ref="confirmationDialog"
+      class="m-auto w-[min(92vw,42rem)] rounded-lg border border-destructive/30 bg-background p-5 shadow-xl backdrop:bg-foreground/30"
+      aria-labelledby="platform-confirm-heading"
+      @close="confirmation = undefined"
+      @click.self="cancelConfirm"
+    >
+      <div v-if="confirmation">
+        <p class="eyebrow">高风险操作确认</p>
+        <h2 id="platform-confirm-heading" class="mt-1 text-lg font-semibold">{{ confirmation.kind === "session_revoke" ? "确认撤销登录会话" : "确认更新访问设置" }}</h2>
+        <dl class="mt-3 grid gap-2 text-sm"><div><dt class="text-muted-foreground">目标</dt><dd class="break-all font-medium">{{ confirmation.targetLabel }}</dd></div><div><dt class="text-muted-foreground">将要发生</dt><dd class="break-words font-medium">{{ confirmation.changeSummary }}</dd></div></dl>
+        <p v-if="confirmation.kind === 'access_update' && confirmation.status === 'deleted'" class="mt-2 text-sm text-muted-foreground">账户数据不会被物理删除，但该账户将无法登录，授权检查也不再通过。</p>
+        <p class="mt-2 text-sm text-muted-foreground">取消不会产生任何写入。</p>
+        <div class="mt-3 flex flex-wrap gap-2"><button type="button" class="bg-destructive! border-destructive!" @click="confirmOperation">{{ confirmation.kind === "session_revoke" ? "确认撤销会话" : "确认更新访问设置" }}</button><button type="button" class="secondary-action" autofocus @click="cancelConfirm">取消</button></div>
+      </div>
+    </dialog>
     <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取运营状态…</div>
     <div v-else-if="state === 'denied'" class="operation-state">当前登录账户没有平台运营权限，请联系管理员。</div>
     <div v-else-if="state === 'rate_limited'" class="operation-state">请求过于频繁，请稍后重试。</div>
@@ -311,25 +426,17 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); });
                 <strong>{{ personLabel(account) }}</strong>
                 <p class="break-all">{{ personEmail(account) }} · 授权版本 {{ account.authorization_revision }} · {{ account.email_verified ? "邮箱已验证" : "邮箱未验证" }}</p>
                 <div v-for="(grant, index) in grants[account.id]" :key="index" class="grant-editor">
-                  <label>角色代码<input v-model="grant.role_code" :disabled="!canWrite || accountSearchBusy" pattern="[a-z][a-z0-9-]+" /></label>
-                  <label>权限范围<select v-model="grant.scope.kind" :disabled="!canWrite || accountSearchBusy" @change="normalizeScope(grant)"><option value="platform">平台</option><option value="product">产品</option><option value="resource">资源</option></select></label>
-                  <label v-if="grant.scope.kind !== 'platform'">产品代码<input v-model="grant.scope.product_code" :disabled="!canWrite || accountSearchBusy" /></label>
-                  <label v-if="grant.scope.kind === 'resource'">资源类型<input v-model="grant.scope.resource_type" :disabled="!canWrite || accountSearchBusy" /></label>
-                  <label v-if="grant.scope.kind === 'resource'">资源 ID<input v-model="grant.scope.resource_id" :disabled="!canWrite || accountSearchBusy" /></label>
-                  <button v-if="canWrite" type="button" class="secondary-action" :disabled="accountSearchBusy" @click="removeGrant(account.id, index)">删除授权</button>
+                  <label>角色代码<input v-model="grant.role_code" :disabled="!canWrite || accountSearchBusy || isResourceBusy(account.id)" pattern="[a-z][a-z0-9-]+" /></label>
+                  <label>权限范围<select v-model="grant.scope.kind" :disabled="!canWrite || accountSearchBusy || isResourceBusy(account.id)" @change="normalizeScope(grant)"><option value="platform">平台</option><option value="product">产品</option><option value="resource">资源</option></select></label>
+                  <label v-if="grant.scope.kind !== 'platform'">产品代码<input v-model="grant.scope.product_code" :disabled="!canWrite || accountSearchBusy || isResourceBusy(account.id)" /></label>
+                  <label v-if="grant.scope.kind === 'resource'">资源类型<input v-model="grant.scope.resource_type" :disabled="!canWrite || accountSearchBusy || isResourceBusy(account.id)" /></label>
+                  <label v-if="grant.scope.kind === 'resource'">资源 ID<input v-model="grant.scope.resource_id" :disabled="!canWrite || accountSearchBusy || isResourceBusy(account.id)" /></label>
+                  <button v-if="canWrite" type="button" class="secondary-action" :disabled="accountSearchBusy || isResourceBusy(account.id)" @click="removeGrant(account.id, index)">删除授权</button>
                 </div>
-                <button v-if="canWrite" type="button" class="secondary-action" :disabled="accountSearchBusy" @click="addGrant(account.id)">新增角色 / 权限</button>
+                <button v-if="canWrite" type="button" class="secondary-action" :disabled="accountSearchBusy || isResourceBusy(account.id)" @click="addGrant(account.id)">新增角色 / 权限</button>
               </div>
-              <div class="operation-actions"><label>账户状态<select v-model="statuses[account.id]" :disabled="!canWrite || accountSearchBusy"><option value="active">正常</option><option value="suspended">已停用</option><option value="deleted">已删除</option></select></label><button v-if="canWrite" type="button" :disabled="accountSearchBusy" @click="saveAccess(account)">保存访问设置</button><span v-else>只读权限</span></div>
+              <div class="operation-actions"><label>账户状态<select v-model="statuses[account.id]" :disabled="!canWrite || accountSearchBusy || isResourceBusy(account.id)"><option value="active">正常</option><option value="suspended">已停用</option><option value="deleted">已删除</option></select></label><button v-if="canWrite" type="button" :disabled="accountSearchBusy || isResourceBusy(account.id)" @click="requestAccessSave(account)">{{ busyLabel(account.id, "保存访问设置") }}</button><span v-else>只读权限</span></div>
             </article>
-            <div v-if="confirmTarget === account.id" class="mb-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
-              <strong>确认将账户标记为「已删除」？</strong>
-              <p class="mt-1 text-sm text-muted-foreground">标记后该账户将无法登录，其授权检查将不再通过；账户数据不会被物理删除，此状态之后可再改回（可逆）。</p>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <button type="button" class="bg-destructive! border-destructive!" @click="saveAccess(account, true)">确认标记已删除</button>
-                <button type="button" class="secondary-action" @click="cancelConfirm">取消</button>
-              </div>
-            </div>
           </template>
         </div>
         <div class="mt-4 flex items-center justify-between gap-3">
@@ -339,7 +446,7 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); });
         </div>
       </section>
 
-      <section class="operation-panel" aria-labelledby="sessions-heading"><h2 id="sessions-heading">登录会话</h2><div class="operation-list"><article v-for="session in operations.sessions" :key="session.id" class="operation-row"><div><strong>{{ personLabel(session) }}</strong><p class="break-all">{{ personEmail(session) }} · {{ sessionKindLabel(session.kind) }} · 到期 {{ localDateTime(session.expires_at) }}</p></div><button v-if="canWrite" type="button" :disabled="Boolean(session.revoked_at) || accountSearchBusy" @click="revoke(session.id)">{{ session.revoked_at ? "已撤销" : "撤销登录" }}</button><span v-else>只读权限</span></article></div><div class="mt-4 flex items-center justify-between gap-3"><button type="button" class="secondary-action" :disabled="operations.pagination.sessions.page <= 1 || accountSearchBusy" @click="loadPage('sessions_page', operations.pagination.sessions.page - 1)">会话上一页</button><span>会话第 {{ operations.pagination.sessions.page }} 页</span><button type="button" class="secondary-action" :disabled="operations.pagination.sessions.next_page === null || accountSearchBusy" @click="operations.pagination.sessions.next_page && loadPage('sessions_page', operations.pagination.sessions.next_page)">会话下一页</button></div></section>
+      <section class="operation-panel" aria-labelledby="sessions-heading"><h2 id="sessions-heading">登录会话</h2><div class="operation-list"><article v-for="session in operations.sessions" :key="session.id" class="operation-row"><div><strong>{{ personLabel(session) }}</strong><p class="break-all">{{ personEmail(session) }} · {{ sessionKindLabel(session.kind) }} · 到期 {{ localDateTime(session.expires_at) }}</p></div><button v-if="canWrite" type="button" :disabled="Boolean(session.revoked_at) || accountSearchBusy || isResourceBusy(session.id)" @click="requestRevoke(session)">{{ session.revoked_at ? "已撤销" : busyLabel(session.id, "撤销登录") }}</button><span v-else>只读权限</span></article></div><div class="mt-4 flex items-center justify-between gap-3"><button type="button" class="secondary-action" :disabled="operations.pagination.sessions.page <= 1 || accountSearchBusy" @click="loadPage('sessions_page', operations.pagination.sessions.page - 1)">会话上一页</button><span>会话第 {{ operations.pagination.sessions.page }} 页</span><button type="button" class="secondary-action" :disabled="operations.pagination.sessions.next_page === null || accountSearchBusy" @click="operations.pagination.sessions.next_page && loadPage('sessions_page', operations.pagination.sessions.next_page)">会话下一页</button></div></section>
 
       <div class="operation-two-column">
         <section class="operation-panel"><h2>邮件基础设施</h2><dl class="mail-grid"><template v-for="(value, key) in operations.mail" :key="key"><dt>{{ mailLabel(key) }}</dt><dd>{{ value }}</dd></template></dl></section>

@@ -15,6 +15,7 @@ const operations = {
   },
   dependencies: { postgres: "ready", redis: "ready" }, generated_at: "2026-07-19T00:00:00Z",
 };
+const session = { user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" }, access_context: { permissions: ["platform.operations.read", "platform.operations.write"], scopes: [{ kind: "platform" }], verified_at: "2026-07-19T00:00:00Z" }, expires_at: "2026-07-19T01:00:00Z" };
 
 async function gotoOperations(page: import("@playwright/test").Page) {
   await page.goto("/operations", { waitUntil: "commit" });
@@ -24,7 +25,7 @@ async function gotoOperations(page: import("@playwright/test").Page) {
 test.beforeEach(async ({ page }) => {
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
-  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 403, contentType: "application/json", body: "{}" }));
+  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_operations_session" }) }));
   await page.route("**/api/v1/operations*", (route) => {
     const requestURL = new URL(route.request().url());
     if (route.request().method() !== "GET" || requestURL.pathname !== "/api/v1/operations") return route.fallback();
@@ -52,10 +53,17 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(page.getByText("very.long.operator.identity@henu.edu.cn").first()).toBeVisible();
     await expect(page.getByText(/171f1c6f-7b10/)).toHaveCount(0);
     await page.getByRole("button", { name: "撤销登录" }).click();
+    const revokeDialog = page.getByRole("dialog");
+    await expect(revokeDialog).toContainText("张老师");
+    await expect(revokeDialog).toContainText("撤销核心登录");
+    await revokeDialog.getByRole("button", { name: "确认撤销会话" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     await page.getByLabel("角色代码").fill("operations-reviewer");
     await page.getByRole("button", { name: "保存访问设置" }).click();
-    await expect(page.getByRole("status")).toContainText("结果还没确认");
+    const accessDialog = page.getByRole("dialog");
+    await expect(accessDialog).toContainText("授权集合");
+    await accessDialog.getByRole("button", { name: "确认更新访问设置" }).click();
+    await expect(page.getByRole("status")).toContainText("结果尚未确认");
     await page.getByRole("button", { name: "查询结果" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
@@ -75,19 +83,19 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
 
     await page.getByLabel("账户状态").selectOption("deleted");
     await page.getByRole("button", { name: "保存访问设置" }).click();
-    await expect(page.getByRole("button", { name: "确认标记已删除" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "确认更新访问设置" })).toBeVisible();
     await expect(page.getByText(/不会被物理删除/)).toBeVisible();
     // 提交前出现确认步骤：确认面板展示期间与取消之前，不发生任何写入。
     expect(requests).toHaveLength(0);
 
     await page.getByRole("button", { name: "取消", exact: true }).click();
-    await expect(page.getByRole("button", { name: "确认标记已删除" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "确认更新访问设置" })).toHaveCount(0);
     expect(requests).toHaveLength(0);
 
     // 再次提交仍先确认；确认后才发起写入，且请求内容为「已删除」。
     await page.getByRole("button", { name: "保存访问设置" }).click();
-    await expect(page.getByRole("button", { name: "确认标记已删除" })).toBeVisible();
-    await page.getByRole("button", { name: "确认标记已删除" }).click();
+    await expect(page.getByRole("button", { name: "确认更新访问设置" })).toBeVisible();
+    await page.getByRole("button", { name: "确认更新访问设置" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     expect(requests).toHaveLength(1);
     expect(requests[0].status).toBe("deleted");
@@ -96,7 +104,23 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
 
-  test(`${viewport.name} status changes other than deleted write without confirmation`, async ({ page }) => {
+  test(`${viewport.name} Session revocation confirmation can be cancelled without a write`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    let requests = 0;
+    await page.route("**/api/v1/operations/sessions/*/revocations", (route) => { requests += 1; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "session_revoke", status: "succeeded", resource_id: operations.sessions[0].id }, request_id: "req_revoke_cancel" }) }); });
+    await page.goto("/operations");
+    await page.getByRole("button", { name: "撤销登录" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("very.long.operator.identity@henu.edu.cn");
+    await expect(dialog).toContainText("撤销核心登录");
+    await expect(dialog.getByRole("button", { name: "取消" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "撤销登录" })).toBeFocused();
+    expect(requests).toBe(0);
+  });
+
+  test(`${viewport.name} account suspension shows a consequential diff before writing`, async ({ page }) => {
     await page.setViewportSize(viewport);
     const requests: Array<{ status?: string }> = [];
     await page.route("**/api/v1/operations/users/*/access-updates", async (route) => {
@@ -107,10 +131,11 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await gotoOperations(page);
     await expect(page.getByRole("heading", { name: "平台运营工作台", exact: true })).toBeVisible();
 
-    // 只有改为「已删除」才强制确认：正常 → 已停用 点保存直接写入，不出现确认面板。
     await page.getByLabel("账户状态").selectOption("suspended");
     await page.getByRole("button", { name: "保存访问设置" }).click();
-    await expect(page.getByRole("button", { name: "确认标记已删除" })).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toContainText("账户状态：正常 → 已停用");
+    expect(requests).toHaveLength(0);
+    await page.getByRole("button", { name: "确认更新访问设置" }).click();
     await expect(page.getByRole("status")).toContainText("操作已完成");
     expect(requests).toHaveLength(1);
     expect(requests[0].status).toBe("suspended");
@@ -183,6 +208,62 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
 }
+
+test("Platform Operations reload reconciles the original pending command and key", async ({ page }) => {
+  let writeCalls = 0;
+  let originalKey = "";
+  let resolveSucceeded = false;
+  const resolvedKeys: string[] = [];
+  await page.route("**/api/v1/operations/users/*/access-updates", async (route) => {
+    writeCalls += 1;
+    originalKey = route.request().headers()["idempotency-key"] ?? "";
+    await route.abort("connectionreset");
+  });
+  await page.route("**/api/v1/operations/results/access_update", (route) => {
+    resolvedKeys.push(route.request().headers()["idempotency-key"] ?? "");
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "access_update", status: resolveSucceeded ? "succeeded" : "unknown", resource_id: operations.accounts[0].id, ...(resolveSucceeded ? { resource_version: 2 } : {}) }, request_id: "req_access_reload_resolve" }) });
+  });
+  await page.goto("/operations");
+  await page.getByLabel("角色代码").fill("operations-reviewer");
+  await page.getByRole("button", { name: "保存访问设置" }).click();
+  await page.getByRole("button", { name: "确认更新访问设置" }).click();
+  await expect(page.getByRole("status")).toContainText("结果尚未确认");
+  await expect(page.getByRole("button", { name: "等待结果" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "已有操作待确认" })).toBeDisabled();
+  const stored = await page.evaluate(() => sessionStorage.getItem("henukit.console.pending-platform-operation.v1"));
+  expect(stored).toContain(originalKey);
+  expect(stored).not.toContain("very.long.operator.identity@henu.edu.cn");
+  resolveSucceeded = true;
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText("操作已完成");
+  expect(writeCalls).toBe(1);
+  expect(resolvedKeys).toEqual([originalKey]);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-platform-operation.v1"))).toBeNull();
+});
+
+test("Platform Operations discards pending state owned by another operator", async ({ page }) => {
+  let resolveCalls = 0;
+  await page.addInitScript(() => sessionStorage.setItem("henukit.console.pending-platform-operation.v1", JSON.stringify({ version: 1, operator_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", operation: "access_update", idempotency_key: "idem_console_access_11111111-1111-4111-8111-111111111111", resource_id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302", target_label: "其他运营员", change_summary: "已停用" })));
+  await page.route("**/api/v1/operations/results/access_update", (route) => { resolveCalls += 1; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "access_update", status: "unknown" }, request_id: "req_foreign_pending" }) }); });
+  await page.goto("/operations");
+  await expect(page.getByRole("button", { name: "保存访问设置" })).toBeEnabled();
+  expect(resolveCalls).toBe(0);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-platform-operation.v1"))).toBeNull();
+});
+
+test("Platform Operations does not write when pending-command storage is unavailable", async ({ page }) => {
+  let writes = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(Storage.prototype, "setItem", { configurable: true, value: () => { throw new DOMException("blocked", "SecurityError"); } });
+  });
+  await page.route("**/api/v1/operations/sessions/*/revocations", (route) => { writes += 1; return route.abort(); });
+  await page.goto("/operations");
+  await page.getByRole("button", { name: "撤销登录" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "确认撤销会话" }).click();
+  await expect(page.getByRole("status")).toContainText("操作未提交");
+  expect(writes).toBe(0);
+  await expect(page.getByRole("button", { name: "撤销登录" })).toBeEnabled();
+});
 
 for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
   test(`${viewport.name} read-only Platform Operations hides every mutation control`, async ({ page }) => {
@@ -276,6 +357,78 @@ test("Platform Operations searches accounts without putting identity text in the
   expect(requests[0].body).toEqual({ query: "target.operator@henu.edu.cn", page: 1, snapshot_at: operations.generated_at });
 });
 
+test("Platform Operations keeps canonical account paging separate from search paging", async ({ page }) => {
+  const snapshotRequests: URL[] = [];
+  await page.route("**/api/v1/operations*", async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() !== "GET" || url.pathname !== "/api/v1/operations") return route.fallback();
+    snapshotRequests.push(url);
+    const sessionPage = Number(url.searchParams.get("sessions_page") ?? "1");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          ...operations,
+          sessions: sessionPage === 2 ? [{ ...operations.sessions[0], display_name: "第二页会话" }] : operations.sessions,
+          pagination: {
+            ...operations.pagination,
+            accounts: { page: 1, next_page: 2, next_cursor: "accounts-next" },
+            sessions: { page: sessionPage, next_page: sessionPage === 1 ? 2 : null, next_cursor: sessionPage === 1 ? "sessions-next" : null },
+          },
+        },
+        request_id: "req_operations_search_paging",
+      }),
+    });
+  });
+  await page.route("**/api/v1/operations/accounts/search", async (route) => {
+    const body = await route.request().postDataJSON();
+    const searchPage = Number(body.page);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          accounts: [{ ...operations.accounts[0], display_name: searchPage === 2 ? "第二页搜索账户" : "第一页搜索账户" }],
+          next_page: searchPage === 1 ? 2 : null,
+          next_cursor: searchPage === 1 ? "search-next" : null,
+        },
+        request_id: "req_operations_account_search_page",
+      }),
+    });
+  });
+
+  await gotoOperations(page);
+  await page.getByLabel("账户搜索").fill("目标运营");
+  await page.getByRole("button", { name: "搜索账户" }).click();
+  await page.getByRole("button", { name: "账户下一页" }).click();
+  await expect(page.getByText("第二页搜索账户").first()).toBeVisible();
+  await page.getByRole("button", { name: "会话下一页" }).click();
+  await expect(page.getByText("第二页会话").first()).toBeVisible();
+  await expect(page.getByText("第二页搜索账户").first()).toBeVisible();
+  await page.getByRole("button", { name: "会话上一页" }).click();
+  await expect(page.getByText("张老师").first()).toBeVisible();
+
+  const navigationRequests = snapshotRequests.slice(-2);
+  expect(navigationRequests).toHaveLength(2);
+  for (const request of navigationRequests) {
+    expect(request.searchParams.get("accounts_page")).toBe("1");
+    expect(request.searchParams.has("accounts_cursor")).toBe(false);
+  }
+});
+
+test("Platform Operations tells signed-out account search users to log in again", async ({ page }) => {
+  await page.route("**/api/v1/operations/accounts/search", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { code: "UNAUTHORIZED", message: "signed out" } }),
+  }));
+  await gotoOperations(page);
+  await page.getByLabel("账户搜索").fill("目标运营");
+  await page.getByRole("button", { name: "搜索账户" }).click();
+  await expect(page.getByRole("status")).toContainText("登录状态已过期，请重新登录后再操作");
+});
+
 test("Platform Operations explains rate limits and blocks paging while account search is pending", async ({ page }) => {
   let releaseSearch: (() => void) | undefined;
   await page.route("**/api/v1/operations/accounts/search", async (route) => {
@@ -337,8 +490,11 @@ test("Platform Operations write from a continuation refreshes a fresh first page
   await page.getByRole("button", { name: "账户下一页" }).click();
   await expect(page.getByText("第二页账户")).toBeVisible();
   await page.getByLabel("账户状态").selectOption("suspended");
+  const requestsBeforeWrite = requests.length;
   await page.getByRole("button", { name: "保存访问设置" }).click();
-  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3);
+  await page.getByRole("dialog").getByRole("button", { name: "确认更新访问设置" }).click();
+  await expect(page.getByRole("status")).toContainText("操作已完成");
+  await expect.poll(() => requests.length).toBeGreaterThan(requestsBeforeWrite);
   const latest = requests[requests.length - 1];
   expect(latest.searchParams.get("accounts_page")).toBe("1");
   expect(latest.searchParams.has("snapshot_at")).toBe(false);

@@ -140,7 +140,7 @@ func (h *service) createSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "source fields are invalid")
 		return
 	}
-	h.writeOperation(w, r, "source_create", body, func(tx pgx.Tx) (map[string]any, error) {
+	h.writeOperation(w, r, value, "source_create", body, func(tx pgx.Tx) (map[string]any, error) {
 		return h.lifecycle.createSource(r.Context(), tx, value, requestID(r), input)
 	})
 }
@@ -164,7 +164,7 @@ func (h *service) createVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "version fields are invalid")
 		return
 	}
-	h.writeOperation(w, r, "version_create", body, func(tx pgx.Tx) (map[string]any, error) {
+	h.writeOperation(w, r, value, "version_create", body, func(tx pgx.Tx) (map[string]any, error) {
 		return h.lifecycle.createVersion(r.Context(), tx, value, requestID(r), sourceID, input)
 	})
 }
@@ -188,7 +188,7 @@ func (h *service) review(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "review decision is invalid")
 		return
 	}
-	h.writeOperation(w, r, "review", body, func(tx pgx.Tx) (map[string]any, error) {
+	h.writeOperation(w, r, value, "review", body, func(tx pgx.Tx) (map[string]any, error) {
 		return h.lifecycle.review(r.Context(), tx, value, requestID(r), versionID, input)
 	})
 }
@@ -212,7 +212,7 @@ func (h *service) distribute(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "distribution fields are invalid")
 		return
 	}
-	h.writeOperation(w, r, "distribution", body, func(tx pgx.Tx) (map[string]any, error) {
+	h.writeOperation(w, r, value, "distribution", body, func(tx pgx.Tx) (map[string]any, error) {
 		return h.lifecycle.distribute(r.Context(), tx, value, requestID(r), versionID, input)
 	})
 }
