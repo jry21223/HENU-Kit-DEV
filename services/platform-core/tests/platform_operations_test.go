@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -256,6 +259,281 @@ func TestPlatformOperationsSnapshotIsScopedAndContainsNoSecrets(t *testing.T) {
 		t.Fatalf("dependency status = %+v, want ready/ready", envelope.Data.Dependencies)
 	}
 
+}
+
+func TestPlatformOperationsPagesPastInitialBoundedWindow(t *testing.T) {
+	fixture := newInboxFixture(t)
+	grantPlatformOperations(t, fixture)
+	ctx := context.Background()
+
+	for index := 0; index < 21; index++ {
+		seedLookupIdentity(t, fixture, fmt.Sprintf("platform-page-%02d@henu.edu.cn", index), fmt.Sprintf("分页账户 %02d", index))
+	}
+	if _, err := fixture.pool.Exec(ctx, `
+		INSERT INTO sessions (id, user_id, kind, token_hash, expires_at, created_at)
+		SELECT gen_random_uuid(), $1, 'core', digest('platform-page-session-' || value::text, 'sha256'), now() + interval '1 day', now() - value * interval '1 minute'
+		FROM generate_series(1, 25) AS value`, fixture.userID); err != nil {
+		t.Fatalf("seed paged Sessions: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `
+		INSERT INTO operations_inbox_items (source_product_code, source_resource_type, source_resource_id, priority, created_by, updated_by, updated_at)
+		SELECT 'quizcraft', 'feedback', 'paged-feedback-' || value::text, 'normal', $1, $1, now() - value * interval '1 minute'
+		FROM generate_series(1, 25) AS value`, fixture.userID); err != nil {
+		t.Fatalf("seed paged Inbox items: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `
+		INSERT INTO platform_operations_audit_events (actor_user_id, request_id, operation, resource_kind, resource_id, result_payload, created_at)
+		SELECT $1, 'req_platform_page_' || value::text, 'access_update', 'user', gen_random_uuid(), '{"status":"succeeded"}'::jsonb, now() - value * interval '1 minute'
+		FROM generate_series(1, 25) AS value`, fixture.userID); err != nil {
+		t.Fatalf("seed paged audit events: %v", err)
+	}
+
+	decode := func(path string) struct {
+		Accounts   []json.RawMessage `json:"accounts"`
+		Sessions   []json.RawMessage `json:"sessions"`
+		InboxItems []json.RawMessage `json:"inbox_items"`
+		Audit      []json.RawMessage `json:"audit"`
+		Pagination struct {
+			Accounts   platformPageState `json:"accounts"`
+			Sessions   platformPageState `json:"sessions"`
+			InboxItems platformPageState `json:"inbox_items"`
+			Audit      platformPageState `json:"audit"`
+		} `json:"pagination"`
+		GeneratedAt time.Time `json:"generated_at"`
+	} {
+		t.Helper()
+		response := sendInboxRequest(t, fixture, http.MethodGet, path, "", "", "nonce_"+uuid.NewString(), "req_platform_operations_page")
+		defer response.Body.Close()
+		payload, _ := io.ReadAll(response.Body)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("Platform Operations page = %d: %s", response.StatusCode, payload)
+		}
+		var envelope struct {
+			Data struct {
+				Accounts   []json.RawMessage `json:"accounts"`
+				Sessions   []json.RawMessage `json:"sessions"`
+				InboxItems []json.RawMessage `json:"inbox_items"`
+				Audit      []json.RawMessage `json:"audit"`
+				Pagination struct {
+					Accounts   platformPageState `json:"accounts"`
+					Sessions   platformPageState `json:"sessions"`
+					InboxItems platformPageState `json:"inbox_items"`
+					Audit      platformPageState `json:"audit"`
+				} `json:"pagination"`
+				GeneratedAt time.Time `json:"generated_at"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			t.Fatalf("decode Platform Operations page: %v", err)
+		}
+		return envelope.Data
+	}
+
+	first := decode("/api/v1/platform-operations")
+	for name, state := range map[string]platformPageState{"accounts": first.Pagination.Accounts, "sessions": first.Pagination.Sessions, "inbox": first.Pagination.InboxItems, "audit": first.Pagination.Audit} {
+		if state.Page != 1 || state.NextPage == nil || *state.NextPage != 2 || state.NextCursor == nil || *state.NextCursor == "" {
+			t.Fatalf("%s first page state = %+v, want page 1 -> 2", name, state)
+		}
+	}
+	missingSnapshot := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/platform-operations?accounts_page=2", "", "", "nonce_"+uuid.NewString(), "req_platform_operations_missing_snapshot")
+	missingSnapshot.Body.Close()
+	if missingSnapshot.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Platform Operations continuation without snapshot = %d, want 400", missingSnapshot.StatusCode)
+	}
+	tamperedCursor := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/platform-operations?accounts_page=2&accounts_cursor=tampered&snapshot_at="+url.QueryEscape(first.GeneratedAt.Format(time.RFC3339Nano)), "", "", "nonce_"+uuid.NewString(), "req_platform_operations_bad_cursor")
+	tamperedCursor.Body.Close()
+	if tamperedCursor.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Platform Operations tampered cursor = %d, want 400", tamperedCursor.StatusCode)
+	}
+	oversizedCursor := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/platform-operations?accounts_page=2&accounts_cursor="+strings.Repeat("x", 513)+"&snapshot_at="+url.QueryEscape(first.GeneratedAt.Format(time.RFC3339Nano)), "", "", "nonce_"+uuid.NewString(), "req_platform_operations_oversized_cursor")
+	oversizedCursor.Body.Close()
+	if oversizedCursor.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Platform Operations oversized cursor = %d, want 400", oversizedCursor.StatusCode)
+	}
+	var originalAccountCount int
+	if err := fixture.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE created_at <= $1`, first.GeneratedAt).Scan(&originalAccountCount); err != nil {
+		t.Fatalf("count snapshot accounts: %v", err)
+	}
+	deletedAccountID := ""
+	for _, raw := range first.Accounts {
+		var account struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &account); err == nil && account.ID != fixture.userID.String() {
+			deletedAccountID = account.ID
+			break
+		}
+	}
+	if deletedAccountID == "" {
+		t.Fatal("no removable account found on first page")
+	}
+	if _, err := fixture.pool.Exec(ctx, `DELETE FROM email_identities WHERE user_id=$1`, deletedAccountID); err != nil {
+		t.Fatalf("delete first-page identity between continuations: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, deletedAccountID); err != nil {
+		t.Fatalf("delete first-page account between continuations: %v", err)
+	}
+	seedLookupIdentity(t, fixture, "platform-page-new@henu.edu.cn", "新增账户")
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO sessions (id, user_id, kind, token_hash, expires_at) VALUES (gen_random_uuid(), $1, 'core', digest('platform-page-new-session', 'sha256'), now() + interval '1 day')`, fixture.userID); err != nil {
+		t.Fatalf("seed Session after snapshot: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO operations_inbox_items (source_product_code, source_resource_type, source_resource_id, priority, created_by, updated_by) VALUES ('quizcraft', 'feedback', 'paged-feedback-new', 'normal', $1, $1)`, fixture.userID); err != nil {
+		t.Fatalf("seed Inbox item after snapshot: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO platform_operations_audit_events (actor_user_id, request_id, operation, resource_kind, resource_id, result_payload) VALUES ($1, 'req_platform_page_new', 'access_update', 'user', gen_random_uuid(), '{"status":"succeeded"}'::jsonb)`, fixture.userID); err != nil {
+		t.Fatalf("seed audit event after snapshot: %v", err)
+	}
+
+	second := decode("/api/v1/platform-operations?accounts_page=2&accounts_cursor=" + url.QueryEscape(*first.Pagination.Accounts.NextCursor) + "&sessions_page=2&sessions_cursor=" + url.QueryEscape(*first.Pagination.Sessions.NextCursor) + "&inbox_page=2&inbox_cursor=" + url.QueryEscape(*first.Pagination.InboxItems.NextCursor) + "&audit_page=2&audit_cursor=" + url.QueryEscape(*first.Pagination.Audit.NextCursor) + "&snapshot_at=" + url.QueryEscape(first.GeneratedAt.Format(time.RFC3339Nano)))
+	if len(second.Accounts) == 0 || len(second.Accounts) > 20 || len(second.Sessions) == 0 || len(second.Sessions) > 20 || len(second.InboxItems) == 0 || len(second.InboxItems) > 20 || len(second.Audit) == 0 || len(second.Audit) > 20 {
+		t.Fatalf("second page sizes accounts=%d sessions=%d inbox=%d audit=%d", len(second.Accounts), len(second.Sessions), len(second.InboxItems), len(second.Audit))
+	}
+	for name, state := range map[string]platformPageState{"accounts": second.Pagination.Accounts, "sessions": second.Pagination.Sessions, "inbox": second.Pagination.InboxItems, "audit": second.Pagination.Audit} {
+		if state.Page != 2 || state.NextPage != nil || state.NextCursor != nil {
+			t.Fatalf("%s second page state = %+v, want exhausted page 2", name, state)
+		}
+	}
+	if len(first.Accounts)+len(second.Accounts) != originalAccountCount {
+		t.Fatalf("stable account continuation returned %d rows across deletion, want %d", len(first.Accounts)+len(second.Accounts), originalAccountCount)
+	}
+	for name, pages := range map[string][][]json.RawMessage{"accounts": {first.Accounts, second.Accounts}, "sessions": {first.Sessions, second.Sessions}, "inbox": {first.InboxItems, second.InboxItems}, "audit": {first.Audit, second.Audit}} {
+		seen := map[string]struct{}{}
+		for _, page := range pages {
+			for _, item := range page {
+				if _, duplicate := seen[string(item)]; duplicate {
+					t.Fatalf("%s stable snapshot repeated a row across pages: %s", name, item)
+				}
+				seen[string(item)] = struct{}{}
+			}
+		}
+	}
+	rateKey := "platform-core:platform-read-minute:" + testClientID + ":" + fixture.userID.String()
+	if err := fixture.redisClient.Set(ctx, rateKey, 120, time.Minute).Err(); err != nil {
+		t.Fatalf("seed actor-scoped Platform Operations rate limit: %v", err)
+	}
+	rateLimited := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/platform-operations", "", "", "nonce_"+uuid.NewString(), "req_platform_operations_rate_limited")
+	rateLimited.Body.Close()
+	if rateLimited.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("actor-scoped Platform Operations rate limit = %d, want 429", rateLimited.StatusCode)
+	}
+}
+
+func TestPlatformOperationsAccountSearchUsesBodyAndReturnsEditableAccount(t *testing.T) {
+	fixture := newInboxFixture(t)
+	grantPlatformOperations(t, fixture)
+	targetID := seedLookupIdentity(t, fixture, "target.operator@henu.edu.cn", "目标运营员")
+	if _, err := fixture.pool.Exec(context.Background(), `
+		INSERT INTO user_role_grants (user_id, role_id, scope_kind)
+		SELECT $1, id, 'platform' FROM authorization_roles WHERE code = 'operations-operator'`, targetID); err != nil {
+		t.Fatalf("grant target account: %v", err)
+	}
+
+	for _, query := range []string{"目标运营", "target.operator@henu.edu.cn"} {
+		body := fmt.Sprintf(`{"query":%q,"page":1,"snapshot_at":%q}`, query, time.Now().UTC().Format(time.RFC3339Nano))
+		response := sendInboxRequest(t, fixture, http.MethodPost, "/api/v1/platform-operations/accounts/search", body, "", "nonce_"+uuid.NewString(), "req_platform_account_search")
+		payload, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("account search %q = %d: %s", query, response.StatusCode, payload)
+		}
+		var envelope struct {
+			Data struct {
+				Accounts []struct {
+					ID     string `json:"id"`
+					Email  string `json:"email"`
+					Grants []struct {
+						RoleCode string `json:"role_code"`
+					} `json:"grants"`
+				} `json:"accounts"`
+				NextPage *int `json:"next_page"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(payload, &envelope); err != nil || len(envelope.Data.Accounts) != 1 || envelope.Data.Accounts[0].ID != targetID || envelope.Data.Accounts[0].Email != "target.operator@henu.edu.cn" || len(envelope.Data.Accounts[0].Grants) != 1 || envelope.Data.Accounts[0].Grants[0].RoleCode != "operations-operator" || envelope.Data.NextPage != nil {
+			t.Fatalf("account search %q payload=%s err=%v", query, payload, err)
+		}
+	}
+
+	invalid := sendInboxRequest(t, fixture, http.MethodPost, "/api/v1/platform-operations/accounts/search", `{"query":"","page":0}`, "", "nonce_"+uuid.NewString(), "req_platform_account_search_invalid")
+	invalid.Body.Close()
+	if invalid.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid account page = %d, want 400", invalid.StatusCode)
+	}
+	oversizedBody := fmt.Sprintf(`{"query":%q,"page":1,"snapshot_at":%q}`, strings.Repeat("x", 101), time.Now().UTC().Format(time.RFC3339Nano))
+	oversized := sendInboxRequest(t, fixture, http.MethodPost, "/api/v1/platform-operations/accounts/search", oversizedBody, "", "nonce_"+uuid.NewString(), "req_platform_account_search_oversized")
+	oversized.Body.Close()
+	if oversized.StatusCode != http.StatusBadRequest {
+		t.Fatalf("oversized account search = %d, want 400", oversized.StatusCode)
+	}
+}
+
+func TestPlatformOperationsAccountSearchCursorIsStableAndQueryBound(t *testing.T) {
+	fixture := newInboxFixture(t)
+	grantPlatformOperations(t, fixture)
+	for index := 0; index < 21; index++ {
+		seedLookupIdentity(t, fixture, fmt.Sprintf("cursor-search-%02d@henu.edu.cn", index), fmt.Sprintf("游标目标 %02d", index))
+	}
+	snapshotResponse := sendInboxRequest(t, fixture, http.MethodGet, "/api/v1/platform-operations", "", "", "nonce_"+uuid.NewString(), "req_platform_account_cursor_snapshot")
+	var snapshotEnvelope struct {
+		Data struct {
+			GeneratedAt time.Time `json:"generated_at"`
+		} `json:"data"`
+	}
+	if snapshotResponse.StatusCode != http.StatusOK || json.NewDecoder(snapshotResponse.Body).Decode(&snapshotEnvelope) != nil {
+		snapshotResponse.Body.Close()
+		t.Fatalf("read account search snapshot = %d", snapshotResponse.StatusCode)
+	}
+	snapshotResponse.Body.Close()
+	snapshotAt := snapshotEnvelope.Data.GeneratedAt
+	type searchPage struct {
+		Accounts []struct {
+			ID string `json:"id"`
+		} `json:"accounts"`
+		NextPage   *int    `json:"next_page"`
+		NextCursor *string `json:"next_cursor"`
+	}
+	decode := func(body, requestID string) (searchPage, int) {
+		t.Helper()
+		response := sendInboxRequest(t, fixture, http.MethodPost, "/api/v1/platform-operations/accounts/search", body, "", "nonce_"+uuid.NewString(), requestID)
+		defer response.Body.Close()
+		payload, _ := io.ReadAll(response.Body)
+		if response.StatusCode != http.StatusOK {
+			return searchPage{}, response.StatusCode
+		}
+		var envelope struct {
+			Data searchPage `json:"data"`
+		}
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			t.Fatalf("decode account cursor page: %v", err)
+		}
+		return envelope.Data, response.StatusCode
+	}
+	firstBody := fmt.Sprintf(`{"query":"游标目标","page":1,"snapshot_at":%q}`, snapshotAt.Format(time.RFC3339Nano))
+	first, status := decode(firstBody, "req_platform_account_cursor_first")
+	if status != http.StatusOK || len(first.Accounts) != 20 || first.NextPage == nil || *first.NextPage != 2 || first.NextCursor == nil {
+		t.Fatalf("first account cursor page = status %d payload %+v", status, first)
+	}
+	alteredBody := fmt.Sprintf(`{"query":"其他目标","page":2,"snapshot_at":%q,"cursor":%q}`, snapshotAt.Format(time.RFC3339Nano), *first.NextCursor)
+	if _, alteredStatus := decode(alteredBody, "req_platform_account_cursor_altered"); alteredStatus != http.StatusBadRequest {
+		t.Fatalf("cursor reused with another query = %d, want 400", alteredStatus)
+	}
+	secondBody := fmt.Sprintf(`{"query":"游标目标","page":2,"snapshot_at":%q,"cursor":%q}`, snapshotAt.Format(time.RFC3339Nano), *first.NextCursor)
+	second, secondStatus := decode(secondBody, "req_platform_account_cursor_second")
+	if secondStatus != http.StatusOK || len(second.Accounts) == 0 || second.NextPage != nil || second.NextCursor != nil {
+		t.Fatalf("second account cursor page = status %d payload %+v", secondStatus, second)
+	}
+	seen := map[string]struct{}{}
+	for _, account := range append(first.Accounts, second.Accounts...) {
+		if _, duplicate := seen[account.ID]; duplicate {
+			t.Fatalf("account cursor repeated %s", account.ID)
+		}
+		seen[account.ID] = struct{}{}
+	}
+}
+
+type platformPageState struct {
+	Page       int     `json:"page"`
+	NextPage   *int    `json:"next_page"`
+	NextCursor *string `json:"next_cursor"`
 }
 
 func TestPlatformOperationsSnapshotRetainsAuditRowsAfterActorHardDelete(t *testing.T) {

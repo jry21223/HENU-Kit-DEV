@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/mail"
@@ -23,7 +24,10 @@ import (
 	"henukit.dev/platform-core/internal/store"
 )
 
-const membershipAccountPageSize = 20
+const (
+	membershipAccountPageSize  = 20
+	platformOperationsPageSize = 20
+)
 
 type Service struct {
 	queries         *store.Queries
@@ -49,8 +53,56 @@ type Snapshot struct {
 	Mail         MailStatus   `json:"mail"`
 	InboxItems   []InboxItem  `json:"inbox_items"`
 	Audit        []AuditEvent `json:"audit"`
+	Pagination   Pagination   `json:"pagination"`
 	Dependencies Dependencies `json:"dependencies"`
 	GeneratedAt  time.Time    `json:"generated_at"`
+}
+
+type PageRequest struct {
+	Accounts, Sessions, InboxItems, Audit int
+	SnapshotAt                            time.Time
+	AccountsCursor, SessionsCursor        string
+	InboxItemsCursor, AuditCursor         string
+}
+
+func DefaultPageRequest() PageRequest {
+	return PageRequest{Accounts: 1, Sessions: 1, InboxItems: 1, Audit: 1}
+}
+
+func (request PageRequest) Valid() bool {
+	needsSnapshot := false
+	for _, page := range []int{request.Accounts, request.Sessions, request.InboxItems, request.Audit} {
+		if page < 1 {
+			return false
+		}
+		needsSnapshot = needsSnapshot || page > 1
+	}
+	for _, cursor := range []string{request.AccountsCursor, request.SessionsCursor, request.InboxItemsCursor, request.AuditCursor} {
+		if len(cursor) > 512 {
+			return false
+		}
+		needsSnapshot = needsSnapshot || cursor != ""
+	}
+	if (request.Accounts > 1) != (request.AccountsCursor != "") || (request.Sessions > 1) != (request.SessionsCursor != "") || (request.InboxItems > 1) != (request.InboxItemsCursor != "") || (request.Audit > 1) != (request.AuditCursor != "") {
+		return false
+	}
+	if needsSnapshot && request.SnapshotAt.IsZero() {
+		return false
+	}
+	return request.SnapshotAt.IsZero() || !request.SnapshotAt.After(time.Now().UTC().Add(time.Minute))
+}
+
+type Pagination struct {
+	Accounts   PageState `json:"accounts"`
+	Sessions   PageState `json:"sessions"`
+	InboxItems PageState `json:"inbox_items"`
+	Audit      PageState `json:"audit"`
+}
+
+type PageState struct {
+	Page       int     `json:"page"`
+	NextPage   *int    `json:"next_page"`
+	NextCursor *string `json:"next_cursor"`
 }
 
 type Account struct {
@@ -153,6 +205,22 @@ type MembershipAccountPage struct {
 	NextPage *int                `json:"next_page"`
 }
 
+type AccountPage struct {
+	Accounts   []Account `json:"accounts"`
+	NextPage   *int      `json:"next_page"`
+	NextCursor *string   `json:"next_cursor"`
+}
+
+type pageCursor struct {
+	Kind              string `json:"k"`
+	SnapshotUnixNano  int64  `json:"s"`
+	CreatedAtUnixNano int64  `json:"c"`
+	ID                string `json:"i"`
+	RequestID         string `json:"r,omitempty"`
+	Source            int16  `json:"o,omitempty"`
+	FilterHash        string `json:"f,omitempty"`
+}
+
 type MembershipAccount struct {
 	ID          string  `json:"id"`
 	DisplayName *string `json:"display_name,omitempty"`
@@ -198,16 +266,69 @@ func New(queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Clie
 	return &Service{queries: queries, database: database, redis: redisClient, verificationKey: append([]byte(nil), verificationKey...), allowedDomains: domains, emailCodec: emailCodec}
 }
 
-func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
-	accountRows, err := s.queries.ListPlatformOperationAccounts(ctx)
+func (s *Service) Snapshot(ctx context.Context, serviceID, actorUserID string, pages PageRequest) (Snapshot, error) {
+	if !pages.Valid() {
+		return Snapshot{}, ErrInvalid
+	}
+	limited, err := s.readRateLimited(ctx, serviceID, actorUserID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	grantRows, err := s.queries.ListPlatformOperationAccountGrants(ctx)
+	if limited {
+		return Snapshot{}, ErrRateLimited
+	}
+	snapshotAt := pages.SnapshotAt.UTC()
+	if snapshotAt.IsZero() {
+		if s.database == nil || s.database.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&snapshotAt) != nil {
+			return Snapshot{}, ErrDependency
+		}
+		snapshotAt = snapshotAt.UTC()
+	}
+	accountCursor, err := s.decodePageCursor(pages.AccountsCursor, "accounts", snapshotAt)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	sessionRows, err := s.queries.ListPlatformOperationSessions(ctx)
+	sessionCursor, err := s.decodePageCursor(pages.SessionsCursor, "sessions", snapshotAt)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	inboxCursor, err := s.decodePageCursor(pages.InboxItemsCursor, "inbox", snapshotAt)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	auditCursor, err := s.decodePageCursor(pages.AuditCursor, "audit", snapshotAt)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	accountRows, err := s.queries.ListPlatformOperationAccounts(ctx, pageParams(snapshotAt, accountCursor))
+	if err != nil {
+		return Snapshot{}, err
+	}
+	accountHasMore := len(accountRows) > platformOperationsPageSize
+	if len(accountRows) > platformOperationsPageSize {
+		accountRows = accountRows[:platformOperationsPageSize]
+	}
+	accountState, err := s.pageState(pages.Accounts, accountHasMore, cursorFromAccount(snapshotAt, accountRows))
+	if err != nil {
+		return Snapshot{}, err
+	}
+	accountIDs := make([]pgtype.UUID, 0, len(accountRows))
+	for _, row := range accountRows {
+		accountIDs = append(accountIDs, row.ID)
+	}
+	grantRows, err := s.queries.ListPlatformOperationAccountGrants(ctx, accountIDs)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	sessionRows, err := s.queries.ListPlatformOperationSessions(ctx, sessionPageParams(snapshotAt, sessionCursor))
+	if err != nil {
+		return Snapshot{}, err
+	}
+	sessionHasMore := len(sessionRows) > platformOperationsPageSize
+	if len(sessionRows) > platformOperationsPageSize {
+		sessionRows = sessionRows[:platformOperationsPageSize]
+	}
+	sessionState, err := s.pageState(pages.Sessions, sessionHasMore, cursorFromSession(snapshotAt, sessionRows))
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -215,11 +336,27 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	inboxRows, err := s.queries.ListPlatformOperationInboxItems(ctx)
+	inboxRows, err := s.queries.ListPlatformOperationInboxItems(ctx, inboxPageParams(snapshotAt, inboxCursor))
 	if err != nil {
 		return Snapshot{}, err
 	}
-	auditRows, err := s.queries.ListPlatformOperationAuditEvents(ctx)
+	inboxHasMore := len(inboxRows) > platformOperationsPageSize
+	if len(inboxRows) > platformOperationsPageSize {
+		inboxRows = inboxRows[:platformOperationsPageSize]
+	}
+	inboxState, err := s.pageState(pages.InboxItems, inboxHasMore, cursorFromInbox(snapshotAt, inboxRows))
+	if err != nil {
+		return Snapshot{}, err
+	}
+	auditRows, err := s.queries.ListPlatformOperationAuditEvents(ctx, auditPageParams(snapshotAt, auditCursor))
+	if err != nil {
+		return Snapshot{}, err
+	}
+	auditHasMore := len(auditRows) > platformOperationsPageSize
+	if len(auditRows) > platformOperationsPageSize {
+		auditRows = auditRows[:platformOperationsPageSize]
+	}
+	auditState, err := s.pageState(pages.Audit, auditHasMore, cursorFromAudit(snapshotAt, auditRows))
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -231,8 +368,11 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	result := Snapshot{
 		Accounts: make([]Account, 0, len(accountRows)), Sessions: make([]Session, 0, len(sessionRows)),
 		InboxItems: make([]InboxItem, 0, len(inboxRows)), Audit: make([]AuditEvent, 0, len(auditRows)),
-		Mail:         MailStatus{Pending: mail.Pending, Processing: mail.Processing, RetryDue: mail.RetryDue, Accepted: mail.Accepted, Delivered: mail.Delivered, Failed: mail.Failed, DeadLetters: mail.DeadLetters},
-		Dependencies: Dependencies{Postgres: "ready", Redis: redisStatus}, GeneratedAt: time.Now().UTC(),
+		Mail: MailStatus{Pending: mail.Pending, Processing: mail.Processing, RetryDue: mail.RetryDue, Accepted: mail.Accepted, Delivered: mail.Delivered, Failed: mail.Failed, DeadLetters: mail.DeadLetters},
+		Pagination: Pagination{
+			Accounts: accountState, Sessions: sessionState, InboxItems: inboxState, Audit: auditState,
+		},
+		Dependencies: Dependencies{Postgres: "ready", Redis: redisStatus}, GeneratedAt: snapshotAt,
 	}
 	for _, row := range accountRows {
 		email, err := s.openEmail(row.EmailCiphertext)
@@ -270,6 +410,153 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		result.Audit = append(result.Audit, AuditEvent{RequestID: row.RequestID, ActorUserID: uuidString(row.ActorUserID), DisplayName: textPointer(row.DisplayName), Email: email, PermissionCode: row.PermissionCode, TargetKind: row.TargetKind, TargetProductCode: textPointer(row.TargetProductCode), TargetResourceType: textPointer(row.TargetResourceType), TargetResourceID: textPointer(row.TargetResourceID), Decision: row.Decision, ReasonCode: row.ReasonCode, CreatedAt: row.CreatedAt.Time})
 	}
 	return result, nil
+}
+
+func pageParams(snapshotAt time.Time, cursor pageCursor) store.ListPlatformOperationAccountsParams {
+	return store.ListPlatformOperationAccountsParams{SnapshotAt: timestampValue(snapshotAt), CursorCreatedAt: cursorTimestamp(cursor), CursorID: cursorUUID(cursor), PageLimit: platformOperationsPageSize + 1}
+}
+
+func sessionPageParams(snapshotAt time.Time, cursor pageCursor) store.ListPlatformOperationSessionsParams {
+	return store.ListPlatformOperationSessionsParams{SnapshotAt: timestampValue(snapshotAt), CursorCreatedAt: cursorTimestamp(cursor), CursorID: cursorUUID(cursor), PageLimit: platformOperationsPageSize + 1}
+}
+
+func inboxPageParams(snapshotAt time.Time, cursor pageCursor) store.ListPlatformOperationInboxItemsParams {
+	return store.ListPlatformOperationInboxItemsParams{SnapshotAt: timestampValue(snapshotAt), CursorCreatedAt: cursorTimestamp(cursor), CursorID: cursorUUID(cursor), PageLimit: platformOperationsPageSize + 1}
+}
+
+func auditPageParams(snapshotAt time.Time, cursor pageCursor) store.ListPlatformOperationAuditEventsParams {
+	return store.ListPlatformOperationAuditEventsParams{SnapshotAt: timestampValue(snapshotAt), CursorCreatedAt: cursorTimestamp(cursor), CursorRequestID: pgtype.Text{String: cursor.RequestID, Valid: cursor.RequestID != ""}, CursorSource: pgtype.Int2{Int16: cursor.Source, Valid: cursor.ID != ""}, CursorID: cursorUUID(cursor), PageLimit: platformOperationsPageSize + 1}
+}
+
+func timestampValue(value time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: value.UTC(), Valid: !value.IsZero()}
+}
+
+func cursorTimestamp(cursor pageCursor) pgtype.Timestamptz {
+	if cursor.ID == "" {
+		return pgtype.Timestamptz{}
+	}
+	return timestampValue(time.Unix(0, cursor.CreatedAtUnixNano))
+}
+
+func cursorUUID(cursor pageCursor) pgtype.UUID {
+	if cursor.ID == "" {
+		return pgtype.UUID{}
+	}
+	id, _ := uuid.Parse(cursor.ID)
+	return pgtype.UUID{Bytes: id, Valid: true}
+}
+
+func cursorFromAccount(snapshotAt time.Time, rows []store.ListPlatformOperationAccountsRow) pageCursor {
+	if len(rows) == 0 {
+		return pageCursor{}
+	}
+	last := rows[len(rows)-1]
+	return pageCursor{Kind: "accounts", SnapshotUnixNano: snapshotAt.UnixNano(), CreatedAtUnixNano: last.CreatedAt.Time.UnixNano(), ID: uuidString(last.ID)}
+}
+
+func cursorFromSearch(snapshotAt time.Time, query string, rows []store.SearchPlatformOperationAccountsRow) pageCursor {
+	if len(rows) == 0 {
+		return pageCursor{}
+	}
+	last := rows[len(rows)-1]
+	return pageCursor{Kind: "accounts-search", SnapshotUnixNano: snapshotAt.UnixNano(), CreatedAtUnixNano: last.CreatedAt.Time.UnixNano(), ID: uuidString(last.ID), FilterHash: searchCursorFilter(query)}
+}
+
+func searchCursorFilter(query string) string {
+	hash := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(query))))
+	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
+func cursorFromSession(snapshotAt time.Time, rows []store.ListPlatformOperationSessionsRow) pageCursor {
+	if len(rows) == 0 {
+		return pageCursor{}
+	}
+	last := rows[len(rows)-1]
+	return pageCursor{Kind: "sessions", SnapshotUnixNano: snapshotAt.UnixNano(), CreatedAtUnixNano: last.CreatedAt.Time.UnixNano(), ID: uuidString(last.ID)}
+}
+
+func cursorFromInbox(snapshotAt time.Time, rows []store.ListPlatformOperationInboxItemsRow) pageCursor {
+	if len(rows) == 0 {
+		return pageCursor{}
+	}
+	last := rows[len(rows)-1]
+	return pageCursor{Kind: "inbox", SnapshotUnixNano: snapshotAt.UnixNano(), CreatedAtUnixNano: last.CreatedAt.Time.UnixNano(), ID: uuidString(last.ID)}
+}
+
+func cursorFromAudit(snapshotAt time.Time, rows []store.ListPlatformOperationAuditEventsRow) pageCursor {
+	if len(rows) == 0 {
+		return pageCursor{}
+	}
+	last := rows[len(rows)-1]
+	return pageCursor{Kind: "audit", SnapshotUnixNano: snapshotAt.UnixNano(), CreatedAtUnixNano: last.CreatedAt.Time.UnixNano(), ID: uuidString(last.EventID), RequestID: last.RequestID, Source: last.EventSource}
+}
+
+func (s *Service) pageState(page int, hasMore bool, cursor pageCursor) (PageState, error) {
+	state := PageState{Page: page}
+	if !hasMore {
+		return state, nil
+	}
+	if cursor.ID == "" || page == int(^uint(0)>>1) {
+		return PageState{}, ErrInvalid
+	}
+	token, err := s.encodePageCursor(cursor)
+	if err != nil {
+		return PageState{}, err
+	}
+	next := page + 1
+	state.NextPage = &next
+	state.NextCursor = &token
+	return state, nil
+}
+
+func (s *Service) encodePageCursor(cursor pageCursor) (string, error) {
+	if len(s.verificationKey) == 0 {
+		return "", ErrDependency
+	}
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return "", ErrDependency
+	}
+	mac := hmac.New(sha256.New, s.verificationKey)
+	_, _ = mac.Write([]byte("henukit-platform-operations:page-cursor\x00"))
+	_, _ = mac.Write(payload)
+	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+}
+
+func (s *Service) decodePageCursor(token, kind string, snapshotAt time.Time) (pageCursor, error) {
+	if token == "" {
+		return pageCursor{}, nil
+	}
+	if len(token) > 512 || len(s.verificationKey) == 0 {
+		return pageCursor{}, ErrInvalid
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return pageCursor{}, ErrInvalid
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return pageCursor{}, ErrInvalid
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return pageCursor{}, ErrInvalid
+	}
+	mac := hmac.New(sha256.New, s.verificationKey)
+	_, _ = mac.Write([]byte("henukit-platform-operations:page-cursor\x00"))
+	_, _ = mac.Write(payload)
+	if !hmac.Equal(signature, mac.Sum(nil)) {
+		return pageCursor{}, ErrInvalid
+	}
+	var cursor pageCursor
+	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Kind != kind || cursor.SnapshotUnixNano != snapshotAt.UnixNano() || cursor.CreatedAtUnixNano == 0 || cursor.ID == "" {
+		return pageCursor{}, ErrInvalid
+	}
+	if _, err := uuid.Parse(cursor.ID); err != nil || (kind == "audit" && cursor.RequestID == "") {
+		return pageCursor{}, ErrInvalid
+	}
+	return cursor, nil
 }
 
 func (s *Service) LookupAccount(ctx context.Context, serviceID, email string) (AccountLookup, error) {
@@ -389,6 +676,73 @@ func (s *Service) ListMembershipAccounts(ctx context.Context, query string, page
 	return result, nil
 }
 
+func (s *Service) SearchAccounts(ctx context.Context, serviceID, actorUserID, query string, page int, snapshotAt time.Time, cursorToken string) (AccountPage, error) {
+	query = strings.TrimSpace(query)
+	if len([]rune(query)) < 2 || len([]rune(query)) > 100 || page < 1 || snapshotAt.IsZero() || snapshotAt.After(time.Now().UTC().Add(time.Minute)) || len(cursorToken) > 512 || (page > 1) != (cursorToken != "") {
+		return AccountPage{}, ErrInvalid
+	}
+	limited, err := s.readRateLimited(ctx, serviceID, actorUserID)
+	if err != nil {
+		return AccountPage{}, err
+	}
+	if limited {
+		return AccountPage{}, ErrRateLimited
+	}
+	var exactEmailHash []byte
+	if normalized, normalizeErr := s.normalizeEmail(query); normalizeErr == nil {
+		exactEmailHash = emailLookupHash(s.verificationKey, normalized)
+	}
+	cursor, err := s.decodePageCursor(cursorToken, "accounts-search", snapshotAt.UTC())
+	if err != nil {
+		return AccountPage{}, err
+	}
+	if cursorToken != "" && cursor.FilterHash != searchCursorFilter(query) {
+		return AccountPage{}, ErrInvalid
+	}
+	rows, err := s.queries.SearchPlatformOperationAccounts(ctx, store.SearchPlatformOperationAccountsParams{
+		SnapshotAt: timestampValue(snapshotAt), Search: query, EmailLookupHash: exactEmailHash, CursorCreatedAt: cursorTimestamp(cursor), CursorID: cursorUUID(cursor), PageLimit: platformOperationsPageSize + 1,
+	})
+	if err != nil {
+		return AccountPage{}, err
+	}
+	hasMore := len(rows) > platformOperationsPageSize
+	if hasMore {
+		rows = rows[:platformOperationsPageSize]
+	}
+	state, err := s.pageState(page, hasMore, cursorFromSearch(snapshotAt.UTC(), query, rows))
+	if err != nil {
+		return AccountPage{}, err
+	}
+	result := AccountPage{Accounts: []Account{}, NextPage: state.NextPage, NextCursor: state.NextCursor}
+	ids := make([]pgtype.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	grantRows, err := s.queries.ListPlatformOperationAccountGrants(ctx, ids)
+	if err != nil {
+		return AccountPage{}, err
+	}
+	for _, row := range rows {
+		email, openErr := s.openEmail(row.EmailCiphertext)
+		if openErr != nil {
+			return AccountPage{}, openErr
+		}
+		result.Accounts = append(result.Accounts, Account{ID: uuidString(row.ID), DisplayName: textPointer(row.DisplayName), Email: email, EmailVerified: row.EmailVerified, Status: row.Status, AuthorizationRevision: row.AuthorizationRevision, CreatedAt: row.CreatedAt.Time, Grants: []AccessGrant{}})
+	}
+	indexes := make(map[string]int, len(result.Accounts))
+	for index := range result.Accounts {
+		indexes[result.Accounts[index].ID] = index
+	}
+	for _, row := range grantRows {
+		index, exists := indexes[uuidString(row.UserID)]
+		if !exists {
+			continue
+		}
+		result.Accounts[index].Grants = append(result.Accounts[index].Grants, AccessGrant{RoleCode: row.RoleCode, Scope: Scope{Kind: row.ScopeKind, ProductCode: textPointer(row.ProductCode), ResourceType: textPointer(row.ResourceType), ResourceID: textPointer(row.ResourceID)}})
+	}
+	return result, nil
+}
+
 func (s *Service) rateLimited(ctx context.Context, serviceID string) (bool, error) {
 	coordinator := coordination.NewRedis(s.redis)
 	dimensions := []struct {
@@ -408,6 +762,30 @@ func (s *Service) rateLimited(ctx context.Context, serviceID string) (bool, erro
 		limited = limited || !allowed
 	}
 	return limited, nil
+}
+
+func (s *Service) readRateLimited(ctx context.Context, serviceID, actorUserID string) (bool, error) {
+	if serviceID == "" || actorUserID == "" || s.redis == nil {
+		return false, ErrDependency
+	}
+	coordinator := coordination.NewRedis(s.redis)
+	for _, dimension := range []struct {
+		key    string
+		limit  int64
+		window time.Duration
+	}{
+		{key: "platform-read-minute:" + serviceID + ":" + actorUserID, limit: 120, window: time.Minute},
+		{key: "platform-read-hour:" + serviceID + ":" + actorUserID, limit: 1_000, window: time.Hour},
+	} {
+		allowed, err := coordinator.Allow(ctx, "platform-core:"+dimension.key, dimension.limit, dimension.window)
+		if err != nil {
+			return false, ErrDependency
+		}
+		if !allowed {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) normalizeEmail(value string) (string, error) {

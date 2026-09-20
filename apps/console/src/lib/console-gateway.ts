@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 f2ee851d04c317355fc0a9f2cecb535552031ae936fbb3d881d8e9cec00eceba); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 a15088c1e5efdd7ca8693e4f6d8893e33c8b2e481f52c24d7788fb2d56665d49); DO NOT EDIT.
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -531,6 +531,19 @@ export interface PlatformOperationsAccount {
   status: "active" | "suspended" | "deleted";
 }
 
+export interface PlatformOperationsAccountPage {
+  accounts: Array<PlatformOperationsAccount>;
+  next_cursor: string | null;
+  next_page: number | null;
+}
+
+export interface PlatformOperationsAccountSearchRequest {
+  cursor?: string;
+  page: number;
+  query: string;
+  snapshot_at: string;
+}
+
 export interface PlatformOperationsAuditEvent {
   actor_user_id: string;
   created_at: string;
@@ -576,6 +589,19 @@ export interface PlatformOperationsMailStatus {
   retry_due: number;
 }
 
+export interface PlatformOperationsPageState {
+  next_cursor: string | null;
+  next_page: number | null;
+  page: number;
+}
+
+export interface PlatformOperationsPagination {
+  accounts: PlatformOperationsPageState;
+  audit: PlatformOperationsPageState;
+  inbox_items: PlatformOperationsPageState;
+  sessions: PlatformOperationsPageState;
+}
+
 export interface PlatformOperationsSession {
   client_id?: string;
   display_name?: string;
@@ -596,6 +622,7 @@ export interface PlatformOperationsSnapshot {
   generated_at: string;
   inbox_items: Array<PlatformOperationsInboxItem>;
   mail: PlatformOperationsMailStatus;
+  pagination: PlatformOperationsPagination;
   sessions: Array<PlatformOperationsSession>;
 }
 
@@ -951,6 +978,14 @@ function isPlatformOperationsAccount(value: unknown): value is PlatformOperation
   return isRecord(value) && "authorization_revision" in value && typeof value["authorization_revision"] === "number" && Number.isSafeInteger(value["authorization_revision"]) && value["authorization_revision"] >= 1 && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "email_verified" in value && typeof value["email_verified"] === "boolean" && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["authorization_revision","created_at","display_name","email","email_verified","grants","id","status"].includes(key));
 }
 
+function isPlatformOperationsAccountPage(value: unknown): value is PlatformOperationsAccountPage {
+  return isRecord(value) && "accounts" in value && Array.isArray(value["accounts"]) && value["accounts"].length <= 20 && value["accounts"].every((item) => isPlatformOperationsAccount(item)) && "next_cursor" in value && true && ([(typeof value["next_cursor"] === "string" && value["next_cursor"].length >= 1 && value["next_cursor"].length <= 512), (value["next_cursor"] === null)].filter(Boolean).length === 1) && "next_page" in value && true && ([(typeof value["next_page"] === "number" && Number.isSafeInteger(value["next_page"]) && value["next_page"] >= 2), (value["next_page"] === null)].filter(Boolean).length === 1) && Object.keys(value).every((key) => ["accounts","next_cursor","next_page"].includes(key));
+}
+
+function isPlatformOperationsAccountSearchRequest(value: unknown): value is PlatformOperationsAccountSearchRequest {
+  return isRecord(value) && (!("cursor" in value) || typeof value["cursor"] === "string" && value["cursor"].length <= 512) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && "query" in value && typeof value["query"] === "string" && value["query"].length >= 2 && value["query"].length <= 100 && "snapshot_at" in value && isDateTime(value["snapshot_at"]) && Object.keys(value).every((key) => ["cursor","page","query","snapshot_at"].includes(key));
+}
+
 function isPlatformOperationsAuditEvent(value: unknown): value is PlatformOperationsAuditEvent {
   return isRecord(value) && "actor_user_id" in value && isUUID(value["actor_user_id"]) && "created_at" in value && isDateTime(value["created_at"]) && "decision" in value && typeof value["decision"] === "string" && ["allowed","denied"].includes(value["decision"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && (!("email" in value) || typeof value["email"] === "string" && value["email"].length <= 320) && "permission_code" in value && typeof value["permission_code"] === "string" && "reason_code" in value && typeof value["reason_code"] === "string" && "request_id" in value && typeof value["request_id"] === "string" && "target_kind" in value && typeof value["target_kind"] === "string" && ["platform","product","resource"].includes(value["target_kind"]) && (!("target_product_code" in value) || typeof value["target_product_code"] === "string") && (!("target_resource_id" in value) || typeof value["target_resource_id"] === "string") && (!("target_resource_type" in value) || typeof value["target_resource_type"] === "string") && Object.keys(value).every((key) => ["actor_user_id","created_at","decision","display_name","email","permission_code","reason_code","request_id","target_kind","target_product_code","target_resource_id","target_resource_type"].includes(key));
 }
@@ -967,12 +1002,20 @@ function isPlatformOperationsMailStatus(value: unknown): value is PlatformOperat
   return isRecord(value) && "accepted" in value && typeof value["accepted"] === "number" && Number.isSafeInteger(value["accepted"]) && value["accepted"] >= 0 && "dead_letters" in value && typeof value["dead_letters"] === "number" && Number.isSafeInteger(value["dead_letters"]) && value["dead_letters"] >= 0 && "delivered" in value && typeof value["delivered"] === "number" && Number.isSafeInteger(value["delivered"]) && value["delivered"] >= 0 && "failed" in value && typeof value["failed"] === "number" && Number.isSafeInteger(value["failed"]) && value["failed"] >= 0 && "pending" in value && typeof value["pending"] === "number" && Number.isSafeInteger(value["pending"]) && value["pending"] >= 0 && "processing" in value && typeof value["processing"] === "number" && Number.isSafeInteger(value["processing"]) && value["processing"] >= 0 && "retry_due" in value && typeof value["retry_due"] === "number" && Number.isSafeInteger(value["retry_due"]) && value["retry_due"] >= 0 && Object.keys(value).every((key) => ["accepted","dead_letters","delivered","failed","pending","processing","retry_due"].includes(key));
 }
 
+function isPlatformOperationsPageState(value: unknown): value is PlatformOperationsPageState {
+  return isRecord(value) && "next_cursor" in value && true && ([(typeof value["next_cursor"] === "string" && value["next_cursor"].length >= 1 && value["next_cursor"].length <= 512), (value["next_cursor"] === null)].filter(Boolean).length === 1) && "next_page" in value && true && ([(typeof value["next_page"] === "number" && Number.isSafeInteger(value["next_page"]) && value["next_page"] >= 2), (value["next_page"] === null)].filter(Boolean).length === 1) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && Object.keys(value).every((key) => ["next_cursor","next_page","page"].includes(key));
+}
+
+function isPlatformOperationsPagination(value: unknown): value is PlatformOperationsPagination {
+  return isRecord(value) && "accounts" in value && isPlatformOperationsPageState(value["accounts"]) && "audit" in value && isPlatformOperationsPageState(value["audit"]) && "inbox_items" in value && isPlatformOperationsPageState(value["inbox_items"]) && "sessions" in value && isPlatformOperationsPageState(value["sessions"]) && Object.keys(value).every((key) => ["accounts","audit","inbox_items","sessions"].includes(key));
+}
+
 function isPlatformOperationsSession(value: unknown): value is PlatformOperationsSession {
   return isRecord(value) && (!("client_id" in value) || typeof value["client_id"] === "string") && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "expires_at" in value && isDateTime(value["expires_at"]) && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["core","client_exchange"].includes(value["kind"]) && "last_seen_at" in value && isDateTime(value["last_seen_at"]) && (!("revoked_at" in value) || isDateTime(value["revoked_at"])) && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["client_id","display_name","email","expires_at","id","kind","last_seen_at","revoked_at","user_id"].includes(key));
 }
 
 function isPlatformOperationsSnapshot(value: unknown): value is PlatformOperationsSnapshot {
-  return isRecord(value) && "access_context" in value && isConsoleAccessContext(value["access_context"]) && "accounts" in value && Array.isArray(value["accounts"]) && value["accounts"].length <= 20 && value["accounts"].every((item) => isPlatformOperationsAccount(item)) && "audit" in value && Array.isArray(value["audit"]) && value["audit"].length <= 20 && value["audit"].every((item) => isPlatformOperationsAuditEvent(item)) && "dependencies" in value && isPlatformOperationsDependencies(value["dependencies"]) && "generated_at" in value && isDateTime(value["generated_at"]) && "inbox_items" in value && Array.isArray(value["inbox_items"]) && value["inbox_items"].length <= 20 && value["inbox_items"].every((item) => isPlatformOperationsInboxItem(item)) && "mail" in value && isPlatformOperationsMailStatus(value["mail"]) && "sessions" in value && Array.isArray(value["sessions"]) && value["sessions"].length <= 20 && value["sessions"].every((item) => isPlatformOperationsSession(item)) && Object.keys(value).every((key) => ["access_context","accounts","audit","dependencies","generated_at","inbox_items","mail","sessions"].includes(key));
+  return isRecord(value) && "access_context" in value && isConsoleAccessContext(value["access_context"]) && "accounts" in value && Array.isArray(value["accounts"]) && value["accounts"].length <= 20 && value["accounts"].every((item) => isPlatformOperationsAccount(item)) && "audit" in value && Array.isArray(value["audit"]) && value["audit"].length <= 20 && value["audit"].every((item) => isPlatformOperationsAuditEvent(item)) && "dependencies" in value && isPlatformOperationsDependencies(value["dependencies"]) && "generated_at" in value && isDateTime(value["generated_at"]) && "inbox_items" in value && Array.isArray(value["inbox_items"]) && value["inbox_items"].length <= 20 && value["inbox_items"].every((item) => isPlatformOperationsInboxItem(item)) && "mail" in value && isPlatformOperationsMailStatus(value["mail"]) && "pagination" in value && isPlatformOperationsPagination(value["pagination"]) && "sessions" in value && Array.isArray(value["sessions"]) && value["sessions"].length <= 20 && value["sessions"].every((item) => isPlatformOperationsSession(item)) && Object.keys(value).every((key) => ["access_context","accounts","audit","dependencies","generated_at","inbox_items","mail","pagination","sessions"].includes(key));
 }
 
 function isPlatformScope(value: unknown): value is PlatformScope {
@@ -1037,17 +1080,51 @@ export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
 
 export type PlatformOperationsResult =
   | { state: "authenticated"; operations: PlatformOperationsSnapshot }
-  | { state: "signed_out" | "denied" | "unavailable" };
+  | { state: "signed_out" | "denied" | "rate_limited" | "unavailable" };
 
-export async function fetchPlatformOperations(): Promise<PlatformOperationsResult> {
+export interface PlatformOperationsPageRequest {
+  accounts_page: number;
+  sessions_page: number;
+  inbox_page: number;
+  audit_page: number;
+  snapshot_at?: string;
+  accounts_cursor?: string;
+  sessions_cursor?: string;
+  inbox_cursor?: string;
+  audit_cursor?: string;
+}
+
+export async function fetchPlatformOperations(pages: PlatformOperationsPageRequest = { accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 }): Promise<PlatformOperationsResult> {
   try {
-    const response = await fetch("/api/v1/operations", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const query = new URLSearchParams(Object.entries(pages).filter((entry): entry is [string, string | number] => entry[1] !== undefined).map(([key, value]) => [key, String(value)]));
+    const response = await fetch("/api/v1/operations?" + query.toString(), { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
+    if (response.status === 429) return { state: "rate_limited" };
     if (!response.ok) return { state: "unavailable" };
     const envelope: unknown = await response.json();
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationsSnapshot(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", operations: envelope.data };
+  } catch {
+    return { state: "unavailable" };
+  }
+}
+
+export type PlatformOperationAccountSearchResult =
+  | { state: "authenticated"; page: PlatformOperationsAccountPage }
+  | { state: "signed_out" | "denied" | "invalid" | "rate_limited" | "unavailable" };
+
+export async function searchPlatformOperationAccounts(input: PlatformOperationsAccountSearchRequest): Promise<PlatformOperationAccountSearchResult> {
+  try {
+    const response = await fetch("/api/v1/operations/accounts/search", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 400) return { state: "invalid" };
+    if (response.status === 429) return { state: "rate_limited" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await response.json();
+    if (!isSuccessEnvelope(envelope) || !isPlatformOperationsAccountPage(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", page: envelope.data };
   } catch {
     return { state: "unavailable" };
   }

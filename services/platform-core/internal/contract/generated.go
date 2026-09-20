@@ -25,10 +25,11 @@ const (
 	UpdatePlatformOperationAccessRoute        = "/api/v1/platform-operations/users/{user_id}/access-updates"
 	PlatformOperationStatusRoute              = "/api/v1/platform-operations/operations/{operation}"
 	PlatformOperationsAccountLookupRoute      = "/api/v1/platform-operations/account-lookups"
+	PlatformOperationsAccountSearchRoute      = "/api/v1/platform-operations/accounts/search"
 	ConsoleUserIdentityResolutionRoute        = "/api/v1/console-user-identities/resolutions"
 	PlatformOperationsMembershipAccountsRoute = "/api/v1/platform-operations/membership-accounts/search"
 	DisplayNamesRoute                         = "/api/v1/users/display-names"
-	SourceSHA256                              = "6fb00997dd318fb5445a03af4001c2286d4d23438349f2484095897ff70fa78d"
+	SourceSHA256                              = "203c94ea15cf719f1b38a9eecaee8c74cf03ffb4acdf0b7d7d4ac0dbeeea8c8c"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"
