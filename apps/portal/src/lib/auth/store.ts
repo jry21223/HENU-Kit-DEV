@@ -111,11 +111,6 @@ function uidOf(name: string) {
   return String(20260000 + h);
 }
 
-/** Mock 登录是否可用（UI 可据此隐藏演示码 / 本地登录表单） */
-export function isMockAuthEnabled(): boolean {
-  return mockAllowed && !hasGateway && !requireGateway();
-}
-
 export const authStore = {
   subscribe(listener: () => void) {
     listeners.add(listener);

@@ -23,7 +23,7 @@ const TABS: Tab[] = [
     href: "/practice",
     index: "P-01",
     label: LEVEL_LABELS.practiceBank,
-    match: (p: string) => p === "/practice" || p.startsWith("/practice/lists"),
+    match: (p: string) => p === "/practice",
   },
   {
     href: "/practice/quiz",

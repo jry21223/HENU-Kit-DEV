@@ -224,9 +224,6 @@ export interface FoodData {
 
 const INITIAL: FoodData = { posts: INITIAL_POSTS, comments: INITIAL_COMMENTS };
 
-/** 静态预生成用（generateStaticParams） */
-export const STATIC_POSTS = INITIAL_POSTS;
-
 let state: FoodData = INITIAL;
 const listeners = new Set<() => void>();
 

@@ -311,13 +311,6 @@ export interface FoodPostDetailResponse {
 
 // ---- Practice ----
 
-export interface BankSummary {
-  id: string;
-  name: string;
-  subject: string;
-  question_count: number;
-}
-
 /** Browser input for one real QuizCraft session. The API selects questions. */
 export interface PortalPracticeSessionInput {
   bank_id: string;
@@ -444,7 +437,7 @@ export interface PortalPracticeAnswerResponse {
 
 /**
  * Dark-until-cutover QuizCraft catalog data. This intentionally stays
- * separate from the legacy Portal API BankSummary shape, which cannot carry
+ * separate from the legacy Portal API bank summary shape, which cannot carry
  * the immutable QuizCraft bank-version identifier required to start V2 work.
  */
 export type {
@@ -469,16 +462,6 @@ export interface QuizCraftRankingResponse {
       correct_answer_count: number;
     }>;
   };
-}
-
-export interface QuizListMeta {
-  id: string;
-  name: string;
-  creator: string;
-  tags: string[];
-  poolKey: string;
-  count: number;
-  completion: number;
 }
 
 // ---- Campus ----

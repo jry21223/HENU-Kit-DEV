@@ -56,7 +56,7 @@ npm run dev
 | 路由 | 说明 |
 |---|---|
 | `/practice` | 题库总览 |
-| `/practice/lists/[id]` | 题单详情 |
+| `/practice/lists/[id]` | 旧题单入口，重定向至题库总览 |
 | `/practice/quiz` | 刷题模式 |
 | `/practice/leaderboard` | 排行榜 |
 | `/practice/stats` | 数据面板 |
@@ -105,7 +105,7 @@ npm run dev
 | 路由 | 说明 |
 |---|---|
 | `/account/login` | 登录 / 注册 |
-| `/account/recover` | 找回密码（演示验证码 `427819`） |
+| `/account/recover` | 找回密码 |
 | `/account` | 控制台概览 |
 | `/account/security` | 安全设置 |
 | `/account/wallet` | 积分钱包 |
@@ -152,7 +152,7 @@ npm run dev
 - 页面间导航：形变过渡系统（共享元素形变 + 塌缩/展开）。
 - `prefers-reduced-motion`：瞬时导航，循环/揭示动画静止。
 - 滚动入场：统一 `start: "top 60%"`。
-- 所有 mock 数据使用种子化伪随机（mulberry32），SSR 与客户端输出一致。
+- mock 数据为固定数据，图片使用 picsum 种子外链，SSR 与客户端输出一致；生产构建不预渲染任何 mock 页面（`npm run build` 会检查）。
 
 ## 项目结构
 
@@ -175,6 +175,6 @@ src/
 │   ├── campus/             # 互助 mock
 │   ├── food/               # 美食 mock
 │   ├── library/            # 资料库 mock
-│   └── practice/           # 刷题 mock
+│   └── practice/           # 刷题会话与统计工具
 └── globals.css             # 设计令牌 + 全局样式
 ```

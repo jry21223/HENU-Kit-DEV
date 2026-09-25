@@ -176,7 +176,7 @@ const MATERIALS: Material[] = [
   },
 ];
 
-/** 静态预生成用 */
+/** 本地 mock 回退数据：只在允许 mock 的开发环境使用，生产环境禁用。 */
 export const STATIC_MATERIALS = MATERIALS;
 
 export function getMaterial(id: string) {

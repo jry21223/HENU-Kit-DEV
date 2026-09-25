@@ -1,6 +1,6 @@
 # HENU Kit Portal Context
 
-Last updated: 2026-09-11.
+Last updated: 2026-09-25.
 
 ## Owns
 
@@ -8,7 +8,7 @@ Last updated: 2026-09-11.
 - Campus tool system product shell: brand, navigation, and entry points.
 - Homepage module sections (Library, Practice, Food, Campus, Career) with scroll-driven animations.
 - Sub-site layouts and navigation for Library, Practice, Food, Campus Market, and Career.
-- Mock data layer and deterministic SSR rendering (mulberry32 seeded PRNG).
+- Local-development mock data layer with deterministic SSR rendering (fixed data, seeded picsum URLs). Production builds prerender no mock pages.
 - GSAP animation system with prefers-reduced-motion respect.
 - Three.js 3D hero scenes (homepage and practice bank hero).
 - The site-wide legal notice (non-official disclaimer, privacy policy and user agreement links, ICP filing number) and the public legal documents at `/privacy` and `/terms`. The documents describe only data handling that the owning services actually perform.
@@ -75,7 +75,7 @@ zero.
 
 ## Tech stack
 
-Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigger/Observer. Three.js via @react-three/fiber. No external state library. No charting library (hand-written SVG charts).
+Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigger/Observer. Three.js via @react-three/fiber. No external state library. No charting library.
 
 ## Key terms
 
@@ -95,4 +95,4 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 - **Quick entry**: A first-screen shortcut to a common task: finding materials, starting practice, or viewing job opportunities.
 - **Material display title**: A readable material name shown alongside its course and material type to help readers identify it.
 - **Original material title**: The complete title supplied by the material owner. It is distinct from the file name; a title alone does not establish the file name.
-- **Deterministic SSR**: Seeded randomness (mulberry32) and picsum seed URLs ensure server/client output match.
+- **Deterministic SSR**: Fixed mock data and picsum seed URLs ensure server/client output match.

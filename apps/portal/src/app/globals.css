@@ -70,28 +70,6 @@ body {
   scroll-snap-align: start;
 }
 
-/* 热力图方格 hover 弹性放大（SVG transform 需 transform-box） */
-.heat-cell {
-  cursor: pointer;
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.heat-cell:hover {
-  transform: scale(1.4);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .heat-cell {
-    transition: none;
-  }
-
-  .heat-cell:hover {
-    transform: none;
-  }
-}
-
 /* reduced-motion：01 资料卡轨道回退为手动横向滚动 */
 @media (prefers-reduced-motion: reduce) {
   .lib-track-wrap {
