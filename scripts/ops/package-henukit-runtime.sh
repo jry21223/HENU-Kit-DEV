@@ -203,6 +203,8 @@ for helper in \
 done
 install -m 0555 "$source_root/scripts/ops/import-legacy-portal-food-images.mjs" \
   "$runtime/bin/import-legacy-portal-food-images.mjs"
+install -m 0555 "$source_root/services/platform-core/scripts/provision-qq-binding-client.sh" \
+  "$runtime/bin/provision-qq-binding-client.sh"
 
 RELEASE_SHA="$release_sha" node "$source_root/scripts/ops/check-account-production-boundary.mjs" \
   --report "$runtime/release-gates/account-production-boundary.env"

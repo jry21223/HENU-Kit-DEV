@@ -8,9 +8,12 @@ through the current public `create_food_post` tool.
 
 1. Back up Platform Core and apply migration 000021 using the established
    release procedure. Do not roll this migration down after accepting users.
-2. Provision an independent high-entropy secret with the Core-owned
-   `services/platform-core/scripts/provision-qq-binding-client.sh`. Its environment
-   requires DATABASE_URL, HENU_KIT_QQ_APP_ID, HENU_KIT_CLIENT_ID (henu-bot-*),
+2. From the verified, extracted fixed-SHA runtime, provision an independent
+   high-entropy secret with `bin/provision-qq-binding-client.sh` (source:
+   `services/platform-core/scripts/provision-qq-binding-client.sh`). The
+   controlled execution host must provide `psql`, `openssl`, and `xxd`. The
+   required environment keys are DATABASE_URL, HENU_KIT_QQ_APP_ID,
+   HENU_KIT_CLIENT_ID (henu-bot-*),
    HENU_KIT_KEY_ID and HENU_KIT_SECRET. Do not pass secrets on command lines or
    save them in an issue. App/client remapping fails closed.
    Rotation retains the preceding key as `retiring` for a controlled rollout
