@@ -175,6 +175,15 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000020_mail_outbox_allow_bulk_priority.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000021_qq_bindings.up.sql
 
+      - name: Verify QQ binding client provisioning
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+          PGUSER: platform_core
+          PGDATABASE: platform_core_test
+          PLATFORM_CORE_TEST_DATABASE_URL: postgres://platform_core:platform_core_%74est@unresolvable.invalid:5432/platform_core_test?sslmode=disable
+        run: bash services/platform-core/scripts/test-provision-qq-binding-client.sh
+
       - name: Verify generated SQL and OpenAPI
         run: |
           set -euo pipefail

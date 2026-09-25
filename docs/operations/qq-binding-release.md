@@ -11,11 +11,19 @@ through the current public `create_food_post` tool.
 2. From the verified, extracted fixed-SHA runtime, provision an independent
    high-entropy secret with `bin/provision-qq-binding-client.sh` (source:
    `services/platform-core/scripts/provision-qq-binding-client.sh`). The
-   controlled execution host must provide `psql`, `openssl`, and `xxd`. The
+   controlled execution host must provide `python3`, `psql`, `openssl`, and `xxd`. The
    required environment keys are DATABASE_URL, HENU_KIT_QQ_APP_ID,
    HENU_KIT_CLIENT_ID (henu-bot-*),
-   HENU_KIT_KEY_ID and HENU_KIT_SECRET. Do not pass secrets on command lines or
-   save them in an issue. App/client remapping fails closed.
+   HENU_KIT_KEY_ID and HENU_KIT_SECRET. Supply `DATABASE_URL` privately from
+   the verified Core configuration. On the production host, its `postgres`
+   hostname resolves only inside Compose: identify the **currently running**
+   Postgres container and its verified Compose network, then set
+   `HENU_KIT_DATABASE_HOSTADDR` to that container's current bridge IP. Recheck the
+   container identity and IP immediately before provisioning. The script
+   parses the URI into libpq environment variables; the URI and its password
+   never enter `psql` arguments. Do not pass secrets on command lines or save
+   them in an issue. Client ID, application mapping, and key-ID collisions fail
+   closed. Repeating the active key with the same secret is a no-op.
    Rotation retains the preceding key as `retiring` for a controlled rollout
    window. After verifying the plugin uses the new key, explicitly set the old
    client's key to `revoked` through the normal credential-management procedure;
