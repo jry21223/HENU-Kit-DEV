@@ -8,10 +8,12 @@ import AmbientSvg from "@/components/ui/ambient-svg";
 import { redirectToLogin } from "@/lib/api/client";
 import { usePersonalPracticeStats } from "@/lib/practice/personal-stats";
 
+// 示例题目，版式对应答题页作答后的解析区（参考答案 + 题库自带解析）。
 const TYPE_TEXT =
-  "【题目】求极限 lim(x→0) sin x / x。\n【AI 讲解】这是经典的 0/0 型极限。由重要极限公式直接得 1；也可用洛必达法则，分子分母分别求导得 cos x → 1。\n【易错点】注意 x 需以弧度计，且该公式只在 x→0 时成立。";
+  "【题目】求极限 lim(x→0) sin x / x。\n【参考答案】1\n【解析】这是经典的 0/0 型极限，由重要极限公式直接得 1；也可用洛必达法则，分子分母分别求导得 cos x → 1。注意 x 需以弧度计，且该公式只在 x→0 时成立。";
 
-const FEATURES = ["按知识点智能推题", "错题自动归因讲解", "掌握度曲线每周更新"];
+// 只写已上线的能力；AI 推题上线（#530）后再补充相关介绍。
+const FEATURES = ["按科目搜索题库", "随机、难题、章节、收藏四种练习", "掌握度按题库计算，随作答更新"];
 
 export default function SectionPractice() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -189,10 +191,9 @@ export default function SectionPractice() {
       <div className="relative mx-auto grid min-h-svh max-w-7xl items-center gap-12 px-5 py-24 md:grid-cols-2 md:px-10">
         {/* 左侧文案 */}
         <div>
-          <SectionHeading index="02" en="PRACTICE" title="AI 智能刷题" dark />
+          <SectionHeading index="02" en="PRACTICE" title="智能刷题" dark />
           <p className="mt-6 max-w-sm text-sm leading-7 text-paper/70">
-            不是题海，是靶向训练。AI 按你的薄弱知识点推题，
-            每道错题都配一段人话讲解。
+            按科目找到题库，选一种方式开始练习。每题作答后显示参考答案，题目附有解析的一并展示。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-paper/60">
             {FEATURES.map((f) => (
@@ -209,16 +210,16 @@ export default function SectionPractice() {
           {/* 掌握度进度条（真实作答事实聚合） */}
           <div className="mt-12 space-y-5">
             <p className="font-mono text-[10px] tracking-[0.3em] text-paper/40">
-              MASTERY / 知识点掌握度
+              MASTERY / 题库掌握度
             </p>
             {renderMastery()}
           </div>
         </div>
 
-        {/* 右侧 AI 讲解终端面板 */}
+        {/* 右侧题目解析示例面板 */}
         <div data-terminal className="w-full self-center border border-line-dark bg-ink/60">
           <div className="flex items-center justify-between border-b border-line-dark px-4 py-2.5 font-mono text-[10px] tracking-[0.25em] text-paper/50">
-            <span>AI-TUTOR / EXPLAIN</span>
+            <span>SAMPLE / 解析示例</span>
             <span className="flex gap-1.5">
               <i className="h-2 w-2 border border-paper/40" />
               <i className="h-2 w-2 border border-paper/40" />
@@ -226,7 +227,7 @@ export default function SectionPractice() {
             </span>
           </div>
           <div className="p-5">
-            <p className="mb-3 font-mono text-[10px] text-accent">$ henukit explain --course=calculus</p>
+            <p className="mb-3 font-mono text-[10px] tracking-[0.25em] text-accent">解析 / EXPLAIN</p>
             <p
               ref={textRef}
               className="min-h-40 whitespace-pre-line font-mono text-[13px] leading-7 text-paper/85"
@@ -234,7 +235,7 @@ export default function SectionPractice() {
               {TYPE_TEXT}
             </p>
             <p className="mt-4 border-t border-line-dark pt-3 font-mono text-[10px] tracking-wider text-paper/40">
-              示例讲解 · 已关联同类题
+              示例 · 解析由题库提供，部分题目暂无解析
             </p>
           </div>
         </div>

@@ -49,7 +49,7 @@ npm run dev
 ## 子站路由
 
 ### 首页 `/`
-首屏提供“找资料”“开始刷题”“看岗位”，分别进入 `/library`、`/practice`、`/career`；下方介绍与导航对应的五个模块。保留米白、网格、墨黑和橙色视觉，以及 md+ 视口由 GSAP Observer 接管的吸附滚动和 WebGL 3D 场景。
+首屏提供“找资料”“开始刷题”“看岗位”，分别进入 `/library`、`/practice`、`/career`；下方介绍与导航对应的五个模块，只写已上线的能力。刷题区块介绍按科目搜索题库、随机 / 难题 / 章节 / 收藏四种练习、作答后的参考答案与题库自带解析，以及按题库计算的掌握度；右侧解析面板标为示例。AI 推题（[#530](https://github.com/jry21223/HENU-Kit-DEV/issues/530)）上线前不做相关宣传。保留米白、网格、墨黑和橙色视觉，以及 md+ 视口由 GSAP Observer 接管的吸附滚动和 WebGL 3D 场景。
 
 首屏入口、互助开放状态和手机资料查找体验的范围见 [Issue #482](https://github.com/jry21223/HENU-Kit-DEV/issues/482)。
 

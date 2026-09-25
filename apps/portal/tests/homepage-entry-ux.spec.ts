@@ -51,6 +51,27 @@ test.describe("Homepage task entry", () => {
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /发布、接单和结算暂未开放/);
     await expect(page.getByText(/发单有人接|实名认证|即将上线/)).toHaveCount(0);
   });
+
+  test("Practice section describes only delivered capabilities", async ({ page }) => {
+    await page.goto("/");
+    // 首屏 marquee 等其他首页位置同样不宣传 AI 刷题 / 推题。
+    await expect(page.locator("main")).not.toContainText(/AI\s*(智能)?(刷题|推题)/);
+
+    const practice = page.locator("section").filter({ has: page.getByRole("heading", { level: 2, name: /智能刷题/ }) });
+    await expect(practice).toHaveCount(1);
+
+    // AI 推题尚未上线（#530）：不宣传推题、自动归因、每题讲解或按知识点的掌握度。
+    for (const claim of ["AI 按你的薄弱知识点推题", "按知识点智能推题", "错题自动归因", "每道错题都配", "知识点", "曲线", "每周更新"]) {
+      await expect(practice).not.toContainText(claim);
+    }
+    await expect(practice).not.toContainText(/\bAI\b/);
+
+    await expect(practice).toContainText("随机、难题、章节、收藏");
+    await expect(practice).toContainText("题库掌握度");
+    // 右侧演示对应答题页的解析区，明确标为示例，并说明解析来自题库、部分题目没有。
+    await expect(practice).toContainText("解析示例");
+    await expect(practice).toContainText("部分题目暂无解析");
+  });
 });
 
 test.describe("Campus browsing availability", () => {

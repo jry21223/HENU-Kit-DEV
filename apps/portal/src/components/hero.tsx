@@ -11,7 +11,7 @@ const Hero3D = dynamic(() => import("@/components/hero-3d"), { ssr: false });
 
 const MARQUEE_ITEMS = [
   "往年试卷",
-  "AI 刷题",
+  "智能刷题",
   "美食榜",
   "校园互助",
   "学长笔记",
