@@ -584,58 +584,60 @@ export default function QuizPage() {
   if (loadState === "finished") {
     const accuracy = questions.length ? Math.round((correctCount / questions.length) * 100) : 0;
     return (
-      <main className="mx-auto max-w-3xl px-5 py-16 md:px-8">
-        <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">RESULT</span>
-          <span className="mx-2">/</span>
-          本组结算
-        </p>
-        <div data-enter className="mt-6 border border-ink p-8 md:p-12">
-          <p className="font-display text-7xl font-bold md:text-8xl">
-            {accuracy}
-            <span className="ml-2 font-mono text-base font-normal text-ink/50">%</span>
+      <main className="mx-auto max-w-site px-5 py-16 md:px-8">
+        <div className="max-w-3xl">
+          <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            <span className="text-accent">RESULT</span>
+            <span className="mx-2">/</span>
+            本组结算
           </p>
-          <div className="mt-8 grid grid-cols-3 gap-4 border-t border-line pt-6 font-mono text-xs">
-            <div>
-              <p className="text-ink/40">正确率</p>
-              <p className="mt-1 text-xl">{accuracy}%</p>
-            </div>
-            <div>
-              <p className="text-ink/40">用时</p>
-              <p className="mt-1 text-xl">{fmtTime(elapsed)}</p>
-            </div>
-            <div>
-              <p className="text-ink/40">答对</p>
-              <p className="mt-1 text-xl">{correctCount}/{questions.length}</p>
-            </div>
-          </div>
-          <div className="mt-6 border-t border-line pt-6">
-            <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">薄弱章节</p>
-            {weakChapters.length ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {weakChapters.map((chapter) => (
-                  <span key={chapter} className="border border-accent px-2 py-1 font-mono text-xs text-accent">{chapter}</span>
-                ))}
+          <div data-enter className="mt-6 border border-ink p-8 md:p-12">
+            <p className="font-display text-7xl font-bold md:text-8xl">
+              {accuracy}
+              <span className="ml-2 font-mono text-base font-normal text-ink/50">%</span>
+            </p>
+            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-line pt-6 font-mono text-xs">
+              <div>
+                <p className="text-ink/40">正确率</p>
+                <p className="mt-1 text-xl">{accuracy}%</p>
               </div>
-            ) : (
-              <p className="mt-2 font-mono text-xs text-ink/60">当前没有错误题目。</p>
-            )}
+              <div>
+                <p className="text-ink/40">用时</p>
+                <p className="mt-1 text-xl">{fmtTime(elapsed)}</p>
+              </div>
+              <div>
+                <p className="text-ink/40">答对</p>
+                <p className="mt-1 text-xl">{correctCount}/{questions.length}</p>
+              </div>
+            </div>
+            <div className="mt-6 border-t border-line pt-6">
+              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">薄弱章节</p>
+              {weakChapters.length ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {weakChapters.map((chapter) => (
+                    <span key={chapter} className="border border-accent px-2 py-1 font-mono text-xs text-accent">{chapter}</span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 font-mono text-xs text-ink/60">当前没有错误题目。</p>
+              )}
+            </div>
           </div>
-        </div>
-        <div data-enter className="mt-8 flex flex-wrap gap-4">
-          <button
-            type="button"
-            onClick={startAnotherSession}
-            className="border border-ink bg-ink px-7 py-3.5 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
-          >
-            再来一组
-          </button>
-          <TransitionLink
-            href="/practice"
-            className="border border-ink/30 px-7 py-3.5 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent"
-          >
-            返回题库目录 →
-          </TransitionLink>
+          <div data-enter className="mt-8 flex flex-wrap gap-4">
+            <button
+              type="button"
+              onClick={startAnotherSession}
+              className="border border-ink bg-ink px-7 py-3.5 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+            >
+              再来一组
+            </button>
+            <TransitionLink
+              href="/practice"
+              className="border border-ink/30 px-7 py-3.5 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent"
+            >
+              返回题库目录 →
+            </TransitionLink>
+          </div>
         </div>
       </main>
     );
@@ -699,8 +701,9 @@ export default function QuizPage() {
   const options = question.options ?? [];
 
   return (
-    <main className="mx-auto max-w-6xl px-5 py-10 md:px-8">
-      <div data-block data-enter className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-line pb-4">
+    // 内容框与页头同为 max-w-site，左缘与返回链接对齐；答题区仍限在 max-w-6xl，行宽不随宽屏拉长。
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
+      <div data-block data-enter className="flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 border-b border-line pb-4">
         <p className="font-mono text-sm">第 <span className="text-accent">{idx + 1}</span> / {questions.length} 题</p>
         <div className="h-1 min-w-32 flex-1 bg-ink/10">
           <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${((idx + (confirmed ? 1 : 0)) / questions.length) * 100}%` }} />
@@ -710,7 +713,7 @@ export default function QuizPage() {
         <p className="font-mono text-xs tracking-widest text-ink/60">连对 <span className={streak >= 3 ? "text-accent" : ""}>{streak}</span></p>
       </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_12rem]">
+      <div className="mt-8 grid max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_12rem]">
         <div data-block className="min-w-0 overflow-x-clip">
           <div
             ref={cardRef}
@@ -1028,20 +1031,23 @@ function PracticeState({
   onAction?: () => void;
 }) {
   return (
-    <main className="mx-auto max-w-3xl px-5 py-16 md:px-8">
-      <div data-enter className="border border-ink p-8 md:p-12">
-        <p className="font-mono text-xs tracking-[0.3em] text-accent">PRACTICE / 刷题</p>
-        <h1 className="mt-5 text-2xl font-medium md:text-3xl">{title}</h1>
-        <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">{detail}</p>
-        <div className="mt-8 flex flex-wrap gap-4">
-          {actionLabel && onAction && (
-            <button type="button" onClick={onAction} className="border border-ink bg-ink px-6 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent">
-              {actionLabel}
-            </button>
-          )}
-          <TransitionLink href="/practice" className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent">
-            返回题库目录 →
-          </TransitionLink>
+    // 与页头同一个内容框，左缘与返回链接对齐；卡片仍限在 max-w-3xl。
+    <main className="mx-auto max-w-site px-5 py-16 md:px-8">
+      <div className="max-w-3xl">
+        <div data-enter className="border border-ink p-8 md:p-12">
+          <p className="font-mono text-xs tracking-[0.3em] text-accent">PRACTICE / 刷题</p>
+          <h1 className="mt-5 text-2xl font-medium md:text-3xl">{title}</h1>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">{detail}</p>
+          <div className="mt-8 flex flex-wrap gap-4">
+            {actionLabel && onAction && (
+              <button type="button" onClick={onAction} className="border border-ink bg-ink px-6 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent">
+                {actionLabel}
+              </button>
+            )}
+            <TransitionLink href="/practice" className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent">
+              返回题库目录 →
+            </TransitionLink>
+          </div>
         </div>
       </div>
     </main>

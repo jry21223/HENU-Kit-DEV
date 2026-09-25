@@ -148,7 +148,7 @@ export default function MarketPage() {
         scene={<SceneHandshake />}
       />
 
-      <div className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+      <div className="mx-auto max-w-site px-5 py-10 md:px-8">
         {loadState === "error" && error && (
           <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
         )}

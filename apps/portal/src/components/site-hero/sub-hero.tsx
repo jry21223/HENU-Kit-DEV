@@ -102,7 +102,7 @@ export default function SubHero({
 
   return (
     <section ref={sectionRef} className="relative overflow-hidden border-b border-line">
-      <div className={cn("mx-auto grid max-w-[1440px] lg:grid-cols-2", compactOnMobile ? "lg:min-h-[52vh]" : "min-h-[52vh]")}>
+      <div className={cn("mx-auto grid max-w-site lg:grid-cols-2", compactOnMobile ? "lg:min-h-[52vh]" : "min-h-[52vh]")}>
         {/* 左：文案 + 计数 */}
         <div className={cn("flex flex-col justify-center px-5 md:px-8", compactOnMobile ? "py-6 lg:py-14" : "py-14")}>
           <p data-hero-title className="font-mono text-xs tracking-[0.3em] text-ink/60">

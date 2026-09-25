@@ -67,9 +67,9 @@ export default function CareerPage() {
   }, [requestState]);
 
   return (
-    // 与 library / campus / food 等子站二级页保持同一容器：1440 栅格 + md:px-8，
-    // 这样正文与顶部 CareerNav（同样是 max-w-[1440px]）左右对齐。
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+    // 与 library / campus / food 等子站二级页保持同一容器：max-w-site + md:px-8，
+    // 这样正文与顶部 CareerNav（同一个内容框）左右对齐。
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       {state.kind === "loading" ? <LoadingBlock /> : null}
 
       {state.kind === "anonymous" ? <CareerGuestView /> : null}

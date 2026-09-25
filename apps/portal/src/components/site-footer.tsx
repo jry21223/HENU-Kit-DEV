@@ -7,7 +7,7 @@ import LegalNotice from "@/components/legal-notice";
 export default function SiteFooter() {
   return (
     <footer className="border-t border-line bg-paper">
-      <div className="mx-auto max-w-[1440px] px-5 py-3 md:px-8 md:py-4">
+      <div className="mx-auto max-w-site px-5 py-3 md:px-8 md:py-4">
         <LegalNotice />
       </div>
     </footer>

@@ -15,7 +15,7 @@ const FEATURES = [
 export default function SectionCareer() {
   return (
     <section className="snap-screen border-t border-line bg-paper">
-      <div className="mx-auto grid min-h-svh max-w-7xl items-center gap-12 px-5 py-24 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:px-10">
+      <div className="mx-auto grid min-h-svh max-w-site items-center gap-12 px-5 py-24 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:px-8">
         <div>
           <SectionHeading index="05" en="WORK RADAR" title="求职雷达" />
           <p className="mt-6 max-w-md text-sm leading-7 text-ink/70">

@@ -252,7 +252,7 @@ export default function FoodPublishPage() {
   };
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8 md:py-14">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8 md:py-14">
       <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16">
         <div>
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/55">

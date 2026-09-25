@@ -39,7 +39,7 @@ export default function ItemDetail({ id }: { id: string }) {
       : `${material.pageCount ?? material.pages.length} 页 · ${material.subject}`;
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="gap-10 md:flex">
         {/* 封面 */}
         <div data-enter className="bg-blueprint relative flex h-72 w-full shrink-0 flex-col justify-between border border-ink p-5 md:w-64">

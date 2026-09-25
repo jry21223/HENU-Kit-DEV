@@ -63,7 +63,7 @@ function PublishForm() {
   };
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="max-w-3xl">
       <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
         <span className="text-accent">M-03</span>

@@ -67,7 +67,7 @@ export default function LeaderboardPage() {
   };
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 md:py-16">
+    <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div className="max-w-4xl">
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
           <span className="text-accent">RANK</span>

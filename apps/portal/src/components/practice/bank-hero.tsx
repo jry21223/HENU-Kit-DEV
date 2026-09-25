@@ -201,7 +201,7 @@ export default function BankHero({
       data-block
       className="relative flex min-h-[68vh] flex-col overflow-hidden"
     >
-      <div className="mx-auto grid w-full max-w-[1440px] flex-1 lg:grid-cols-2">
+      <div className="mx-auto grid w-full max-w-site flex-1 lg:grid-cols-2">
         <div className="flex flex-col justify-center px-5 py-14 md:px-8 lg:pr-12">
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
             <span className="text-accent">01</span>
@@ -336,7 +336,7 @@ export default function BankHero({
       </div>
 
       <div className="relative border-t border-line py-2.5">
-        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/50 md:px-8">
+        <div className="mx-auto flex max-w-site items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/50 md:px-8">
           <span className="text-accent">DATA</span>
           <span aria-hidden>+</span>
           <span className="tracking-normal">来自你的答题记录</span>

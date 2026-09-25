@@ -144,7 +144,7 @@ export default function LibraryHomePage() {
         compactOnMobile
       />
 
-      <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 lg:py-10">
+      <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">
         {loadState === "error" && error && (
           <ErrorBanner
             message={error.message}

@@ -89,7 +89,7 @@ export default function PostDetail({ id }: { id: string }) {
 
   if (loadState === "loading") {
     return (
-      <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8">
+      <main className="mx-auto max-w-site px-5 py-12 md:px-8">
         <LoadingBlock label="加载商家档案" />
       </main>
     );
@@ -97,7 +97,7 @@ export default function PostDetail({ id }: { id: string }) {
 
   if (loadState === "error") {
     return (
-      <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8">
+      <main className="mx-auto max-w-site px-5 py-12 md:px-8">
         <ErrorBanner
           message={error ?? "美食详情暂时加载不出来，请稍后刷新试试。"}
           onRetry={() => void load()}
@@ -124,7 +124,7 @@ export default function PostDetail({ id }: { id: string }) {
   const tierLabel = detail.tier?.label ?? "未定档";
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8 md:py-14">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8 md:py-14">
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-14">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] tracking-[0.22em] text-ink/50">

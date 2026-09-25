@@ -160,7 +160,7 @@ export default function Hero() {
       </div>
 
       {/* 左侧文案 */}
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-5 pt-28 pb-16 md:px-10">
+      <div className="relative z-10 mx-auto flex w-full max-w-site flex-1 flex-col justify-center px-5 pt-28 pb-16 md:px-8">
         <div data-hero-gridline className="mb-8 h-px w-24 bg-accent" />
 
         <p className="mb-4 flex items-center gap-2 font-mono text-xs tracking-[0.35em] text-ink/60">

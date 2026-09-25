@@ -70,7 +70,7 @@ export default function Navbar() {
         scrolled && "border-b border-line"
       )}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 md:px-10">
+      <div className="mx-auto flex h-16 max-w-site items-center justify-between px-5 md:px-8">
         <Link href="/" className="flex items-baseline gap-3">
           <span className="font-display text-xl font-bold tracking-tight">
             henukit<span className="text-accent">®</span>

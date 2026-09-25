@@ -47,7 +47,7 @@ export default function StatsPage() {
   const { state, retry } = usePersonalPracticeStats();
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 md:py-16">
+    <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div data-block data-enter>
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
           <span className="text-accent">STATS</span>

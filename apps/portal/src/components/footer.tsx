@@ -77,7 +77,7 @@ export default function Footer() {
         className="absolute -right-10 top-1/2 hidden -translate-y-1/2 text-ink/20 md:block"
       />
 
-      <div className="mx-auto flex min-h-svh max-w-7xl flex-col px-5 pt-24 md:px-10">
+      <div className="mx-auto flex min-h-svh max-w-site flex-col px-5 pt-24 md:px-8">
         <div className="flex flex-1 items-center">
           <p
             ref={giantRef}

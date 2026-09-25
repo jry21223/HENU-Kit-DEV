@@ -40,7 +40,7 @@ export default function CareerHistoryPageClient() {
 
   return (
     // 容器与 /career 及其他子站二级页一致，正文与 CareerNav 左右对齐。
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       {state.kind === "loading" ? <LoadingBlock /> : <CareerHistoryView state={state} />}
     </main>
   );

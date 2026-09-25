@@ -116,7 +116,7 @@ export default function PracticeBankPage() {
       />
 
       <div data-block className="border-t border-line">
-        <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-3 md:px-8">
+        <div className="mx-auto flex max-w-site items-center justify-between px-5 py-3 md:px-8">
           <p className="font-mono text-[10px] tracking-[0.3em] text-ink/50">
             <span className="text-accent">02</span>
             <span className="mx-2">/</span>
@@ -125,18 +125,18 @@ export default function PracticeBankPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1440px] px-5 pt-6 md:px-8">
+      <div className="mx-auto max-w-site px-5 pt-6 md:px-8">
         {loadState === "error" && error && (
           <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
         )}
       </div>
 
       {loadState === "loading" ? (
-        <div className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+        <div className="mx-auto max-w-site px-5 py-10 md:px-8">
           <LoadingBlock label="加载题库" />
         </div>
       ) : (
-        <div className="mx-auto max-w-[1440px] lg:flex">
+        <div className="mx-auto max-w-site lg:flex">
           <div data-block className="flex-1 px-5 py-10 md:px-8">
             {loadState === "error" ? (
               <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />

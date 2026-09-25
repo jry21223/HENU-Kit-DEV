@@ -38,7 +38,7 @@ export default function ItemDetail({ id }: { id: string }) {
   const cat = categoryOf(item.category);
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="gap-10 lg:flex">
         {/* 左侧：单子内容 + 留言 */}
         <div className="min-w-0 flex-1">

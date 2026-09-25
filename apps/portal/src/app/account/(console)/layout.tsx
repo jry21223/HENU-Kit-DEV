@@ -124,7 +124,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
       header={
         // 顶部子导航
         <header className="sticky top-0 z-40 border-b border-line bg-paper">
-          <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-5 md:px-8">
+          <div className="mx-auto flex h-14 max-w-site items-center justify-between px-5 md:px-8">
             <div className="flex items-baseline gap-4">
               <Link
                 href="/"
@@ -175,7 +175,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
       {sessionState.kind === "authenticated" ? (
         <AccountConsoleSessionProvider session={sessionState.session} requireLogin={requireLogin}>
-          <div className="mx-auto max-w-[1440px] lg:flex">
+          <div className="mx-auto max-w-site lg:flex">
             <aside className="border-b border-line lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
               <nav className="flex gap-1 overflow-x-auto px-4 py-3 lg:sticky lg:top-14 lg:flex-col lg:gap-0 lg:px-0 lg:py-8">
                 {MENU.map((item) => {

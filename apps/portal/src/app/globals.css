@@ -12,6 +12,10 @@
   --color-mid: #c79a2a;
   --color-hard: #c2401f;
 
+  /* 内容框：首页、子站页头与正文共用同一宽度（max-w-site），左右留白统一为
+     px-5 md:px-8，页头的返回链接因此与正文标题左缘对齐。见 DESIGN_SYSTEM.md。 */
+  --container-site: 1440px;
+
   --font-display:
     var(--font-space-grotesk), "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono:

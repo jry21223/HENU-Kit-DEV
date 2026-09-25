@@ -188,7 +188,7 @@ export default function SectionPractice() {
         variant="dial"
         className="absolute right-10 top-24 hidden text-paper/25 lg:block"
       />
-      <div className="relative mx-auto grid min-h-svh max-w-7xl items-center gap-12 px-5 py-24 md:grid-cols-2 md:px-10">
+      <div className="relative mx-auto grid min-h-svh max-w-site items-center gap-12 px-5 py-24 md:grid-cols-2 md:px-8">
         {/* 左侧文案 */}
         <div>
           <SectionHeading index="02" en="PRACTICE" title="智能刷题" dark />

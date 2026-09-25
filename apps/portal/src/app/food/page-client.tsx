@@ -28,7 +28,7 @@ export default function FoodBoardPage() {
   return (
     <main>
       <section className="border-b border-ink bg-ink text-paper">
-        <div className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 md:py-16">
+        <div className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
             <div data-enter>
               <p className="font-mono text-xs tracking-[0.3em] text-paper/55">
@@ -64,7 +64,7 @@ export default function FoodBoardPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-[1440px] px-5 py-10 md:px-8 md:py-12">
+      <div className="mx-auto max-w-site px-5 py-10 md:px-8 md:py-12">
         <div data-enter className="flex flex-col gap-5 border-b border-ink pb-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="font-mono text-[10px] tracking-[0.28em] text-ink/45">

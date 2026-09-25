@@ -172,7 +172,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   const canStart = state.status === "ready" && availableCount > 0 && !starting;
 
   return (
-    <main className="mx-auto max-w-6xl px-5 py-12 md:px-8 md:py-16">
+    <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div data-block ref={heroRef} className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
