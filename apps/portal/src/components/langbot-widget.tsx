@@ -1,3 +1,8 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
+
 function getWidgetUrl() {
   const configuredUrl = process.env.NEXT_PUBLIC_LANGBOT_WIDGET_URL?.trim();
   if (!configuredUrl) {
@@ -16,9 +21,19 @@ function getWidgetUrl() {
   }
 }
 
+const subscribe = () => () => {};
+function noPendingBinding() {
+  try { return !sessionStorage.getItem("henukit-qq-binding"); }
+  catch { return false; }
+}
+
 export default function LangBotWidget() {
+  const pathname = usePathname();
+  // SSR is fail closed; only inspect tab storage after hydration. The binding
+  // and login entry links perform full document navigation.
+  const safe = useSyncExternalStore(subscribe, noPendingBinding, () => false);
   const widgetUrl = getWidgetUrl();
-  if (!widgetUrl) {
+  if (!widgetUrl || !safe || pathname.startsWith("/account") || pathname.startsWith("/bind/")) {
     return null;
   }
 

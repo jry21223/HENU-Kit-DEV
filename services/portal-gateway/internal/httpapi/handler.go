@@ -212,6 +212,9 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/auth/callback", h.callback)
 	r.Get("/api/v1/session", h.getSession)
 	r.Post("/api/v1/session/logout", h.logout)
+	for _, action := range []string{"authorize", "status", "unlink"} {
+		r.Post("/api/v1/account/qq-binding/"+action, h.qqBinding)
+	}
 	r.Get("/api/v1/account/summary", h.accountSummary)
 	r.Get("/api/v1/account/points", h.accountPoints)
 	r.Get("/api/v1/account/membership", h.accountMembership)
