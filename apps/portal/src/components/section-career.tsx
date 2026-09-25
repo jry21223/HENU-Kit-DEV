@@ -34,7 +34,7 @@ export default function SectionCareer() {
             进入求职雷达
           </MagneticButton>
           <p className="mt-5 font-mono text-[10px] tracking-[0.18em] text-ink/40">
-            RADAR SCHEMATIC · LIFETIME VIP BENEFIT
+            RADAR SCHEMATIC · LIFETIME MEMBERSHIP
           </p>
         </div>
 

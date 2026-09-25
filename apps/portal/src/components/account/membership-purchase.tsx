@@ -12,6 +12,10 @@ import type { AccountMembershipOrder } from "@/lib/api/types";
 
 const POLL_INTERVAL_MS = 4000;
 
+/** The single statement of what lifetime membership includes, shared by the offer and the entitlement card. */
+export const LIFETIME_BENEFITS =
+  "终身会员包含期末押题卷等核心复习资料，以及求职雷达（求职画像、岗位扫描与结果简报）。";
+
 type PurchaseState =
   | { kind: "idle" }
   | { kind: "starting" }
@@ -107,7 +111,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
       <section data-membership-purchase="paid" className="mt-6 border border-ink p-6">
         <p className="font-mono text-xs tracking-[0.2em] text-accent">PAYMENT CONFIRMED</p>
         <p className="mt-3 text-sm leading-6 text-ink/70">
-          支付已由服务端确认，终身会员权益已写入你的账户。
+          支付成功，终身会员已生效。
         </p>
       </section>
     );
@@ -119,7 +123,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
         <p className="font-mono text-xs tracking-[0.2em] text-ink/45">PURCHASE UNAVAILABLE</p>
         <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
         <p className="mt-3 text-sm leading-6 text-ink/60">
-          支付通道尚未开放，本页不会创建订单，也不会发放权益。
+          支付通道尚未开放，这次没有创建订单，也不会产生扣款。
         </p>
       </section>
     );
@@ -128,12 +132,13 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
   return (
     <section data-membership-purchase={state.kind} className="mt-6 border border-ink p-6 sm:p-8">
       <p className="font-mono text-xs tracking-[0.2em] text-ink/45">LIFETIME MEMBERSHIP</p>
-      <h2 className="mt-3 font-display text-3xl font-bold tracking-tight">¥9.9 永久解锁</h2>
+      <h2 className="mt-3 font-display text-3xl font-bold tracking-tight">¥9.9 开通终身会员</h2>
 
       {state.kind === "idle" || state.kind === "error" ? (
         <>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-ink/70">
-            一次付费永久解锁：会员包含期末押题卷等核心复习资料，也为服务器持续运行提供支持。权益由服务端持久化，可跨设备读取。
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-ink/70">{LIFETIME_BENEFITS}</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/60">
+            一次付费，永久有效，费用也用于维持服务器运行；权益绑定账户，换设备登录同样可用。
           </p>
           {state.kind === "error" ? (
             <p role="alert" className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-ink/70">
@@ -173,7 +178,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
           <div className="flex-1">
             <p className="font-mono text-xs tracking-[0.2em] text-ink/45">AWAITING PAYMENT</p>
             <p className="mt-3 text-sm leading-6 text-ink/70">
-              请使用微信扫码完成支付。支付结果由服务端确认，确认后本页会自动更新。
+              请使用微信扫码完成支付，支付完成后本页会自动更新。
             </p>
             <p className="mt-3 text-sm leading-6 text-ink/55">
               离开本页后回来仍是同一个订单与同一个二维码，不会重复下单。

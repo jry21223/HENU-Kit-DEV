@@ -237,7 +237,8 @@ test("a free member sees the lifetime gate instead of the profile form", async (
 
   await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-career-profile-state="locked"]')).toBeVisible();
-  await expect(page.getByText("求职雷达需要 Lifetime VIP 会员")).toBeVisible();
+  await expect(page.getByText("求职雷达需要终身会员")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Lifetime VIP");
   await expect(page.locator('[data-account-career-profile-state="ready"]')).toHaveCount(0);
   const purchaseEntry = page.getByRole("link", { name: "前往会员权益开通" });
   await expect(purchaseEntry).toHaveAttribute("href", "/account/membership");
@@ -424,8 +425,9 @@ test("/career keeps free members off the scan entry and points at ¥9.9 membersh
 
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-state="free"]')).toBeVisible();
-  await expect(page.getByText("¥9.9 开通 Lifetime VIP →")).toBeVisible();
-  const buy = page.getByRole("link", { name: "¥9.9 开通 Lifetime VIP →" });
+  await expect(page.getByText("¥9.9 开通终身会员 →")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Lifetime VIP");
+  const buy = page.getByRole("link", { name: "¥9.9 开通终身会员 →" });
   await expect(buy).toHaveAttribute("href", "/account/membership");
   await expect(page.getByRole("button", { name: /开始扫描/ })).toHaveCount(0);
 });

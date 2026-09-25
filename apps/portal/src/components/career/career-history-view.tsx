@@ -54,10 +54,10 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           LIFETIME REQUIRED
         </p>
         <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
-          扫描历史属于 Lifetime VIP 权益
+          扫描历史属于终身会员权益
         </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
-          当前账户不是 Lifetime VIP 会员，无法查看求职雷达的扫描历史。
+          当前账户还不是终身会员，无法查看求职雷达的扫描历史。
           开通后即可发起扫描并查看每次任务的记录。
         </p>
         <Link
@@ -65,7 +65,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           href="/account/membership"
           className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
         >
-          ¥9.9 开通 Lifetime VIP →
+          ¥9.9 开通终身会员 →
         </Link>
       </section>
     );

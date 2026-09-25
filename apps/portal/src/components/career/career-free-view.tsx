@@ -23,7 +23,7 @@ export default function CareerFreeView() {
             WORK RADAR
           </p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
-            求职雷达属于 Lifetime VIP 权益
+            求职雷达属于终身会员权益
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">
             设定求职画像，后台异步扫描受控官方招聘来源，
@@ -42,22 +42,22 @@ export default function CareerFreeView() {
         <div data-enter className="flex items-start">
           <article className="w-full max-w-md border border-dashed border-ink/25 bg-paper p-6">
             <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/50">
-              <span>LIFETIME VIP</span>
+              <span>LIFETIME MEMBERSHIP</span>
               <span className="border border-ink/30 px-2 py-0.5 text-ink/50">¥9.9 永久</span>
             </div>
             <h3 className="mt-4 font-display text-2xl font-bold">一次付费，永久解锁</h3>
             <p className="mt-2 text-sm leading-6 text-ink/60">
-              开通 Lifetime VIP 后即可使用求职雷达：发起异步扫描、查看匹配结果、
-              接收邮件简报；权益由服务端持久化，可跨设备读取。
+              开通终身会员后即可使用求职雷达：发起扫描、查看匹配结果、
+              接收邮件简报；权益绑定账户，换设备登录同样可用。
             </p>
             <Link
               href="/account/membership"
               className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
             >
-              ¥9.9 开通 Lifetime VIP →
+              ¥9.9 开通终身会员 →
             </Link>
             <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/40">
-              支付入口在账户中心，权益由服务端确认
+              在账户中心完成支付，开通后立即生效
             </p>
           </article>
         </div>

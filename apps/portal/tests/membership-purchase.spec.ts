@@ -81,6 +81,31 @@ async function installGateway(context: BrowserContext, state: PurchaseState) {
   });
 }
 
+test("a free member is offered lifetime membership in one consistent voice", async ({
+  context,
+  page,
+}) => {
+  const state: PurchaseState = { paid: false, checkoutURL, providerEnabled: true };
+  await installGateway(context, state);
+
+  await page.goto("/account/membership");
+  await expect(page.getByRole("heading", { name: "免费会员" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "购买终身会员" })).toBeVisible();
+
+  // The page sells lifetime membership, so nothing on it may claim there is
+  // no way to buy it, and the ¥9.9 offer is stated once, next to its button.
+  const body = page.locator("body");
+  await expect(body).not.toContainText("不提供开通或支付入口");
+  await expect(page.getByText(/¥9\.9/)).toHaveCount(1);
+  await expect(page.locator("[data-membership-purchase]")).toContainText("求职雷达");
+
+  // Lifetime membership has one name, and users never see the plan enum or
+  // how the entitlement is stored.
+  for (const internal of ["Lifetime VIP", "PLAN", "SYNCHRONIZATION", "服务端", "真实通知"]) {
+    await expect(body).not.toContainText(internal);
+  }
+});
+
 test("a user scans the payment QR without ever seeing the merchant order number", async ({
   context,
   page,
@@ -118,6 +143,8 @@ test("payment is reported only after the server confirms it", async ({ context, 
   state.paid = true;
   await expect(page.getByRole("heading", { name: "终身会员" })).toBeVisible({ timeout: 20000 });
   await expect(page.locator('[data-membership-purchase="awaiting"]')).toHaveCount(0);
+  await expect(page.getByText("终身会员已生效，永久有效；换设备登录同样可用。", { exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("服务端");
 });
 
 test("a disabled payment provider is an honest unavailable state", async ({ context, page }) => {

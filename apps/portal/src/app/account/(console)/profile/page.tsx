@@ -402,7 +402,7 @@ export default function CareerProfilePage() {
       {state.kind === "locked" ? (
         <section data-account-career-profile-state="locked" className="mt-6 border border-accent px-5 py-8">
           <p className="font-mono text-xs tracking-[0.14em] text-accent">LIFETIME REQUIRED</p>
-          <h2 className="mt-3 font-display text-2xl font-bold tracking-tight">求职雷达需要 Lifetime VIP 会员</h2>
+          <h2 className="mt-3 font-display text-2xl font-bold tracking-tight">求职雷达需要终身会员</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/70">
             求职画像、匹配扫描与结果简报属于终身会员权益；免费会员无法查看或编辑画像。
           </p>

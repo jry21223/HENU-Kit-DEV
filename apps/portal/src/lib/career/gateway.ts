@@ -42,7 +42,7 @@ export function isCareerLifetimeRequiredError(error: unknown): boolean {
 
 /** 命中 Lifetime 门时的引导文案，直接展示给用户。 */
 export function careerLifetimeRequiredMessage(): string {
-  return "求职雷达需要 Lifetime VIP 会员，开通后即可使用";
+  return "求职雷达需要终身会员，开通后即可使用";
 }
 
 export function careerSearchCreateErrorMessage(error: unknown): string {

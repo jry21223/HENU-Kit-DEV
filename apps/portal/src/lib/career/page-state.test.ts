@@ -203,7 +203,7 @@ describe("resolveCareerView", () => {
     const { resolveCareerView } = await import("./page-state");
     await expect(resolveCareerView()).resolves.toEqual({
       kind: "error",
-      message: "求职雷达需要 Lifetime VIP 会员，开通后即可使用",
+      message: "求职雷达需要终身会员，开通后即可使用",
     });
   });
 });

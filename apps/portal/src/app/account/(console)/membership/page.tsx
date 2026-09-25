@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
-import { MembershipPurchase } from "@/components/account/membership-purchase";
+import { LIFETIME_BENEFITS, MembershipPurchase } from "@/components/account/membership-purchase";
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountMembership, formatPortalError } from "@/lib/api/client";
 import type { AccountMembershipResponse } from "@/lib/api/types";
@@ -53,7 +53,7 @@ export default function MembershipPage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">会员权益</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          会员权益由系统确认后展示，本页不提供开通或支付入口。
+          查看你当前的会员状态与权益。
         </p>
       </section>
 
@@ -71,7 +71,7 @@ export default function MembershipPage() {
         <section data-account-membership-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
           <p className="font-mono text-xs tracking-[0.14em] text-accent">MEMBERSHIP UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">账户服务不可用时不会以本地或会话状态替代真实权益。</p>
+          <p className="mt-3 text-sm leading-6 text-ink/60">请稍后重新加载，你的会员权益不会因此受到影响。</p>
           <button
             type="button"
             onClick={() => {
@@ -93,21 +93,16 @@ export default function MembershipPage() {
           </h2>
           <p className="mt-4 max-w-2xl text-base leading-7 text-ink/75">
             {isLifetime
-              ? "权益已由系统确认，可跨设备读取。"
-              : "当前为免费会员；新用户从免费会员状态开始。"}
+              ? "终身会员已生效，永久有效；换设备登录同样可用。"
+              : "当前为免费会员，可在下方开通终身会员。"}
           </p>
-          <dl className="mt-6 grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
-            <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">PLAN</dt>
-              <dd className="mt-2 text-sm leading-6">{membership.plan === "lifetime" ? "lifetime" : "free"}</dd>
-            </div>
-            <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">SYNCHRONIZATION</dt>
-              <dd className="mt-2 text-sm leading-6">重新登录或切换设备后从服务端重新读取</dd>
-            </div>
-          </dl>
+          {isLifetime ? (
+            <p className="mt-6 border-t border-line pt-5 text-sm leading-6 text-ink/70">
+              {LIFETIME_BENEFITS}
+            </p>
+          ) : null}
           <p className="mt-6 border-t border-line pt-5 text-sm leading-6 text-ink/60">
-            ¥9.9 一次付费永久解锁：会员包含期末押题卷等核心复习资料，费用用于维持服务器持续运行；运营授权与撤销会通过真实通知告知用户。
+            运营人员为你开通或撤销会员时，会通过系统通知告诉你。
           </p>
         </section>
       ) : null}
