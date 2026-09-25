@@ -98,6 +98,8 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
     releaseLoading?.();
     await expect(page.getByTestId("practice-stats-empty")).toBeVisible();
     await expect(page.getByTestId("practice-stats-empty")).toContainText("还没有学习记录，从第一题开始建立你的学习图谱");
+    await expect(page.getByTestId("practice-stats-empty").getByRole("link", { name: "去刷题", exact: true }))
+      .toHaveAttribute("href", "/practice");
     await expect(page.locator("main")).not.toContainText("486");
 
     phase = "failure";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchCampusCategories,
   fetchCampusItems,
@@ -61,6 +61,7 @@ export default function MarketPage() {
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
   const [type, setType] = useState<ItemType | "all">("all");
+  const filtersRef = useRef<HTMLDivElement>(null);
   useReveal();
 
   const load = useCallback(async () => {
@@ -122,6 +123,15 @@ export default function MarketPage() {
   );
   const openCount = items.filter((i) => i.status !== "hidden").length;
   const doneCount = items.filter((i) => i.status === "done").length;
+  const hasActiveFilter = query.trim() !== "" || cat !== "all" || type !== "all";
+  const clearFilters = () => {
+    setQuery("");
+    setCat("all");
+    setType("all");
+    // 清除筛选按钮会随空状态一起消失；焦点交给刚复位的搜索与筛选区，键盘和读屏用户不丢位置。
+    // 不直接聚焦搜索框：手机上会弹出输入法，挡住刚恢复的列表。
+    filtersRef.current?.focus();
+  };
 
   return (
     <main>
@@ -143,7 +153,14 @@ export default function MarketPage() {
           <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
         )}
 
-        <div data-enter className="flex flex-wrap items-center gap-2">
+        <div
+          ref={filtersRef}
+          data-enter
+          role="search"
+          aria-label="互助搜索与筛选"
+          tabIndex={-1}
+          className="flex flex-wrap items-center gap-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+        >
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -156,6 +173,7 @@ export default function MarketPage() {
               key={t}
               type="button"
               onClick={() => setType(t)}
+              aria-pressed={type === t}
               className={cn(
                 "border px-3 py-1.5 font-mono text-xs transition-colors",
                 type === t
@@ -171,6 +189,7 @@ export default function MarketPage() {
           <button
             type="button"
             onClick={() => setCat("all")}
+            aria-pressed={cat === "all"}
             className={cn(
               "border px-3 py-1.5 font-mono text-xs transition-colors",
               cat === "all" ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
@@ -183,6 +202,7 @@ export default function MarketPage() {
               key={c.key}
               type="button"
               onClick={() => setCat(c.key)}
+              aria-pressed={cat === c.key}
               className={cn(
                 "border px-3 py-1.5 font-mono text-xs transition-colors",
                 cat === c.key ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
@@ -197,7 +217,10 @@ export default function MarketPage() {
           {loadState === "loading" ? (
             <LoadingBlock label="加载互助单" />
           ) : loadState === "error" ? null : filtered.length === 0 ? (
-            <EmptyBlock label={openCount === 0 ? "暂无互助或闲置信息" : "无匹配单子"} />
+            <EmptyBlock
+              label={openCount === 0 ? "暂无互助或闲置信息" : "无匹配单子"}
+              action={hasActiveFilter ? { label: "清除筛选", onClick: clearFilters } : undefined}
+            />
           ) : (
             <div className="columns-1 gap-4 sm:columns-2">
               {filtered.map((it) => (

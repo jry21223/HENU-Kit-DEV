@@ -70,13 +70,15 @@ test.describe("Campus browsing availability", () => {
 
     await page.goto("/campus");
     const itemsCounter = page.getByText("在架单子", { exact: true }).locator("..");
-    await expect(page.getByText("加载互助单 / LOADING", { exact: true })).toBeVisible();
+    await expect(page.getByText("加载互助单…", { exact: true })).toBeVisible();
     await expect(itemsCounter).toHaveAttribute("aria-busy", "true");
     await expect(itemsCounter).toContainText("加载中");
     await expect(itemsCounter).toContainText("—");
     releaseItems();
 
-    await expect(page.getByText("暂无互助或闲置信息 / EMPTY", { exact: true })).toBeVisible();
+    await expect(page.getByText("暂无互助或闲置信息", { exact: true })).toBeVisible();
+    // 没有筛选条件时，清除筛选帮不上忙，不出现。
+    await expect(page.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
     await expect(itemsCounter).toHaveAttribute("aria-busy", "false");
     await expect(itemsCounter).toContainText("0");
     await expect(itemsCounter).not.toContainText("—");
@@ -103,7 +105,7 @@ test.describe("Campus browsing availability", () => {
     await expect(page.getByRole("main").getByRole("alert")).not.toContainText("internal gateway");
     await expect(itemsCounter).toContainText("暂不可用");
     await expect(itemsCounter).toContainText("—");
-    await expect(page.getByText(/\/ EMPTY/)).toHaveCount(0);
+    await expect(page.getByText(/暂无互助或闲置信息|无匹配单子/)).toHaveCount(0);
 
     unavailable = false;
     await page.getByRole("button", { name: "重试", exact: true }).click();
@@ -111,6 +113,6 @@ test.describe("Campus browsing availability", () => {
     await expect(itemsCounter).toContainText("1");
     await expect(itemsCounter).not.toContainText("—");
     await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
-    await expect(page.getByText(/\/ EMPTY/)).toHaveCount(0);
+    await expect(page.getByText(/暂无互助或闲置信息|无匹配单子/)).toHaveCount(0);
   });
 });

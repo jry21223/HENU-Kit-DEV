@@ -64,7 +64,7 @@ export default function StatsPage() {
 
       {state.status === "disabled" && (
         <section data-testid="practice-stats-disabled" className="mt-10">
-          <EmptyBlock label="学习数据即将上线，敬请期待" />
+          <EmptyBlock label="学习数据即将上线，敬请期待" action={{ label: "去刷题", href: "/practice" }} />
         </section>
       )}
 
@@ -109,7 +109,10 @@ export default function StatsPage() {
 
           {state.status === "empty" ? (
             <section data-testid="practice-stats-empty" className="mt-12">
-              <EmptyBlock label="还没有学习记录，从第一题开始建立你的学习图谱" />
+              <EmptyBlock
+                label="还没有学习记录，从第一题开始建立你的学习图谱"
+                action={{ label: "去刷题", href: "/practice" }}
+              />
             </section>
           ) : (
             <section data-testid="practice-stats-success" data-block data-enter className="mt-12 border border-ink/25 p-5 md:p-7">

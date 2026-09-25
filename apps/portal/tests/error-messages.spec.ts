@@ -82,7 +82,7 @@ test("/library turns an HTML 404 into one Chinese message with retry", async ({ 
   await expect(page.locator("main")).not.toContainText(LEAKS);
   // 失败只说一次：书架区不再叠一句空状态。
   await expect(page.locator("main")).not.toContainText("加载不出来");
-  await expect(page.getByText(/\/ EMPTY/)).toHaveCount(0);
+  await expect(page.getByText(/资料库当前暂无公开资料|无匹配资料/)).toHaveCount(0);
 
   recover();
   await alert.getByRole("button", { name: "重试" }).click();

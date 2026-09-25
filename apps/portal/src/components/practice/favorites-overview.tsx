@@ -83,7 +83,10 @@ export default function FavoritesOverview() {
       {state.status === "ready" && (
         <section data-testid="practice-favorites-overview" className="mt-8">
           {state.data.length === 0 ? (
-            <EmptyBlock label="还没有收藏任何题目，刷题时点击「收藏」即可加入" />
+            <EmptyBlock
+              label="还没有收藏任何题目，刷题时点击「收藏」即可加入"
+              action={{ label: "去题库", href: "/practice" }}
+            />
           ) : (
             <div data-enter className="grid gap-5 md:grid-cols-2">
               {state.data.map((folder, index) => (

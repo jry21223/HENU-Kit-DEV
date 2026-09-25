@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchLibraryMaterials,
   portalErrorRequestId,
@@ -52,6 +52,7 @@ export default function LibraryHomePage() {
   const [statistics, setStatistics] = useState<LibraryStatistics | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
   useReveal();
   useScrollRestoration(loadState === "ready");
 
@@ -102,6 +103,15 @@ export default function LibraryHomePage() {
         m.subject.includes(query.trim()))
   );
   const hasActiveFilter = query.trim() !== "" || type !== "all" || price !== "all" || subject !== "all";
+  const clearFilters = () => {
+    setQuery("");
+    setType("all");
+    setPrice("all");
+    setSubject("all");
+    // 清除筛选按钮会随空状态一起消失；焦点交给刚复位的搜索与筛选区，键盘和读屏用户不丢位置。
+    // 不直接聚焦搜索框：手机上会弹出输入法，挡住刚恢复的书架。
+    filtersRef.current?.focus();
+  };
   const hasElectronicTextbooks = materials.some((material) => material.type === "textbook");
   const emptyLabel =
     materials.length === 0 && !hasActiveFilter
@@ -145,7 +155,14 @@ export default function LibraryHomePage() {
         )}
 
         {/* 搜索 + 筛选行 */}
-        <div data-enter role="search" aria-label="资料搜索与筛选" className="space-y-4">
+        <div
+          ref={filtersRef}
+          data-enter
+          role="search"
+          aria-label="资料搜索与筛选"
+          tabIndex={-1}
+          className="space-y-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+        >
           <div className="flex max-w-3xl items-end gap-3">
             <div className="min-w-0 flex-1">
               <label htmlFor="library-query" className="mb-1 block font-mono text-xs text-ink/70">搜索资料</label>
@@ -215,7 +232,10 @@ export default function LibraryHomePage() {
           {loadState === "loading" ? (
             <LoadingBlock label="加载资料" />
           ) : loadState === "error" ? null : items.length === 0 ? (
-            <EmptyBlock label={emptyLabel} />
+            <EmptyBlock
+              label={emptyLabel}
+              action={hasActiveFilter ? { label: "清除筛选", onClick: clearFilters } : undefined}
+            />
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {items.map((m) => (

@@ -5,7 +5,7 @@ import BackLink from "@/components/back-link";
 export function LibraryLoading() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/40">LOADING / 加载中</p>
+      <p className="font-mono text-xs leading-6 text-ink/70">加载中…</p>
       <BackLink className="mt-6 inline-block font-mono text-sm text-accent hover:underline" />
     </main>
   );

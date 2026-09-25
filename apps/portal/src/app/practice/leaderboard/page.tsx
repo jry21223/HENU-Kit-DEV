@@ -100,7 +100,7 @@ export default function LeaderboardPage() {
 
         <section className="mt-8" data-testid="practice-leaderboard">
           {state.status === "disabled" && (
-            <EmptyBlock label="排行榜数据暂未开放" />
+            <EmptyBlock label="排行榜数据暂未开放" action={{ label: "去刷题", href: "/practice" }} />
           )}
           {state.status === "loading" && <LoadingBlock label="正在读取真实排行榜" />}
           {state.status === "error" && (
@@ -113,7 +113,7 @@ export default function LeaderboardPage() {
             />
           )}
           {state.status === "ready" && state.data.entries.length === 0 && (
-            <EmptyBlock label="当前周期尚无公开排行事实" />
+            <EmptyBlock label="当前周期尚无公开排行事实" action={{ label: "去刷题", href: "/practice" }} />
           )}
           {state.status === "ready" && state.data.entries.length > 0 && (
             <ol

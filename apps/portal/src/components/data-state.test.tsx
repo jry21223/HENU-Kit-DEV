@@ -1,7 +1,53 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ErrorBanner } from "./data-state";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "./data-state";
+
+/**
+ * 空状态说明为什么没有内容，并可带一个下一步（链接或按钮）；中文不追加英文后缀、
+ * 不拉宽字距（#545）。
+ */
+describe("EmptyBlock", () => {
+  it("shows the Chinese label alone, without an English suffix or wide tracking", () => {
+    const html = renderToStaticMarkup(<EmptyBlock label="暂无互助或闲置信息" />);
+
+    expect(html).toContain("暂无互助或闲置信息");
+    expect(html).not.toContain("EMPTY");
+    // 任何加宽字距都不行（tracking-[…]、tracking-wide/wider/widest），只允许 tracking-normal。
+    expect(html).not.toMatch(/tracking-(?!normal\b)/);
+    expect(html).not.toContain("<a");
+    expect(html).not.toContain("<button");
+  });
+
+  it("offers a link as the next step", () => {
+    const html = renderToStaticMarkup(
+      <EmptyBlock label="还没有收藏任何题目" action={{ label: "去题库", href: "/practice" }} />
+    );
+
+    expect(html).toMatch(/<a[^>]*href="\/practice"[^>]*>去题库<\/a>/);
+    expect(html).not.toContain("<button");
+  });
+
+  it("offers a button as the next step", () => {
+    const html = renderToStaticMarkup(
+      <EmptyBlock label="无匹配单子" action={{ label: "清除筛选", onClick: () => {} }} />
+    );
+
+    expect(html).toMatch(/<button[^>]*type="button"[^>]*>清除筛选<\/button>/);
+    expect(html).not.toContain("<a");
+  });
+});
+
+describe("LoadingBlock", () => {
+  it("marks the Chinese label as in progress with an ellipsis instead of an English suffix", () => {
+    const html = renderToStaticMarkup(<LoadingBlock label="加载互助单" />);
+
+    expect(html).toContain("加载互助单…");
+    expect(html).not.toContain("LOADING");
+    // 任何加宽字距都不行（tracking-[…]、tracking-wide/wider/widest），只允许 tracking-normal。
+    expect(html).not.toMatch(/tracking-(?!normal\b)/);
+  });
+});
 
 /**
  * 加载失败横幅只展示一条主信息，外加「重试」；有请求编号时显示为「错误编号」，

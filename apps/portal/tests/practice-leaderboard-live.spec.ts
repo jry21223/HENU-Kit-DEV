@@ -36,6 +36,8 @@ for (const viewport of [
     await expect(page.locator("nav").getByRole("link", { name: /排行榜/ })).toBeVisible();
     await page.getByRole("button", { name: "总榜" }).click();
     await expect(page.getByText(/当前周期尚无公开排行事实/)).toBeVisible();
+    await expect(page.getByTestId("practice-leaderboard").getByRole("link", { name: "去刷题", exact: true }))
+      .toHaveAttribute("href", "/practice");
     expect(periods).toEqual(["weekly", "lifetime"]);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
