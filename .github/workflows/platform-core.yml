@@ -116,11 +116,13 @@ jobs:
             000017_account_portfolio_order_access \
             000018_account_operator_role_grant_audit \
             000019_career_digest_mail \
-            000020_mail_outbox_allow_bulk_priority; do
+            000020_mail_outbox_allow_bulk_priority \
+            000021_qq_bindings; do
             psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f "services/platform-core/db/migrations/${migration}.up.sql"
             psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f "services/platform-core/db/migrations/${migration}.up.sql"
           done
           test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='mail_outbox' AND column_name='recipient_user_id') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='mail_outbox_kind_check' AND pg_get_constraintdef(oid) LIKE '%career_digest%') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='mail_outbox_priority_check' AND pg_get_constraintdef(oid) LIKE '%bulk%')")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000021_qq_bindings.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000020_mail_outbox_allow_bulk_priority.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000019_career_digest_mail.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000018_account_operator_role_grant_audit.down.sql
@@ -171,6 +173,7 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000018_account_operator_role_grant_audit.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000019_career_digest_mail.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000020_mail_outbox_allow_bulk_priority.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000021_qq_bindings.up.sql
 
       - name: Verify generated SQL and OpenAPI
         run: |
