@@ -24,6 +24,8 @@ describe("Portal search discovery routes", () => {
       { url: "https://henukit.cn/food", changeFrequency: "daily", priority: 0.8 },
       { url: "https://henukit.cn/campus", changeFrequency: "daily", priority: 0.8 },
       { url: "https://henukit.cn/career", changeFrequency: "weekly", priority: 0.7 },
+      { url: "https://henukit.cn/privacy", changeFrequency: "yearly", priority: 0.2 },
+      { url: "https://henukit.cn/terms", changeFrequency: "yearly", priority: 0.2 },
     ]);
   });
 

@@ -11,6 +11,7 @@ Last updated: 2026-09-11.
 - Mock data layer and deterministic SSR rendering (mulberry32 seeded PRNG).
 - GSAP animation system with prefers-reduced-motion respect.
 - Three.js 3D hero scenes (homepage and practice bank hero).
+- The site-wide legal notice (non-official disclaimer, privacy policy and user agreement links, ICP filing number) and the public legal documents at `/privacy` and `/terms`. The documents describe only data handling that the owning services actually perform.
 
 ## Does not own
 

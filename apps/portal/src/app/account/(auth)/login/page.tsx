@@ -40,6 +40,7 @@ import {
   toHenuEmail,
 } from "@/lib/auth/henu-email";
 import { authStore } from "@/lib/auth/store";
+import { SITE_OPERATOR_STATEMENT } from "@/lib/site-legal";
 import { cn } from "@/lib/cn";
 
 function Field({
@@ -51,6 +52,7 @@ function Field({
   error,
   placeholder,
   autoComplete,
+  hint,
 }: {
   label: string;
   id: string;
@@ -60,6 +62,8 @@ function Field({
   error?: string;
   placeholder?: string;
   autoComplete?: string;
+  /** 收集这一项时需要当场告知的用途说明，与输入框一起读出。 */
+  hint?: string;
 }) {
   return (
     <div>
@@ -71,8 +75,14 @@ function Field({
         autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-describedby={hint ? `${id}-hint` : undefined}
         className={error ? "border-accent focus:border-accent" : undefined}
       />
+      {hint ? (
+        <p id={`${id}-hint`} className="mt-1 text-xs leading-5 text-ink/65">
+          {hint}
+        </p>
+      ) : null}
       {error ? (
         <p className="mt-1 font-mono text-[10px] text-accent">{error}</p>
       ) : null}
@@ -564,11 +574,12 @@ function LoginForm() {
           {tab === "register" && (
             <Field
               id="reg-name"
-              label="账号 / NAME"
+              label="展示名 / NAME"
               value={name}
               onChange={setName}
               error={errors.name}
-              placeholder="展示名（可选，可先填邮箱前缀）"
+              placeholder="可先填邮箱前缀"
+              hint="展示名会公开显示在刷题排行榜和你发布的美食投稿中，请不要使用真实姓名或学号。"
               autoComplete="username"
             />
           )}
@@ -658,6 +669,18 @@ function LoginForm() {
           >
             {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
           </Button>
+          <p data-account-consent className="text-xs leading-5 text-ink/65">
+            {SITE_OPERATOR_STATEMENT}
+            {tab === "login" ? "登录" : "注册"}即表示你已阅读并同意
+            <Link href="/terms" target="_blank" rel="noopener" className="text-ink underline underline-offset-4 hover:text-accent">
+              《用户协议》
+            </Link>
+            和
+            <Link href="/privacy" target="_blank" rel="noopener" className="text-ink underline underline-offset-4 hover:text-accent">
+              《隐私政策》
+            </Link>
+            。
+          </p>
         </form>
 
         <div className="mt-4 flex flex-col gap-2 font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">

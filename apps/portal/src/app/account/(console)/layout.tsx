@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AccountConsoleSessionProvider } from "@/components/account/account-console-session";
+import SiteFooter from "@/components/site-footer";
 import { cn } from "@/lib/cn";
 import {
   clearCachedSession,
@@ -119,7 +120,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   };
 
   return (
-    <div className="min-h-svh bg-paper text-ink">
+    <div className="flex min-h-svh flex-col bg-paper text-ink">
       {/* 顶部子导航 */}
       <header className="sticky top-0 z-40 border-b border-line bg-paper">
         <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-5 md:px-8">
@@ -153,67 +154,70 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
         </div>
       </header>
 
-      {sessionState.kind === "loading" || sessionState.kind === "anonymous" ? <LoadingBlock /> : null}
+      <div className="flex-1">
+        {sessionState.kind === "loading" || sessionState.kind === "anonymous" ? <LoadingBlock /> : null}
 
-      {sessionState.kind === "error" ? (
-        <section data-account-session-state="error" role="alert" className="mx-auto mt-10 max-w-2xl border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">账户服务暂不可用</p>
-          <p className="mt-3 text-sm leading-6 text-ink/65">{sessionState.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">账户信息暂时加载不出来，请稍后重新加载。</p>
-          <button
-            type="button"
-            onClick={loadSession}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
-          >
-            重新加载
-          </button>
-        </section>
-      ) : null}
+        {sessionState.kind === "error" ? (
+          <section data-account-session-state="error" role="alert" className="mx-auto mt-10 max-w-2xl border border-accent px-5 py-6">
+            <p className="font-mono text-xs tracking-[0.14em] text-accent">账户服务暂不可用</p>
+            <p className="mt-3 text-sm leading-6 text-ink/65">{sessionState.message}</p>
+            <p className="mt-3 text-sm leading-6 text-ink/60">账户信息暂时加载不出来，请稍后重新加载。</p>
+            <button
+              type="button"
+              onClick={loadSession}
+              className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            >
+              重新加载
+            </button>
+          </section>
+        ) : null}
 
-      {sessionState.kind === "authenticated" ? (
-        <AccountConsoleSessionProvider session={sessionState.session} requireLogin={requireLogin}>
-          <div className="mx-auto max-w-[1440px] lg:flex">
-            <aside className="border-b border-line lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
-              <nav className="flex gap-1 overflow-x-auto px-4 py-3 lg:sticky lg:top-14 lg:flex-col lg:gap-0 lg:px-0 lg:py-8">
-                {MENU.map((item) => {
-                  const active = item.exact
-                    ? pathname === item.href
-                    : pathname.startsWith(item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "inline-flex min-h-11 shrink-0 items-center border-l-2 px-3 py-2 font-mono text-xs tracking-widest transition-colors lg:py-2.5",
-                        active
-                          ? "border-accent font-semibold text-ink"
-                          : "border-transparent text-ink/55 hover:text-ink"
-                      )}
-                    >
-                      <span className={cn("mr-1.5", active ? "text-accent" : "text-ink/30")}>
-                        {item.index}
-                      </span>
-                      {item.label}
-                    </Link>
-                  );
-                })}
-                <button
-                  type="button"
-                  disabled={signingOut}
-                  onClick={() => void signOut()}
-                  className="mt-0 inline-flex min-h-11 shrink-0 items-center border-l-2 border-transparent px-3 py-2 text-left font-mono text-xs tracking-widest text-ink/55 transition-colors hover:text-accent disabled:cursor-wait disabled:opacity-50 lg:mt-8 lg:py-2.5"
-                >
-                  <span className="mr-1.5 text-ink/30">A-00</span>
-                  {signingOut ? "正在退出…" : "退出登录"}
-                </button>
-                {logoutError ? <p role="alert" className="mt-3 px-3 text-xs leading-5 text-accent">{logoutError}</p> : null}
-              </nav>
-            </aside>
+        {sessionState.kind === "authenticated" ? (
+          <AccountConsoleSessionProvider session={sessionState.session} requireLogin={requireLogin}>
+            <div className="mx-auto max-w-[1440px] lg:flex">
+              <aside className="border-b border-line lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
+                <nav className="flex gap-1 overflow-x-auto px-4 py-3 lg:sticky lg:top-14 lg:flex-col lg:gap-0 lg:px-0 lg:py-8">
+                  {MENU.map((item) => {
+                    const active = item.exact
+                      ? pathname === item.href
+                      : pathname.startsWith(item.href);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          "inline-flex min-h-11 shrink-0 items-center border-l-2 px-3 py-2 font-mono text-xs tracking-widest transition-colors lg:py-2.5",
+                          active
+                            ? "border-accent font-semibold text-ink"
+                            : "border-transparent text-ink/55 hover:text-ink"
+                        )}
+                      >
+                        <span className={cn("mr-1.5", active ? "text-accent" : "text-ink/30")}>
+                          {item.index}
+                        </span>
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    disabled={signingOut}
+                    onClick={() => void signOut()}
+                    className="mt-0 inline-flex min-h-11 shrink-0 items-center border-l-2 border-transparent px-3 py-2 text-left font-mono text-xs tracking-widest text-ink/55 transition-colors hover:text-accent disabled:cursor-wait disabled:opacity-50 lg:mt-8 lg:py-2.5"
+                  >
+                    <span className="mr-1.5 text-ink/30">A-00</span>
+                    {signingOut ? "正在退出…" : "退出登录"}
+                  </button>
+                  {logoutError ? <p role="alert" className="mt-3 px-3 text-xs leading-5 text-accent">{logoutError}</p> : null}
+                </nav>
+              </aside>
 
-            <div className="min-w-0 flex-1 px-5 py-10 md:px-8">{children}</div>
-          </div>
-        </AccountConsoleSessionProvider>
-      ) : null}
+              <div className="min-w-0 flex-1 px-5 py-10 md:px-8">{children}</div>
+            </div>
+          </AccountConsoleSessionProvider>
+        ) : null}
+      </div>
+      <SiteFooter />
     </div>
   );
 }

@@ -38,7 +38,7 @@ npm run dev
 ## SEO / GEO 基础设施
 
 - `/robots.txt` 允许普通搜索与回答型搜索爬虫访问公开 HTML，仅阻止 API 抓取；账户、写入、个性化和阅读器路由通过 `X-Robots-Tag: noindex, nofollow` 禁止索引。
-- `/sitemap.xml` 只列出构建时确定存在的公开入口，不伪造动态详情 URL。
+- `/sitemap.xml` 只列出构建时确定存在的公开入口（含隐私政策与用户协议），不伪造动态详情 URL。
 - `/llms.txt` 提供项目定位、公开入口、非官方边界与引用规则。
 - 根页面提供 canonical、Open Graph、Twitter Card 与 `WebSite`/社区维护者 JSON-LD。
 - canonical origin 由构建变量 `NEXT_PUBLIC_SITE_URL` 决定，默认 `https://henukit.cn`；变量必须是无路径、查询或片段的 HTTP(S) origin。
@@ -114,6 +114,16 @@ npm run dev
 | `/account/notifications` | 通知 |
 
 账户控制台只使用 Portal Gateway 建立的 HttpOnly 会话；概览、积分、会员、通知和工单均从真实 Account Portfolio 接口读取。服务不可用时显示可恢复错误，绝不以 localStorage、会话 mock 或示例数据伪造成功状态；文章和交易入口尚未交付，故不在账户导航中暴露。
+
+### 协议与页脚
+| 路由 | 说明 |
+|---|---|
+| `/privacy` | 隐私政策 |
+| `/terms` | 用户协议 |
+
+所有页面都有页脚，包含短版非官方声明、隐私政策与用户协议链接，以及 ICP 备案号。首页用自己的大页脚，其他页面共用 `SiteFooter`，两者都渲染同一个 `LegalNotice`。声明、链接、备案号和协议更新日期只在 `src/lib/site-legal.ts` 配置一处；备案号确认之前不显示。登录/注册与终身会员购买在操作前再次说明主体，并告知继续即同意协议。
+
+协议正文逐条对应系统当前的数据处理。字段、有效期、服务方或存储位置变化时，先改协议再上线，并更新 `LEGAL_UPDATED_AT`。
 
 ## 设计系统
 

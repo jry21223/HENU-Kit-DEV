@@ -129,6 +129,18 @@ export const careerMetadata: Metadata = pageMetadata(
   "HENU Kit 求职雷达设定求职画像后，后台异步扫描受控招聘来源，匹配结果与命中原因一目了然；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
 );
 
+export const privacyMetadata: Metadata = pageMetadata(
+  "/privacy",
+  "隐私政策",
+  "HENU Kit 隐私政策：说明资料库、刷题、美食榜、互助平台、求职雷达和账户中心收集哪些个人信息、如何使用和保护，以及你的权利。学生自主运营，非河南大学官方项目。"
+);
+
+export const termsMetadata: Metadata = pageMetadata(
+  "/terms",
+  "用户协议",
+  "HENU Kit 用户协议：账户、使用规范、用户发布的内容、终身会员与支付等约定。学生自主运营，非河南大学官方项目。"
+);
+
 export function websiteStructuredData() {
   const origin = siteOrigin();
 

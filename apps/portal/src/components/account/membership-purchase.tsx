@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MembershipCheckoutQR } from "@/components/account/membership-checkout-qr";
+import { SITE_OPERATOR_STATEMENT } from "@/lib/site-legal";
 import {
   createAccountMembershipOrder,
   fetchAccountMembershipOrders,
@@ -152,6 +154,13 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
           >
             {state.kind === "error" ? "重新发起支付" : "购买终身会员"}
           </button>
+          <p className="mt-3 max-w-2xl text-xs leading-5 text-ink/65">
+            {SITE_OPERATOR_STATEMENT}购买即表示你已阅读并同意
+            <Link href="/terms" target="_blank" rel="noopener" className="text-ink underline underline-offset-4 hover:text-accent">
+              《用户协议》
+            </Link>
+            。
+          </p>
         </>
       ) : null}
 

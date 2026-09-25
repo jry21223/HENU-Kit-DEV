@@ -99,6 +99,11 @@ test("a free member is offered lifetime membership in one consistent voice", asy
   await expect(page.getByText(/¥9\.9/)).toHaveCount(1);
   await expect(page.locator("[data-membership-purchase]")).toContainText("求职雷达");
 
+  // 支付前再次说明主体，并告知购买即同意《用户协议》（DESIGN_SYSTEM §16）。
+  const purchase = page.locator("[data-membership-purchase]");
+  await expect(purchase).toContainText("非河南大学官方项目");
+  await expect(purchase.getByRole("link", { name: "《用户协议》" })).toHaveAttribute("href", "/terms");
+
   // Lifetime membership has one name, and users never see the plan enum or
   // how the entitlement is stored.
   for (const internal of ["Lifetime VIP", "PLAN", "SYNCHRONIZATION", "服务端", "真实通知"]) {

@@ -8,10 +8,10 @@
 |---|---|
 | `/robots.txt` | 允许公开 HTML 抓取，仅排除 API；非公开 HTML 必须可被爬虫读取 `X-Robots-Tag` |
 | `X-Robots-Tag` | 账户、发布、交易、阅读器及个性化练习页面返回 `noindex, nofollow` |
-| `/sitemap.xml` | 仅包含首页、资料库、刷题、美食榜、校园互助和求职雷达六个稳定入口 |
+| `/sitemap.xml` | 包含首页、资料库、刷题、美食榜、校园互助和求职雷达六个稳定入口，以及隐私政策（`/privacy`）与用户协议（`/terms`） |
 | `/llms.txt` | 声明项目定位、公开入口（含每个入口的一句话摘要）、非官方身份、官方来源优先与引用限制 |
 | `/` HTML metadata | 提供 canonical、描述、Open Graph 和 Twitter Card |
-| 顶层页面 HTML metadata | 资料库、刷题、美食榜、互助平台和求职雷达五个页面分别提供页面级 canonical、描述、Open Graph 和 Twitter Card |
+| 顶层页面 HTML metadata | 资料库、刷题、美食榜、互助平台、求职雷达、隐私政策和用户协议七个页面分别提供页面级 canonical、描述、Open Graph 和 Twitter Card |
 | `/` JSON-LD | 使用 `WebSite` 和社区维护者 `Organization`；不把河南大学声明为发布者或关联组织 |
 
 `OAI-SearchBot`、Googlebot、Bingbot 和 Baiduspider 均适用 `User-agent: *` 的公开抓取规则。`GPTBot` 是否用于模型训练与搜索曝光不是同一决策；本实现没有为训练型爬虫设置特殊授权。

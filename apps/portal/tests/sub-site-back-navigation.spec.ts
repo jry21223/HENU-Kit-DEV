@@ -390,7 +390,12 @@ test("列表的行晚到，返回箭头仍然把读者放回离开时的位置",
   const roomWhileWaiting = await page.evaluate(() =>
     Math.round(document.documentElement.scrollHeight - window.innerHeight)
   );
-  expect(roomWhileWaiting).toBeLessThan(40);
+  // 页脚（主体声明与协议入口）固定占一段高度，它不属于列表：扣掉它，列表区域此刻仍然滚不动。
+  const footerHeight = await page
+    .getByRole("contentinfo")
+    .last()
+    .evaluate((footer) => Math.round(footer.getBoundingClientRect().height));
+  expect(roomWhileWaiting - footerHeight).toBeLessThan(40);
   expect(roomWhileWaiting).toBeLessThan(departedFrom);
 
   await expect(materialCards(page)).toHaveCount(LIBRARY_MATERIALS.length);
