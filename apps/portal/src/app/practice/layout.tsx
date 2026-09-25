@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import PracticeNav from "@/components/practice/practice-nav";
 import SiteShell from "@/components/site-shell";
 import TransitionProvider from "@/components/practice/transition/transition-provider";
+import { moduleLayoutTitle } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "刷题 — henukit",
+  title: moduleLayoutTitle("practice"),
 };
 
 export default function PracticeLayout({

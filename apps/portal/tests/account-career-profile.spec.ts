@@ -495,7 +495,7 @@ test("career pages carry exactly one h1 and their own document title", async ({ 
   await expect(page.locator('[data-career-history-state="ready"]')).toBeVisible();
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("h1")).toHaveText("扫描历史");
-  await expect(page).toHaveTitle("扫描历史 — henukit 求职雷达");
+  await expect(page).toHaveTitle("扫描历史 — 求职雷达 | HENU Kit");
 });
 
 // 表盘只反映服务端确认的状态与推荐数：completed 时点亮 matched_count 个目标，

@@ -41,6 +41,7 @@ npm run dev
 - `/sitemap.xml` 只列出构建时确定存在的公开入口（含隐私政策与用户协议），不伪造动态详情 URL。
 - `/llms.txt` 提供项目定位、公开入口、非官方边界与引用规则。
 - 根页面提供 canonical、Open Graph、Twitter Card 与 `WebSite`/社区维护者 JSON-LD。
+- 页面标题只有一种格式，由 `src/lib/seo.ts` 的 `pageTitle` 生成：模块内页 `页面名 — 模块名 | HENU Kit`，模块首页与不属于模块的页面 `页面名 | HENU Kit`；首页保留站点标题 `HENU Kit — 河南大学校园工具`。品牌只由标题模板补一次：布局一旦写了纯字符串标题，Next 就不再把根布局的模板传给更深的页面，所以模块 `layout.tsx` 用 `moduleLayoutTitle` 导出标题，把模板接着传下去，不要写纯字符串标题。客户端页面的标题由同一段的服务端 `layout.tsx` 导出；详情页的内容在客户端到达后，由 `useDocumentTitle` 把内容名补进标题。
 - canonical origin 由构建变量 `NEXT_PUBLIC_SITE_URL` 决定，默认 `https://henukit.cn`；变量必须是无路径、查询或片段的 HTTP(S) origin。
 
 站长平台提交、WAF 验证、内容版本规则和验收方法见 [`../../docs/product/seo-geo.md`](../../docs/product/seo-geo.md)。

@@ -10,11 +10,13 @@ import { useReveal } from "@/components/account/use-reveal";
 import { LibraryLoading, LibraryNotFound, LibraryUnavailable } from "@/components/library/material-states";
 import { useMaterialDetail } from "@/lib/library/use-material-detail";
 import MaterialDownloadButton from "@/components/library/material-download-button";
+import { useDocumentTitle } from "@/components/use-document-title";
 
 export default function ItemDetail({ id }: { id: string }) {
   const state = useMaterialDetail(id);
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
+  useDocumentTitle(state.loadState === "ready" ? readableMaterialTitle(state.material) : null, "library");
 
   if (state.loadState !== "ready") {
     if (state.loadState === "loading") return <LibraryLoading />;

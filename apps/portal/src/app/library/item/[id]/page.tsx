@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import ItemDetail from "@/components/library/item-detail";
+import { pageTitle } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "资料详情 — henukit 资料库" };
+export const metadata: Metadata = { title: pageTitle("资料详情", "library") };
 
 export default async function ItemPage({
   params,

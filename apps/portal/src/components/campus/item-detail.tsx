@@ -6,12 +6,14 @@ import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
 import { useCampusItemDetail } from "@/lib/campus/use-campus-item-detail";
 import BackLink from "@/components/back-link";
+import { useDocumentTitle } from "@/components/use-document-title";
 
 const STATUS_LABEL = { open: "待接单", ongoing: "进行中", done: "已完成", hidden: "已隐藏" } as const;
 
 export default function ItemDetail({ id }: { id: string }) {
   const state = useCampusItemDetail(id);
   useReveal();
+  useDocumentTitle(state.loadState === "ready" ? state.item.title : null, "campus");
 
   if (state.loadState !== "ready") {
     if (state.loadState === "error") {

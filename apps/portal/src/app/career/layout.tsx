@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import CareerNav from "@/components/career/career-nav";
 import SiteShell from "@/components/site-shell";
+import { moduleLayoutTitle } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "求职雷达 — henukit",
+  title: moduleLayoutTitle("career"),
 };
 
 export default function CareerLayout({ children }: { children: React.ReactNode }) {

@@ -14,6 +14,7 @@ import { foodStore } from "@/lib/food/mock";
 import PostBlocks from "@/components/food/post-blocks";
 import Img from "@/components/ui/img";
 import BackLink from "@/components/back-link";
+import { useDocumentTitle } from "@/components/use-document-title";
 import {
   EmptyBlock,
   ErrorBanner,
@@ -84,6 +85,7 @@ export default function PostDetail({ id }: { id: string }) {
     () => (post ? buildFoodVenueDetail(post) : null),
     [post]
   );
+  useDocumentTitle(post ? post.shop.name || post.title : null, "food");
 
   if (loadState === "loading") {
     return (

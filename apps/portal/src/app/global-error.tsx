@@ -1,6 +1,7 @@
 "use client"; // 错误边界必须是客户端组件
 
 import ErrorFallback from "@/components/error-fallback";
+import { documentTitle } from "@/lib/seo";
 import { fontVariables } from "./fonts";
 import "./globals.css";
 
@@ -17,7 +18,7 @@ export default function GlobalError({
   return (
     <html lang="zh-CN" className={`${fontVariables} h-full antialiased`}>
       <body className="min-h-full">
-        <title>页面出错了 | HENU Kit</title>
+        <title>{documentTitle("页面出错了")}</title>
         <ErrorFallback retry={retry} />
       </body>
     </html>
