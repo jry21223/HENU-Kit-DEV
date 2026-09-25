@@ -18,12 +18,18 @@ export function EmptyBlock({ label = "暂无数据" }: { label?: string }) {
   );
 }
 
+/**
+ * 加载失败：一条主信息（发生了什么、可以怎么做）加「重试」。message 应来自
+ * formatPortalError 或调用方自己的中文文案；requestId 显示为错误编号，方便提工单时附上。
+ */
 export function ErrorBanner({
   message,
+  requestId,
   onRetry,
   className,
 }: {
   message: string;
+  requestId?: string | null;
   onRetry?: () => void;
   className?: string;
 }) {
@@ -35,16 +41,17 @@ export function ErrorBanner({
         className
       )}
     >
-      <p className="tracking-[0.2em] text-accent">ERROR / 数据源不可用</p>
-      <p className="mt-2 text-ink/80">{message}</p>
-      <p className="mt-2 text-ink/50">
-        服务暂时不可用，请稍后再来。
-      </p>
+      <p className="text-ink/80">{message}</p>
+      {requestId ? (
+        <p className="mt-1 text-ink/70">
+          错误编号：<span className="select-all break-all">{requestId}</span>（提交工单时请附上）
+        </p>
+      ) : null}
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 border border-ink px-3 py-1.5 tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center border border-ink px-4 tracking-widest transition-colors hover:bg-ink hover:text-paper"
         >
           重试
         </button>

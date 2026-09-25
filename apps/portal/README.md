@@ -137,6 +137,11 @@ npm run dev
 - 页面渲染出错时显示“页面出错了”（`src/app/error.tsx`；根布局本身出错时为 `src/app/global-error.tsx`），提供“重试”与“回首页”，不展示错误原文、digest 或堆栈。
 - `global-error.tsx` 替换根布局，所以自带 `<html>`、全局样式和字体；字体实例定义在 `src/app/fonts.ts`，与根布局共用。
 
+### 数据加载失败
+- 接口失败时，页面只展示中文提示：说明发生了什么、可以怎么做，不展示接口路径、HTTP 状态文本或内部组件名。提示统一由 `formatPortalError`（`src/lib/api/client.ts`）按错误类别映射：网络失败、需要登录、服务不可用（含非 JSON 响应，例如网关错误页或 WAF 挑战页）。错误对象的原始 message 只用于排查，不上屏。
+- 需要特定提示的流程（每日投稿上限、终身会员门、工单版本冲突等）先按 status / errorCode 分支，再用自己的文案。
+- `ErrorBanner` 只展示一条主信息和“重试”。有请求编号时（`portalErrorRequestId`）显示为“错误编号”，方便用户提交工单时附上；目前首页资料库区块和 `/library` 会传入请求编号。
+
 ## 设计系统
 
 **工业极简（Industrial Minimal）** 视觉风格：

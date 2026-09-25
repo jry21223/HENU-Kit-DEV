@@ -61,7 +61,7 @@ test("empty success is zero while a failed request stays unknown and retry recov
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(catalog([], 0)) });
   });
   await page.goto("/library", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("alert").filter({ hasText: "ERROR / 数据源不可用" })).toContainText("资料库暂时无法加载，请稍后重试。");
+  await expect(page.getByRole("alert").filter({ hasText: "资料库暂时无法加载，请稍后重试。" })).toBeVisible();
   await expect(counter(page, "收录资料")).toHaveText("—");
   await expect(counter(page, "累计下载")).toHaveText("—");
   shouldFail = false;

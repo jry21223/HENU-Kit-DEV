@@ -11,7 +11,6 @@ import {
   fetchLibraryMaterials,
   hasGateway,
   mockAllowed,
-  PortalApiError,
 } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
 import {
@@ -23,7 +22,6 @@ import {
 let gatewayLoaded = false;
 let availableIds = new Set<string>();
 let cachedMaterials: Material[] | null = null;
-let lastError: string | null = null;
 
 function toMaterial(m: ApiMaterial): Material {
   return {
@@ -47,10 +45,6 @@ function toMaterial(m: ApiMaterial): Material {
   };
 }
 
-export function getLibraryGatewayError(): string | null {
-  return lastError;
-}
-
 export async function initGateway(): Promise<void> {
   if (gatewayLoaded) return;
 
@@ -58,11 +52,7 @@ export async function initGateway(): Promise<void> {
     if (mockAllowed) {
       cachedMaterials = STATIC_MATERIALS;
       gatewayLoaded = true;
-      lastError = null;
-      return;
     }
-    lastError =
-      "Gateway 未配置。生产环境禁止 mock；请设置 NEXT_PUBLIC_PORTAL_GATEWAY_URL。";
     return;
   }
 
@@ -82,14 +72,8 @@ export async function initGateway(): Promise<void> {
       availableIds = new Set(cachedMaterials.map((m) => m.id));
     }
     gatewayLoaded = true;
-    lastError = null;
-  } catch (e) {
-    lastError =
-      e instanceof PortalApiError
-        ? e.message
-        : e instanceof Error
-          ? e.message
-          : "加载资料库失败";
+  } catch {
+    // 失败提示由调用方按自己那次请求的错误经 formatPortalError 映射；这里只决定回退。
     // Never silent-fallback to STATIC_MATERIALS in production
     if (mockAllowed) {
       cachedMaterials = STATIC_MATERIALS;

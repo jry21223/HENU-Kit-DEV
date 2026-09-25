@@ -11,14 +11,11 @@ import {
   fetchLibraryMaterials,
   formatPortalError,
   mockAllowed,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type { CourseSummary, Material as ApiMaterial } from "@/lib/api/types";
 import { STATIC_MATERIALS } from "@/lib/library/mock";
-import {
-  getLibraryGatewayError,
-  getMaterials,
-  initGateway,
-} from "@/lib/library/gateway";
+import { getMaterials, initGateway } from "@/lib/library/gateway";
 import { ErrorBanner } from "@/components/data-state";
 
 const FEATURES = ["公开资料持续整理", "支持电子版教材分类", "按课程与类型检索"];
@@ -67,7 +64,7 @@ export default function SectionLibrary() {
   const trackRef = useRef<HTMLDivElement>(null);
   const [cards, setCards] = useState<LibraryCard[] | null>(null);
   const [totalCount, setTotalCount] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -82,26 +79,21 @@ export default function SectionLibrary() {
       return;
     } catch (e) {
       // 生产环境禁止静默回退 mock；只有允许 mock 的开发环境才走缓存/静态数据。
-      try {
-        await initGateway();
-        const cached = getMaterials();
-        if (cached.length > 0) {
-          setCards(buildCards(cached, []));
-          setTotalCount(cached.length);
-          return;
-        }
-        if (mockAllowed) {
-          setCards(buildCards(STATIC_MATERIALS, []));
-          setTotalCount(STATIC_MATERIALS.length);
-          return;
-        }
-        throw new Error(
-          getLibraryGatewayError() || formatPortalError(e) || "资料库暂时加载不出来，请稍后刷新试试"
-        );
-      } catch (e2) {
-        setCards([]);
-        setError(e2 instanceof Error ? e2.message : "资料库暂时加载不出来，请稍后刷新试试");
+      await initGateway();
+      const cached = getMaterials();
+      if (cached.length > 0) {
+        setCards(buildCards(cached, []));
+        setTotalCount(cached.length);
+        return;
       }
+      if (mockAllowed) {
+        setCards(buildCards(STATIC_MATERIALS, []));
+        setTotalCount(STATIC_MATERIALS.length);
+        return;
+      }
+      setCards([]);
+      // 原始 message 可能是 "Not Found" 或带接口路径的英文，只展示映射后的中文提示。
+      setError({ message: formatPortalError(e), requestId: portalErrorRequestId(e) });
     }
   }, []);
 
@@ -187,7 +179,7 @@ export default function SectionLibrary() {
         {/* 档案卡轨道：自动循环巡检；reduced-motion 时回退为手动横滚 */}
         <div className="lib-track-wrap relative mt-12 overflow-hidden">
           {error ? (
-            <ErrorBanner message={error} onRetry={load} />
+            <ErrorBanner message={error.message} requestId={error.requestId} onRetry={load} />
           ) : (
             <div
               ref={trackRef}
@@ -246,13 +238,12 @@ export default function SectionLibrary() {
             <p className="font-mono text-[10px] tracking-[0.3em] text-ink/40">
               AUTO-SCAN / 档案卡循环巡检中
             </p>
-            <p className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/40 md:block">
-              {error
-                ? "DATA SOURCE OFFLINE"
-                : totalCount === null
-                  ? "LOADING…"
-                  : `${totalCount} FILES INDEXED`}
-            </p>
+            {/* 失败时只由上方 ErrorBanner 说明，这里不再叠一个英文状态。 */}
+            {error ? null : (
+              <p className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/40 md:block">
+                {totalCount === null ? "LOADING…" : `${totalCount} FILES INDEXED`}
+              </p>
+            )}
           </div>
           <AmbientSvg variant="flow" className="text-ink/30" />
         </div>

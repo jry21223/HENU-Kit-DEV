@@ -108,7 +108,7 @@ for (const viewport of [
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect.poll(() => catalogAttempts).toBeGreaterThanOrEqual(2);
     await page.goto("/library/item/mat-01", { waitUntil: "domcontentloaded" });
-    await expect(page.locator('[role="alert"]').filter({ hasText: "ERROR / 数据源不可用" })).toContainText("资料详情暂时无法加载，请稍后重试。");
+    await expect(page.locator('[role="alert"]').filter({ hasText: "资料详情暂时无法加载，请稍后重试。" })).toBeVisible();
     await expect(page.getByText("404 / NOT FOUND")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: MATERIAL.title })).toHaveCount(0);
 

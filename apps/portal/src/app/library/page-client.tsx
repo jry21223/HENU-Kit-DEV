@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchLibraryMaterials,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
 import type { Material } from "@/lib/library/mock";
@@ -50,7 +51,7 @@ export default function LibraryHomePage() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [statistics, setStatistics] = useState<LibraryStatistics | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
   useReveal();
   useScrollRestoration(loadState === "ready");
 
@@ -75,8 +76,8 @@ export default function LibraryHomePage() {
       });
       setLoadState("ready");
       return;
-    } catch {
-      setError("资料库暂时无法加载，请稍后重试。");
+    } catch (loadError) {
+      setError({ message: "资料库暂时无法加载，请稍后重试。", requestId: portalErrorRequestId(loadError) });
       setLoadState("error");
     }
   }, []);
@@ -135,7 +136,12 @@ export default function LibraryHomePage() {
 
       <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 lg:py-10">
         {loadState === "error" && error && (
-          <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
+          <ErrorBanner
+            message={error.message}
+            requestId={error.requestId}
+            onRetry={() => void load()}
+            className="mb-6"
+          />
         )}
 
         {/* 搜索 + 筛选行 */}
@@ -208,9 +214,7 @@ export default function LibraryHomePage() {
         <div data-enter className="mt-8">
           {loadState === "loading" ? (
             <LoadingBlock label="加载资料" />
-          ) : loadState === "error" ? (
-            <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
-          ) : items.length === 0 ? (
+          ) : loadState === "error" ? null : items.length === 0 ? (
             <EmptyBlock label={emptyLabel} />
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
