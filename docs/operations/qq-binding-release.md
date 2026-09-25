@@ -35,20 +35,51 @@ through the current public `create_food_post` tool.
    HENU_KIT_SECRET and HENU_KIT_BOT_UUID. BOT_UUID is the LangBot instance's
    configured official-QQ bot UUID, not the QQ application ID. Only events from
    that exact Bot may use this credential.
-5. Apply the plugin's `ops/qq-binding-reply-route.patch` to the existing custom
-   LangBot image so the initial private message can receive the later account
-   preview. Preserve all existing account/login/storage/QQ hotfixes. Never
+5. Against the exact running custom LangBot image, apply the plugin's
+   `ops/qq-binding-reply-route.patch`, then
+   `ops/qq-binding-source-time.patch`, then
+   `ops/qq-binding-receipt-route.patch`, each with zero fuzz. Against the
+   exact running plugin-runtime image, also apply
+   `ops/qq-binding-sdk-quote.patch` with zero fuzz so the verified reference
+   survives multiple plugin serialization hops. The first main-image patch
+   keeps the initial private reply route for the later account preview; the
+   second retains the official QQ event time; the third returns a validated
+   QQ C2C text-send ID, server timestamp and reference index to the plugin,
+   carries a strictly verified WebSocket origin marker for every KIT command
+   and the incoming QQ quote reference, rejects unsigned webhook delivery to
+   this WebSocket Bot, and removes a debug log that could record the private
+   binding link. Run the plugin's
+   `ops/verify-qq-source-time.py`, `ops/verify-qq-receipt-route.py`, and
+   `ops/verify-qq-sdk-quote.py` against both sets of patched files as directed
+   in `HENU_Assistant/ops/qq-binding.md`. Verify both exact live image bases and
+   the runtime SDK hash first. In a controlled candidate stage, use consenting
+   QQ private test messages to verify the real send response includes the
+   required fields, the adapter returns them to the plugin, and a real quote
+   reaches the plugin with the same reference index. Keep binding disabled if
+   any field is absent or mismatched; fixtures alone cannot establish this
+   contract. Preserve all existing account/login/storage/QQ hotfixes. Never
    replace the complete live plugin tree with the older published branch.
 
 ## Acceptance
 
 Use consenting test accounts. Confirm link -> website login -> explicit consent
--> account preview in the original QQ -> plain 确认 -> status on both sides.
-Also check another QQ, another Bot, group messages, conflicting KIT identity,
-expired links, login revocation, repeated confirm and unlink. Verify unlink
-removes future resolution even if the account is temporarily disabled. A lost
-preview is safe: the next QQ confirmation shows the preview and requires a new
-message; it never silently binds an unseen account.
+-> account preview in the original QQ -> quote that exact preview and send
+plain `确认` -> status on both sides. An unquoted `确认` may request the preview
+again but must never create the binding.
+
+Also check another QQ, another Bot, group messages, a quote of a different
+message, a malformed quote, disabled-webhook delivery, conflicting KIT
+identity, expired links, login revocation and repeated confirmation. First,
+use two harmless C2C prompts to verify that their outbound reference indices
+are distinct and an inbound quote carries the matching index; neither prompt
+can authorize binding. In a consenting binding flow, issue two target-account
+previews, reject a quote of the older one and accept only a quote of the latest
+one. Verify plain, unquoted `确认` unlinks, while quoted unlink confirmation
+does not. Verify unlink removes future resolution even if the account is
+temporarily disabled. If the preview was not sent, the next QQ confirmation
+shows it and requires a new message. A QQ send receipt proves server
+acceptance, not delivery or that the person saw the preview; confirm this with
+the consenting test account rather than inferring it from the receipt.
 
 No secrets or tokens belong in screenshots or acceptance logs. Health 200 is
 not evidence of the QQ delivery journey. Roll back application code/disable the
