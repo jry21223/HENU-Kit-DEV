@@ -91,4 +91,6 @@ test("registration states the operator and asks for agreement before an account 
   await expect(name).toHaveAttribute("aria-describedby", /reg-name-hint/);
   await expect(page.locator("#reg-name-hint")).toContainText("公开显示");
   await expect(name).not.toHaveAttribute("placeholder", /可选/);
+  // 展示名不是登录标识，不能让密码管理器把它当成用户名保存。
+  await expect(name).toHaveAttribute("autocomplete", "nickname");
 });

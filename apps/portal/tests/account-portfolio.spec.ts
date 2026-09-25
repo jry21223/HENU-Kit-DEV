@@ -705,7 +705,8 @@ for (const viewport of [
     await page.goto("/account/membership", { waitUntil: "domcontentloaded" });
     await expect(page.locator('[data-account-membership-state="success"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "终身会员" })).toBeVisible();
-    await expect(page.getByText("终身会员已生效，永久有效；换设备登录同样可用。", { exact: true })).toBeVisible();
+    await expect(page.getByText("终身会员已生效，换设备登录同样可用。", { exact: true })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("永久");
     await expect(page.locator('[data-account-membership-state="success"]')).toContainText("求职雷达");
     await expect(page.locator("body")).not.toContainText("不提供开通或支付入口");
     await expect(page.locator("body")).not.toContainText("服务端");

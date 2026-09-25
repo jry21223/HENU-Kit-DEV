@@ -426,6 +426,7 @@ test("/career keeps free members off the scan entry and points at ¥9.9 membersh
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-state="free"]')).toBeVisible();
   await expect(page.getByText("¥9.9 开通终身会员 →")).toBeVisible();
+  await expect(page.locator('[data-career-state="free"]')).not.toContainText("永久");
   await expect(page.locator("body")).not.toContainText("Lifetime VIP");
   const buy = page.getByRole("link", { name: "¥9.9 开通终身会员 →" });
   await expect(buy).toHaveAttribute("href", "/account/membership");

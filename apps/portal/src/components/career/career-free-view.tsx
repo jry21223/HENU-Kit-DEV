@@ -43,9 +43,9 @@ export default function CareerFreeView() {
           <article className="w-full max-w-md border border-dashed border-ink/25 bg-paper p-6">
             <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/50">
               <span>LIFETIME MEMBERSHIP</span>
-              <span className="border border-ink/30 px-2 py-0.5 text-ink/50">¥9.9 永久</span>
+              <span className="border border-ink/30 px-2 py-0.5 text-ink/50">¥9.9 终身</span>
             </div>
-            <h3 className="mt-4 font-display text-2xl font-bold">一次付费，永久解锁</h3>
+            <h3 className="mt-4 font-display text-2xl font-bold">一次付费，无需续费</h3>
             <p className="mt-2 text-sm leading-6 text-ink/60">
               开通终身会员后即可使用求职雷达：发起扫描、查看匹配结果、
               接收邮件简报；权益绑定账户，换设备登录同样可用。

@@ -18,8 +18,8 @@ export const ICP_FILING: string | null = null;
 export const ICP_FILING_URL = "https://beian.miit.gov.cn/";
 
 export const LEGAL_LINKS = [
-  { href: "/privacy", label: "隐私政策" },
   { href: "/terms", label: "用户协议" },
+  { href: "/privacy", label: "隐私政策" },
 ] as const;
 
 /** 隐私政策与用户协议的最近更新日期；内容有变更时一并更新。 */

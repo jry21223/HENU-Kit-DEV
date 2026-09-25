@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MembershipCheckoutQR } from "@/components/account/membership-checkout-qr";
-import { SITE_OPERATOR_STATEMENT } from "@/lib/site-legal";
+import LegalConsent from "@/components/legal-consent";
+import { LIFETIME_BENEFITS } from "@/lib/membership";
 import {
   createAccountMembershipOrder,
   fetchAccountMembershipOrders,
@@ -13,10 +13,6 @@ import {
 import type { AccountMembershipOrder } from "@/lib/api/types";
 
 const POLL_INTERVAL_MS = 4000;
-
-/** The single statement of what lifetime membership includes, shared by the offer and the entitlement card. */
-export const LIFETIME_BENEFITS =
-  "终身会员包含期末押题卷等核心复习资料，以及求职雷达（求职画像、岗位扫描与结果简报）。";
 
 type PurchaseState =
   | { kind: "idle" }
@@ -140,7 +136,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
         <>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-ink/70">{LIFETIME_BENEFITS}</p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/60">
-            一次付费，永久有效，费用也用于维持服务器运行；权益绑定账户，换设备登录同样可用。
+            一次付费，无需续费，费用也用于维持服务器运行；权益绑定账户，换设备登录同样可用。
           </p>
           {state.kind === "error" ? (
             <p role="alert" className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-ink/70">
@@ -154,13 +150,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
           >
             {state.kind === "error" ? "重新发起支付" : "购买终身会员"}
           </button>
-          <p className="mt-3 max-w-2xl text-xs leading-5 text-ink/65">
-            {SITE_OPERATOR_STATEMENT}购买即表示你已阅读并同意
-            <Link href="/terms" target="_blank" rel="noopener" className="text-ink underline underline-offset-4 hover:text-accent">
-              《用户协议》
-            </Link>
-            。
-          </p>
+          <LegalConsent action="购买" className="mt-3 max-w-2xl" />
         </>
       ) : null}
 

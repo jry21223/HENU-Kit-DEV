@@ -14,6 +14,7 @@ import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
+import LegalConsent from "@/components/legal-consent";
 import { useReveal } from "@/components/account/use-reveal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,6 @@ import {
   toHenuEmail,
 } from "@/lib/auth/henu-email";
 import { authStore } from "@/lib/auth/store";
-import { SITE_OPERATOR_STATEMENT } from "@/lib/site-legal";
 import { cn } from "@/lib/cn";
 
 function Field({
@@ -580,7 +580,7 @@ function LoginForm() {
               error={errors.name}
               placeholder="可先填邮箱前缀"
               hint="展示名会公开显示在刷题排行榜和你发布的美食投稿中，请不要使用真实姓名或学号。"
-              autoComplete="username"
+              autoComplete="nickname"
             />
           )}
           <HenuEmailField
@@ -669,18 +669,7 @@ function LoginForm() {
           >
             {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
           </Button>
-          <p data-account-consent className="text-xs leading-5 text-ink/65">
-            {SITE_OPERATOR_STATEMENT}
-            {tab === "login" ? "登录" : "注册"}即表示你已阅读并同意
-            <Link href="/terms" target="_blank" rel="noopener" className="text-ink underline underline-offset-4 hover:text-accent">
-              《用户协议》
-            </Link>
-            和
-            <Link href="/privacy" target="_blank" rel="noopener" className="text-ink underline underline-offset-4 hover:text-accent">
-              《隐私政策》
-            </Link>
-            。
-          </p>
+          <LegalConsent data-account-consent action={tab === "login" ? "登录" : "注册"} />
         </form>
 
         <div className="mt-4 flex flex-col gap-2 font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">

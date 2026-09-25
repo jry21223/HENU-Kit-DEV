@@ -16,6 +16,10 @@ function getWidgetUrl() {
   }
 }
 
+/**
+ * 配置 NEXT_PUBLIC_LANGBOT_WIDGET_URL 会在每个页面加载第三方聊天脚本。启用前先在隐私政策
+ * （src/app/(legal)/privacy/page.tsx）的第三方与 Cookie 部分写明它，去留与加固见 #220。
+ */
 export default function LangBotWidget() {
   const widgetUrl = getWidgetUrl();
   if (!widgetUrl) {

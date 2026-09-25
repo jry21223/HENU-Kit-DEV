@@ -103,6 +103,9 @@ test("a free member is offered lifetime membership in one consistent voice", asy
   const purchase = page.locator("[data-membership-purchase]");
   await expect(purchase).toContainText("非河南大学官方项目");
   await expect(purchase.getByRole("link", { name: "《用户协议》" })).toHaveAttribute("href", "/terms");
+  await expect(purchase.getByRole("link", { name: "《隐私政策》" })).toHaveAttribute("href", "/privacy");
+  // 用户协议把“终身”限定为服务存续期间，页面上就不能再承诺“永久”。
+  await expect(body).not.toContainText("永久");
 
   // Lifetime membership has one name, and users never see the plan enum or
   // how the entitlement is stored.
@@ -148,7 +151,7 @@ test("payment is reported only after the server confirms it", async ({ context, 
   state.paid = true;
   await expect(page.getByRole("heading", { name: "终身会员" })).toBeVisible({ timeout: 20000 });
   await expect(page.locator('[data-membership-purchase="awaiting"]')).toHaveCount(0);
-  await expect(page.getByText("终身会员已生效，永久有效；换设备登录同样可用。", { exact: true })).toBeVisible();
+  await expect(page.getByText("终身会员已生效，换设备登录同样可用。", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("服务端");
 });
 

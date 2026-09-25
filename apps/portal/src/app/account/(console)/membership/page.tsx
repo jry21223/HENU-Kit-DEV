@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
-import { LIFETIME_BENEFITS, MembershipPurchase } from "@/components/account/membership-purchase";
+import { MembershipPurchase } from "@/components/account/membership-purchase";
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountMembership, formatPortalError } from "@/lib/api/client";
+import { LIFETIME_BENEFITS } from "@/lib/membership";
 import type { AccountMembershipResponse } from "@/lib/api/types";
 
 type MembershipState =
@@ -71,7 +72,7 @@ export default function MembershipPage() {
         <section data-account-membership-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
           <p className="font-mono text-xs tracking-[0.14em] text-accent">MEMBERSHIP UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">请稍后重新加载，你的会员权益不会因此受到影响。</p>
+          <p className="mt-3 text-sm leading-6 text-ink/60">页面加载失败不会改变你的会员状态，请稍后重新加载。</p>
           <button
             type="button"
             onClick={() => {
@@ -93,7 +94,7 @@ export default function MembershipPage() {
           </h2>
           <p className="mt-4 max-w-2xl text-base leading-7 text-ink/75">
             {isLifetime
-              ? "终身会员已生效，永久有效；换设备登录同样可用。"
+              ? "终身会员已生效，换设备登录同样可用。"
               : "当前为免费会员，可在下方开通终身会员。"}
           </p>
           {isLifetime ? (

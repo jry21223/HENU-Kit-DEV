@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import LibraryNav from "@/components/library/library-nav";
-import SiteFooter from "@/components/site-footer";
+import SiteShell from "@/components/site-shell";
 
 export const metadata: Metadata = {
   title: "资料库 — henukit",
@@ -8,10 +8,6 @@ export const metadata: Metadata = {
 
 export default function LibraryLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-svh flex-col bg-paper text-ink">
-      <LibraryNav />
-      <div className="flex-1">{children}</div>
-      <SiteFooter />
-    </div>
+    <SiteShell header={<LibraryNav />}>{children}</SiteShell>
   );
 }

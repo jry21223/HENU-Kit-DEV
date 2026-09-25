@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import SiteFooter from "@/components/site-footer";
+import SiteShell from "@/components/site-shell";
 
 export const metadata: Metadata = {
   referrer: "no-referrer",
@@ -9,10 +9,5 @@ export const metadata: Metadata = {
 export default function AccountAuthLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  return (
-    <>
-      {children}
-      <SiteFooter />
-    </>
-  );
+  return <SiteShell>{children}</SiteShell>;
 }
