@@ -40,7 +40,7 @@ test.describe("Homepage task entry", () => {
     ] as const) {
       await expect(page.locator("header").getByRole("link", { name: new RegExp(name) })).toHaveAttribute("href", route);
     }
-    await page.getByRole("button", { name: "打开菜单" }).click();
+    await page.getByRole("button", { name: "关闭菜单" }).click();
     await expect(page.getByText("发布、接单和结算暂未开放。", { exact: true })).toBeVisible();
     await expect(page.getByText(/实名认证|发单有人接|全覆盖|真实订单即将上线|互助接单/)).toHaveCount(0);
 
