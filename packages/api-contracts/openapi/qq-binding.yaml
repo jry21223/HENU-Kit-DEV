@@ -1,0 +1,107 @@
+openapi: 3.1.0
+info:
+  title: QQ Bot account binding
+  version: 1.0.0
+  description: >-
+    Platform Core owns binding identity. Website credentials are never sent to
+    Bot. All Core routes require registered service Basic authentication plus
+    the existing five-line HMAC signature and unique timestamped nonce.
+    Portal Gateway exposes only authorize/status/unlink through an exact-Origin,
+    JSON-only POST façade and supplies its exchange Session itself.
+paths:
+  /api/v1/qq-bindings/{action}:
+    post:
+      operationId: operateQQBinding
+      description: >-
+        Core service-only boundary. A client provisioned in qq_binding_apps may
+        start/pending/confirm/status/resolve/unlink for its application and signed
+        subject. Only portal-gateway may authorize and use session_token for
+        status/unlink. Extra actor IDs, application IDs and unknown fields are
+        rejected. start requires a stable UUID request_id; retries return the
+        same encrypted-at-rest link. authorize/confirm/pending require token.
+        Confirm requires the original subject, unexpired consent and a currently
+        valid consenting Session. Unlink invalidates all outstanding challenges.
+      security:
+        - serviceBasic: []
+      parameters:
+        - name: action
+          in: path
+          required: true
+          schema: {type: string, enum: [start, authorize, pending, confirm, status, resolve, unlink]}
+        - {name: X-Service-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-Key-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-Timestamp, in: header, required: true, schema: {type: string}}
+        - {name: X-Nonce, in: header, required: true, schema: {type: string}}
+        - {name: X-Signature, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                subject: {type: string, pattern: '^[A-Za-z0-9_-]{1,128}$'}
+                request_id: {type: string, format: uuid}
+                token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+                session_token: {type: string, minLength: 32, maxLength: 256}
+      responses:
+        '200':
+          description: No-store bounded data envelope; token only for start, user_id only for status/resolve.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  request_id: {type: string}
+                  data:
+                    type: object
+                    properties:
+                      token: {type: string}
+                      expires_at: {type: string, format: date-time}
+                      state: {type: string, enum: [pending, authorized, confirmed]}
+                      bound: {type: boolean}
+                      user_id: {type: string, format: uuid}
+                      display_name: {type: string}
+        '400': {description: Invalid request; no mutation.}
+        '401': {description: Service authentication rejected.}
+        '403': {description: Client not provisioned or platform Session inactive.}
+        '404': {description: Challenge or active binding not found.}
+        '409': {description: Website approval required or one-to-one conflict.}
+        '410': {description: Link cancelled/expired or consenting Session revoked.}
+        '429': {description: Rate limited; retry later.}
+        '503': {description: Dependency unavailable; no successful result asserted.}
+  /api/v1/account/qq-binding/{action}:
+    post:
+      operationId: operateOwnQQBinding
+      description: >-
+        Portal Gateway browser façade. Requires a Portal Session cookie,
+        Content-Type application/json and exact Portal Origin. Forwards only
+        token plus its own exchange Session to Core. No caller UID or subject.
+      parameters:
+        - name: action
+          in: path
+          required: true
+          schema: {type: string, enum: [authorize, status, unlink]}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+      responses:
+        '200': {description: Core bounded data envelope.}
+        '400': {description: Invalid request.}
+        '401': {description: Portal Session missing; log in again.}
+        '403': {description: Origin rejected or Core Session inactive.}
+        '409': {description: Binding conflict; unlink first.}
+        '410': {description: Link expired; restart from Bot.}
+        '429': {description: Rate limited.}
+        '503': {description: Core unavailable.}
+components:
+  securitySchemes:
+    serviceBasic: {type: http, scheme: basic}

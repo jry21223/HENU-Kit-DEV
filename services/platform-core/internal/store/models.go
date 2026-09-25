@@ -241,6 +241,39 @@ type PlatformOperationsIdempotency struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 }
 
+type QqBinding struct {
+	AppID     string             `json:"app_id"`
+	Subject   string             `json:"subject"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type QqBindingApp struct {
+	AppID    string `json:"app_id"`
+	ClientID string `json:"client_id"`
+}
+
+type QqBindingAudit struct {
+	ID        int64              `json:"id"`
+	AppID     string             `json:"app_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Action    string             `json:"action"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type QqBindingChallenge struct {
+	TokenHash       []byte             `json:"token_hash"`
+	TokenCiphertext []byte             `json:"token_ciphertext"`
+	AppID           string             `json:"app_id"`
+	Subject         string             `json:"subject"`
+	RequestID       pgtype.UUID        `json:"request_id"`
+	State           string             `json:"state"`
+	UserID          pgtype.UUID        `json:"user_id"`
+	SessionID       pgtype.UUID        `json:"session_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 type RolePermission struct {
 	RoleID         pgtype.UUID        `json:"role_id"`
 	PermissionCode string             `json:"permission_code"`
