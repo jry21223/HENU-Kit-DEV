@@ -153,7 +153,7 @@ function expectedAnswerText(expected: unknown, question: PortalPracticeQuestion)
     try {
       return JSON.stringify(value);
     } catch {
-      return "服务端已返回答案";
+      return "暂时无法显示";
     }
   };
   return Array.isArray(expected) ? expected.map(textFor).join("、") : textFor(expected);
@@ -234,7 +234,7 @@ export default function QuizPage() {
       const parsed = practiceSetupFromLocation();
       if (!parsed.setup) {
         if (!cancelled) {
-          setLoadError(parsed.error ?? "未选择真实题库。");
+          setLoadError(parsed.error ?? "请先从题库目录选择一组练习后开始。");
           setLoadState("missing-selection");
         }
         return;
@@ -503,7 +503,7 @@ export default function QuizPage() {
       return "当前组卷设置无效，请重新选择题数。";
     }
     if (selection.mode === "chapter" && !selection.chapterID) {
-      return "章节练习需要选择一个真实章节。";
+      return "章节练习需要先选择章节。";
     }
     const input: PortalPracticeSessionInput = {
       bank_id: setup.bankID,
@@ -825,17 +825,17 @@ export default function QuizPage() {
                 />
               )}
               {(question.type === "single" || question.type === "multi") && options.length === 0 && (
-                <p className="border border-accent px-4 py-3 text-sm text-accent">这道题的选项不可用，不能以本地题目替代。</p>
+                <p className="border border-accent px-4 py-3 text-sm text-accent">这道题的选项暂时显示不出来，可以先做其他题。</p>
               )}
             </div>
 
             <div ref={explainRef} className="h-0 overflow-hidden">
               {confirmed && (
                 <div className="mt-6 border-t border-line pt-5">
-                  <p className="font-mono text-[10px] tracking-[0.25em] text-accent">服务端解析 / EXPLAIN</p>
+                  <p className="font-mono text-[10px] tracking-[0.25em] text-accent">解析 / EXPLAIN</p>
                   <p className="mt-2 font-mono text-xs text-ink/60">参考答案：{expectedAnswerText(result.expected_answer, question)}</p>
                   <p className="mt-2 text-sm leading-7 text-ink/80">{result.analysis || "本题暂无补充解析。"}</p>
-                  {result.replayed && <p className="mt-2 font-mono text-xs text-ink/50">已恢复同一提交的服务端结果。</p>}
+                  {result.replayed && <p className="mt-2 font-mono text-xs text-ink/50">这次作答之前已提交成功，显示的是当时的判题结果。</p>}
                 </div>
               )}
             </div>
@@ -1007,8 +1007,8 @@ export default function QuizPage() {
           </div>
           <div className="mt-4 space-y-1.5 font-mono text-[10px] text-ink/50">
             <p><span className="mr-2 inline-block h-2 w-2 border border-line align-middle" />未答</p>
-            <p><span className="mr-2 inline-block h-2 w-2 bg-ink align-middle" />服务端判对</p>
-            <p><span className="mr-2 inline-block h-2 w-2 bg-accent align-middle" />服务端判错</p>
+            <p><span className="mr-2 inline-block h-2 w-2 bg-ink align-middle" />答对</p>
+            <p><span className="mr-2 inline-block h-2 w-2 bg-accent align-middle" />答错</p>
           </div>
         </aside>
       </div>
@@ -1030,7 +1030,7 @@ function PracticeState({
   return (
     <main className="mx-auto max-w-3xl px-5 py-16 md:px-8">
       <div data-enter className="border border-ink p-8 md:p-12">
-        <p className="font-mono text-xs tracking-[0.3em] text-accent">PRACTICE / REAL DATA</p>
+        <p className="font-mono text-xs tracking-[0.3em] text-accent">PRACTICE / 刷题</p>
         <h1 className="mt-5 text-2xl font-medium md:text-3xl">{title}</h1>
         <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">{detail}</p>
         <div className="mt-8 flex flex-wrap gap-4">

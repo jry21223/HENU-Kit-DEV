@@ -25,7 +25,7 @@ export default function CareerNoProfileView() {
           先完成求职画像，再开始扫描
         </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
-          求职雷达根据你的画像匹配受控官方招聘来源。目前画像尚未设置，
+          求职雷达根据你的画像，在已收录的官方招聘来源中匹配岗位。目前画像尚未设置，
           完成画像后即可发起首次扫描。
         </p>
         <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
@@ -43,7 +43,7 @@ export default function CareerNoProfileView() {
           去设置求职画像 →
         </Link>
         <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/40">
-          简历文件仅在识别任务期间临时保存，任务完成或失败后删除原文件字节；不会保存招聘站账号
+          简历文件仅在识别期间临时保存，识别完成或失败后即删除；不会保存招聘站账号
         </p>
       </div>
     </section>

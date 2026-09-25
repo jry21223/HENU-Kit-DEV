@@ -147,7 +147,7 @@ export default function NotificationsPage() {
           {notifications.length === 0 ? (
             <div data-account-notifications-empty className="border-y border-line py-8">
               <p className="font-display text-xl font-bold">暂无系统通知</p>
-              <p className="mt-2 text-sm leading-6 text-ink/60">客服回复、工单状态变化等消息会在这里持久化展示。</p>
+              <p className="mt-2 text-sm leading-6 text-ink/60">客服回复、工单状态变化等消息会显示在这里。</p>
             </div>
           ) : (
             <div className="border-t border-ink">

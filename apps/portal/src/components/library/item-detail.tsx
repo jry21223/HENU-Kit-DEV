@@ -145,7 +145,7 @@ export default function ItemDetail({ id }: { id: string }) {
       {/* 相关推荐 */}
       {related.length > 0 && (
         <section data-enter className="mt-14">
-          <p className="font-mono text-xs tracking-[0.25em] text-ink/60">MORE / 同学也在看</p>
+          <p className="font-mono text-xs tracking-[0.25em] text-ink/60">MORE / 同科目或同类型的资料</p>
           <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {related.map((m: Material) => (
               <MaterialCard key={m.id} material={m} />

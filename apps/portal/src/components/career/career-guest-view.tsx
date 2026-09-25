@@ -5,7 +5,7 @@ import WorkRadar from "@/components/career/work-radar";
 import { useReveal } from "@/components/account/use-reveal";
 
 const FEATURES = [
-  "后台异步扫描，无需守在页面",
+  "在后台扫描，无需守在页面",
   "匹配结果与命中原因一目了然",
   "完成后向已验证的账户邮箱发送结果简报",
 ];
@@ -27,7 +27,7 @@ export default function CareerGuestView() {
             让雷达替你扫一遍招聘信息
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">
-            设定求职画像，后台异步扫描受控官方招聘来源，
+            设定求职画像后，雷达会在后台扫描已收录的官方招聘来源，
             匹配结果与命中原因一目了然，完成后自动把结果简报发送到已验证的账户邮箱。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">

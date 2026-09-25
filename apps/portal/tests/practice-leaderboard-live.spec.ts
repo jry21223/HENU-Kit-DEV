@@ -35,7 +35,7 @@ for (const viewport of [
     await expect(page.getByText("12 题", { exact: true })).toHaveCount(2);
     await expect(page.locator("nav").getByRole("link", { name: /排行榜/ })).toBeVisible();
     await page.getByRole("button", { name: "总榜" }).click();
-    await expect(page.getByText(/当前周期尚无公开排行事实/)).toBeVisible();
+    await expect(page.getByText("还没有人上榜", { exact: true })).toBeVisible();
     await expect(page.getByTestId("practice-leaderboard").getByRole("link", { name: "去刷题", exact: true }))
       .toHaveAttribute("href", "/practice");
     expect(periods).toEqual(["weekly", "lifetime"]);

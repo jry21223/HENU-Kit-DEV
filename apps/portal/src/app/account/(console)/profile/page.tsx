@@ -385,7 +385,7 @@ export default function CareerProfilePage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">求职画像</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          画像用于求职雷达匹配受控招聘来源；简历文件仅在识别任务期间临时保存，任务完成或失败后删除原文件字节，不保存招聘站账号或密码。
+          画像用于求职雷达在已收录的招聘来源中匹配岗位；简历文件仅在识别期间临时保存，识别完成或失败后即删除，不保存招聘站账号或密码。
         </p>
       </section>
 
@@ -419,7 +419,6 @@ export default function CareerProfilePage() {
         <section data-account-career-profile-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
           <p className="font-mono text-xs tracking-[0.14em] text-accent">CAREER PROFILE UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">画像加载不出来时，不会以本地或会话数据替代真实画像。</p>
           <button
             type="button"
             onClick={() => {
@@ -449,7 +448,7 @@ export default function CareerProfilePage() {
                 <p className="font-mono text-[10px] text-ink/40">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
               </div>
               <p className="mt-2 text-sm leading-6 text-ink/55">
-                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；原文件字节在任务完成或失败后删除，只保留提取结果。
+                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；简历文件在识别完成或失败后即删除，只保留识别出的内容。
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <input
@@ -729,7 +728,7 @@ export default function CareerProfilePage() {
                 {saving ? "保存中…" : "保存画像"}
               </button>
               <p className="font-mono text-[10px] tracking-[0.15em] text-ink/40">
-                画像由服务端保存，可跨设备读取
+                画像保存在你的账户中，换设备登录也能读取
               </p>
             </div>
           </form>

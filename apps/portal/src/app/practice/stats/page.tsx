@@ -58,7 +58,7 @@ export default function StatsPage() {
           数据面板
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
-          这里展示你的学习数据；没有真实数据时不展示示例图表或排行榜数字。
+          这里汇总你的答题记录：作答次数、正确率、连续学习天数和各题库的掌握度。
         </p>
       </div>
 
@@ -126,7 +126,7 @@ export default function StatsPage() {
                   </p>
                 </div>
                 <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">
-                  {state.data.mastery.length} 个有作答事实的题库
+                  {state.data.mastery.length} 个练过的题库
                 </p>
               </div>
 

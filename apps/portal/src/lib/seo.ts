@@ -163,7 +163,7 @@ export const campusMetadata: Metadata = pageMetadata(
 export const careerMetadata: Metadata = pageMetadata(
   "/career",
   MODULE_TITLES.career,
-  "HENU Kit 求职雷达设定求职画像后，后台异步扫描受控招聘来源，匹配结果与命中原因一目了然；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+  "HENU Kit 求职雷达设定求职画像后，在后台扫描已收录的官方招聘来源，匹配结果与命中原因一目了然；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
 );
 
 export const privacyMetadata: Metadata = pageMetadata(

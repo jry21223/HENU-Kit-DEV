@@ -134,13 +134,13 @@ export default function WalletPage() {
           aria-live="polite"
           className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
         >
-          POINT LEDGER LOADING<span className="animate-pulse text-accent">…</span>
+          正在读取积分<span className="animate-pulse text-accent">…</span>
         </section>
       ) : null}
 
       {state.kind === "error" ? (
         <section data-account-points-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">POINT LEDGER UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent">积分暂时不可用</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <p className="mt-3 text-sm leading-6 text-ink/60">积分数据暂时加载不出来，请稍后重试。</p>
           <button
@@ -156,15 +156,15 @@ export default function WalletPage() {
       {state.kind === "success" ? (
         <section data-account-points-state="success" className="mt-6">
           <div data-enter className="border border-ink p-6 sm:p-8">
-            <p className="font-mono text-xs tracking-[0.2em] text-ink/45">PERSISTED BALANCE</p>
+            <p className="font-mono text-xs tracking-[0.2em] text-ink/45">BALANCE</p>
             <p className="mt-3 font-display text-5xl font-bold tracking-tight">{formatPoints(state.balance)}</p>
-            <p className="mt-2 text-sm leading-6 text-ink/60">当前积分余额 · 每次打开或继续加载都会从服务端重新读取。</p>
+            <p className="mt-2 text-sm leading-6 text-ink/60">当前积分余额 · 打开本页或加载更多记录时会自动更新。</p>
           </div>
 
           <div className="mt-8">
             <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ink pb-3">
               <div>
-                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">IMMUTABLE LEDGER</p>
+                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">HISTORY</p>
                 <h2 className="mt-1 font-display text-2xl font-bold">积分变动明细</h2>
               </div>
               <span className="font-mono text-[10px] tracking-[0.12em] text-ink/45">时间以中国标准时间显示</span>

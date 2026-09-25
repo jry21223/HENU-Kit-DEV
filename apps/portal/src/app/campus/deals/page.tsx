@@ -37,10 +37,10 @@ export default function DealsPage() {
 
       <div data-enter className="mt-6 border border-dashed border-ink/30 px-6 py-16 text-center">
         <p className="font-mono text-xs tracking-[0.3em] text-ink/50">
-          订单管理尚未接通 · COMING SOON
+          订单管理暂未开放
         </p>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-ink/70">
-          互助平台的发布、接单与结算接口正在接入服务端，上线后这里会展示你发布的单子和参与的交易。
+          互助平台的发布、接单和结算暂未开放；开放后，这里会展示你发布的单子和参与的交易。
         </p>
         <BackLink className="mt-6 inline-block border border-ink px-6 py-2.5 font-mono text-xs tracking-widest text-ink transition-colors hover:border-accent hover:text-accent" />
       </div>

@@ -241,7 +241,7 @@ export default function TicketsPage() {
           </p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">工单</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-            这里的每条记录都来自持久化客服工单；提交或追问失败时不会显示本地成功结果。
+            这里显示你提交的工单和客服的回复。
           </p>
         </div>
         <button
@@ -369,7 +369,7 @@ export default function TicketsPage() {
             {tickets.length === 0 ? (
               <div data-account-tickets-empty className="border-b border-line py-8">
                 <p className="font-display text-xl font-bold">暂无工单</p>
-                <p className="mt-2 text-sm leading-6 text-ink/60">遇到需要人工处理的问题时，可以新建一条持久化工单。</p>
+                <p className="mt-2 text-sm leading-6 text-ink/60">遇到需要人工处理的问题时，可以新建一条工单。</p>
               </div>
             ) : (
               tickets.map((ticket) => {

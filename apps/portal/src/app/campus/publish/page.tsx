@@ -74,7 +74,7 @@ function PublishForm() {
         {editItem ? "编辑单子" : "发布单子"}
       </h1>
       <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/50">
-        发布与接单接口尚未接通，当前无法提交；上线后即可发布互助单。
+        发布和接单暂未开放，当前无法提交；开放后即可在这里发布互助单。
       </p>
 
       <div className="mt-8 space-y-6">
@@ -219,7 +219,7 @@ function PublishForm() {
         <button
           type="button"
           disabled
-          title="发布接口尚未接通，上线后即可发布互助单"
+          title="发布暂未开放"
           className="cursor-not-allowed border border-line px-8 py-3 font-mono text-sm tracking-widest text-ink/40"
         >
           {editItem ? "保存修改 →" : "发布 →"}

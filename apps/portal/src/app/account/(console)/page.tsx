@@ -83,7 +83,7 @@ function AccountOverviewContent({
         </span>
         <div className="min-w-0">
           <h1 className="truncate font-display text-2xl font-bold">{displayName}</h1>
-          <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/50">ACCOUNT PORTFOLIO</p>
+          <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/50">账户概览</p>
         </div>
         <span className="ml-auto shrink-0 border border-accent px-2 py-1 font-mono text-[10px] tracking-widest text-accent">
           {membershipLabel}
@@ -96,7 +96,7 @@ function AccountOverviewContent({
           aria-live="polite"
           className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
         >
-          ACCOUNT PORTFOLIO LOADING<span className="animate-pulse text-accent">…</span>
+          正在读取账户概览<span className="animate-pulse text-accent">…</span>
         </section>
       ) : null}
 
@@ -106,8 +106,8 @@ function AccountOverviewContent({
           role="alert"
           className="mt-6 border border-accent px-5 py-6"
         >
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">ACCOUNT PORTFOLIO UNAVAILABLE</p>
-          <p className="mt-3 text-sm leading-6 text-ink/65">账户概览暂时不可用，请稍后重试。</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent">账户概览暂时不可用</p>
+          <p className="mt-3 text-sm leading-6 text-ink/65">请稍后点「重新加载」再试一次。</p>
           <button
             type="button"
             onClick={() => {

@@ -101,9 +101,6 @@ export default function CareerPage() {
             求职雷达暂时不可用
           </h1>
           <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">
-            求职雷达数据加载不出来时，不会以本地或会话数据替代真实数据。
-          </p>
           <button
             type="button"
             onClick={load}

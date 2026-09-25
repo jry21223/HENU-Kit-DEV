@@ -112,9 +112,6 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           扫描历史暂时不可用
         </h1>
         <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>
-        <p className="mt-3 text-sm leading-6 text-ink/60">
-          扫描历史读取失败时，不会以本地或会话数据替代真实记录。
-        </p>
         <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest text-ink transition-colors hover:bg-ink hover:text-paper" />
       </section>
     );
@@ -232,7 +229,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           ))}
         </ul>
         <p data-enter className="mt-4 font-mono text-[10px] tracking-[0.15em] text-ink/40">
-          记录来自服务端持久化的扫描任务，不展示本地或会话数据
+          记录保存在你的账户中，换设备登录也能查看
         </p>
       </div>
     </section>

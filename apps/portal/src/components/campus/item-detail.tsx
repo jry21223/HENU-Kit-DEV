@@ -113,7 +113,7 @@ export default function ItemDetail({ id }: { id: string }) {
                 data-campus-message-state="unavailable"
                 className="font-mono text-xs text-ink/50"
               >
-                留言功能尚未接通，上线后即可咨询发单人。
+                留言暂未开放，开放后即可在这里咨询发单人。
               </p>
             </div>
           </section>
@@ -135,7 +135,7 @@ export default function ItemDetail({ id }: { id: string }) {
                 data-campus-escrow-state="unavailable"
                 className="mt-3 border border-dashed border-ink/30 px-2.5 py-1.5 font-mono text-[10px] tracking-widest text-ink/50"
               >
-                接单与结算功能尚未接通，暂不涉及资金托管。
+                接单与结算暂未开放，暂不涉及资金托管。
               </p>
 
               {item.status === "open" ? (

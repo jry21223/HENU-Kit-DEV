@@ -216,8 +216,8 @@ export default function BankHero({
           </h1>
           <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
             {catalogMode
-              ? "题库目录来自练习服务；掌握度根据已确认的作答结果计算。"
-              : "按学院、专业、科目逐级定位题单；掌握度只消费服务端确认的作答事实，在数据尚未切换或不可用时保持诚实的空态。"}
+              ? "浏览题库，选一组开始练习；掌握度根据你的答题记录计算。"
+              : "题库暂未开放；掌握度根据你的答题记录计算，没有记录时不显示估算值。"}
           </p>
 
           <div data-enter className="mt-8 w-full max-w-md">
@@ -339,7 +339,7 @@ export default function BankHero({
         <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/50 md:px-8">
           <span className="text-accent">DATA</span>
           <span aria-hidden>+</span>
-          <span>REAL PRACTICE FACTS ONLY</span>
+          <span className="tracking-normal">来自你的答题记录</span>
         </div>
       </div>
     </section>

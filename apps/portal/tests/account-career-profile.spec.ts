@@ -284,7 +284,7 @@ test("a failed profile read is a recoverable error, never a local profile", asyn
 
   await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-career-profile-state="error"]')).toBeVisible();
-  await expect(page.getByText("画像加载不出来时，不会以本地或会话数据替代真实画像。")).toBeVisible();
+  await expect(page.locator('[data-account-career-profile-state="error"]')).toContainText("服务暂时不可用，请稍后再试。");
   await expect(page.locator('[data-account-career-profile-state="ready"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: "重新加载" })).toHaveCSS("min-height", "44px");
 });
