@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectTouchTargets } from "./support/touch-targets";
 
 const successPayload = {
   request_id: "req_browser_stats",
@@ -38,10 +39,17 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
         });
       }
 
-      await desktopPage.goto("/practice", { waitUntil: "domcontentloaded" });
-      await expect(desktopPage.getByTestId("practice-hero-stats-state")).toContainText("图谱根据你的答题记录生成。");
+      await Promise.all([
+        desktopPage.goto("/practice", { waitUntil: "domcontentloaded" }),
+        mobilePage.goto("/practice", { waitUntil: "domcontentloaded" }),
+      ]);
+      await expect(desktopPage.getByTestId("practice-hero-stats-state")).toHaveText("作答数和正确率根据你的答题记录计算。");
       await expect(desktopPage.getByTestId("practice-hero-stats-state").locator("xpath=.."))
         .toContainText("4");
+      await expect(desktopPage.locator("main")).toContainText("图谱根据你的答题记录生成。", { useInnerText: true });
+      // lg 以下知识点结构图隐藏（#542）：手机上看得到的说明不能再指向看不到的图谱。
+      await expect(mobilePage.getByTestId("practice-hero-stats-state")).toHaveText("作答数和正确率根据你的答题记录计算。");
+      await expect(mobilePage.locator("main")).not.toContainText("图谱", { useInnerText: true });
 
       await Promise.all([
         desktopPage.goto("/practice/stats", { waitUntil: "domcontentloaded" }),
@@ -98,6 +106,8 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
     releaseLoading?.();
     await expect(page.getByTestId("practice-stats-empty")).toBeVisible();
     await expect(page.getByTestId("practice-stats-empty")).toContainText("还没有学习记录，从第一题开始建立你的学习图谱");
+    await expect(page.getByTestId("practice-stats-empty").getByRole("link", { name: "去刷题", exact: true }))
+      .toHaveAttribute("href", "/practice");
     await expect(page.locator("main")).not.toContainText("486");
 
     phase = "failure";
@@ -126,5 +136,53 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
     await expect(page.getByTestId("practice-stats-unauthenticated")).toBeVisible();
     await expect(page.getByTestId("practice-stats-unauthenticated")).toContainText("登录后查看跨设备同步的学习状态");
     await expect(page.locator("main")).not.toContainText("486");
+  });
+
+  // The release build turns V2 reads on, so anonymous visitors get these
+  // buttons; with the flag off they never render, which is why this lives in
+  // the stats group rather than touch-targets.spec.ts.
+  test("390px sign-in and retry buttons for personal stats are at least 44×44 (#543)", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    let statsStatus = 401;
+    await page.route("**/api/v1/**", (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" } }),
+      })
+    );
+    await page.route("**/api/v1/session", (route) =>
+      route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
+    );
+    await page.route("**/api/v1/practice/stats*", (route) =>
+      route.fulfill({
+        status: statsStatus,
+        contentType: "application/json",
+        body: JSON.stringify({ error: statsStatus === 401 ? "login required" : "database unavailable" }),
+      })
+    );
+    const hydrated = () =>
+      expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
+
+    await page.goto("/");
+    await hydrated();
+    await expect(page.getByRole("button", { name: "登录查看" })).toBeVisible();
+    await expectTouchTargets(page, "home (mastery signed out)");
+
+    statsStatus = 503;
+    await page.reload();
+    await hydrated();
+    // Module 01 (library) also fails here and shows its own 重试, and it does so
+    // with the flag off too: only the one inside module 02's mastery alert is
+    // the V2-only button.
+    const mastery = page.getByRole("alert").filter({ hasText: "掌握度数据暂时不可用" });
+    await expect(mastery.getByRole("button", { name: "重试" })).toBeVisible();
+    await expectTouchTargets(page, "home (mastery unavailable)");
+
+    statsStatus = 401;
+    await page.goto("/practice/stats");
+    await hydrated();
+    await expect(page.getByTestId("practice-stats-unauthenticated")).toBeVisible();
+    await expectTouchTargets(page, "/practice/stats (signed out)");
   });
 });

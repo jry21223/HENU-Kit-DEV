@@ -105,9 +105,8 @@ for (const viewport of [
     await expect(page.getByText(/明伦校区/)).toBeVisible();
     await expect(page.getByText(/发布于/).first()).toBeVisible();
     await expect(page.getByText(FOREIGN_POST_TITLE)).toHaveCount(0);
-    // 全局预热（initAllGateways → initFoodGateway）会拉取公共 food 列表，
-    // 这是首屏数据预热的既有设计；本测试只保证公共内容不混入“我的投稿”。
-    expect(publicListRequests).toBeGreaterThanOrEqual(0);
+    // 根布局不再预取各模块数据（#546）：“我的投稿”只读自己的投稿，不请求公共美食列表。
+    expect(publicListRequests).toBe(0);
     await expect(page.getByText(/待审核|审核中|审核队列/)).toHaveCount(0);
   });
 

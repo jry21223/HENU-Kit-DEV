@@ -32,7 +32,7 @@ export default function PostBlocks({
               <ul key={i} className="space-y-1.5">
                 {b.items?.map((item, j) => (
                   <li key={j} className="text-sm leading-7 text-ink/80">
-                    <span className="mr-2 font-mono text-accent">+</span>
+                    <span aria-hidden className="mr-2 font-mono text-accent-text">+</span>
                     {item}
                   </li>
                 ))}
@@ -46,7 +46,7 @@ export default function PostBlocks({
                 src={src}
                 alt="正文插图"
                 label={`FIG.${String(i + 1).padStart(2, "0")}`}
-                className="max-h-96 w-full"
+                className="aspect-[4/3] max-h-96 w-full"
               />
             );
           }

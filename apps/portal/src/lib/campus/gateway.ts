@@ -63,6 +63,18 @@ export async function initCampusGateway(): Promise<void> {
   }
 }
 
+/**
+ * /campus 列表实时读到的单子写入共享缓存：从列表点进详情时，详情接口失败仍可回退到
+ * 这条单子（#546 后不再由根布局预取）。
+ */
+export function rememberCampusItems(
+  items: CampusItem[],
+  categories: CampusCategory[] | null
+): void {
+  gatewayItems = items;
+  gatewayCategories = categories;
+}
+
 export function getGatewayItems(): CampusItem[] | null {
   return gatewayItems;
 }

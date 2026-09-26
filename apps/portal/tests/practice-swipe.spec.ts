@@ -185,6 +185,11 @@ test("390px touch swipe navigates without losing drafts, retry identity, or serv
   await expect(page.getByRole("heading", { name: questions[0].content })).toBeVisible();
   expect(commands.answerCalls()).toBe(2);
 
+  // 上一题 / 下一题是一组有名字的按钮，读屏读得出「题目导航」。
+  await expect(page.getByRole("group", { name: "题目导航" })).toBeVisible();
+  // 纠错入口是文字按钮，点击区同样撑到 44px 高（DESIGN_SYSTEM §13）。
+  const feedbackToggleBox = await page.getByRole("button", { name: "这道题有问题？提交纠错 +" }).boundingBox();
+  expect(feedbackToggleBox?.height ?? 0).toBeGreaterThanOrEqual(44);
   await touchGesture(page, "[data-feedback] > button", -120, 3);
   await page.getByRole("button", { name: "这道题有问题？提交纠错 +" }).click();
   const correction = page.getByPlaceholder("简单描述问题，例如：第 2 题解析里的公式有笔误。");
@@ -194,6 +199,10 @@ test("390px touch swipe navigates without losing drafts, retry identity, or serv
 
   const favorite = page.getByRole("button", { name: "登录后收藏" });
   await expect(favorite).toBeEnabled();
+  // 收藏和纠错里有边框的按钮本身做到 44px 高（DESIGN_SYSTEM §13）。
+  for (const name of ["登录后收藏", "答案有误", "表述歧义", "错别字", "内容过时", "其他", "提交纠错"]) {
+    await expect(page.getByRole("button", { name, exact: true }), name).toHaveCSS("min-height", "44px");
+  }
   await touchGesture(page, "button:has-text('登录后收藏')", -120, 3);
   await expect(page.getByRole("heading", { name: questions[0].content })).toBeVisible();
 

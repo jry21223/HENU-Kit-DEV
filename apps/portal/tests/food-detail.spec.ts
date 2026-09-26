@@ -59,7 +59,9 @@ for (const viewport of [
     await expect(page.getByText("34.7972, 114.3073")).toHaveCount(0);
     await expect(page.getByText("0.0000, 0.0000")).toHaveCount(0);
     await expect(page.getByText("人均 ¥25–50", { exact: true })).toBeVisible();
-    await expect(page.getByText("未填写", { exact: true })).toBeVisible();
+    // 营业时间没填就不占一格，不把空值“未填写”摆出来（#549）。
+    await expect(page.getByText("未填写", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/营业参考/)).toHaveCount(0);
     await expect(page.getByText(/地图/)).toHaveCount(0);
     await expect(
       page.getByText("学生编辑部 · 社区稿件")
@@ -79,3 +81,40 @@ for (const viewport of [
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
 }
+
+test("a post without images collapses the gallery to one line and states its source once (#549)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const post = {
+    ...DETAIL.post,
+    id: "no-image-post",
+    blocks: [{ type: "p", text: "选择多、烟火气足。" }],
+    images: [],
+  };
+  await page.route("**/api/v1/food/posts/no-image-post", (route) =>
+    route.fulfill({ json: { post, comments: [], request_id: "req_food_detail_no_image" } })
+  );
+
+  await page.goto("/food/post/no-image-post", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { level: 1, name: "鼓楼夜市" })).toBeVisible();
+
+  const note = page.getByText("图片与环境：投稿未附图片", { exact: true });
+  await expect(note).toBeVisible();
+  const box = await note.boundingBox();
+  expect(box?.height).toBeLessThan(60);
+  await expect(page.getByRole("heading", { name: "图片与环境" })).toHaveCount(0);
+  await expect(page.getByText("图片与环境待补充")).toHaveCount(0);
+
+  // 价格和营业时间都没填：只剩五档定位一格，不展示空值。
+  await expect(page.getByText("未填写", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/价格参考|营业参考/)).toHaveCount(0);
+
+  // 侧栏只说一次“社区稿件”。
+  const aside = page.locator("aside");
+  await expect(aside.getByText("学生编辑部 · 社区稿件")).toBeVisible();
+  await expect(aside.getByText(/社区稿件/)).toHaveCount(1);
+
+  // 没有补充时的段落占位随整页一起出现，不是结果变化：看得到，但不作为状态播报。
+  const main = page.locator("main");
+  await expect(main.getByText("暂无学生补充", { exact: true })).toBeVisible();
+  await expect(main.getByRole("status")).toHaveCount(0);
+});

@@ -203,7 +203,7 @@ describe("Career gateway", () => {
     const { loadCareerData } = await import("./gateway");
     const result = await loadCareerData();
     expect(result.profile).toBeNull();
-    expect(result.error).toBe("求职雷达需要 Lifetime VIP 会员，开通后即可使用");
+    expect(result.error).toBe("求职雷达需要终身会员，开通后即可使用");
   });
 
   it("refreshes a previously empty profile after it is saved", async () => {

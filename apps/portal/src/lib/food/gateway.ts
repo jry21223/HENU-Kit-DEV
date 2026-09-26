@@ -6,16 +6,14 @@
 
 import {
   fetchFoodPosts,
-  fetchFoodVenues,
   formatPortalError,
   hasGateway,
   mockAllowed,
   PortalConfigError,
 } from "@/lib/api/client";
-import type { FoodPost, VenueSummary } from "@/lib/api/types";
+import type { FoodPost } from "@/lib/api/types";
 import { foodStore } from "@/lib/food/mock";
 
-const gatewayVenues = new Map<string, VenueSummary[]>();
 const pendingCreatedPosts = new Map<string, FoodPost>();
 let gatewayPosts: FoodPost[] | null = null;
 let lastError: unknown = null;
@@ -40,15 +38,7 @@ export async function initFoodGateway(): Promise<void> {
       ...pendingCreatedPosts.values(),
       ...postsResp.posts.filter((post) => !pendingCreatedPosts.has(post.id)),
     ];
-
-    for (const campus of ["minglun", "jinming", "longzihu"]) {
-      try {
-        const resp = await fetchFoodVenues(campus);
-        if (resp) gatewayVenues.set(campus, resp.venues);
-      } catch {
-        // venues optional relative to posts
-      }
-    }
+    // 场馆（food/venues）目前没有页面展示，不在这里顺带请求；榜单只等投稿列表（#546）。
     loaded = true;
     lastError = null;
   } catch (e) {
@@ -60,10 +50,6 @@ export async function initFoodGateway(): Promise<void> {
       loaded = true;
     }
   }
-}
-
-export function getVenues(campus: string): VenueSummary[] | null {
-  return gatewayVenues.get(campus) ?? null;
 }
 
 export function getGatewayPosts(): FoodPost[] | null {

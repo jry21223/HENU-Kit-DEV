@@ -47,12 +47,15 @@ function RankRow({ item }: { item: RankRowItem }) {
       className="border-b border-line"
     >
       <div className="flex items-baseline gap-5 py-5 md:gap-10">
-        <span className="font-display text-4xl font-bold text-ink/25 md:text-6xl">
+        {/* 编号列定宽、等宽数字，01–05 下店名左缘对齐；宽度与下方锐评的缩进一致。
+            名次是信息：36px 粗体算大字，ink/50 在纸白上 3.35:1，过大字的 3:1。 */}
+        <span className="w-[3.25rem] shrink-0 font-display text-4xl font-bold tabular-nums text-ink/50 md:w-20 md:text-6xl">
           {item.rank}
         </span>
+        {/* 店名一行只有 28px 高：上下各借 8px 撑满 44px 点击区，行距不变。 */}
         <Link
           href={item.href}
-          className="flex-1 text-lg font-medium transition-colors hover:text-accent md:text-2xl"
+          className="-my-2 flex-1 py-2 text-lg font-medium transition-colors hover:text-accent-text md:text-2xl"
         >
           {item.name}
         </Link>
@@ -60,8 +63,8 @@ function RankRow({ item }: { item: RankRowItem }) {
           className={cn(
             "border px-2.5 py-1 font-mono text-xs",
             item.tier.key === HANG_TIER_KEY
-              ? "border-accent text-accent"
-              : "border-ink/30 text-ink/50"
+              ? "border-accent text-accent-text"
+              : "border-ink/30 text-ink/60"
           )}
         >
           {item.tier.label}
@@ -124,10 +127,10 @@ export default function SectionFood() {
 
   return (
     <section ref={sectionRef} className="snap-screen border-t border-line bg-paper">
-      <div className="mx-auto grid min-h-svh max-w-7xl items-center gap-12 px-5 py-24 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:px-10">
+      <div className="mx-auto grid max-w-site items-center gap-12 px-5 py-24 md:min-h-svh md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:px-8">
         <div>
           <SectionHeading index="03" en="FOOD RANKING" title="美食排行榜" />
-          <p className="mt-6 font-display text-xl font-medium text-accent">
+          <p className="mt-6 font-display text-xl font-medium text-accent-text">
             「从夯到拉，只说人话。」
           </p>
           <p className="mt-4 max-w-sm text-sm leading-7 text-ink/70">
@@ -142,20 +145,20 @@ export default function SectionFood() {
 
         <ul className="border-t border-line">
           {loadState === "loading" && (
-            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/45">
+            <li className="border-b border-line py-5 font-mono text-xs text-ink/60">
               榜单加载中…
             </li>
           )}
           {loadState === "error" && (
             <li className="border-b border-line py-5">
-              <p className="font-mono text-xs tracking-[0.18em] text-ink/60">
+              <p className="font-mono text-xs text-ink/60">
                 榜单暂时加载不出来，请稍后刷新试试。
               </p>
               {error ? (
                 <button
                   type="button"
                   onClick={() => void load()}
-                  className="mt-3 font-mono text-xs text-accent underline underline-offset-4"
+                  className="inline-flex min-h-11 items-center font-mono text-xs text-accent-text underline underline-offset-4"
                 >
                   重新加载
                 </button>
@@ -163,7 +166,7 @@ export default function SectionFood() {
             </li>
           )}
           {loadState === "ready" && rows.length === 0 && (
-            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/45">
+            <li className="border-b border-line py-5 font-mono text-xs text-ink/60">
               还没有上榜条目。
             </li>
           )}

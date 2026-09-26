@@ -99,8 +99,8 @@ export default function NotificationsPage() {
   return (
     <div>
       <section data-enter className="border-b border-ink pb-5">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/55">
-          <span className="text-accent">A-06</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent-text">A-06</span>
           <span className="mx-2">/</span>
           NOTIFICATIONS
         </p>
@@ -114,15 +114,15 @@ export default function NotificationsPage() {
         <section
           data-account-notifications-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          NOTIFICATIONS LOADING<span className="animate-pulse text-accent">…</span>
+          NOTIFICATIONS LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
       {state.kind === "error" ? (
         <section data-account-notifications-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">NOTIFICATIONS UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">NOTIFICATIONS UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <button
             type="button"
@@ -130,7 +130,7 @@ export default function NotificationsPage() {
               setState({ kind: "loading" });
               loadNotifications();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -140,14 +140,14 @@ export default function NotificationsPage() {
       {state.kind === "success" ? (
         <section data-account-notifications-state="success" className="mt-6">
           {commandError ? (
-            <p role="alert" className="mb-4 border border-accent px-4 py-3 text-sm leading-6 text-accent">
+            <p role="alert" className="mb-4 border border-accent px-4 py-3 text-sm leading-6 text-accent-text">
               {commandError}
             </p>
           ) : null}
           {notifications.length === 0 ? (
             <div data-account-notifications-empty className="border-y border-line py-8">
               <p className="font-display text-xl font-bold">暂无系统通知</p>
-              <p className="mt-2 text-sm leading-6 text-ink/60">客服回复、工单状态变化等消息会在这里持久化展示。</p>
+              <p className="mt-2 text-sm leading-6 text-ink/60">客服回复、工单状态变化等消息会显示在这里。</p>
             </div>
           ) : (
             <div className="border-t border-ink">
@@ -160,23 +160,23 @@ export default function NotificationsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h2 className="font-display text-xl font-bold">{notification.title}</h2>
                           {unread ? (
-                            <span className="border border-accent px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent">未读</span>
+                            <span className="border border-accent px-2 py-0.5 font-mono text-xs text-accent-text">未读</span>
                           ) : (
-                            <span className="font-mono text-[10px] tracking-widest text-ink/40">已读</span>
+                            <span className="font-mono text-xs text-ink/60">已读</span>
                           )}
                         </div>
                         {notification.ticket_reference ? (
-                          <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/45">{notification.ticket_reference}</p>
+                          <p className="mt-2 font-mono text-xs tracking-[0.12em] text-ink/60">{notification.ticket_reference}</p>
                         ) : null}
                         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink/75">{notification.body}</p>
-                        <p className="mt-3 font-mono text-[10px] text-ink/45">{formatTimestamp(notification.created_at)}</p>
+                        <p className="mt-3 font-mono text-xs text-ink/60">{formatTimestamp(notification.created_at)}</p>
                       </div>
                       {unread ? (
                         <button
                           type="button"
                           onClick={() => void markRead(notification.id)}
                           disabled={pendingID === notification.id}
-                          className="inline-flex min-h-11 shrink-0 items-center justify-center border border-ink px-3 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                          className="inline-flex min-h-11 shrink-0 items-center justify-center border border-ink px-3 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
                         >
                           {pendingID === notification.id ? "正在更新…" : "标为已读"}
                         </button>

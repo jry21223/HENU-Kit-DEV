@@ -1,16 +1,14 @@
 @import "tailwindcss";
+/* 颜色的唯一来源是 packages/design-tokens（#536，DESIGN_SYSTEM.md §3）。theme.css 由
+   scripts/generate-theme.mjs 从 tokens.json 生成，写的是算好的色值：Tailwind 因此能给
+   text-ink/60、bg-accent/5 这类透明度写法预先算出回退，不支持 color-mix() 的浏览器
+   也不会拿到实心色。这里不另写色值，也不引用 --hk-* 变量。 */
+@import "./theme.css";
 
 @theme {
-  --color-paper: #f2f0ea;
-  --color-ink: #161513;
-  --color-accent: #ff4d00;
-  --color-line: rgba(22, 21, 19, 0.14);
-  --color-line-dark: rgba(242, 240, 234, 0.16);
-
-  /* 功能色：仅用于难度分徽标等数据标识，不进装饰层 */
-  --color-easy: #3e7c4f;
-  --color-mid: #c79a2a;
-  --color-hard: #c2401f;
+  /* 内容框：首页、子站页头与正文共用同一宽度（max-w-site），左右留白统一为
+     px-5 md:px-8，页头的返回链接因此与正文标题左缘对齐。见 DESIGN_SYSTEM.md。 */
+  --container-site: 1440px;
 
   --font-display:
     var(--font-space-grotesk), "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -28,9 +26,10 @@ body {
   font-family: var(--font-sans);
 }
 
+/* 强调橙底上用墨色字（5.49:1），纸白字只有 2.92:1。 */
 ::selection {
   background: var(--color-accent);
-  color: var(--color-paper);
+  color: var(--color-ink);
 }
 
 /* 工程图纸网格背景 */
@@ -70,25 +69,79 @@ body {
   scroll-snap-align: start;
 }
 
-/* 热力图方格 hover 弹性放大（SVG transform 需 transform-box） */
-.heat-cell {
-  cursor: pointer;
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+/* 首屏入场（#537）：纯 CSS keyframes，随首帧样式一起开始播放，不等水合。
+   GSAP 的 from() 要到水合时才把元素设成初始隐藏态，而 SSR 早已把内容画出来，
+   慢设备上会先看到内容、再看它消失重播。CSS 动画从首帧到结束可见性只增不减；
+   脚本没加载也照常播完，停在元素自己的样式上。
+   只写 from + backwards：延迟期间停在初始态，播完不把终态钉在元素上。
+   时长与缓动沿用原 GSAP 时间轴，错峰由组件内联 animation-delay 给出：
+   power3.out ≈ cubic-bezier(0.25, 1, 0.5, 1)，power2.inOut ≈ cubic-bezier(0.65, 0, 0.35, 1)。
+   reduced-motion 下不挂动画，直接静态展示。 */
+@keyframes enter-flip {
+  from {
+    opacity: 0;
+    transform: translateY(60%) rotateX(-90deg);
+  }
 }
 
-.heat-cell:hover {
-  transform: scale(1.4);
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .heat-cell {
-    transition: none;
+@keyframes enter-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* 橙色擦除块：从盖满标题收起，基础样式由组件内联给出 scaleX(0)。 */
+@keyframes enter-wipe-x {
+  from {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes enter-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .enter-flip {
+    animation: enter-flip 0.9s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+    transform-origin: 50% 100%;
   }
 
-  .heat-cell:hover {
-    transform: none;
+  .enter-rise {
+    animation: enter-rise 0.7s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+  }
+
+  .enter-grow-x {
+    animation: enter-grow-x 0.7s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+    transform-origin: left center;
+  }
+
+  .enter-wipe-x {
+    animation: enter-wipe-x 0.6s cubic-bezier(0.65, 0, 0.35, 1) backwards;
+    transform-origin: right center;
+  }
+
+  .enter-fade {
+    animation: enter-fade 0.8s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+  }
+
+  .enter-slide-up {
+    animation: enter-slide-up 0.5s cubic-bezier(0.25, 1, 0.5, 1) backwards;
   }
 }
 

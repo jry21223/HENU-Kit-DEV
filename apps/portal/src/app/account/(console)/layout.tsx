@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AccountConsoleSessionProvider } from "@/components/account/account-console-session";
+import SiteShell from "@/components/site-shell";
 import { cn } from "@/lib/cn";
+import { INSET_FOCUS_RING, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 import {
   clearCachedSession,
   fetchSession,
@@ -35,8 +37,8 @@ type SessionState =
 function LoadingBlock() {
   return (
     <div data-account-session-state="loading" className="flex min-h-[60vh] items-center justify-center">
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/40">
-        AUTH CHECK<span className="animate-pulse text-accent">…</span>
+      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+        AUTH CHECK<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </p>
     </div>
   );
@@ -119,51 +121,53 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   };
 
   return (
-    <div className="min-h-svh bg-paper text-ink">
-      {/* 顶部子导航 */}
-      <header className="sticky top-0 z-40 border-b border-line bg-paper">
-        <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-5 md:px-8">
-          <div className="flex items-baseline gap-4">
-            <Link
-              href="/"
-              className="font-display text-base font-bold tracking-tight text-ink transition-colors hover:text-accent"
-            >
-              ← henukit<span className="text-accent">®</span>
-            </Link>
-            <span className="font-display text-base font-bold tracking-tight">
-              ACCOUNT<span className="text-accent">®</span>
-            </span>
+    <SiteShell
+      header={
+        // 顶部子导航
+        <header className="sticky top-0 z-40 border-b border-line bg-paper">
+          <div className="mx-auto flex h-14 max-w-site items-center justify-between px-5 md:px-8">
+            <div className="flex items-baseline gap-4">
+              <Link
+                href="/"
+                className="inline-flex min-h-11 items-center font-display text-base font-bold tracking-tight text-ink transition-colors hover:text-accent-text"
+              >
+                ← henukit<span className="text-accent">®</span>
+              </Link>
+              <span className="font-display text-base font-bold tracking-tight">
+                ACCOUNT<span className="text-accent">®</span>
+              </span>
+            </div>
+            {sessionState.kind === "authenticated" ? (
+              <Link
+                href="/account"
+                aria-label={`${publicDisplayName(sessionState.session.display_name)}的账户概览`}
+                className="group flex min-h-11 min-w-11 items-center justify-center border border-ink bg-paper font-display text-sm font-bold transition-colors hover:border-accent hover:text-accent-text"
+              >
+                {publicDisplayName(sessionState.session.display_name).slice(0, 1)}
+              </Link>
+            ) : (
+              <Link
+                href={`/account/login?next=${encodeURIComponent(pathname)}`}
+                className="inline-flex min-h-11 items-center font-mono text-xs text-ink/70 transition-colors hover:text-accent-text"
+              >
+                登录<span className="text-ink/60">/</span>注册
+              </Link>
+            )}
           </div>
-          {sessionState.kind === "authenticated" ? (
-            <Link
-              href="/account"
-              aria-label={`${publicDisplayName(sessionState.session.display_name)}的账户概览`}
-              className="group flex min-h-11 min-w-11 items-center justify-center border border-ink bg-paper font-display text-sm font-bold transition-colors hover:border-accent hover:text-accent"
-            >
-              {publicDisplayName(sessionState.session.display_name).slice(0, 1)}
-            </Link>
-          ) : (
-            <Link
-              href={`/account/login?next=${encodeURIComponent(pathname)}`}
-              className="inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-accent"
-            >
-              登录<span className="text-ink/30">/</span>注册
-            </Link>
-          )}
-        </div>
-      </header>
-
+        </header>
+      }
+    >
       {sessionState.kind === "loading" || sessionState.kind === "anonymous" ? <LoadingBlock /> : null}
 
       {sessionState.kind === "error" ? (
         <section data-account-session-state="error" role="alert" className="mx-auto mt-10 max-w-2xl border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">账户服务暂不可用</p>
+          <p className="font-mono text-xs text-accent-text">账户服务暂不可用</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{sessionState.message}</p>
           <p className="mt-3 text-sm leading-6 text-ink/60">账户信息暂时加载不出来，请稍后重新加载。</p>
           <button
             type="button"
             onClick={loadSession}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -172,9 +176,13 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
       {sessionState.kind === "authenticated" ? (
         <AccountConsoleSessionProvider session={sessionState.session} requireLogin={requireLogin}>
-          <div className="mx-auto max-w-[1440px] lg:flex">
+          <div className="mx-auto max-w-site lg:flex">
             <aside className="border-b border-line lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
-              <nav className="flex gap-1 overflow-x-auto px-4 py-3 lg:sticky lg:top-14 lg:flex-col lg:gap-0 lg:px-0 lg:py-8">
+              {/* 手机上菜单横向滑动，桌面上每一项撑满侧栏宽：焦点框都画在项里面，键盘聚焦的那一项整个滑进来。 */}
+              <nav
+                onFocus={revealKeyboardFocus}
+                className="flex gap-1 overflow-x-auto px-4 py-3 lg:sticky lg:top-14 lg:flex-col lg:gap-0 lg:px-0 lg:py-8"
+              >
                 {MENU.map((item) => {
                   const active = item.exact
                     ? pathname === item.href
@@ -183,14 +191,16 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
                     <Link
                       key={item.href}
                       href={item.href}
+                      aria-current={active ? "page" : undefined}
                       className={cn(
-                        "inline-flex min-h-11 shrink-0 items-center border-l-2 px-3 py-2 font-mono text-xs tracking-widest transition-colors lg:py-2.5",
+                        "inline-flex min-h-11 shrink-0 items-center border-l-2 px-3 py-2 font-mono text-xs transition-colors lg:py-2.5",
+                        INSET_FOCUS_RING,
                         active
                           ? "border-accent font-semibold text-ink"
-                          : "border-transparent text-ink/55 hover:text-ink"
+                          : "border-transparent text-ink/60 hover:text-ink"
                       )}
                     >
-                      <span className={cn("mr-1.5", active ? "text-accent" : "text-ink/30")}>
+                      <span className={cn("mr-1.5 tracking-widest", active ? "text-accent-text" : "text-ink/60")}>
                         {item.index}
                       </span>
                       {item.label}
@@ -201,12 +211,15 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
                   type="button"
                   disabled={signingOut}
                   onClick={() => void signOut()}
-                  className="mt-0 inline-flex min-h-11 shrink-0 items-center border-l-2 border-transparent px-3 py-2 text-left font-mono text-xs tracking-widest text-ink/55 transition-colors hover:text-accent disabled:cursor-wait disabled:opacity-50 lg:mt-8 lg:py-2.5"
+                  className={cn(
+                    "mt-0 inline-flex min-h-11 shrink-0 items-center border-l-2 border-transparent px-3 py-2 text-left font-mono text-xs text-ink/60 transition-colors hover:text-accent-text disabled:cursor-wait disabled:opacity-50 lg:mt-8 lg:py-2.5",
+                    INSET_FOCUS_RING
+                  )}
                 >
-                  <span className="mr-1.5 text-ink/30">A-00</span>
+                  <span className="mr-1.5 tracking-widest text-ink/60">A-00</span>
                   {signingOut ? "正在退出…" : "退出登录"}
                 </button>
-                {logoutError ? <p role="alert" className="mt-3 px-3 text-xs leading-5 text-accent">{logoutError}</p> : null}
+                {logoutError ? <p role="alert" className="mt-3 px-3 text-xs leading-5 text-accent-text">{logoutError}</p> : null}
               </nav>
             </aside>
 
@@ -214,6 +227,6 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
           </div>
         </AccountConsoleSessionProvider>
       ) : null}
-    </div>
+    </SiteShell>
   );
 }

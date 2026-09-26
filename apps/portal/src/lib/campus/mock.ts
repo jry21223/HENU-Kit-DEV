@@ -199,9 +199,6 @@ const INITIAL: CampusData = {
   deals: INITIAL_DEALS,
 };
 
-/** 静态预生成用 */
-export const STATIC_ITEMS = INITIAL_ITEMS;
-
 // seed 图注入（确定性 picsum 外链；离线/失败时 Img 组件回退图纸占位块）
 INITIAL_ITEMS.find((i) => i.id === "s-01")!.images = [
   seedImg("henu-keyboard", 800, 500),

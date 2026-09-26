@@ -7,11 +7,16 @@ import nextConfig from "../../next.config";
 import {
   campusMetadata,
   careerMetadata,
+  documentTitle,
   foodMetadata,
   homeMetadata,
   libraryMetadata,
+  moduleLayoutTitle,
+  pageTitle,
   practiceMetadata,
+  privacyMetadata,
   siteMetadata,
+  termsMetadata,
   websiteStructuredData,
 } from "../lib/seo";
 
@@ -24,6 +29,8 @@ describe("Portal search discovery routes", () => {
       { url: "https://henukit.cn/food", changeFrequency: "daily", priority: 0.8 },
       { url: "https://henukit.cn/campus", changeFrequency: "daily", priority: 0.8 },
       { url: "https://henukit.cn/career", changeFrequency: "weekly", priority: 0.7 },
+      { url: "https://henukit.cn/privacy", changeFrequency: "yearly", priority: 0.2 },
+      { url: "https://henukit.cn/terms", changeFrequency: "yearly", priority: 0.2 },
     ]);
   });
 
@@ -115,6 +122,26 @@ describe("Portal search discovery routes", () => {
     });
   });
 
+  it("describes practice only as the bank search and modes that exist (#549, ADR-0036)", () => {
+    // 按学校 / 专业浏览没有建成，也没有题单；搜索的说法与首页刷题区块、题库页搜索框（搜索科目）一致。
+    const llmsPractice = readFileSync(new URL("../../public/llms.txt", import.meta.url), "utf8")
+      .split("\n")
+      .find((line) => line.includes("https://henukit.cn/practice"));
+    for (const text of [String(practiceMetadata.description), llmsPractice ?? ""]) {
+      expect(text).toContain("按科目搜索题库");
+      expect(text).not.toMatch(/学校、专业|按学校|题单/);
+    }
+  });
+
+  it("describes the campus market as browse-only, like the page itself (#482)", () => {
+    const llmsCampus = readFileSync(new URL("../../public/llms.txt", import.meta.url), "utf8")
+      .split("\n")
+      .find((line) => line.includes("https://henukit.cn/campus"));
+    for (const text of [String(campusMetadata.description), llmsCampus ?? ""]) {
+      expect(text).toContain("发布、接单和结算暂未开放");
+    }
+  });
+
   it("keeps page-level share cards honest and page-specific instead of inheriting the home card", () => {
     for (const meta of [
       libraryMetadata,
@@ -129,6 +156,41 @@ describe("Portal search discovery routes", () => {
     }
     expect(careerMetadata.twitter?.title).toContain("求职雷达");
     expect(careerMetadata.openGraph?.url).toBe("/career");
+  });
+
+  it("formats every page title one way and leaves the brand to the root template", () => {
+    expect(pageTitle("会员权益", "account")).toBe("会员权益 — 账户中心");
+    expect(pageTitle("扫描历史", "career")).toBe("扫描历史 — 求职雷达");
+    expect(pageTitle("登录")).toBe("登录");
+    expect(documentTitle("鼓楼夜市", "food")).toBe("鼓楼夜市 — 美食榜 | HENU Kit");
+    expect(documentTitle("登录")).toBe("登录 | HENU Kit");
+    // 内容名来自用户投稿，里面的 `$` 要原样进标题，不能被当成替换模式展开。
+    for (const name of ["收 $$ 耳机", "A $& B", "X $' Y", "P $` Q"]) {
+      expect(documentTitle(name, "campus")).toBe(`${name} — 互助平台 | HENU Kit`);
+    }
+    // 模块布局一写标题，Next 就不再把根模板传给更深的页面；模块布局要把模板接着传下去。
+    expect(moduleLayoutTitle("account")).toEqual({
+      default: "账户中心",
+      template: "%s | HENU Kit",
+    });
+
+    expect(
+      [libraryMetadata, practiceMetadata, foodMetadata, campusMetadata, careerMetadata].map(
+        (meta) => meta.title
+      )
+    ).toEqual(["资料库", "智能刷题", "美食榜", "互助平台", "求职雷达"]);
+    for (const meta of [
+      libraryMetadata,
+      practiceMetadata,
+      foodMetadata,
+      campusMetadata,
+      careerMetadata,
+      privacyMetadata,
+      termsMetadata,
+    ]) {
+      expect(meta.title).not.toMatch(/henukit|HENU Kit/i);
+      expect(meta.openGraph?.title).toBe(documentTitle(String(meta.title)));
+    }
   });
 
   it("identifies the site and its non-official publisher without inventing an official affiliation", () => {

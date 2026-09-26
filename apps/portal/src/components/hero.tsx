@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { gsap, useGSAP, REDUCED_MOTION } from "@/lib/gsap";
+import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
 import Marquee from "@/components/marquee";
 import AmbientSvg from "@/components/ui/ambient-svg";
 
@@ -11,7 +11,7 @@ const Hero3D = dynamic(() => import("@/components/hero-3d"), { ssr: false });
 
 const MARQUEE_ITEMS = [
   "往年试卷",
-  "AI 刷题",
+  "智能刷题",
   "美食榜",
   "校园互助",
   "学长笔记",
@@ -67,7 +67,6 @@ function StaticBlueprint() {
 
 export default function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
-  const sceneRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const isDesktop = useDesktop();
   // Hero 有任何一部分在视窗内才驱动 3D 渲染循环
@@ -84,45 +83,21 @@ export default function Hero() {
     return () => io.disconnect();
   }, []);
 
+  // 引入动画（标题逐行 3D 翻转 → 网格线生长 → 橙色擦除 → 3D 淡入 → marquee 进入）是
+  // globals.css 里的 enter-* keyframes，首帧即开始播放（#537）；各元素的 animationDelay
+  // 按原 GSAP 时间轴排好。这里只剩不参与入场的装饰循环。
   useGSAP(
     () => {
+      // 旋转的 ®：纯装饰的慢速循环，减少动态设置下停着不转（® 本身照常显示）。
       const mm = gsap.matchMedia();
-
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        // 引入动画：标题逐行 3D 翻转 → 网格线生长 → 橙色擦除 → 3D 淡入 → marquee 进入
-        const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-        tl.from("[data-hero-line]", {
-          rotateX: -90,
-          yPercent: 60,
-          opacity: 0,
-          transformOrigin: "50% 100%",
-          duration: 0.9,
-          stagger: 0.14,
-        })
-          .from(
-            "[data-hero-gridline]",
-            { scaleX: 0, transformOrigin: "left center", duration: 0.7, stagger: 0.06 },
-            "-=0.5"
-          )
-          .fromTo(
-            "[data-hero-wipe]",
-            { scaleX: 1 },
-            { scaleX: 0, transformOrigin: "right center", duration: 0.6, ease: "power2.inOut" },
-            "-=0.6"
-          )
-          .from(sceneRef.current, { opacity: 0, duration: 0.8 }, "-=0.3")
-          .from("[data-hero-marquee]", { yPercent: 100, duration: 0.5 }, "-=0.4");
+      mm.add(FINE_MOTION, () => {
+        gsap.to("[data-hero-reg]", {
+          rotate: 360,
+          duration: 20,
+          repeat: -1,
+          ease: "none",
+        });
       });
-
-      // 旋转的 ®（所有动效偏好下都允许，纯装饰且极慢）
-      gsap.to("[data-hero-reg]", {
-        rotate: 360,
-        duration: 20,
-        repeat: -1,
-        ease: "none",
-      });
-
-      return () => mm.revert();
     },
     { scope: sectionRef }
   );
@@ -143,12 +118,12 @@ export default function Hero() {
       <span aria-hidden className="absolute left-6 top-24 font-mono text-lg text-ink/40">+</span>
       <span aria-hidden className="absolute right-6 top-24 font-mono text-lg text-ink/40">+</span>
       <span aria-hidden className="absolute bottom-24 left-6 font-mono text-lg text-ink/40">+</span>
-      <span aria-hidden className="absolute bottom-24 right-6 font-mono text-lg text-accent">+</span>
+      <span aria-hidden className="absolute bottom-24 right-6 font-mono text-lg text-accent-text">+</span>
 
       {/* 3D 场景 / 静态替代：常驻 Hero，不做滚动淡出。WebGL 只对桌面端渲染，移动端统一用静态图纸 SVG */}
       <div
-        ref={sceneRef}
-        className="pointer-events-none absolute inset-y-0 right-0 w-full md:w-[55%]"
+        className="enter-fade pointer-events-none absolute inset-y-0 right-0 w-full md:w-[55%]"
+        style={{ animationDelay: "1.14s" }}
       >
         {!isDesktop || reduced ? (
           <div className="h-full w-full p-16 opacity-60">
@@ -160,13 +135,15 @@ export default function Hero() {
       </div>
 
       {/* 左侧文案 */}
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-5 pt-28 pb-16 md:px-10">
-        <div data-hero-gridline className="mb-8 h-px w-24 bg-accent" />
+      <div className="relative z-10 mx-auto flex w-full max-w-site flex-1 flex-col justify-center px-5 pt-28 pb-16 md:px-8">
+        <div data-hero-gridline className="enter-grow-x mb-8 h-px w-24 bg-accent" style={{ animationDelay: "0.68s" }} />
 
         <p className="mb-4 flex items-center gap-2 font-mono text-xs tracking-[0.35em] text-ink/60">
           HENU — STUDENT PLATFORM
+          {/* 旋转的 ® 只是装饰，读屏跳过；10px 只留给这类读屏隐藏的拉丁装饰。 */}
           <span
             data-hero-reg
+            aria-hidden
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-ink/30 text-[10px] text-ink/60"
           >
             ®
@@ -175,8 +152,12 @@ export default function Hero() {
 
         <div className="relative" style={{ perspective: "900px" }}>
           <h1 className="font-display text-[clamp(3.5rem,12vw,9rem)] leading-[0.95] font-bold tracking-tight">
-            <span data-hero-line className="block">HENUKIT</span>
-            <span data-hero-line className="mt-2 block text-[clamp(1.6rem,4.5vw,3.2rem)] font-medium">
+            <span data-hero-line className="enter-flip block">HENUKIT</span>
+            <span
+              data-hero-line
+              className="enter-flip mt-2 block text-[clamp(1.6rem,4.5vw,3.2rem)] font-medium"
+              style={{ animationDelay: "0.14s" }}
+            >
               保持联系，保持热爱
             </span>
           </h1>
@@ -184,12 +165,16 @@ export default function Hero() {
           <span
             data-hero-wipe
             aria-hidden
-            className="absolute inset-0 bg-accent"
-            style={{ transform: "scaleX(0)" }}
+            className="enter-wipe-x absolute inset-0 bg-accent"
+            style={{ transform: "scaleX(0)", animationDelay: "0.84s" }}
           />
         </div>
 
-        <p data-hero-line className="mt-8 max-w-md text-sm leading-7 text-ink/70 md:text-base">
+        <p
+          data-hero-line
+          className="enter-flip mt-8 max-w-md text-sm leading-7 text-ink/70 md:text-base"
+          style={{ animationDelay: "0.28s" }}
+        >
           资料库、智能刷题、美食榜、校园互助与求职雷达，
           五个模块，陪你处理校园日常。
         </p>
@@ -210,14 +195,14 @@ export default function Hero() {
           ))}
         </nav>
 
-        <div data-hero-gridline className="mt-8 h-px w-full max-w-md bg-line" />
-        <p className="mt-3 font-mono text-[10px] tracking-[0.3em] text-ink/40">
-          SCROLL / 向下滚动查看模块 01—05
+        <div data-hero-gridline className="enter-grow-x mt-8 h-px w-full max-w-md bg-line" style={{ animationDelay: "0.74s" }} />
+        <p className="mt-3 font-mono text-xs text-ink/60">
+          <span className="tracking-[0.3em]">SCROLL</span> / 向下滚动查看模块 01—05
         </p>
       </div>
 
       {/* 底部橙色 marquee */}
-      <div data-hero-marquee className="relative z-10">
+      <div className="enter-slide-up relative z-10" style={{ animationDelay: "1.54s" }}>
         <Marquee items={MARQUEE_ITEMS} />
       </div>
     </section>

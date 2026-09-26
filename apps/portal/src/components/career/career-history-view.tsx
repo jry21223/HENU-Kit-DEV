@@ -24,7 +24,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="anonymous" className="mt-10 max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           SIGN IN REQUIRED
         </p>
@@ -37,7 +37,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <Link
           data-enter
           href="/account/login?next=/career/history"
-          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
           登录后查看 →
         </Link>
@@ -49,23 +49,25 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="free" className="mt-10 max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
-          LIFETIME REQUIRED
+          LIFETIME MEMBERSHIP
         </p>
+        {/* 按词组换行：窄屏上不把“会员”拆到两行（#549）。 */}
         <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
-          扫描历史属于 Lifetime VIP 权益
+          <span className="inline-block">扫描历史属于</span>
+          <span className="inline-block">终身会员权益</span>
         </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
-          当前账户不是 Lifetime VIP 会员，无法查看求职雷达的扫描历史。
+          当前账户还不是终身会员，无法查看求职雷达的扫描历史。
           开通后即可发起扫描并查看每次任务的记录。
         </p>
         <Link
           data-enter
           href="/account/membership"
-          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
-          ¥9.9 开通 Lifetime VIP →
+          ¥9.9 开通终身会员 →
         </Link>
       </section>
     );
@@ -75,7 +77,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="no-profile" className="mt-10 max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           PROFILE REQUIRED
         </p>
@@ -88,7 +90,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <Link
           data-enter
           href="/account/profile"
-          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
           去设置求职画像 →
         </Link>
@@ -104,7 +106,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         className="mt-10 max-w-2xl border border-accent px-5 py-6"
       >
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           HISTORY UNAVAILABLE
         </p>
@@ -112,10 +114,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           扫描历史暂时不可用
         </h1>
         <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>
-        <p className="mt-3 text-sm leading-6 text-ink/60">
-          扫描历史读取失败时，不会以本地或会话数据替代真实记录。
-        </p>
-        <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest text-ink transition-colors hover:bg-ink hover:text-paper" />
+        <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs text-ink transition-colors hover:bg-ink hover:text-paper" />
       </section>
     );
   }
@@ -126,7 +125,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="empty" className="mt-10">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           NO SCAN RECORDS
         </p>
@@ -139,7 +138,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           </p>
           <Link
             href="/career"
-            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             去发起扫描 →
           </Link>
@@ -151,7 +150,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
   return (
     <section data-career-history-state="ready" className="mt-10">
       <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        <span className="text-accent">R-02</span>
+        <span className="text-accent-text">R-02</span>
         <span className="mx-2">/</span>
         SCAN HISTORY
       </p>
@@ -167,31 +166,31 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                   <span
                     className={
                       search.status === "failed"
-                        ? "border border-accent/60 px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent"
+                        ? "border border-accent/60 px-2 py-0.5 font-mono text-xs text-accent-text"
                         : search.status === "completed"
-                          ? "border border-ink/40 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/70"
-                          : "border border-ink/30 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/60"
+                          ? "border border-ink/40 px-2 py-0.5 font-mono text-xs text-ink/70"
+                          : "border border-ink/30 px-2 py-0.5 font-mono text-xs text-ink/60"
                     }
                   >
                     {careerSearchStatusLabel(search.status)}
                   </span>
                   {search.status === "running" && search.stage ? (
-                    <span className="font-mono text-[10px] tracking-wider text-ink/40">
+                    <span className="font-mono text-xs text-ink/60">
                       {careerScanStageLabel(search.stage)}
                     </span>
                   ) : null}
-                  <span className="font-mono text-[10px] tracking-wider text-ink/40">
+                  <span className="font-mono text-xs tracking-wider text-ink/60">
                     #{search.id.slice(0, 8)}
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs leading-5 text-ink/55">
+                <p className="mt-1.5 text-xs leading-5 text-ink/60">
                   {formatCareerSearchTime(search.created_at)}
                   {careerDigestStatusLabel(search)
                     ? ` · ${careerDigestStatusLabel(search)}`
                     : ""}
                 </p>
                 {search.result ? (
-                  <div className="mt-1 text-xs leading-5 text-ink/55">
+                  <div className="mt-1 text-xs leading-5 text-ink/60">
                     <p>{search.result.source_count} 个来源 · {search.result.job_count} 个岗位</p>
                     {search.result.sources?.length ? (
                       <p className="mt-1">
@@ -202,11 +201,11 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                     ) : null}
                     {search.result.jobs.length ? (
                       <div className="mt-2">
-                        <p className="font-mono text-[10px] tracking-wider text-ink/40">岗位预览（最多 3 个）</p>
+                        <p className="font-mono text-xs text-ink/60">岗位预览（最多 3 个）</p>
                         <ul className="mt-1 space-y-1">
                           {search.result.jobs.map((job) => (
                             <li key={`${job.source_key}:${job.url}`}>
-                              <a href={job.url} target="_blank" rel="noreferrer" className="hover:text-accent hover:underline">
+                              <a href={job.url} target="_blank" rel="noreferrer" className="hover:text-accent-text hover:underline">
                                 {job.title} · {job.company} · 相关度 {job.match_score}
                               </a>
                             </li>
@@ -217,22 +216,22 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                   </div>
                 ) : null}
                 {search.status === "failed" ? (
-                  <p className="mt-1 text-xs leading-5 text-ink/50">
+                  <p className="mt-1 text-xs leading-5 text-ink/60">
                     {careerScanFailedMessage()}。可在扫描页重新发起。
                   </p>
                 ) : null}
               </div>
               <Link
                 href={`/career?search=${encodeURIComponent(search.id)}`}
-                className="shrink-0 font-mono text-[11px] tracking-widest text-ink/60 transition-colors hover:text-accent"
+                className="shrink-0 font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
               >
                 查看详情 →
               </Link>
             </li>
           ))}
         </ul>
-        <p data-enter className="mt-4 font-mono text-[10px] tracking-[0.15em] text-ink/40">
-          记录来自服务端持久化的扫描任务，不展示本地或会话数据
+        <p data-enter className="mt-4 font-mono text-xs text-ink/60">
+          记录保存在你的账户中，换设备登录也能查看
         </p>
       </div>
     </section>

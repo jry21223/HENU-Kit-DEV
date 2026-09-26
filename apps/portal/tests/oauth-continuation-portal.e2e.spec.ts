@@ -70,7 +70,11 @@ defineOAuthContinuationJourney({
     { path: "/practice/favorites", readySelector: "main" },
     { path: "/practice/favorites/sixiu", readySelector: "main" },
     { path: "/practice/leaderboard", readySelector: "main" },
-    { path: "/practice/lists/ds-final", readySelector: "main" },
+    {
+      path: "/practice/lists/ds-final",
+      expectedPath: "/practice",
+      readySelector: "main",
+    },
     { path: "/practice/quiz", readySelector: "main" },
     { path: "/practice/stats", readySelector: "main" },
   ],

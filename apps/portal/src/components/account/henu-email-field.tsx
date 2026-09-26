@@ -19,6 +19,7 @@ export function HenuEmailField({
   onChange,
   disabled,
   autoFocus,
+  errorId,
 }: {
   id?: string;
   label?: string;
@@ -27,6 +28,8 @@ export function HenuEmailField({
   onChange: (localPart: string) => void;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** Id of the error shown under this field; marks the input invalid and reads the error with it. */
+  errorId?: string;
 }) {
   const full = value ? toHenuEmail(value) : "";
 
@@ -53,17 +56,18 @@ export function HenuEmailField({
           value={value}
           onChange={(e) => onChange(toHenuLocalPart(e.target.value))}
           className="border-0 focus:border-transparent"
-          aria-describedby={`${id}-suffix`}
+          aria-describedby={errorId ? `${id}-suffix ${errorId}` : `${id}-suffix`}
+          aria-invalid={errorId ? true : undefined}
         />
         <span
           id={`${id}-suffix`}
-          className="shrink-0 select-none pb-2 pl-1 font-mono text-sm tracking-wide text-ink/45"
+          className="shrink-0 select-none pb-2 pl-1 font-mono text-sm tracking-wide text-ink/60"
         >
           {HENU_EMAIL_SUFFIX}
         </span>
       </div>
       {full ? (
-        <p className="mt-1 font-mono text-[10px] tracking-wider text-ink/35">
+        <p className="mt-1 font-mono text-xs text-ink/60">
           将发送至 {full}
         </p>
       ) : null}

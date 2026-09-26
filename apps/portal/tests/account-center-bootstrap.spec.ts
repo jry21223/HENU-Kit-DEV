@@ -43,8 +43,39 @@ test("Account Center requests a login code through the bounded status contract",
   await page.getByRole("button", { name: "发送验证码" }).click();
 
   await expect(page.getByText("验证码已进入发送队列（student@henu.edu.cn），请查收学校邮箱。")).toBeVisible();
+  // 发出验证码的结果由 status 告诉读屏软件，焦点不用离开发送按钮。
+  await expect(page.getByRole("status").filter({ hasText: "验证码已进入发送队列" })).toHaveText(
+    "验证码已进入发送队列（student@henu.edu.cn），请查收学校邮箱。"
+  );
   expect(bootstrapCalls).toBe(1);
   expect(codeCalls).toBe(1);
+});
+
+test("Account Center announces field errors and ties them to their inputs", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.clear());
+  await page.goto("/account/login", { waitUntil: "networkidle" });
+
+  // 验证码登录，什么都没填就提交：两条错误都作为 alert 读出，并挂在各自的输入框上。
+  await page.getByRole("button", { name: "登 录" }).click();
+  const email = page.getByLabel("学校邮箱");
+  const code = page.getByLabel("邮箱验证码");
+  // Next 自带的路由播报也是 role="alert"，只看正文里的提示。
+  const alerts = page.locator("main").getByRole("alert");
+  await expect(alerts).toHaveText(["请输入邮箱前缀（自动补全 @henu.edu.cn）", "请输入 6 位数字验证码"]);
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await expect(email).toHaveAccessibleDescription(/请输入邮箱前缀（自动补全 @henu\.edu\.cn）/);
+  await expect(code).toHaveAttribute("aria-invalid", "true");
+  await expect(code).toHaveAccessibleDescription("请输入 6 位数字验证码");
+
+  // 密码登录的字段错误同样挂在密码框上；改对的字段不再标为无效。
+  await page.getByRole("button", { name: "密码登录" }).click();
+  await email.fill("student");
+  await page.getByRole("button", { name: "登 录" }).click();
+  const password = page.getByLabel("密码 / PASSWORD");
+  await expect(alerts).toHaveText(["密码至少 10 个字符"]);
+  await expect(password).toHaveAttribute("aria-invalid", "true");
+  await expect(password).toHaveAccessibleDescription("密码至少 10 个字符");
+  await expect(email).not.toHaveAttribute("aria-invalid", "true");
 });
 
 test("Account Center shows actionable Bootstrap failures without backend details", async ({

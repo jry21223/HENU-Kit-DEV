@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import SiteShell from "@/components/site-shell";
 
 export const metadata: Metadata = {
   referrer: "no-referrer",
@@ -8,5 +9,5 @@ export const metadata: Metadata = {
 export default function AccountAuthLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  return children;
+  return <SiteShell>{children}</SiteShell>;
 }

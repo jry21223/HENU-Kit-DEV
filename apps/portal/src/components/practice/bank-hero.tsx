@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import dynamic from "next/dynamic";
 import { REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
@@ -124,12 +124,15 @@ export default function BankHero({
   onQueryChange,
   catalogMode = false,
   masteryState,
+  searchRef,
 }: {
   query: string;
   onQueryChange: (v: string) => void;
   /** Alters catalog copy only; Hero facts always remain server-derived. */
   catalogMode?: boolean;
   masteryState: PersonalPracticeStatsState;
+  /** 搜索区：题库页清除搜索后把焦点交给它。 */
+  searchRef?: Ref<HTMLDivElement>;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const [active, setActive] = useState(true);
@@ -146,6 +149,7 @@ export default function BankHero({
     [mastery]
   );
 
+  // 左栏说明只讲两个计数：lg 以下结构图隐藏（#542），手机上不能指向看不到的图谱。
   const stateMessage = useMemo(() => {
     switch (masteryState.status) {
       case "disabled":
@@ -157,11 +161,18 @@ export default function BankHero({
       case "error":
         return "学习数据暂时不可用，请稍后重试。";
       case "empty":
-        return "还没有学习记录，从第一题开始建立你的图谱。";
+        return "还没有学习记录，完成第一题后开始统计。";
       case "ready":
-        return "图谱根据你的答题记录生成。";
+        return "作答数和正确率根据你的答题记录计算。";
     }
   }, [masteryState.status]);
+  // 图例在结构图里，可以直接说图谱。
+  const figureMessage =
+    masteryState.status === "ready"
+      ? "图谱根据你的答题记录生成。"
+      : masteryState.status === "empty"
+        ? "还没有学习记录，从第一题开始建立你的图谱。"
+        : stateMessage;
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -184,7 +195,7 @@ export default function BankHero({
     () => false
   );
 
-  // 知识体 3D 只对桌面端渲染（与 lg:grid-cols-2 布局一致）；移动端统一用静态 SVG
+  // 知识体 3D 只对桌面端渲染（与 lg:grid-cols-2 布局一致）；lg 以下整块图纸隐藏（#542）
   const isDesktop = useSyncExternalStore(
     (onChange) => {
       const mq = window.matchMedia("(min-width: 1024px)");
@@ -199,42 +210,66 @@ export default function BankHero({
     <section
       ref={sectionRef}
       data-block
-      className="relative flex min-h-[68vh] flex-col overflow-hidden"
+      className="relative flex flex-col overflow-hidden lg:min-h-[68vh]"
     >
-      <div className="mx-auto grid w-full max-w-[1440px] flex-1 lg:grid-cols-2">
-        <div className="flex flex-col justify-center px-5 py-14 md:px-8 lg:pr-12">
-          <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">01</span>
+      <div className="mx-auto grid w-full max-w-site flex-1 lg:grid-cols-2">
+        <div className="flex flex-col justify-center px-5 py-6 md:px-8 lg:py-14 lg:pr-12">
+          {/* 入场和子站 Hero 一样用 globals.css 的 enter-rise，首帧即开始播放、不等水合，
+              也不会在水合后隐藏重播（#537）；错峰沿用原 usePageEnter 的 0.05s 起、每块 0.05s。 */}
+          <p
+            data-hero-title
+            className="enter-rise font-mono text-xs tracking-[0.3em] text-ink/60"
+            style={{ animationDelay: "0.05s" }}
+          >
+            <span className="text-accent-text">01</span>
             <span className="mx-2">/</span>
             QUESTION BANK
           </p>
           <h1
-            data-enter
-            className="mt-4 font-display text-6xl font-bold tracking-tight md:text-7xl"
+            data-hero-title
+            className="enter-rise mt-3 font-display text-4xl font-bold tracking-tight md:text-7xl lg:mt-4"
+            style={{ animationDelay: "0.1s" }}
           >
             {LEVEL_LABELS.practiceBank}
           </h1>
-          <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
+          <p
+            data-hero-title
+            className="enter-rise mt-3 max-w-md text-sm leading-7 text-ink/70 lg:mt-5"
+            style={{ animationDelay: "0.15s" }}
+          >
             {catalogMode
-              ? "题库目录来自练习服务；掌握度根据已确认的作答结果计算。"
-              : "按学院、专业、科目逐级定位题单；掌握度只消费服务端确认的作答事实，在数据尚未切换或不可用时保持诚实的空态。"}
+              ? "浏览题库，选一组开始练习；掌握度根据你的答题记录计算。"
+              : "题库暂未开放；掌握度根据你的答题记录计算，没有记录时不显示估算值。"}
           </p>
 
-          <div data-enter className="mt-8 w-full max-w-md">
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
-              SEARCH / 搜索科目
+          <div
+            ref={searchRef}
+            data-hero-title
+            role="search"
+            aria-label="题库搜索"
+            tabIndex={-1}
+            className="enter-rise mt-5 w-full max-w-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent lg:mt-8"
+            style={{ animationDelay: "0.2s" }}
+          >
+            <label htmlFor="practice-query" className="mb-1 block font-mono text-xs text-ink/60">
+              <span className="tracking-[0.25em]">SEARCH</span> / 搜索科目
             </label>
             <input
+              id="practice-query"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="如：数据结构 / 高等数学"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/30 focus:border-accent"
+              className="h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-accent"
             />
           </div>
 
-          <div data-enter className="mt-10 grid max-w-md grid-cols-2 gap-4">
+          <div
+            data-hero-title
+            className="enter-rise mt-5 grid max-w-md grid-cols-2 gap-4 lg:mt-10"
+            style={{ animationDelay: "0.25s" }}
+          >
             <div className="border border-line px-4 py-3">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
+              <p className="font-mono text-xs text-ink/60">
                 已确认作答
               </p>
               <p className="mt-1 font-display text-3xl font-bold tabular-nums">
@@ -242,7 +277,7 @@ export default function BankHero({
               </p>
             </div>
             <div className="border border-line px-4 py-3">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
+              <p className="font-mono text-xs text-ink/60">
                 正确率
               </p>
               <p className="mt-1 font-display text-3xl font-bold tabular-nums">
@@ -251,32 +286,34 @@ export default function BankHero({
             </div>
             <p
               data-testid="practice-hero-stats-state"
-              className="col-span-2 font-mono text-[10px] leading-5 text-ink/50"
+              className="col-span-2 font-mono text-xs leading-5 text-ink/60"
             >
               {stateMessage}
             </p>
           </div>
         </div>
 
-        {/* 右：掌握度驱动的知识体 3D */}
-        <div className="bg-blueprint relative min-h-72 border-t border-line lg:border-l lg:border-t-0">
+        {/* 右：掌握度驱动的知识体 3D；lg 以下隐藏，手机首屏留给搜索和题库（#542） */}
+        <div className="bg-blueprint relative hidden min-h-72 border-line lg:block lg:border-l">
           <span
             aria-hidden
-            className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
+            className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-xs text-ink/40"
           >
-            FIG.01 知识点结构 / KNOWLEDGE MESH
+            <span className="tracking-[0.25em]">FIG.01</span> 知识点结构 /{" "}
+            <span className="tracking-[0.25em]">KNOWLEDGE MESH</span>
           </span>
           <span
             aria-hidden
-            className="absolute right-4 top-4 z-10 font-mono text-accent"
+            className="absolute right-4 top-4 z-10 font-mono text-accent-text"
           >
             +
           </span>
 
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
-            <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
-              <li className="py-1 font-mono text-[10px] leading-5 tracking-wide text-ink/50">
-                {stateMessage}
+            {/* 图例压在 3D 知识体上，底色不透明：半透明时底下的深色块会把小字的对比度拉到 AA 以下。 */}
+            <ul className="border border-line bg-paper px-2.5 py-1.5">
+              <li className="py-1 font-mono text-xs leading-5 text-ink/60">
+                {figureMessage}
               </li>
               {ringSubjects.map((s, i) => {
                 const weak = s.value < 60;
@@ -284,10 +321,10 @@ export default function BankHero({
                 return (
                   <li
                     key={s.label}
-                    className="flex items-center gap-2 py-0.5 font-mono text-[10px] tracking-wide"
+                    className="flex items-center gap-2 py-0.5 font-mono text-xs"
                   >
-                    <span className="w-5 shrink-0 text-ink/35">R{i + 1}</span>
-                    <span className="w-16 shrink-0 truncate text-ink/50">
+                    <span className="w-5 shrink-0 text-ink/60">R{i + 1}</span>
+                    <span className="w-16 shrink-0 truncate text-ink/60">
                       {s.label}
                     </span>
                     <span
@@ -305,7 +342,7 @@ export default function BankHero({
                     <span
                       className={cn(
                         "w-9 shrink-0 text-right tabular-nums",
-                        weak ? "text-accent" : "text-ink/65"
+                        weak ? "text-accent-text" : "text-ink/65"
                       )}
                     >
                       {t}%
@@ -314,7 +351,7 @@ export default function BankHero({
                 );
               })}
               {ringSubjects.length > 0 ? (
-                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
+                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-xs text-ink/60">
                   <span>
                     核 {mastery.accuracy}% · 连续 {mastery.streakDays}d · 块{" "}
                     {cubeCount}
@@ -336,10 +373,10 @@ export default function BankHero({
       </div>
 
       <div className="relative border-t border-line py-2.5">
-        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/50 md:px-8">
-          <span className="text-accent">DATA</span>
+        <div className="mx-auto flex max-w-site items-center gap-3 px-5 font-mono text-xs tracking-[0.2em] text-ink/60 md:px-8">
+          <span className="text-accent-text">DATA</span>
           <span aria-hidden>+</span>
-          <span>REAL PRACTICE FACTS ONLY</span>
+          <span className="tracking-normal">来自你的答题记录</span>
         </div>
       </div>
     </section>

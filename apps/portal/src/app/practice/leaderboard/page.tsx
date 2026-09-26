@@ -67,19 +67,19 @@ export default function LeaderboardPage() {
   };
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 md:py-16">
+    <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div className="max-w-4xl">
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">RANK</span>
+          <span className="text-accent-text">RANK</span>
           <span className="mx-2">/</span>
           VERIFIED ATTEMPTS
         </p>
         <h1 className="mt-3 font-display text-5xl font-bold tracking-tight md:text-6xl">排行榜</h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
-          只统计练习服务确认的正确作答；重复提交不会重复计分，公开结果不包含邮箱或账户标识。
+          按累计答对次数排名，重复提交不会重复计分；榜单只显示展示名，不显示邮箱或账号。
         </p>
 
-        {enabled && <div className="mt-8 flex gap-2" aria-label="排行榜周期">
+        {enabled && <div className="mt-8 flex gap-2" role="group" aria-label="排行榜周期">
           {periods.map((item) => (
             <button
               key={item.value}
@@ -87,7 +87,7 @@ export default function LeaderboardPage() {
               aria-pressed={period === item.value}
               onClick={() => selectPeriod(item.value)}
               className={cn(
-                "border px-4 py-2 font-mono text-xs tracking-widest transition-colors",
+                "min-h-11 border px-4 py-2 font-mono text-xs transition-colors",
                 period === item.value
                   ? "border-ink bg-ink text-paper"
                   : "border-ink/25 hover:border-ink"
@@ -100,9 +100,9 @@ export default function LeaderboardPage() {
 
         <section className="mt-8" data-testid="practice-leaderboard">
           {state.status === "disabled" && (
-            <EmptyBlock label="排行榜数据暂未开放" />
+            <EmptyBlock label="排行榜数据暂未开放" action={{ label: "去刷题", href: "/practice" }} />
           )}
-          {state.status === "loading" && <LoadingBlock label="正在读取真实排行榜" />}
+          {state.status === "loading" && <LoadingBlock label="正在读取排行榜" />}
           {state.status === "error" && (
             <ErrorBanner
               message={state.message}
@@ -113,7 +113,7 @@ export default function LeaderboardPage() {
             />
           )}
           {state.status === "ready" && state.data.entries.length === 0 && (
-            <EmptyBlock label="当前周期尚无公开排行事实" />
+            <EmptyBlock label="还没有人上榜" action={{ label: "去刷题", href: "/practice" }} />
           )}
           {state.status === "ready" && state.data.entries.length > 0 && (
             <ol

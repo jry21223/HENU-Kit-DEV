@@ -57,7 +57,7 @@ export default function MagneticButton({
       onMouseMove={onMove}
       onMouseLeave={onLeave}
       className={cn(
-        "group relative inline-flex w-fit items-center gap-3 overflow-hidden border px-7 py-3.5 font-mono text-sm tracking-widest",
+        "group relative inline-flex w-fit items-center gap-3 overflow-hidden border px-7 py-3.5 font-mono text-sm",
         dark
           ? "border-line-dark text-paper"
           : "border-ink/30 text-ink",
@@ -68,12 +68,13 @@ export default function MagneticButton({
         aria-hidden
         className="absolute inset-0 translate-y-full bg-accent transition-transform duration-300 ease-out group-hover:translate-y-0"
       />
-      <span className="relative z-10 transition-colors duration-300 group-hover:text-paper">
+      {/* 橙色填充滑入后文字转墨色：纸白字在强调橙上只有 2.92:1。 */}
+      <span className="relative z-10 transition-colors duration-300 group-hover:text-ink">
         {children}
       </span>
       <span
         aria-hidden
-        className="relative z-10 transition-all duration-300 group-hover:translate-x-1 group-hover:text-paper"
+        className="relative z-10 transition-all duration-300 group-hover:translate-x-1 group-hover:text-ink"
       >
         →
       </span>

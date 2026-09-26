@@ -234,14 +234,14 @@ export default function TicketsPage() {
     <div>
       <section data-enter className="flex flex-wrap items-end justify-between gap-4 border-b border-ink pb-5">
         <div>
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/55">
-            <span className="text-accent">A-05</span>
+          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            <span className="text-accent-text">A-05</span>
             <span className="mx-2">/</span>
             SUPPORT TICKETS
           </p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">工单</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-            这里的每条记录都来自持久化客服工单；提交或追问失败时不会显示本地成功结果。
+            这里显示你提交的工单和客服的回复。
           </p>
         </div>
         <button
@@ -250,7 +250,7 @@ export default function TicketsPage() {
             setCreateOpen((open) => !open);
             setCreateError("");
           }}
-          className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           aria-expanded={createOpen}
         >
           {createOpen ? "收起表单" : "新建工单"}
@@ -266,7 +266,7 @@ export default function TicketsPage() {
           <h2 className="font-display text-xl font-bold">提交问题</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-[1fr_12rem]">
             <label className="block">
-              <span className="font-mono text-[10px] tracking-[0.2em] text-ink/50">标题</span>
+              <span className="font-mono text-xs text-ink/60">标题</span>
               <input
                 required
                 maxLength={160}
@@ -275,12 +275,12 @@ export default function TicketsPage() {
                   resetCreateKeyOnEdit();
                   setTitle(event.target.value);
                 }}
-                className="mt-2 w-full border-b border-ink/30 bg-transparent px-0 py-2 text-sm outline-none transition-colors focus:border-ink"
+                className="mt-2 w-full border-b border-ink/30 bg-transparent px-0 py-2 text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-ink"
                 placeholder="简要说明你遇到的问题"
               />
             </label>
             <label className="block">
-              <span className="font-mono text-[10px] tracking-[0.2em] text-ink/50">类别</span>
+              <span className="font-mono text-xs text-ink/60">类别</span>
               <select
                 value={category}
                 onChange={(event) => {
@@ -298,7 +298,7 @@ export default function TicketsPage() {
             </label>
           </div>
           <label className="mt-5 block">
-            <span className="font-mono text-[10px] tracking-[0.2em] text-ink/50">问题说明</span>
+            <span className="font-mono text-xs text-ink/60">问题说明</span>
             <textarea
               required
               maxLength={5000}
@@ -307,12 +307,12 @@ export default function TicketsPage() {
                 resetCreateKeyOnEdit();
                 setBody(event.target.value);
               }}
-              className="mt-2 min-h-32 w-full resize-y border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none transition-colors focus:border-ink"
+              className="mt-2 min-h-32 w-full resize-y border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none transition-colors placeholder:text-ink/60 focus:border-ink"
               placeholder="请写明发生时间、页面和复现步骤；不要在工单中提交密码或验证码。"
             />
           </label>
           {createError ? (
-            <p role="alert" className="mt-4 text-sm leading-6 text-accent">
+            <p role="alert" className="mt-4 text-sm leading-6 text-accent-text">
               {createError}
             </p>
           ) : null}
@@ -320,7 +320,7 @@ export default function TicketsPage() {
             <button
               type="submit"
               disabled={createPending}
-              className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink disabled:cursor-wait disabled:opacity-50"
             >
               {createPending ? "正在提交…" : "提交工单"}
             </button>
@@ -328,7 +328,7 @@ export default function TicketsPage() {
               type="button"
               onClick={() => setCreateOpen(false)}
               disabled={createPending}
-              className="inline-flex min-h-11 items-center justify-center border border-ink/35 px-4 py-2 font-mono text-xs tracking-widest text-ink/65 transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center border border-ink/35 px-4 py-2 font-mono text-xs text-ink/65 transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
             >
               取消
             </button>
@@ -340,15 +340,15 @@ export default function TicketsPage() {
         <section
           data-account-tickets-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          TICKETS LOADING<span className="animate-pulse text-accent">…</span>
+          TICKETS LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
       {listState.kind === "error" ? (
         <section data-account-tickets-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">SUPPORT TICKETS UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">SUPPORT TICKETS UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{listState.message}</p>
           <button
             type="button"
@@ -356,7 +356,7 @@ export default function TicketsPage() {
               setListState({ kind: "loading" });
               loadTickets();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -369,7 +369,7 @@ export default function TicketsPage() {
             {tickets.length === 0 ? (
               <div data-account-tickets-empty className="border-b border-line py-8">
                 <p className="font-display text-xl font-bold">暂无工单</p>
-                <p className="mt-2 text-sm leading-6 text-ink/60">遇到需要人工处理的问题时，可以新建一条持久化工单。</p>
+                <p className="mt-2 text-sm leading-6 text-ink/60">遇到需要人工处理的问题时，可以新建一条工单。</p>
               </div>
             ) : (
               tickets.map((ticket) => {
@@ -386,12 +386,13 @@ export default function TicketsPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <p className="min-w-0 truncate font-display text-lg font-bold">{ticket.title}</p>
-                      <span className="shrink-0 border border-ink/30 px-2 py-1 font-mono text-[10px] tracking-wider text-ink/65">
+                      <span className="shrink-0 border border-ink/30 px-2 py-1 font-mono text-xs text-ink/65">
                         {statusLabel(ticket.status)}
                       </span>
                     </div>
-                    <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/45">{ticket.reference}</p>
-                    <p className="mt-2 font-mono text-[10px] text-ink/45">最后更新 {formatTimestamp(ticket.updated_at)}</p>
+                    {/* 行悬停与选中时叠 5% 墨色，灰字至少 ink/65。 */}
+                    <p className="mt-2 font-mono text-xs tracking-[0.12em] text-ink/65">{ticket.reference}</p>
+                    <p className="mt-2 font-mono text-xs text-ink/65">最后更新 {formatTimestamp(ticket.updated_at)}</p>
                   </button>
                 );
               })
@@ -437,27 +438,27 @@ function TicketDetail({
 }) {
   if (state.kind === "idle") {
     return (
-      <aside data-account-ticket-detail-state="idle" className="border border-line p-6 text-sm leading-6 text-ink/55">
+      <aside data-account-ticket-detail-state="idle" className="border border-line p-6 text-sm leading-6 text-ink/60">
         从左侧选择一条工单，即可查看完整记录并补充说明。
       </aside>
     );
   }
   if (state.kind === "loading") {
     return (
-      <aside data-account-ticket-detail-state="loading" className="border border-line p-6 font-mono text-xs tracking-[0.16em] text-ink/50">
-        TICKET DETAIL LOADING<span className="animate-pulse text-accent">…</span>
+      <aside data-account-ticket-detail-state="loading" className="border border-line p-6 font-mono text-xs tracking-[0.16em] text-ink/60">
+        TICKET DETAIL LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </aside>
     );
   }
   if (state.kind === "error") {
     return (
       <aside data-account-ticket-detail-state="error" role="alert" className="border border-accent p-6">
-        <p className="font-mono text-xs tracking-[0.14em] text-accent">TICKET DETAIL UNAVAILABLE</p>
+        <p className="font-mono text-xs tracking-[0.14em] text-accent-text">TICKET DETAIL UNAVAILABLE</p>
         <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
         <button
           type="button"
           onClick={onRetryDetail}
-          className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
           重新加载
         </button>
@@ -470,22 +471,22 @@ function TicketDetail({
     <aside data-account-ticket-detail-state="success" className="border border-ink p-5 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] tracking-[0.15em] text-ink/45">{ticket.reference}</p>
+          <p className="font-mono text-xs tracking-[0.15em] text-ink/60">{ticket.reference}</p>
           <h2 className="mt-2 font-display text-2xl font-bold">{ticket.title}</h2>
         </div>
-        <span className="border border-accent px-2 py-1 font-mono text-[10px] tracking-wider text-accent">
+        <span className="border border-accent px-2 py-1 font-mono text-xs text-accent-text">
           {statusLabel(ticket.status)}
         </span>
       </div>
-      <p className="mt-3 font-mono text-[10px] tracking-[0.1em] text-ink/45">版本 {ticket.version} · 更新于 {formatTimestamp(ticket.updated_at)}</p>
+      <p className="mt-3 font-mono text-xs text-ink/60">版本 {ticket.version} · 更新于 {formatTimestamp(ticket.updated_at)}</p>
 
       <div className="mt-6 space-y-3 border-y border-line py-5">
         {messages.length === 0 ? (
-          <p className="text-sm text-ink/55">暂无消息记录。</p>
+          <p className="text-sm text-ink/60">暂无消息记录。</p>
         ) : (
           messages.map((message) => (
             <article key={message.id} className="border-l-2 border-ink/20 pl-4">
-              <p className="font-mono text-[10px] tracking-[0.15em] text-ink/50">
+              <p className="font-mono text-xs text-ink/60">
                 {message.author_kind === "operator" ? "客服" : "我"} · {formatTimestamp(message.created_at)}
               </p>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink/80">{message.body}</p>
@@ -495,7 +496,7 @@ function TicketDetail({
       </div>
 
       {events.length > 0 ? (
-        <ul className="mt-5 space-y-2 border-b border-line pb-5 font-mono text-[10px] leading-5 text-ink/50">
+        <ul className="mt-5 space-y-2 border-b border-line pb-5 font-mono text-xs leading-5 text-ink/60">
           {events.map((event) => (
             <li key={event.id}>
               {event.kind === "reopened" ? "用户重新打开工单" : "工单状态更新"}：{statusLabel(event.from_status)} → {statusLabel(event.to_status)} · {formatTimestamp(event.created_at)}
@@ -506,25 +507,25 @@ function TicketDetail({
 
       <form onSubmit={onSubmitFollowUp} className="mt-6">
         <label className="block">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-ink/50">补充说明</span>
+          <span className="font-mono text-xs text-ink/60">补充说明</span>
           <textarea
             required
             maxLength={5000}
             value={followUp}
             onChange={(event) => onFollowUpChange(event.target.value)}
-            className="mt-2 min-h-28 w-full resize-y border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none transition-colors focus:border-ink"
+            className="mt-2 min-h-28 w-full resize-y border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none transition-colors placeholder:text-ink/60 focus:border-ink"
             placeholder={ticket.status === "resolved" ? "若问题仍未解决，可补充后重新打开工单。" : "补充你的问题或最新情况。"}
           />
         </label>
         {followUpError ? (
-          <p role="alert" className="mt-3 text-sm leading-6 text-accent">
+          <p role="alert" className="mt-3 text-sm leading-6 text-accent-text">
             {followUpError}
           </p>
         ) : null}
         <button
           type="submit"
           disabled={followUpPending}
-          className="mt-4 inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-50"
+          className="mt-4 inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink disabled:cursor-wait disabled:opacity-50"
         >
           {followUpPending ? "正在提交…" : "提交补充"}
         </button>

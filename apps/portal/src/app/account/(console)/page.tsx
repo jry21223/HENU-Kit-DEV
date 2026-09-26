@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useAccountConsoleSession,
@@ -68,10 +69,10 @@ function AccountOverviewContent({
       : "账户状态加载中";
   const cards = data
     ? [
-        { label: "积分余额", value: String(data.points_balance), mono: "C-01" },
-        { label: "会员", value: membershipLabel, mono: "C-02" },
-        { label: "未读通知", value: String(data.unread_notification_count), mono: "C-03" },
-        { label: "进行中工单", value: String(data.open_ticket_count), mono: "C-04" },
+        { label: "积分余额", value: String(data.points_balance), mono: "C-01", href: "/account/wallet", page: "积分钱包" },
+        { label: "会员", value: membershipLabel, mono: "C-02", href: "/account/membership", page: "会员权益" },
+        { label: "未读通知", value: String(data.unread_notification_count), mono: "C-03", href: "/account/notifications", page: "系统通知" },
+        { label: "进行中工单", value: String(data.open_ticket_count), mono: "C-04", href: "/account/tickets", page: "工单" },
       ]
     : [];
 
@@ -83,9 +84,9 @@ function AccountOverviewContent({
         </span>
         <div className="min-w-0">
           <h1 className="truncate font-display text-2xl font-bold">{displayName}</h1>
-          <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/50">ACCOUNT PORTFOLIO</p>
+          <p className="mt-1 font-mono text-xs text-ink/60">账户概览</p>
         </div>
-        <span className="ml-auto shrink-0 border border-accent px-2 py-1 font-mono text-[10px] tracking-widest text-accent">
+        <span className="ml-auto shrink-0 border border-accent px-2 py-1 font-mono text-xs text-accent-text">
           {membershipLabel}
         </span>
       </section>
@@ -94,9 +95,9 @@ function AccountOverviewContent({
         <section
           data-account-summary-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs text-ink/60"
         >
-          ACCOUNT PORTFOLIO LOADING<span className="animate-pulse text-accent">…</span>
+          正在读取账户概览<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
@@ -106,15 +107,15 @@ function AccountOverviewContent({
           role="alert"
           className="mt-6 border border-accent px-5 py-6"
         >
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">ACCOUNT PORTFOLIO UNAVAILABLE</p>
-          <p className="mt-3 text-sm leading-6 text-ink/65">账户概览暂时不可用，请稍后重试。</p>
+          <p className="font-mono text-xs text-accent-text">账户概览暂时不可用</p>
+          <p className="mt-3 text-sm leading-6 text-ink/65">请稍后点「重新加载」再试一次。</p>
           <button
             type="button"
             onClick={() => {
               setState({ kind: "loading" });
               loadSummary();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -125,29 +126,28 @@ function AccountOverviewContent({
         <section data-account-summary-state="success" aria-live="polite">
           <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
             {cards.map((card) => (
-              <div
+              <Link
                 key={card.mono}
+                href={card.href}
                 data-enter
-                className="border border-ink/25 p-5"
+                className="group block border border-ink/25 p-5 transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
-                  {card.mono} / {card.label}
+                <p className="font-mono text-xs text-ink/60">
+                  <span className="tracking-[0.25em]">{card.mono}</span> / {card.label}
                 </p>
                 <p className="mt-3 font-display text-3xl font-bold">{card.value}</p>
-                <p className="mt-2 font-mono text-[10px] text-ink/40">详情即将上线</p>
-              </div>
+                <p className="mt-2 font-mono text-xs text-ink/70 transition-colors group-hover:text-accent-text">
+                  查看{card.page} →
+                </p>
+              </Link>
             ))}
           </div>
 
           {data.unread_notification_count === 0 && data.open_ticket_count === 0 ? (
-            <p data-enter className="mt-6 border-y border-line py-4 font-mono text-[11px] tracking-[0.12em] text-ink/50">
+            <p data-enter className="mt-6 border-y border-line py-4 font-mono text-xs text-ink/60">
               暂无通知和进行中工单
             </p>
           ) : null}
-
-          <p data-enter className="mt-8 font-mono text-[10px] tracking-[0.22em] text-ink/40">
-            新用户从 0 积分和免费会员开始
-          </p>
         </section>
       ) : null}
     </div>

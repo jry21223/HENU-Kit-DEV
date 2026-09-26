@@ -29,3 +29,11 @@ test("default Portal flags keep the V2 catalog dark and fail closed", async ({ p
   expect(catalogRequests).toBe(0);
   expect(legacyPracticeRequests).toBe(0);
 });
+
+test("a retired sample-list URL lands on the catalog instead of a mock list", async ({ page }) => {
+  await page.goto("/practice/lists/ds-final", { waitUntil: "domcontentloaded" });
+
+  await expect(page).toHaveURL(/\/practice$/);
+  await expect(page.getByText("暂无题库")).toBeVisible();
+  await expect(page.getByText("数据结构 · 期末冲刺 50 题")).toHaveCount(0);
+});

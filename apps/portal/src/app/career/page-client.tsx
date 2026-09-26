@@ -14,8 +14,8 @@ type PageState = { kind: "loading" } | CareerViewState;
 function LoadingBlock() {
   return (
     <div data-career-state="loading" className="flex min-h-[40vh] items-center justify-center">
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/40">
-        WORK RADAR LOADING<span className="animate-pulse text-accent">…</span>
+      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+        WORK RADAR LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </p>
     </div>
   );
@@ -67,9 +67,9 @@ export default function CareerPage() {
   }, [requestState]);
 
   return (
-    // 与 library / campus / food 等子站二级页保持同一容器：1440 栅格 + md:px-8，
-    // 这样正文与顶部 CareerNav（同样是 max-w-[1440px]）左右对齐。
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+    // 与 library / campus / food 等子站二级页保持同一容器：max-w-site + md:px-8，
+    // 这样正文与顶部 CareerNav（同一个内容框）左右对齐。
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       {state.kind === "loading" ? <LoadingBlock /> : null}
 
       {state.kind === "anonymous" ? <CareerGuestView /> : null}
@@ -93,7 +93,7 @@ export default function CareerPage() {
           className="mt-10 max-w-2xl border border-accent px-5 py-6"
         >
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">R-01</span>
+            <span className="text-accent-text">R-01</span>
             <span className="mx-2">/</span>
             RADAR UNAVAILABLE
           </p>
@@ -101,13 +101,10 @@ export default function CareerPage() {
             求职雷达暂时不可用
           </h1>
           <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">
-            求职雷达数据加载不出来时，不会以本地或会话数据替代真实数据。
-          </p>
           <button
             type="button"
             onClick={load}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>

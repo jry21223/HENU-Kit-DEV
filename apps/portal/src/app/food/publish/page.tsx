@@ -96,8 +96,8 @@ export default function FoodPublishPage() {
   if (!ready || !user) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">
-          AUTH CHECK<span className="animate-pulse text-accent">…</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          AUTH CHECK<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </p>
       </main>
     );
@@ -252,11 +252,11 @@ export default function FoodPublishPage() {
   };
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8 md:py-14">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8 md:py-14">
       <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16">
         <div>
-          <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/55">
-            <span className="text-accent">F-03</span>
+          <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
+            <span className="text-accent-text">F-03</span>
             <span className="mx-2">/</span>
             STUDENT FOOD DESK
           </p>
@@ -280,7 +280,7 @@ export default function FoodPublishPage() {
               ["03", "提交即公开", "没有审核环节，帖子会立即进入五档榜。"],
             ].map(([index, title, copy]) => (
               <section key={index} className="bg-paper p-5">
-                <p className="font-display text-4xl font-bold text-accent">
+                <p className="font-display text-4xl font-bold text-accent-text">
                   {index}
                 </p>
                 <h2 className="mt-4 font-display text-lg font-bold">{title}</h2>
@@ -300,9 +300,9 @@ export default function FoodPublishPage() {
             <div className="border-b border-line py-6 md:py-8">
               <label
                 htmlFor="food-venue"
-                className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50"
+                className="mb-1 block font-mono text-xs text-ink/60"
               >
-                店铺名<span aria-hidden className="text-accent">*</span>
+                店铺名<span aria-hidden className="text-accent-text">*</span>
               </label>
               <input
                 id="food-venue"
@@ -314,18 +314,18 @@ export default function FoodPublishPage() {
                   noteEdit();
                 }}
                 placeholder="如：仁和食堂三楼 8 号窗口"
-                className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/30 focus:border-ink"
+                className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
               />
               {fieldErrors.venue && (
-                <p className="mt-2 font-mono text-[10px] text-accent">
+                <p className="mt-2 font-mono text-xs text-accent-text">
                   {fieldErrors.venue}
                 </p>
               )}
             </div>
 
             <fieldset className="border-b border-line py-6 md:py-8">
-              <legend className="mb-3 font-mono text-[10px] tracking-[0.25em] text-ink/50">
-                校区<span aria-hidden className="text-accent">*</span>
+              <legend className="mb-3 font-mono text-xs text-ink/60">
+                校区<span aria-hidden className="text-accent-text">*</span>
               </legend>
               <div className="flex flex-wrap gap-2">
                 {CAMPUS_KEYS.map((key) => (
@@ -350,15 +350,15 @@ export default function FoodPublishPage() {
                 ))}
               </div>
               {fieldErrors.campus && (
-                <p className="mt-2 font-mono text-[10px] text-accent">
+                <p className="mt-2 font-mono text-xs text-accent-text">
                   {fieldErrors.campus}
                 </p>
               )}
             </fieldset>
 
             <fieldset className="border-b border-line py-6 md:py-8">
-              <legend className="mb-3 font-mono text-[10px] tracking-[0.25em] text-ink/50">
-                五档定位<span aria-hidden className="text-accent">*</span>
+              <legend className="mb-3 font-mono text-xs text-ink/60">
+                五档定位<span aria-hidden className="text-accent-text">*</span>
               </legend>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                 {FOOD_TIERS.map((option) => (
@@ -383,8 +383,8 @@ export default function FoodPublishPage() {
                     </span>
                     <span
                       className={cn(
-                        "mt-1 block font-mono text-[10px]",
-                        tier === option.key ? "text-paper/60" : "text-ink/50"
+                        "mt-1 block font-mono text-xs",
+                        tier === option.key ? "text-paper/60" : "text-ink/60"
                       )}
                     >
                       {option.blurb}
@@ -393,7 +393,7 @@ export default function FoodPublishPage() {
                 ))}
               </div>
               {fieldErrors.tier && (
-                <p className="mt-2 font-mono text-[10px] text-accent">
+                <p className="mt-2 font-mono text-xs text-accent-text">
                   {fieldErrors.tier}
                 </p>
               )}
@@ -402,9 +402,9 @@ export default function FoodPublishPage() {
             <div className="border-b border-line py-6 md:py-8">
               <label
                 htmlFor="food-review"
-                className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50"
+                className="mb-1 block font-mono text-xs text-ink/60"
               >
-                锐评正文<span aria-hidden className="text-accent">*</span>
+                锐评正文<span aria-hidden className="text-accent-text">*</span>
               </label>
               <textarea
                 id="food-review"
@@ -417,14 +417,14 @@ export default function FoodPublishPage() {
                 }}
                 rows={5}
                 placeholder="味道、分量、性价比、排队情况和适合场景…"
-                className="w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+                className="w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
               />
               {fieldErrors.review ? (
-                <p className="mt-2 font-mono text-[10px] text-accent">
+                <p className="mt-2 font-mono text-xs text-accent-text">
                   {fieldErrors.review}
                 </p>
               ) : (
-                <p className="mt-2 font-mono text-[10px] text-ink/40">
+                <p className="mt-2 font-mono text-xs text-ink/60">
                   2–2000 字
                 </p>
               )}
@@ -434,7 +434,7 @@ export default function FoodPublishPage() {
               <div>
                 <label
                   htmlFor="food-price"
-                  className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50"
+                  className="mb-1 block font-mono text-xs text-ink/60"
                 >
                   价格参考（可选）
                 </label>
@@ -447,13 +447,13 @@ export default function FoodPublishPage() {
                     noteEdit();
                   }}
                   placeholder="如：人均 ¥18"
-                  className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                  className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                 />
               </div>
               <div>
                 <label
                   htmlFor="food-hours"
-                  className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50"
+                  className="mb-1 block font-mono text-xs text-ink/60"
                 >
                   营业参考（可选）
                 </label>
@@ -466,7 +466,7 @@ export default function FoodPublishPage() {
                     noteEdit();
                   }}
                   placeholder="如：11:00–21:00"
-                  className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                  className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                 />
               </div>
             </div>
@@ -474,10 +474,10 @@ export default function FoodPublishPage() {
             <section className="border-b border-line py-6 md:py-8">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <p className="font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                  <p className="font-mono text-xs text-ink/60">
                     推荐菜品（可选）
                   </p>
-                  <p className="mt-1 font-mono text-[10px] text-ink/40">
+                  <p className="mt-1 font-mono text-xs text-ink/60">
                     至多 {MAX_DISHES} 道；菜名必填，价格与理由可留空。
                   </p>
                 </div>
@@ -485,7 +485,7 @@ export default function FoodPublishPage() {
                   <button
                     type="button"
                     onClick={addDish}
-                    className="border border-line px-3 py-1.5 font-mono text-xs transition-colors hover:border-ink"
+                    className="min-h-11 border border-line px-3 py-1.5 font-mono text-xs transition-colors hover:border-ink"
                   >
                     + 加一道
                   </button>
@@ -505,7 +505,7 @@ export default function FoodPublishPage() {
                         updateDish(index, { name: event.target.value })
                       }
                       placeholder="菜名（必填）"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                     <input
                       aria-label={`菜品 ${index + 1} 价格`}
@@ -515,7 +515,7 @@ export default function FoodPublishPage() {
                         updateDish(index, { price: event.target.value })
                       }
                       placeholder="参考价格"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                     <input
                       aria-label={`菜品 ${index + 1} 理由`}
@@ -525,12 +525,12 @@ export default function FoodPublishPage() {
                         updateDish(index, { reason: event.target.value })
                       }
                       placeholder="推荐理由"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                     <button
                       type="button"
                       onClick={() => removeDish(index)}
-                      className="self-center px-2 py-1 font-mono text-xs text-ink/40 transition-colors hover:text-accent"
+                      className="self-center px-2 py-1 font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
                       aria-label={`删除菜品 ${index + 1}`}
                     >
                       ×
@@ -541,7 +541,7 @@ export default function FoodPublishPage() {
             </section>
 
             <section className="border-b border-line py-6 md:py-8">
-              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/50">
+              <p className="font-mono text-xs text-ink/60">
                 图片（{images.length}/{MAX_IMAGES}，单张 ≤2MB，可选）
               </p>
               <div className="mt-4 flex flex-wrap items-start gap-3">
@@ -556,7 +556,7 @@ export default function FoodPublishPage() {
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-[10px] hover:border-accent hover:text-accent"
+                      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs hover:border-accent hover:text-accent-text"
                       aria-label={`删除图 ${index + 1}`}
                     >
                       ×
@@ -564,7 +564,7 @@ export default function FoodPublishPage() {
                   </div>
                 ))}
                 {images.length < MAX_IMAGES && (
-                  <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-[10px] text-ink/40 transition-colors hover:border-ink hover:text-ink">
+                  <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-xs text-ink/60 transition-colors hover:border-ink hover:text-ink">
                     + 上传
                     <input
                       type="file"
@@ -581,7 +581,7 @@ export default function FoodPublishPage() {
               {error && (
                 <p
                   role="alert"
-                  className="border border-accent/50 bg-accent/5 px-3 py-2 font-mono text-xs leading-5 text-accent"
+                  className="border border-accent/50 bg-accent/5 px-3 py-2 font-mono text-xs leading-5 text-accent-text"
                 >
                   {error}
                 </p>
@@ -589,7 +589,7 @@ export default function FoodPublishPage() {
               <button
                 type="submit"
                 disabled={pending}
-                className="mt-4 border border-ink bg-ink px-8 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-4 border border-ink bg-ink px-8 py-3 font-mono text-sm text-paper transition-colors hover:bg-accent hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {pending ? "提交中…" : "提交投稿 →"}
               </button>
@@ -599,7 +599,7 @@ export default function FoodPublishPage() {
 
         <aside className="lg:sticky lg:top-24 lg:h-fit">
           <section className="border border-ink p-6">
-            <p className="font-mono text-[10px] tracking-[0.25em] text-accent">
+            <p className="font-mono text-xs tracking-[0.25em] text-accent-text">
               MY POSTS
             </p>
             <h2 className="mt-3 font-display text-2xl font-bold">我的投稿</h2>
@@ -608,21 +608,21 @@ export default function FoodPublishPage() {
             </p>
             <Link
               href="/account/posts"
-              className="mt-6 block bg-ink px-5 py-3 text-center font-mono text-xs tracking-[0.12em] text-paper transition-colors hover:bg-accent"
+              className="mt-6 block bg-ink px-5 py-3 text-center font-mono text-xs text-paper transition-colors hover:bg-accent hover:text-ink"
             >
               查看我的投稿 →
             </Link>
             <Link
               href="/food"
-              className="mt-3 block border border-ink px-5 py-3 text-center font-mono text-xs tracking-[0.12em] transition-colors hover:bg-ink hover:text-paper"
+              className="mt-3 block border border-ink px-5 py-3 text-center font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
             >
               先看看五档榜
             </Link>
           </section>
 
           <section className="mt-5 border border-accent/50 bg-accent/5 p-5">
-            <p className="font-mono text-[10px] tracking-[0.22em] text-accent">
-              PRIVACY / 隐私提醒
+            <p className="font-mono text-xs text-accent-text">
+              <span className="tracking-[0.22em]">PRIVACY</span> / 隐私提醒
             </p>
             <p className="mt-3 text-sm leading-6 text-ink/65">
               不要填写店主私人手机号、微信或学生个人信息；照片请使用自己的实拍或有授权的图片。

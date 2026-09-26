@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchLibraryMaterials,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
 import type { Material } from "@/lib/library/mock";
+import { rememberLibraryMaterials } from "@/lib/library/gateway";
 import { MATERIAL_TYPES, type MaterialType } from "@/lib/library/material-types";
+import { readableMaterialTitle } from "@/lib/library/material-title";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
@@ -45,12 +48,12 @@ type LibraryStatistics = {
 export default function LibraryHomePage() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<MaterialType | "all">("all");
-  const [price, setPrice] = useState<"all" | "free" | "paid">("all");
   const [subject, setSubject] = useState("all");
   const [materials, setMaterials] = useState<Material[]>([]);
   const [statistics, setStatistics] = useState<LibraryStatistics | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
   useReveal();
   useScrollRestoration(loadState === "ready");
 
@@ -69,14 +72,16 @@ export default function LibraryHomePage() {
         throw new Error("资料库返回了不一致的目录统计，请稍后重试。");
       }
       setMaterials(resp.materials.map(toMaterial));
+      // 列表每次都实时读取；顺手更新共享目录，点进详情时“相关资料”不再下载一遍（#546）。
+      rememberLibraryMaterials(resp.materials);
       setStatistics({
         materialCount: resp.statistics.materialCount,
         downloadStarts: resp.statistics.downloadStarts,
       });
       setLoadState("ready");
       return;
-    } catch {
-      setError("资料库暂时无法加载，请稍后重试。");
+    } catch (loadError) {
+      setError({ message: "资料库暂时无法加载，请稍后重试。", requestId: portalErrorRequestId(loadError) });
       setLoadState("error");
     }
   }, []);
@@ -94,13 +99,22 @@ export default function LibraryHomePage() {
   const items = materials.filter(
     (m) =>
       (type === "all" || m.type === type) &&
-      (price === "all" || (price === "free" ? m.price === 0 : m.price > 0)) &&
       (subject === "all" || m.subject === subject) &&
+      // 原始标题、卡片上显示的易读标题（间隔号分段）和课程都能搜到。
       (!query.trim() ||
         m.title.includes(query.trim()) ||
+        readableMaterialTitle(m).includes(query.trim()) ||
         m.subject.includes(query.trim()))
   );
-  const hasActiveFilter = query.trim() !== "" || type !== "all" || price !== "all" || subject !== "all";
+  const hasActiveFilter = query.trim() !== "" || type !== "all" || subject !== "all";
+  const clearFilters = () => {
+    setQuery("");
+    setType("all");
+    setSubject("all");
+    // 清除筛选按钮会随空状态一起消失；焦点交给刚复位的搜索与筛选区，键盘和读屏用户不丢位置。
+    // 不直接聚焦搜索框：手机上会弹出输入法，挡住刚恢复的书架。
+    filtersRef.current?.focus();
+  };
   const hasElectronicTextbooks = materials.some((material) => material.type === "textbook");
   const emptyLabel =
     materials.length === 0 && !hasActiveFilter
@@ -128,18 +142,30 @@ export default function LibraryHomePage() {
             busy: loadState === "loading",
           },
         ]}
-        fig="FIG.02 书脊 / SPINES"
+        fig={{ code: "FIG.02", name: "书脊", en: "SPINES" }}
         scene={<SceneBooks />}
         compactOnMobile
       />
 
-      <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 lg:py-10">
+      <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">
         {loadState === "error" && error && (
-          <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
+          <ErrorBanner
+            message={error.message}
+            requestId={error.requestId}
+            onRetry={() => void load()}
+            className="mb-6"
+          />
         )}
 
         {/* 搜索 + 筛选行 */}
-        <div data-enter role="search" aria-label="资料搜索与筛选" className="space-y-4">
+        <div
+          ref={filtersRef}
+          data-enter
+          role="search"
+          aria-label="资料搜索与筛选"
+          tabIndex={-1}
+          className="space-y-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+        >
           <div className="flex max-w-3xl items-end gap-3">
             <div className="min-w-0 flex-1">
               <label htmlFor="library-query" className="mb-1 block font-mono text-xs text-ink/70">搜索资料</label>
@@ -148,8 +174,8 @@ export default function LibraryHomePage() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索：真题 / 高数 / 课件"
-                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
+                placeholder="如：真题 / 高数 / 课件"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-accent"
               />
             </div>
             <div className="max-w-[45%]">
@@ -168,39 +194,22 @@ export default function LibraryHomePage() {
               </select>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <div role="group" aria-label="资料类型" className="flex flex-wrap gap-2">
-              {(["all", ...TYPE_KEYS] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(t)}
-                  aria-pressed={type === t}
-                  className={cn(
-                    "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                    type === t ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-                  )}
-                >
-                  {t === "all" ? "全部" : MATERIAL_TYPES[t].name}
-                </button>
-              ))}
-            </div>
-            <div role="group" aria-label="资料价格" className="flex flex-wrap gap-2">
-              {(["all", "free", "paid"] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPrice(p)}
-                  aria-pressed={price === p}
-                  className={cn(
-                    "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                    price === p ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-                  )}
-                >
-                  {p === "all" ? "全部" : p === "free" ? "免费" : "收费"}
-                </button>
-              ))}
-            </div>
+          {/* 公开目录只收免费资料（契约 price 恒为 0），不提供价格筛选。 */}
+          <div role="group" aria-label="资料类型" className="flex flex-wrap gap-2">
+            {(["all", ...TYPE_KEYS] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                aria-pressed={type === t}
+                className={cn(
+                  "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                  type === t ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
+                )}
+              >
+                {t === "all" ? "全部" : MATERIAL_TYPES[t].name}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -208,10 +217,11 @@ export default function LibraryHomePage() {
         <div data-enter className="mt-8">
           {loadState === "loading" ? (
             <LoadingBlock label="加载资料" />
-          ) : loadState === "error" ? (
-            <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
-          ) : items.length === 0 ? (
-            <EmptyBlock label={emptyLabel} />
+          ) : loadState === "error" ? null : items.length === 0 ? (
+            <EmptyBlock
+              label={emptyLabel}
+              action={hasActiveFilter ? { label: "清除筛选", onClick: clearFilters } : undefined}
+            />
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {items.map((m) => (

@@ -1,6 +1,6 @@
 # HENU Kit Portal Context
 
-Last updated: 2026-09-11.
+Last updated: 2026-09-26.
 
 ## Owns
 
@@ -8,9 +8,10 @@ Last updated: 2026-09-11.
 - Campus tool system product shell: brand, navigation, and entry points.
 - Homepage module sections (Library, Practice, Food, Campus, Career) with scroll-driven animations.
 - Sub-site layouts and navigation for Library, Practice, Food, Campus Market, and Career.
-- Mock data layer and deterministic SSR rendering (mulberry32 seeded PRNG).
+- Local-development mock data layer with deterministic SSR rendering (fixed data, seeded picsum URLs). Production builds prerender no mock pages.
 - GSAP animation system with prefers-reduced-motion respect.
 - Three.js 3D hero scenes (homepage and practice bank hero).
+- The site-wide legal notice (non-official disclaimer, privacy policy and user agreement links, ICP filing number) and the public legal documents at `/privacy` and `/terms`. The documents describe only data handling that the owning services actually perform.
 
 ## Does not own
 
@@ -70,11 +71,11 @@ zero.
 
 ## Design language
 
-"Industrial Minimal" — warm paper white (#F2F0EA), deep ink text (#161513), safety orange accent (#FF4D00). Typography: Space Grotesk (display), IBM Plex Mono (labels), system Chinese fonts (body). Visual elements: 1px structural lines, crosshair alignment marks, mono numbering, engineering blueprint grid backgrounds.
+"Industrial Minimal" — warm paper white (#F2F0EA), deep ink text (#161513), safety orange accent (#FF4D00). The colours come from `packages/design-tokens`: Portal's Tailwind colour theme (`src/app/theme.css`) is generated from its `tokens.json` with literal values, so opacity modifiers keep a precomputed fallback where `color-mix()` is unsupported. The safety orange is for fills and text on ink (on paper it is 2.92:1, below even the 3:1 large-text minimum); orange text of any size on light surfaces uses the darker text-safe accent (`--hk-accent-text`, #BB3800), and text on an orange fill is ink. Grey text is at least ink/60 (ink/65 over a 5% tint) and paper text on ink at least paper/50; lighter greys are reserved for `aria-hidden` decoration and disabled controls. Typography: Space Grotesk (display), IBM Plex Mono (labels), system Chinese fonts (body). Text is at least 12px (10px only for `aria-hidden` decorative Latin labels); wide tracking goes on Latin and mono text only, Chinese stays `tracking-normal`, and a mixed label tracks only its Latin span. Visual elements: 1px structural lines, crosshair alignment marks, mono numbering, engineering blueprint grid backgrounds.
 
 ## Tech stack
 
-Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigger/Observer. Three.js via @react-three/fiber. No external state library. No charting library (hand-written SVG charts).
+Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigger/Observer. Three.js via @react-three/fiber. No external state library. No charting library.
 
 ## Key terms
 
@@ -83,7 +84,9 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 - **Account entry**: A Portal navigation point that starts Portal Gateway OAuth. After Platform Core accepts a credential flow, Portal continues that OAuth flow to establish its own Gateway Session.
 - **Module section**: A homepage block introducing one of the five products: Library, Practice, Food, Campus, or Career.
 - **Sub-site**: A product area with its own navigation: Library, Practice, Food, Campus, or Career.
-- **Back to the level above**: The top-left control of a sub-site navigation. It walks the path hierarchy exactly one level up — an inner page to that sub-site's home (quiz to the bank catalog, a venue to the board), a sub-site home to the platform home — so an inner page never jumps straight to the platform home. It is the level above, not browser history: arriving by deep link or refresh lands on the same page. Its label names the level it returns to, in the sub-site navigation's own words (书库, 榜单, 市集, 题库) — the word the reader sees on the destination's tab row. The homepage entries and module SEO titles use a separate register (资料库, 美食榜, 互助平台); unifying the two registers is a separate, undecided change. The account console and the account auth shells are not sub-sites: they keep their own brand link to the platform home.
+- **Sub-site navigation**: The one header all five sub-sites share (`SubSiteNav`): Back to the level above, the sub-site wordmark, its tab row, and the account entry. A sub-site with a single tab (Library) shows no tab row. A tab whose feature is not open yet stays in its place, cannot be followed, and carries a visible 未开放 marker — unless the reader is already on that page (a favorites session opens the quiz), where it is simply the current tab; whether such tabs should be hidden instead is undecided (#540).
+- **Content frame**: The one width (`max-w-site`, 1440px, with `px-5 md:px-8` gutters) shared by the homepage, sub-site navigations, and page bodies, so the top-left control and the first heading of a page share a left edge. Narrower content (the quiz, session setup, result card, publish forms) is limited inside the frame and keeps its left edge. Only whole-page states of detail pages (loading, not found, unavailable) and legal documents are centered as a deliberately narrower reading column, not a second frame.
+- **Back to the level above**: The top-left control of a sub-site navigation. It walks the path hierarchy exactly one level up — an inner page to that sub-site's home (quiz to the bank catalog, a venue to the board), a sub-site home to the platform home — so an inner page never jumps straight to the platform home. It is the level above, not browser history: arriving by deep link or refresh lands on the same page. Its label names the level it returns to, in the sub-site navigation's own words (书库, 榜单, 市集, 题库) — the word the reader sees on the destination's tab row (Library has a single tab and so no tab row; its arrow still says 书库). The homepage entries and module SEO titles use a separate register (资料库, 美食榜, 互助平台); unifying the two registers is a separate, undecided change. The account console and the account auth shells are not sub-sites: they keep their own brand link to the platform home.
 - **Reading position**: The scroll offset a reader last left a path at, remembered per path for the browser tab. Returning to a level above puts the reader back at it, including the platform home; entering a path for the first time, moving sideways between tabs, or going deeper all start at the top.
 - **Gesture intent**: What one touch or pointer gesture is asking for, judged once when the finger lifts, from that gesture's net displacement and peak velocity rather than from the movement accumulated so far. A step needs a net displacement of 6% of the viewport height, or 3% with a fast flick.
 - **One gesture, one screen**: A touch or pointer gesture steps at most one module section, and so does one wheel burst window. Nothing is consumed before the gesture happens — a wheel tick swallowed by a running screen animation does not spend the burst, and a step that finds the first or last screen is not spent either. Because wheel input has no release, a reversal inside the same window counts as that same gesture: turning around mid-burst does not add a step, the reader rolls again after 600ms of silence instead.
@@ -94,4 +97,4 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 - **Quick entry**: A first-screen shortcut to a common task: finding materials, starting practice, or viewing job opportunities.
 - **Material display title**: A readable material name shown alongside its course and material type to help readers identify it.
 - **Original material title**: The complete title supplied by the material owner. It is distinct from the file name; a title alone does not establish the file name.
-- **Deterministic SSR**: Seeded randomness (mulberry32) and picsum seed URLs ensure server/client output match.
+- **Deterministic SSR**: Fixed mock data and picsum seed URLs ensure server/client output match.

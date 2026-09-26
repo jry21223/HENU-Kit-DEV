@@ -41,8 +41,8 @@ function PublishForm() {
   if (!ready || !user) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">
-          AUTH CHECK<span className="animate-pulse text-accent">…</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          AUTH CHECK<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </p>
       </main>
     );
@@ -63,18 +63,18 @@ function PublishForm() {
   };
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-10 md:px-8">
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="max-w-3xl">
       <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        <span className="text-accent">M-03</span>
+        <span className="text-accent-text">M-03</span>
         <span className="mx-2">/</span>
         {editItem ? "EDIT" : "PUBLISH"}
       </p>
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">
         {editItem ? "编辑单子" : "发布单子"}
       </h1>
-      <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/50">
-        发布与接单接口尚未接通，当前无法提交；上线后即可发布互助单。
+      <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-xs text-ink/60">
+        发布和接单暂未开放，当前无法提交；开放后即可在这里发布互助单。
       </p>
 
       <div className="mt-8 space-y-6">
@@ -84,6 +84,7 @@ function PublishForm() {
             <button
               key={t}
               type="button"
+              aria-pressed={type === t}
               onClick={() => {
                 setType(t);
                 setCategory(t === "help" ? "errand" : "flea");
@@ -97,24 +98,25 @@ function PublishForm() {
                   : "border-line hover:border-ink/40"
               )}
             >
-              <p className={cn("font-display text-xl font-bold", type === t && t === "help" && "text-accent")}>
+              <p className={cn("font-display text-xl font-bold", type === t && t === "help" && "text-accent-text")}>
                 {t === "help" ? "发求助单" : "出闲置"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-ink/50">
+              <p className="mt-1 font-mono text-xs text-ink/60">
                 {t === "help" ? "悬赏赏金，找人帮忙" : "一口价转让闲置物品"}
               </p>
             </button>
           ))}
         </div>
 
-        {/* 分类 */}
+        {/* 分类：一组按钮，不是一个输入框，组名用 aria-labelledby 连上（与 /campus 的筛选一样）。 */}
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">分类</label>
-          <div className="flex flex-wrap gap-2">
+          <p id="campus-publish-category" className="mb-1 font-mono text-xs text-ink/60">分类</p>
+          <div role="group" aria-labelledby="campus-publish-category" className="flex flex-wrap gap-2">
             {CATEGORIES.filter((c) => (type === "sell" ? c.key === "flea" : c.key !== "flea")).map((c) => (
               <button
                 key={c.key}
                 type="button"
+                aria-pressed={category === c.key}
                 onClick={() => setCategory(c.key)}
                 className={cn(
                   "border px-3 py-1.5 font-mono text-xs transition-colors",
@@ -128,30 +130,32 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">标题</label>
+          <label htmlFor="campus-publish-title" className="mb-1 block font-mono text-xs text-ink/60">标题</label>
           <input
+            id="campus-publish-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={type === "help" ? "如：代取中通快递 3 件到 6 号楼" : "如：九成新机械键盘"}
-            className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/30 focus:border-ink"
+            className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
           />
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">描述</label>
+          <label htmlFor="campus-publish-desc" className="mb-1 block font-mono text-xs text-ink/60">描述</label>
           <textarea
+            id="campus-publish-desc"
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
             rows={4}
             placeholder="具体要求 / 物品成色、交接方式…"
-            className="w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+            className="w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
           />
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+          <p className="mb-1 font-mono text-xs text-ink/60">
             图片（{images.length}/3，≤2MB，可选）
-          </label>
+          </p>
           <div className="flex flex-wrap items-start gap-3">
             {images.map((src, i) => (
               <div key={i} className="relative">
@@ -159,7 +163,7 @@ function PublishForm() {
                 <button
                   type="button"
                   onClick={() => setImages((imgs) => imgs.filter((_, j) => j !== i))}
-                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-[10px] hover:border-accent hover:text-accent"
+                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs hover:border-accent hover:text-accent-text"
                   aria-label={`删除图 ${i + 1}`}
                 >
                   ×
@@ -167,7 +171,7 @@ function PublishForm() {
               </div>
             ))}
             {images.length < 3 && (
-              <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-[10px] text-ink/40 transition-colors hover:border-ink hover:text-ink">
+              <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-xs text-ink/60 transition-colors hover:border-ink hover:text-ink">
                 + 上传
                 <input
                   type="file"
@@ -182,45 +186,48 @@ function PublishForm() {
 
         <div data-enter className="grid gap-4 md:grid-cols-3">
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+            <label htmlFor="campus-publish-price" className="mb-1 block font-mono text-xs text-ink/60">
               {type === "help" ? "赏金（元）" : "价格（元）"}
             </label>
             <input
+              id="campus-publish-price"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               inputMode="numeric"
               placeholder="3"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">位置</label>
+            <label htmlFor="campus-publish-place" className="mb-1 block font-mono text-xs text-ink/60">位置</label>
             <input
+              id="campus-publish-place"
               value={place}
               onChange={(e) => setPlace(e.target.value)}
               placeholder="明伦校区 · 西门"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           {type === "help" && (
             <div>
-              <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">时限（可选）</label>
+              <label htmlFor="campus-publish-deadline" className="mb-1 block font-mono text-xs text-ink/60">时限（可选）</label>
               <input
+                id="campus-publish-deadline"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
                 placeholder="今天 18:00 前"
-                className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
               />
             </div>
           )}
         </div>
 
-        {error && <p className="font-mono text-xs text-accent">{error}</p>}
+        {error && <p className="font-mono text-xs text-accent-text">{error}</p>}
         <button
           type="button"
           disabled
-          title="发布接口尚未接通，上线后即可发布互助单"
-          className="cursor-not-allowed border border-line px-8 py-3 font-mono text-sm tracking-widest text-ink/40"
+          title="发布暂未开放"
+          className="cursor-not-allowed border border-line px-8 py-3 font-mono text-sm text-ink/40"
         >
           {editItem ? "保存修改 →" : "发布 →"}
         </button>

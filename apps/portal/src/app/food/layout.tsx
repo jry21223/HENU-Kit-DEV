@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import FoodNav from "@/components/food/food-nav";
+import SiteShell from "@/components/site-shell";
+import { moduleLayoutTitle } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "美食榜 — henukit",
+  title: moduleLayoutTitle("food"),
 };
 
 export default function FoodLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-svh bg-paper text-ink">
-      <FoodNav />
-      {children}
-    </div>
+    <SiteShell header={<FoodNav />}>{children}</SiteShell>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 import AmbientSvg from "@/components/ui/ambient-svg";
+import LegalNotice from "@/components/legal-notice";
 
 const LINKS = [
   { index: "01", label: "资料库", href: "/library" },
@@ -76,7 +77,7 @@ export default function Footer() {
         className="absolute -right-10 top-1/2 hidden -translate-y-1/2 text-ink/20 md:block"
       />
 
-      <div className="mx-auto flex min-h-svh max-w-7xl flex-col px-5 pt-24 md:px-10">
+      <div className="mx-auto flex max-w-site flex-col px-5 pt-24 md:min-h-svh md:px-8">
         <div className="flex flex-1 items-center">
           <p
             ref={giantRef}
@@ -89,35 +90,35 @@ export default function Footer() {
 
         <AmbientSvg variant="flow" className="mb-8 text-ink/30" />
 
-        <div
-          data-footer-bottom
-          className="flex flex-col justify-between gap-8 border-t border-line py-10 md:flex-row md:items-center"
-        >
-          <p className="font-display text-xl font-bold">
-            henukit<span className="text-accent">®</span>
-          </p>
-          <nav className="flex flex-wrap gap-x-8 gap-y-3">
-            {LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="group relative font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
-              >
-                <span className="mr-1.5 text-accent">{link.index}</span>
-                {link.label}
-                <span
-                  aria-hidden
-                  className="absolute inset-x-0 -bottom-1 h-px origin-left scale-x-0 bg-accent transition-transform duration-300 group-hover:scale-x-100"
-                />
-              </Link>
-            ))}
-          </nav>
-          <p className="font-mono text-xs tracking-widest text-ink/50">
-            © {new Date().getFullYear()} henukit
-          </p>
-          <p className="mt-2 max-w-xs font-mono text-xs leading-5 tracking-wider text-ink/50">
-            学生自主运营 · 非河南大学官方项目
-          </p>
+        <div data-footer-bottom className="border-t border-line py-8">
+          <div className="flex flex-col justify-between gap-8 md:flex-row md:items-center">
+            <p className="font-display text-xl font-bold">
+              henukit<span className="text-accent">®</span>
+            </p>
+            {/* 链接撑到 44px 高，折行时上下两行的点击区紧挨着而不重叠；下划线挂在里层 span 上，仍贴着文字。 */}
+            <nav aria-label="模块导航" className="flex flex-wrap gap-x-8">
+              {LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="group inline-flex min-h-11 items-center font-mono text-xs text-ink/70 transition-colors hover:text-ink"
+                >
+                  <span className="relative">
+                    <span className="mr-1.5 tracking-widest text-accent-text">{link.index}</span>
+                    {link.label}
+                    <span
+                      aria-hidden
+                      className="absolute inset-x-0 -bottom-1 h-px origin-left scale-x-0 bg-accent transition-transform duration-300 group-hover:scale-x-100"
+                    />
+                  </span>
+                </Link>
+              ))}
+            </nav>
+            <p className="font-mono text-xs tracking-widest text-ink/60">
+              © {new Date().getFullYear()} henukit
+            </p>
+          </div>
+          <LegalNotice className="mt-6 border-t border-line pt-4" />
         </div>
       </div>
     </footer>
