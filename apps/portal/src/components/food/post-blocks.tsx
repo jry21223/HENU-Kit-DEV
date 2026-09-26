@@ -46,7 +46,7 @@ export default function PostBlocks({
                 src={src}
                 alt="正文插图"
                 label={`FIG.${String(i + 1).padStart(2, "0")}`}
-                className="max-h-96 w-full"
+                className="aspect-[4/3] max-h-96 w-full"
               />
             );
           }

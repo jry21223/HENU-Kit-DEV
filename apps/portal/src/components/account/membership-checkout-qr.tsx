@@ -78,7 +78,13 @@ export function MembershipCheckoutQR({ checkoutURL }: MembershipCheckoutQRProps)
 
   return (
     <div data-membership-checkout-qr="ready" className="w-full max-w-[280px]">
-      <Img src={current.dataURL} alt="微信支付二维码" label="QR" className="w-full bg-white" />
+      <Img
+        src={current.dataURL}
+        alt="微信支付二维码"
+        label="QR"
+        loading="eager"
+        className="aspect-square w-full bg-white"
+      />
     </div>
   );
 }

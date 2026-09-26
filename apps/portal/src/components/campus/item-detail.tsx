@@ -44,7 +44,14 @@ export default function ItemDetail({ id }: { id: string }) {
         <div className="min-w-0 flex-1">
           <div data-enter className="bg-blueprint relative flex h-44 items-center justify-center border border-ink/25">
             {item.images?.[0] ? (
-              <Img src={item.images[0]} alt={item.title} label={cat.code} className="h-full w-full border-0" />
+              <Img
+                src={item.images[0]}
+                alt={item.title}
+                label={cat.code}
+                loading="eager"
+                fetchPriority="high"
+                className="h-full w-full border-0"
+              />
             ) : (
               <span className="font-display text-6xl font-bold tracking-widest text-ink/20">
                 {cat.code}

@@ -136,7 +136,9 @@ export default function MarketPage() {
   };
 
   return (
-    <main>
+    // 主体至少一屏高：单子是挂载后才拉取的，加载中的短页面会让页脚露在首屏底部，
+    // 单子一到就把页脚挤出去，手机上这一下就是 0.13 的布局偏移（#548）。
+    <main className="min-h-svh">
       <SubHero
         index="04"
         en="CAMPUS MARKET"

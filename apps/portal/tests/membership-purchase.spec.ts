@@ -130,6 +130,9 @@ test("a user scans the payment QR without ever seeing the merchant order number"
   // The rendered code is a locally encoded image, and nothing on the page may
   // carry the private merchant order number.
   await expect(qr).toHaveAttribute("src", /^data:image\//);
+  // The code is square by construction, so its box is held square before the
+  // image decodes and the panel does not jump when it appears (#548).
+  await expect(qr).toHaveCSS("aspect-ratio", "1 / 1");
   await expect(page.locator("body")).not.toContainText(merchantOrderID);
   expect(page.url()).not.toContain(merchantOrderID);
 });

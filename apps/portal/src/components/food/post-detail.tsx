@@ -187,6 +187,8 @@ export default function PostDetail({ id }: { id: string }) {
                 src={detail.gallery[0]}
                 alt={`${post.shop.name}参考图`}
                 label="VENUE / REFERENCE"
+                loading="eager"
+                fetchPriority="high"
                 className="h-64 w-full md:h-[28rem]"
               />
             </div>
