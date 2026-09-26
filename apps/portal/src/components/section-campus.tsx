@@ -116,7 +116,7 @@ export default function SectionCampus() {
 
   return (
     <section ref={sectionRef} className="snap-screen border-t border-line bg-paper">
-      <div className="mx-auto grid min-h-svh max-w-site items-center gap-12 px-5 py-24 md:grid-cols-2 md:px-8">
+      <div className="mx-auto grid max-w-site items-center gap-12 px-5 py-24 md:min-h-svh md:grid-cols-2 md:px-8">
         <div>
           <SectionHeading index="04" en="CAMPUS MUTUAL AID" title="互助平台" />
           <p className="mt-6 max-w-sm text-sm leading-7 text-ink/70">

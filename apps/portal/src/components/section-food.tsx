@@ -125,7 +125,7 @@ export default function SectionFood() {
 
   return (
     <section ref={sectionRef} className="snap-screen border-t border-line bg-paper">
-      <div className="mx-auto grid min-h-svh max-w-site items-center gap-12 px-5 py-24 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:px-8">
+      <div className="mx-auto grid max-w-site items-center gap-12 px-5 py-24 md:min-h-svh md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:px-8">
         <div>
           <SectionHeading index="03" en="FOOD RANKING" title="美食排行榜" />
           <p className="mt-6 font-display text-xl font-medium text-accent">

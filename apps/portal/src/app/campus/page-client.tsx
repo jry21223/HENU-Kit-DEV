@@ -146,9 +146,10 @@ export default function MarketPage() {
         ]}
         fig="FIG.04 交接 / HANDOVER"
         scene={<SceneHandshake />}
+        compactOnMobile
       />
 
-      <div className="mx-auto max-w-site px-5 py-10 md:px-8">
+      <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">
         {loadState === "error" && error && (
           <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
         )}

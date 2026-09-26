@@ -146,6 +146,7 @@ export default function BankHero({
     [mastery]
   );
 
+  // 左栏说明只讲两个计数：lg 以下结构图隐藏（#542），手机上不能指向看不到的图谱。
   const stateMessage = useMemo(() => {
     switch (masteryState.status) {
       case "disabled":
@@ -157,11 +158,18 @@ export default function BankHero({
       case "error":
         return "学习数据暂时不可用，请稍后重试。";
       case "empty":
-        return "还没有学习记录，从第一题开始建立你的图谱。";
+        return "还没有学习记录，完成第一题后开始统计。";
       case "ready":
-        return "图谱根据你的答题记录生成。";
+        return "作答数和正确率根据你的答题记录计算。";
     }
   }, [masteryState.status]);
+  // 图例在结构图里，可以直接说图谱。
+  const figureMessage =
+    masteryState.status === "ready"
+      ? "图谱根据你的答题记录生成。"
+      : masteryState.status === "empty"
+        ? "还没有学习记录，从第一题开始建立你的图谱。"
+        : stateMessage;
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -184,7 +192,7 @@ export default function BankHero({
     () => false
   );
 
-  // 知识体 3D 只对桌面端渲染（与 lg:grid-cols-2 布局一致）；移动端统一用静态 SVG
+  // 知识体 3D 只对桌面端渲染（与 lg:grid-cols-2 布局一致）；lg 以下整块图纸隐藏（#542）
   const isDesktop = useSyncExternalStore(
     (onChange) => {
       const mq = window.matchMedia("(min-width: 1024px)");
@@ -199,10 +207,10 @@ export default function BankHero({
     <section
       ref={sectionRef}
       data-block
-      className="relative flex min-h-[68vh] flex-col overflow-hidden"
+      className="relative flex flex-col overflow-hidden lg:min-h-[68vh]"
     >
       <div className="mx-auto grid w-full max-w-site flex-1 lg:grid-cols-2">
-        <div className="flex flex-col justify-center px-5 py-14 md:px-8 lg:pr-12">
+        <div className="flex flex-col justify-center px-5 py-6 md:px-8 lg:py-14 lg:pr-12">
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
             <span className="text-accent">01</span>
             <span className="mx-2">/</span>
@@ -210,17 +218,17 @@ export default function BankHero({
           </p>
           <h1
             data-enter
-            className="mt-4 font-display text-6xl font-bold tracking-tight md:text-7xl"
+            className="mt-3 font-display text-4xl font-bold tracking-tight md:text-7xl lg:mt-4"
           >
             {LEVEL_LABELS.practiceBank}
           </h1>
-          <p data-enter className="mt-5 max-w-md text-sm leading-7 text-ink/70">
+          <p data-enter className="mt-3 max-w-md text-sm leading-7 text-ink/70 lg:mt-5">
             {catalogMode
               ? "浏览题库，选一组开始练习；掌握度根据你的答题记录计算。"
               : "题库暂未开放；掌握度根据你的答题记录计算，没有记录时不显示估算值。"}
           </p>
 
-          <div data-enter className="mt-8 w-full max-w-md">
+          <div data-enter className="mt-5 w-full max-w-md lg:mt-8">
             <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
               SEARCH / 搜索科目
             </label>
@@ -232,7 +240,7 @@ export default function BankHero({
             />
           </div>
 
-          <div data-enter className="mt-10 grid max-w-md grid-cols-2 gap-4">
+          <div data-enter className="mt-5 grid max-w-md grid-cols-2 gap-4 lg:mt-10">
             <div className="border border-line px-4 py-3">
               <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
                 已确认作答
@@ -258,8 +266,8 @@ export default function BankHero({
           </div>
         </div>
 
-        {/* 右：掌握度驱动的知识体 3D */}
-        <div className="bg-blueprint relative min-h-72 border-t border-line lg:border-l lg:border-t-0">
+        {/* 右：掌握度驱动的知识体 3D；lg 以下隐藏，手机首屏留给搜索和题库（#542） */}
+        <div className="bg-blueprint relative hidden min-h-72 border-line lg:block lg:border-l">
           <span
             aria-hidden
             className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
@@ -276,7 +284,7 @@ export default function BankHero({
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
             <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
               <li className="py-1 font-mono text-[10px] leading-5 tracking-wide text-ink/50">
-                {stateMessage}
+                {figureMessage}
               </li>
               {ringSubjects.map((s, i) => {
                 const weak = s.value < 60;

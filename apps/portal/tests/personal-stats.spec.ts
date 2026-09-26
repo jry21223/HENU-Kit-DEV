@@ -38,10 +38,17 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
         });
       }
 
-      await desktopPage.goto("/practice", { waitUntil: "domcontentloaded" });
-      await expect(desktopPage.getByTestId("practice-hero-stats-state")).toContainText("图谱根据你的答题记录生成。");
+      await Promise.all([
+        desktopPage.goto("/practice", { waitUntil: "domcontentloaded" }),
+        mobilePage.goto("/practice", { waitUntil: "domcontentloaded" }),
+      ]);
+      await expect(desktopPage.getByTestId("practice-hero-stats-state")).toHaveText("作答数和正确率根据你的答题记录计算。");
       await expect(desktopPage.getByTestId("practice-hero-stats-state").locator("xpath=.."))
         .toContainText("4");
+      await expect(desktopPage.locator("main")).toContainText("图谱根据你的答题记录生成。", { useInnerText: true });
+      // lg 以下知识点结构图隐藏（#542）：手机上看得到的说明不能再指向看不到的图谱。
+      await expect(mobilePage.getByTestId("practice-hero-stats-state")).toHaveText("作答数和正确率根据你的答题记录计算。");
+      await expect(mobilePage.locator("main")).not.toContainText("图谱", { useInnerText: true });
 
       await Promise.all([
         desktopPage.goto("/practice/stats", { waitUntil: "domcontentloaded" }),

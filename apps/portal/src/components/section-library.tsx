@@ -152,7 +152,7 @@ export default function SectionLibrary() {
       ref={sectionRef}
       className="snap-screen relative border-t border-line bg-paper"
     >
-      <div className="mx-auto flex min-h-svh max-w-site flex-col justify-center px-5 py-24 md:px-8">
+      <div className="mx-auto flex max-w-site flex-col justify-center px-5 py-24 md:min-h-svh md:px-8">
         <div className="grid gap-8 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:items-end">
           <div>
             <SectionHeading index="01" en="LIBRARY" title="资料库" />
