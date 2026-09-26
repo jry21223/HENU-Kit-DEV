@@ -1,11 +1,14 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { renderTheme } from "../../scripts/generate-theme.mjs";
 
 /**
  * Portal 的颜色来自 packages/design-tokens（#536）。这里检查设计系统承诺的文字配色
- * 达到 WCAG AA（小字 4.5:1，大字 3:1），以及 tokens.css 与 tokens.json 是同一组色值——
- * 对比度按 tokens.json 算，页面实际用的是 tokens.css。
+ * 达到 WCAG AA（小字 4.5:1，大字 3:1），tokens.css 与 tokens.json 是同一组色值，
+ * 以及 Portal 的 Tailwind 主题 theme.css 由 tokens.json 生成、没有落后。
  */
 
 /** 去掉 CSS 注释：注释里的 #537 之类是 issue 编号，举例写的声明也不算数。 */
@@ -132,12 +135,15 @@ describe("design-tokens 的文字配色（#536）", () => {
 
 describe("globals.css 的颜色来自 design-tokens（#536）", () => {
   const globals = withoutComments(readFileSync(path.resolve(__dirname, "globals.css"), "utf8"));
+  const theme = readFileSync(path.resolve(__dirname, "theme.css"), "utf8");
 
-  it("引入 packages/design-tokens/tokens.css", () => {
+  it("引入由 tokens.json 生成的 theme.css，且它没有落后于 tokens.json", () => {
     const imports = [...globals.matchAll(/@import\s+["']([^"']+)["']/g)].map((match) =>
       path.resolve(__dirname, match[1])
     );
-    expect(imports).toContain(path.join(TOKENS_DIR, "tokens.css"));
+    expect(imports).toContain(path.resolve(__dirname, "theme.css"));
+    // 改了 tokens.json 却没重新生成时在这里失败：运行 pnpm --filter @henukit/portal generate:theme。
+    expect(theme).toBe(renderTheme(TOKENS_JSON));
   });
 
   it("不再另写 tokens 里已有的色值", () => {
@@ -149,13 +155,9 @@ describe("globals.css 的颜色来自 design-tokens（#536）", () => {
     expect(duplicated).toEqual([]);
   });
 
-  it("引用的 --hk-* 变量都在 tokens.css 里有定义", () => {
-    // 写错名字的 var() 不报错，只会让颜色悄悄失效。
-    const defined = new Set([...TOKENS_CSS.matchAll(/(--hk-[\w-]+):/g)].map((match) => match[1]));
-    const undefinedNames = [...globals.matchAll(/var\((--hk-[\w-]+)/g)]
-      .map((match) => match[1])
-      .filter((name) => !defined.has(name));
-    expect(undefinedNames).toEqual([]);
+  it("不引用 --hk-* 变量", () => {
+    // Portal 不引入 tokens.css，这些变量在页面上没有定义；var() 引用它们不报错，只会让颜色悄悄失效。
+    expect(globals.match(/var\(--hk-[\w-]+/g) ?? []).toEqual([]);
   });
 
   it("选中文字是强调橙底墨色字", () => {
@@ -167,6 +169,47 @@ describe("globals.css 的颜色来自 design-tokens（#536）", () => {
 
   it("橙字有自己的 Tailwind 颜色 accent-text", () => {
     // 没有这条映射时 text-accent-text 不会生成任何样式，也不报错。
-    expect(globals).toMatch(/--color-accent-text:\s*var\(--hk-accent-text\);/);
+    const accentText = TOKENS_JSON.color.brand.accent_text.$value.toLowerCase();
+    expect(theme).toContain(`--color-accent-text: ${accentText};`);
   });
+});
+
+describe("透明度写法在不支持 color-mix() 的浏览器里有静态回退", () => {
+  // 与 Next 构建用同一份 Tailwind 插件；postcss 不是 Portal 的直接依赖，从插件所在位置解析。
+  const requireFromPortal = createRequire(__filename);
+  const tailwind = requireFromPortal("@tailwindcss/postcss");
+  const postcss = createRequire(requireFromPortal.resolve("@tailwindcss/postcss"))("postcss");
+
+  /** 按生产构建的方式（压缩）编译 globals.css，只生成给定的类。 */
+  async function compile(classes: string[]) {
+    // 自动扫描源码的根目录指向空目录，产物里只有 @source inline 列出的类。
+    const emptyBase = mkdtempSync(path.join(os.tmpdir(), "portal-theme-"));
+    const input = `@import "${path.resolve(__dirname, "globals.css")}";\n@source inline("${classes.join(" ")}");`;
+    const result = await postcss([tailwind({ base: emptyBase, optimize: { minify: true } })]).process(input, {
+      from: path.resolve(__dirname, "theme-fallback-check.css"),
+    });
+    return result.css as string;
+  }
+
+  // 不支持 color-mix() 的浏览器只认规则里的第一条声明。它必须是算好的半透明色：
+  // 若是 var(--color-*)，bg-accent/5、bg-ink/5 会变成实心的橙或墨，压在上面的同色字看不见。
+  const CASES: Array<[string, string]> = [
+    ["bg-accent/5", "background-color"],
+    ["bg-ink/5", "background-color"],
+    ["bg-ink/10", "background-color"],
+    ["bg-paper/95", "background-color"],
+    ["text-ink/60", "color"],
+    ["text-paper/50", "color"],
+    ["border-ink/30", "border-color"],
+  ];
+
+  it("每个透明度写法的第一条声明都是算好的色值", async () => {
+    const css = await compile(CASES.map(([className]) => className));
+    const fallbacks = CASES.map(([className, property]) => {
+      const selector = `.${className.replace("/", "\\/")}{`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const declaration = new RegExp(`${selector}${property}:([^;}]*)`).exec(css)?.[1];
+      return [className, declaration ?? "未生成"];
+    });
+    expect(fallbacks.filter(([, value]) => !/^#[0-9a-f]{8}$/i.test(value))).toEqual([]);
+  }, 30_000);
 });

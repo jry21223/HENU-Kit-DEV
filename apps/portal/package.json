@@ -19,6 +19,7 @@
     "test:e2e:account": "playwright test tests/account-center-bootstrap.spec.ts tests/account-portfolio.spec.ts tests/account-ticket-loop.spec.ts tests/membership-purchase.spec.ts tests/account-food-posts.spec.ts tests/account-career-profile.spec.ts",
     "test:e2e:oauth-continuation": "playwright test --config playwright.oauth-continuation.config.ts",
     "test:e2e:library-download": "playwright test tests/library-download.spec.ts --workers=1",
+    "generate:theme": "node scripts/generate-theme.mjs",
     "test:library-public-artifact": "node scripts/check-paid-library-public-artifact.mjs",
     "test:mock-public-artifact": "node scripts/check-mock-public-artifact.mjs"
   },

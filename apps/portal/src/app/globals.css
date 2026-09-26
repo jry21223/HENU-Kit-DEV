@@ -1,28 +1,11 @@
 @import "tailwindcss";
-/* 颜色的唯一来源（#536，DESIGN_SYSTEM.md §3）。Tailwind 构建时把它内联进产物，
-   运行时不依赖仓库路径；Docker 构建阶段复制了整个仓库。 */
-@import "../../../../packages/design-tokens/tokens.css";
+/* 颜色的唯一来源是 packages/design-tokens（#536，DESIGN_SYSTEM.md §3）。theme.css 由
+   scripts/generate-theme.mjs 从 tokens.json 生成，写的是算好的色值：Tailwind 因此能给
+   text-ink/60、bg-accent/5 这类透明度写法预先算出回退，不支持 color-mix() 的浏览器
+   也不会拿到实心色。这里不另写色值，也不引用 --hk-* 变量。 */
+@import "./theme.css";
 
 @theme {
-  /* 颜色只指向 tokens.css 的 --hk-* 变量，不在这里另写色值。
-     var() 没有静态值，Tailwind 因此不再给 text-ink/60、bg-accent/5 这类透明度写法预先算出
-     十六进制回退。支持 color-mix() 的浏览器颜色不变；不支持的（Safari 16.2、Chrome 111、
-     Firefox 113 以前，包括 Next 16 仍支持的 Firefox 111–112）拿到的是不透明的原色：
-     bg-accent/5、bg-ink/5 会变成实心的橙或墨，压在上面的同色字看不见。 */
-  --color-paper: var(--hk-paper);
-  --color-ink: var(--hk-ink);
-  --color-accent: var(--hk-accent);
-  /* 浅色底上的橙字不论大小都用 text-accent-text。强调橙本身只用于色块和墨色底上的
-     文字：它在纸白上只有 2.92:1，连大字的 3:1 也不到。 */
-  --color-accent-text: var(--hk-accent-text);
-  --color-line: var(--hk-line);
-  --color-line-dark: var(--hk-line-dark);
-
-  /* 功能色：仅用于难度分徽标等数据标识，不进装饰层 */
-  --color-easy: var(--hk-success);
-  --color-mid: var(--hk-warning);
-  --color-hard: var(--hk-danger);
-
   /* 内容框：首页、子站页头与正文共用同一宽度（max-w-site），左右留白统一为
      px-5 md:px-8，页头的返回链接因此与正文标题左缘对齐。见 DESIGN_SYSTEM.md。 */
   --container-site: 1440px;

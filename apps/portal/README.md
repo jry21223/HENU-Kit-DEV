@@ -174,20 +174,20 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 ## 设计系统
 
-**工业极简（Industrial Minimal）** 视觉风格。颜色来自 `packages/design-tokens/tokens.css`：`globals.css` 引入它，Tailwind 颜色只指向 `--hk-*` 变量，不另写色值（[#536](https://github.com/jry21223/HENU-Kit-DEV/issues/536)）。
+**工业极简（Industrial Minimal）** 视觉风格。颜色来自 `packages/design-tokens/tokens.json`：`scripts/generate-theme.mjs` 按它生成 Tailwind 颜色主题 `src/app/theme.css`，`globals.css` 引入这份主题，自己不另写色值（[#536](https://github.com/jry21223/HENU-Kit-DEV/issues/536)）。主题里是算好的色值而不是 `var(--hk-*)`：Tailwind 只有拿到字面色值，才能给 `bg-accent/5`、`text-ink/60` 这类透明度写法预先算出回退，不支持 `color-mix()` 的浏览器才不会拿到实心的橙或墨。改色值时改 `tokens.json` 与 `tokens.css`，再运行 `pnpm --filter @henukit/portal generate:theme`。
 
-| 令牌 | 指向 | 值 | 用途 |
+| 令牌 | 来自 | 值 | 用途 |
 |---|---|---|---|
-| `--color-paper` | `--hk-paper` | `#F2F0EA` | 主背景（暖纸白） |
-| `--color-ink` | `--hk-ink` | `#161513` | 主文字 / 深色区块 |
-| `--color-accent` | `--hk-accent` | `#FF4D00` | 安全橙：色块（CTA / 激活态 / 反馈）、墨色底上的文字 |
-| `--color-accent-text` | `--hk-accent-text` | `#BB3800` | 浅色底上的橙字，不论大小（编号、眉标、链接、大号数字），类名 `text-accent-text` |
-| `--color-easy` | `--hk-success` | `#3E7C4F` | 难度 < 4.0 |
-| `--color-mid` | `--hk-warning` | `#C79A2A` | 难度 4.0–6.9 |
-| `--color-hard` | `--hk-danger` | `#C2401F` | 难度 ≥ 7.0 |
+| `--color-paper` | `surface.paper` | `#F2F0EA` | 主背景（暖纸白） |
+| `--color-ink` | `text.primary` | `#161513` | 主文字 / 深色区块 |
+| `--color-accent` | `brand.accent` | `#FF4D00` | 安全橙：色块（CTA / 激活态 / 反馈）、墨色底上的文字 |
+| `--color-accent-text` | `brand.accent_text` | `#BB3800` | 浅色底上的橙字，不论大小（编号、眉标、链接、大号数字），类名 `text-accent-text` |
+| `--color-easy` | `semantic.success` | `#3E7C4F` | 难度 < 4.0 |
+| `--color-mid` | `semantic.warning` | `#C79A2A` | 难度 4.0–6.9 |
+| `--color-hard` | `semantic.danger` | `#C2401F` | 难度 ≥ 7.0 |
 | `--container-site` | — | `1440px` | 内容框宽度（`max-w-site`），首页、子站页头与正文共用 |
 
-强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `globals.css` 不另写 token 里已有的色值、选中文字是橙底墨色字；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
+强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `theme.css` 与 `tokens.json` 一致、`globals.css` 不另写 token 里已有的色值、透明度写法在生产构建里有算好的回退、选中文字是橙底墨色字；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
 
 灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，部署流水线目前不跑这一组）。两处共用 `tests/support/color-contrast.ts`。
 
@@ -227,5 +227,6 @@ src/
 │   ├── food/               # 美食 mock
 │   ├── library/            # 资料库 mock
 │   └── practice/           # 刷题会话与统计工具
-└── globals.css             # 引入 design-tokens + Tailwind 主题 + 全局样式
+├── globals.css             # Tailwind 主题 + 全局样式
+└── theme.css               # 由 tokens.json 生成的颜色主题（不要手改）
 ```

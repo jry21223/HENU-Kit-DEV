@@ -15,6 +15,8 @@
 
 具体相对路径由应用构建结构决定。正式接入时应通过 workspace package 或构建复制实现，避免生产环境依赖仓库相对路径。
 
+Portal（`apps/portal`）用 Tailwind v4，按构建复制的方式接入：`apps/portal/scripts/generate-theme.mjs` 从 `tokens.json` 生成颜色主题 `apps/portal/src/app/theme.css`，写的是算好的色值。Tailwind 只有拿到字面色值，才能给 `bg-accent/5` 这类透明度写法预先算出回退；改了这里的颜色后，在 Portal 运行 `pnpm --filter @henukit/portal generate:theme`，否则 Portal 的测试会失败。
+
 ```css
 .primary-button {
   min-height: var(--hk-touch-target);
