@@ -90,7 +90,7 @@ export default function QQBindingPage() {
   }
 
   return (
-    <main className="min-h-svh bg-paper px-6 py-16 text-ink">
+    <main className="bg-paper px-6 py-16 text-ink">
       <section className="mx-auto max-w-lg border border-ink/25 p-8">
         <Link href="/account/security" className="text-sm underline">返回账号安全</Link>
         <h1 className="mt-6 font-display text-3xl font-bold">绑定 HENU Bot</h1>

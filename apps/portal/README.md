@@ -137,7 +137,7 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 页脚包含短版非官方声明、用户协议与隐私政策链接，以及 ICP 备案号：
 - 首页用自己的大页脚；
-- 子站、账户中心、登录页与协议页的布局都套用 `SiteShell`，由它渲染 `SiteFooter`；
+- 子站、账户中心、登录页、QQ 绑定页（`/bind/qq`）与协议页的布局都套用 `SiteShell`，由它渲染 `SiteFooter`；
 - 两种页脚渲染同一个 `LegalNotice`；
 - 404 与出错兜底页不经过子站布局，由它们共用的 `FallbackPage` 自己套上 `SiteShell`（见下节）。
 

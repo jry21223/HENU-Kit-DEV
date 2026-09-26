@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import SiteShell from "@/components/site-shell";
 
 export const metadata: Metadata = {
   title: "绑定 HENU Bot",
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function BindingLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <SiteShell>{children}</SiteShell>;
 }

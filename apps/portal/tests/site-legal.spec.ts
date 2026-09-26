@@ -30,6 +30,7 @@ for (const path of [
   "/account",
   "/account/login",
   "/account/recover",
+  "/bind/qq",
   "/privacy",
   "/terms",
 ]) {
@@ -64,6 +65,17 @@ for (const doc of [
     await expect(page.locator("main")).toContainText("非河南大学官方");
   });
 }
+
+test("the privacy policy covers the HENU Bot QQ binding the site offers", async ({ page }) => {
+  await page.goto("/privacy");
+  const main = page.locator("main");
+  await expect(page.getByRole("heading", { level: 3, name: "QQ 机器人绑定（HENU Bot）" })).toBeVisible();
+  // 绑定保存的是 QQ 为机器人分配的用户标识，不是 QQ 号；解绑入口与链接有效期要写明。
+  await expect(main).toContainText("不是 QQ 号");
+  await expect(main).toContainText("5 分钟");
+  await expect(main).toContainText("安全设置");
+  await expect(main).toContainText("QQ 开放平台");
+});
 
 test("legal documents and the footer fit a 360px screen", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
