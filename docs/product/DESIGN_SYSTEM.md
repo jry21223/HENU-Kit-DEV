@@ -255,6 +255,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 焦点状态不得移除。
 - 图片有有意义的 alt，装饰图使用空 alt。
 - 动画短而克制，尊重减少动态设置。
+  - 首屏入场只能让内容越来越可见：服务端已经画出的标题和内容块不在水合后被隐藏再重播，LCP 元素首绘之后不再被隐藏。首页、子站与题库 Hero 用首帧即开始播放的 CSS 动画，脚本没加载也停在可见态；减少动态设置下直接静态展示。慢 CPU 下由 `apps/portal/tests/first-screen-entrance.spec.ts` 逐帧检查。
 - 不依赖 Hover 完成核心任务。
 
 ## 14. 统一账户和隐私界面

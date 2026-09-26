@@ -181,6 +181,7 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 - GSAP 动画统一经 `useGSAP`，卸载时 `killTweensOf` 清理。
 - 页面间导航：形变过渡系统（共享元素形变 + 塌缩/展开）。
 - `prefers-reduced-motion`：瞬时导航，循环/揭示动画静止。
+- 首屏入场只让内容越来越可见，服务端已画出的内容不在水合后隐藏重播（[#537](https://github.com/jry21223/HENU-Kit-DEV/issues/537)）。首页、子站与题库 Hero 用 `globals.css` 的 `enter-*` CSS keyframes，首帧即开始播放、不等水合，脚本没加载也停在可见态；不要对服务端已画出的内容用 GSAP `from()`。`[data-enter]` 内容块由 `useReveal` 揭示：水合时已画出的块直接显示，之后只揭示客户端新挂上的块。慢 CPU 下由 `tests/first-screen-entrance.spec.ts` 逐帧检查。
 - 滚动入场：统一 `start: "top 60%"`。
 - mock 数据为固定数据，图片使用 picsum 种子外链，SSR 与客户端输出一致；生产构建不预渲染任何 mock 页面（`npm run build` 会检查）。
 

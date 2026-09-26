@@ -74,6 +74,82 @@ body {
   scroll-snap-align: start;
 }
 
+/* 首屏入场（#537）：纯 CSS keyframes，随首帧样式一起开始播放，不等水合。
+   GSAP 的 from() 要到水合时才把元素设成初始隐藏态，而 SSR 早已把内容画出来，
+   慢设备上会先看到内容、再看它消失重播。CSS 动画从首帧到结束可见性只增不减；
+   脚本没加载也照常播完，停在元素自己的样式上。
+   只写 from + backwards：延迟期间停在初始态，播完不把终态钉在元素上。
+   时长与缓动沿用原 GSAP 时间轴，错峰由组件内联 animation-delay 给出：
+   power3.out ≈ cubic-bezier(0.25, 1, 0.5, 1)，power2.inOut ≈ cubic-bezier(0.65, 0, 0.35, 1)。
+   reduced-motion 下不挂动画，直接静态展示。 */
+@keyframes enter-flip {
+  from {
+    opacity: 0;
+    transform: translateY(60%) rotateX(-90deg);
+  }
+}
+
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+}
+
+@keyframes enter-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* 橙色擦除块：从盖满标题收起，基础样式由组件内联给出 scaleX(0)。 */
+@keyframes enter-wipe-x {
+  from {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes enter-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .enter-flip {
+    animation: enter-flip 0.9s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+    transform-origin: 50% 100%;
+  }
+
+  .enter-rise {
+    animation: enter-rise 0.7s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+  }
+
+  .enter-grow-x {
+    animation: enter-grow-x 0.7s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+    transform-origin: left center;
+  }
+
+  .enter-wipe-x {
+    animation: enter-wipe-x 0.6s cubic-bezier(0.65, 0, 0.35, 1) backwards;
+    transform-origin: right center;
+  }
+
+  .enter-fade {
+    animation: enter-fade 0.8s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+  }
+
+  .enter-slide-up {
+    animation: enter-slide-up 0.5s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+  }
+}
+
 /* reduced-motion：01 资料卡轨道回退为手动横向滚动 */
 @media (prefers-reduced-motion: reduce) {
   .lib-track-wrap {

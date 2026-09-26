@@ -211,24 +211,39 @@ export default function BankHero({
     >
       <div className="mx-auto grid w-full max-w-site flex-1 lg:grid-cols-2">
         <div className="flex flex-col justify-center px-5 py-6 md:px-8 lg:py-14 lg:pr-12">
-          <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          {/* 入场和子站 Hero 一样用 globals.css 的 enter-rise，首帧即开始播放、不等水合，
+              也不会在水合后隐藏重播（#537）；错峰沿用原 usePageEnter 的 0.05s 起、每块 0.05s。 */}
+          <p
+            data-hero-title
+            className="enter-rise font-mono text-xs tracking-[0.3em] text-ink/60"
+            style={{ animationDelay: "0.05s" }}
+          >
             <span className="text-accent">01</span>
             <span className="mx-2">/</span>
             QUESTION BANK
           </p>
           <h1
-            data-enter
-            className="mt-3 font-display text-4xl font-bold tracking-tight md:text-7xl lg:mt-4"
+            data-hero-title
+            className="enter-rise mt-3 font-display text-4xl font-bold tracking-tight md:text-7xl lg:mt-4"
+            style={{ animationDelay: "0.1s" }}
           >
             {LEVEL_LABELS.practiceBank}
           </h1>
-          <p data-enter className="mt-3 max-w-md text-sm leading-7 text-ink/70 lg:mt-5">
+          <p
+            data-hero-title
+            className="enter-rise mt-3 max-w-md text-sm leading-7 text-ink/70 lg:mt-5"
+            style={{ animationDelay: "0.15s" }}
+          >
             {catalogMode
               ? "浏览题库，选一组开始练习；掌握度根据你的答题记录计算。"
               : "题库暂未开放；掌握度根据你的答题记录计算，没有记录时不显示估算值。"}
           </p>
 
-          <div data-enter className="mt-5 w-full max-w-md lg:mt-8">
+          <div
+            data-hero-title
+            className="enter-rise mt-5 w-full max-w-md lg:mt-8"
+            style={{ animationDelay: "0.2s" }}
+          >
             <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
               SEARCH / 搜索科目
             </label>
@@ -240,7 +255,11 @@ export default function BankHero({
             />
           </div>
 
-          <div data-enter className="mt-5 grid max-w-md grid-cols-2 gap-4 lg:mt-10">
+          <div
+            data-hero-title
+            className="enter-rise mt-5 grid max-w-md grid-cols-2 gap-4 lg:mt-10"
+            style={{ animationDelay: "0.25s" }}
+          >
             <div className="border border-line px-4 py-3">
               <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
                 已确认作答
