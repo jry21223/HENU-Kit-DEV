@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
@@ -42,6 +42,7 @@ import {
 } from "@/lib/auth/henu-email";
 import { authStore } from "@/lib/auth/store";
 import { cn } from "@/lib/cn";
+import { sameOriginPath } from "@/lib/navigation/same-origin-path";
 
 function Field({
   label,
@@ -149,9 +150,12 @@ function LoginForm() {
     request: ReturnType<typeof bootstrapAccountLogin>;
   } | null>(null);
   const defaultNext = tab === "register" ? "/account/security" : "/account";
-  const nextPath =
-    requestedNext?.startsWith("/") ? requestedNext : defaultNext;
-  const oauthReturnTo = portalOAuthStartUrl(nextPath);
+  // `next` 来自地址栏：只跟随本站路径，否则回到默认页（见 sameOriginPath）。
+  // 要读 window.location，只在 effect 和提交时调用。
+  const resolveNextPath = useCallback(
+    () => sameOriginPath(requestedNext, window.location.origin) ?? defaultNext,
+    [requestedNext, defaultNext]
+  );
 
   const fullEmail = toHenuEmail(localPart);
   const needCode = tab === "register" || mode === "code";
@@ -183,7 +187,7 @@ function LoginForm() {
     // account console when the Gateway still reports this session; otherwise
     // drop the stale cache and stay put (the #412 loop).
     if (!hasGateway) {
-      router.replace(nextPath);
+      router.replace(resolveNextPath());
       return;
     }
     let cancelled = false;
@@ -191,7 +195,7 @@ function LoginForm() {
       (session) => {
         if (cancelled) return;
         if (session) {
-          router.replace(nextPath);
+          router.replace(resolveNextPath());
         } else {
           authStore.clear();
         }
@@ -203,7 +207,7 @@ function LoginForm() {
     return () => {
       cancelled = true;
     };
-  }, [ready, user, nextPath, router, continuationHandle, continuationError]);
+  }, [ready, user, resolveNextPath, router, continuationHandle, continuationError]);
 
   useEffect(() => {
     if (!continuationHandle || continuationError) return;
@@ -288,6 +292,7 @@ function LoginForm() {
     setPending(true);
     try {
       const token = await ensureCsrf();
+      const oauthReturnTo = portalOAuthStartUrl(resolveNextPath());
       const result =
         tab === "register"
           ? await requestRegistrationCode({
@@ -344,6 +349,7 @@ function LoginForm() {
 
     try {
       const token = await ensureCsrf();
+      const oauthReturnTo = portalOAuthStartUrl(resolveNextPath());
       if (tab === "register") {
         await registerAccount({
           csrfToken: token,

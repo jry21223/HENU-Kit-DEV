@@ -325,3 +325,34 @@ test("OAuth continuation Account Center remains operable at 360px with reduced m
   await page.keyboard.press("Tab");
   await expect(page.locator(":focus")).toBeVisible();
 });
+
+test("a signed-in visit to the login page follows next only to a path on this site", async ({ page }) => {
+  await page.route("**/api/v1/session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        user_id: "11111111-1111-4111-8111-111111111111",
+        display_name: "小河同学",
+        expires_at: "2030-01-01T00:00:00Z",
+      }),
+    })
+  );
+  // 真跳出去时在这里接住，不依赖外网，也能看见跳到了哪。
+  const offSite: string[] = [];
+  await page.route(/^https?:\/\/evil\.example\//, (route) => {
+    offSite.push(route.request().url());
+    return route.fulfill({ contentType: "text/html", body: "<!doctype html><title>off site</title>" });
+  });
+
+  // 都以 / 开头，浏览器却会解析到另一个站点：协议相对地址、反斜杠、URL 解析时会被删掉的制表符。
+  for (const next of ["//evil.example/phish", "/\\evil.example/phish", "/\t/evil.example/phish"]) {
+    await page.goto(`/account/login?next=${encodeURIComponent(next)}`);
+    // 已登录：不跟随这个 next，回到登录后的默认页。冷启动时 /account 要先编译，超时只为盖住它。
+    await expect(page, next).toHaveURL(/\/account$/, { timeout: 30_000 });
+  }
+  expect(offSite).toEqual([]);
+
+  // 本站路径照常跟随，查询参数一并保留。
+  await page.goto(`/account/login?next=${encodeURIComponent("/account/security?from=login")}`);
+  await expect(page).toHaveURL(/\/account\/security\?from=login$/);
+});

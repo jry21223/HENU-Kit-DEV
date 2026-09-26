@@ -131,6 +131,8 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 登录 / 注册表单的字段错误出现时作为 `role="alert"` 读出，并用 `aria-describedby` 与 `aria-invalid` 挂在对应输入框上，回到输入框时错误跟着读；“验证码已进入发送队列”一句放在常驻的 `role="status"` 区里，发出后读屏软件会读出。
 
+登录页的 `next`（登录后回到哪一页）只跟随本站路径：已登录时打开登录页会直接跳过去，新登录则经 OAuth 的 `return_to` 回去。`next` 先按当前页面的 origin 解析，必须同源，再只取路径、查询和片段，取出的路径也不能以 `//` 开头。`//evil.example`、`/\evil.example`、带编码制表符的 `/%09/evil.example` 这类以 `/` 开头、却会被浏览器解析到别的站点的目标一律换成默认页（登录后 `/account`，注册后 `/account/security`）；`/..//evil.example` 解析后仍在本站，路径却规整成了 `//evil.example`，交给路由又会去别的站点，同样换成默认页。判断在 `src/lib/navigation/same-origin-path.ts`，已登录时的跳转由 `tests/account-center-bootstrap.spec.ts` 检查。
+
 ### 协议与页脚
 | 路由 | 说明 |
 |---|---|
