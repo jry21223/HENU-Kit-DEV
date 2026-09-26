@@ -735,7 +735,7 @@ export default function QuizPage() {
                   disabled={favoriteBusy || !authReady || !favoriteSeedReady}
                   aria-pressed={user ? isFavorited : undefined}
                   className={cn(
-                    "border px-3 py-1.5 font-mono text-xs transition-colors",
+                    "min-h-11 border px-3 py-1.5 font-mono text-xs transition-colors",
                     favoriteBusy || !authReady || !favoriteSeedReady
                       ? "cursor-not-allowed border-line text-ink/30"
                       : !user
@@ -877,7 +877,7 @@ export default function QuizPage() {
               )}
             </div>
 
-            <div className="mt-4 flex items-center justify-between gap-3 lg:hidden" aria-label="题目导航">
+            <div className="mt-4 flex items-center justify-between gap-3 lg:hidden" role="group" aria-label="题目导航">
               <button
                 type="button"
                 aria-label="上一道题"
@@ -899,11 +899,12 @@ export default function QuizPage() {
             </div>
 
             <div data-feedback className="mt-5 border-t border-line pt-4">
+              {/* 文字按钮的点击区撑到 44px 高，等量负外边距让文字和下面的面板都不挪位置。 */}
               <button
                 type="button"
                 onClick={openFeedback}
                 aria-expanded={feedbackOpen}
-                className="font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
+                className="-my-3.5 inline-flex min-h-11 items-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
               >
                 {feedbackOpen ? "收起纠错 −" : "这道题有问题？提交纠错 +"}
               </button>
@@ -921,7 +922,7 @@ export default function QuizPage() {
                         onClick={() => setFeedbackCategory(item.value)}
                         aria-pressed={feedbackCategory === item.value}
                         className={cn(
-                          "border px-3 py-1.5 font-mono text-xs transition-colors",
+                          "min-h-11 border px-3 py-1.5 font-mono text-xs transition-colors",
                           feedbackCategory === item.value
                             ? "border-ink bg-ink text-paper"
                             : "border-line text-ink/60 hover:border-ink/40"
@@ -960,7 +961,7 @@ export default function QuizPage() {
                       onClick={() => void submitFeedback()}
                       disabled={feedbackSubmitting}
                       className={cn(
-                        "border px-5 py-2 font-mono text-xs transition-colors",
+                        "min-h-11 border px-5 py-2 font-mono text-xs transition-colors",
                         feedbackSubmitting
                           ? "cursor-not-allowed border-line text-ink/30"
                           : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
@@ -972,7 +973,7 @@ export default function QuizPage() {
                       <button
                         type="button"
                         onClick={() => void refreshFeedbackStatus(feedbackID)}
-                        className="border border-ink/30 px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
+                        className="min-h-11 border border-ink/30 px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
                       >
                         刷新状态
                       </button>

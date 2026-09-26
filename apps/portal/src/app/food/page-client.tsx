@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { CAMPUSES, CAMPUS_KEYS, type CampusKey } from "@/lib/food/campuses";
 import { HANG_TIER_KEY, groupFoodPostsByTier } from "@/lib/food/ranking";
 import { useFoodPosts } from "@/lib/food/use-food-posts";
+import { INSET_FOCUS_RING, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 
 export default function FoodBoardPage() {
   const { posts, loadState, error, load } = useFoodPosts();
@@ -120,16 +121,18 @@ export default function FoodBoardPage() {
           </div>
         ) : loadState === "error" ? null : (
           <>
+            {/* 手机上五档放不下时横向滑动：焦点框画在每一档里面，键盘聚焦的那一档整个滑进来。 */}
             <nav
               data-enter
               aria-label="五档榜单导览"
+              onFocus={revealKeyboardFocus}
               className="mt-8 flex max-w-full gap-px overflow-x-auto border border-ink bg-ink"
             >
               {groups.map(({ tier, posts: tierPosts }) => (
                 <a
                   key={tier.key}
                   href={`#tier-${tier.key}`}
-                  className="group min-w-28 flex-1 bg-paper px-4 py-3 transition-colors hover:bg-accent"
+                  className={cn("group min-w-28 flex-1 bg-paper px-4 py-3 transition-colors hover:bg-accent", INSET_FOCUS_RING)}
                 >
                   {/* 悬停时整格变强调橙，小字跟着转成墨色，在橙底上才够清楚。 */}
                   <span className="block font-mono text-xs tracking-[0.2em] text-ink/60 group-hover:text-ink">

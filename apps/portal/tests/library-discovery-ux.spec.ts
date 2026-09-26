@@ -74,7 +74,7 @@ test("readable cards preserve subject, type, source-title search and the owner d
   await expect(page.getByRole("heading", { name: "primary_key 与 user_id", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "数据库 · 实验 · primary_key_v2", exact: true })).toBeVisible();
 
-  const search = page.getByPlaceholder("搜索：真题 / 高数 / 课件");
+  const search = page.getByLabel("搜索资料");
   await search.fill(source.title);
   await expect(cppCard).toBeVisible();
   await expect(page.getByRole("link", { name: /AOP面向切面编程/ })).toHaveCount(0);
@@ -98,7 +98,7 @@ test("390px Library search and filters are reachable on arrival and preserve own
   await mockCatalog(page);
   await page.goto("/library");
 
-  const search = page.getByPlaceholder("搜索：真题 / 高数 / 课件");
+  const search = page.getByLabel("搜索资料");
   await expect(search).toBeInViewport({ ratio: 1 });
   const subject = page.getByRole("combobox", { name: "按科目筛选" });
   await expect(subject).toBeInViewport({ ratio: 1 });

@@ -82,7 +82,7 @@ export default function StatsPage() {
           <button
             type="button"
             onClick={() => redirectToLogin("/practice/stats")}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             登录查看
           </button>

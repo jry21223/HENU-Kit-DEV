@@ -67,7 +67,7 @@ function FavoriteRow({
           onClick={onRemove}
           disabled={removing}
           className={cn(
-            "border px-3 py-1.5 font-mono text-xs transition-colors",
+            "min-h-11 border px-3 py-1.5 font-mono text-xs transition-colors",
             removing
               ? "cursor-not-allowed border-line text-ink/30"
               : "border-ink/30 text-ink/70 hover:border-accent hover:text-accent-text"
@@ -271,7 +271,8 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
               <p className="mt-4 font-mono text-xs leading-5 text-ink/60">
                 不可用的收藏会保留在这里，但不会进入收藏练习，也不展示题目内容。
               </p>
-              <BackLink className="mt-6 inline-block" />
+              {/* 点击区比文字上下各高出 14px：mt-2.5 让文字仍在原来 mt-6 的位置。 */}
+              <BackLink className="mt-2.5" />
             </>
           )}
         </section>

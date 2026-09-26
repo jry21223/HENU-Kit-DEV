@@ -204,7 +204,9 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 资料库、刷题、美食、互助和求职雷达共用一个页头（`SubSiteNav`）：左上角是返回上一级，其后是子站字标，右侧是标签行和账户入口。
 
 - 只有一个标签的子站（目前是资料库）不渲染标签行：没有可切换的去处，手机上只会白占一整行。
-- 手机上标签行放不下时横向滑动，当前标签会被滑进可见范围。
+- 手机上标签行放不下时横向滑动，当前标签和键盘聚焦的标签会被整个滑进可见范围。标签撑满了行高，滑动行会裁掉画在标签外面的东西，所以标签的焦点框画在标签里面（墨色 2px、向内 2px，左右各留 6px），整圈都看得见（滚动容器里的焦点框见第 13 节）。
+- 当前标签带 `aria-current="page"`（未开放、但读者正在这一页的标签也带），读屏软件读得出“当前页”；账户中心的菜单同样。
+- 已登录时账户入口只显示首字头像块，它的可访问名是“昵称的账户概览”，与账户中心页头的头像链接一致。
 - 暂未开放的功能保留标签位置但不可点，标签旁直接标“未开放”，不能只写在 `title` 里（触屏和键盘看不到）。读者已经在这一页时（如从收藏夹进入答题），它就是当前标签，不再标“未开放”。未开放入口是否改为隐藏，待 #540 决定。
 
 ### 首页手机菜单
@@ -215,6 +217,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 打开期间锁住页面滚动，面板下方铺半透明墨色遮罩；矮屏（横屏手机）放不下时面板自己滚动。
 - Esc 或点遮罩关闭菜单，焦点回到菜单按钮；打开期间 Tab 只在菜单按钮和面板之间循环，遮罩下面的正文和页脚设为 `inert`，读屏软件的滑动浏览也进不去。
 - 账户行与模块行一样整行可点：未登录是“登录 / 注册”，已登录是首字头像块和昵称（与模块行同字号，放得下就不截断），不另加标签。
+- 每一行都贴着面板的边，面板又会裁掉画在行外面的东西：焦点框画在行里面，矮屏上键盘聚焦的那一行整个滑进面板的可见范围（见第 13 节）。
 - 窗口拉宽到 `md` 起，菜单自动收起并释放滚动锁。
 
 ## 8. 按钮
@@ -251,7 +254,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 
 ## 11. 表单
 
-- 输入框必须有可见标签，placeholder 不能代替标签。
+- 输入框必须有可见标签，placeholder 不能代替标签，也不重复标签：标签说填的是什么，placeholder 只给例子或格式提示（如搜索框标“搜索单子”，placeholder 写“如：快递 / 键盘 / 占座”）。标签用 `htmlFor` 指向输入框的 `id`（或直接包住输入框），读屏读出的名字就是看得见的这行字，点标签也能聚焦输入框；搜索框同样。`<label>` 只用来标输入框，一组按钮的组名不用它。资料库、互助与题库的搜索框，安全设置和互助发布的表单由 `apps/portal/tests/accessible-names.spec.ts` 检查。
 - 错误靠近字段，不只用颜色表达。
 - 字段错误出现时作为 alert 读出，并用 `aria-describedby`、`aria-invalid` 关联到输入框；操作结果（如验证码已发送）放在常驻的 status 区里读出。目前登录 / 注册已做到；找回密码页（`/account/recover`）的错误还是表单里的一行普通文字，“已发送至”也不在 status 区里，尚未跟上。
 - 失败后保留非敏感输入。
@@ -279,14 +282,15 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 移动优先，360px 宽度核心流程可用。
 - 正文不小于 16px，其余文字不小于 12px；中文不加宽字距（见第 4 节“字号下限”“字距”）。
 - 点击区域不小于 44 × 44px。
-  - 纯文字链接（返回上一级、账户入口、导航与子站标签、页脚链接）用内边距或 `min-h-11` 撑满点击区；所在的行放不下时配等量负外边距，视觉尺寸和行高不变。标签的下划线挂在文字上，不随点击区下移。桌面导航在平板上同样靠手指点，也按这条做。
+  - 纯文字链接和文字按钮（返回上一级、账户入口、导航与子站标签、页脚链接、资料目录的“展开全部”、答题页的纠错入口）用内边距或 `min-h-11` 撑满点击区；所在的行放不下时配等量负外边距，视觉尺寸和行高不变。标签的下划线挂在文字上，不随点击区下移。桌面导航在平板上同样靠手指点，也按这条做。返回上一级用 `BackLink`，它默认就撑到 44px 高，正文里的回退入口只补间距和边框。
   - 有边框或底色的控件（筛选、切换、按钮、输入框）本身做到 44px 高，看到的范围就是能点的范围。
-  - 按 WCAG 2.5.8，只有句中的行内链接（如同意告知里的《用户协议》）和装饰元素例外。首页、五个子站（含终身会员的求职雷达）、登录页，以及资料、美食、互助单详情的不存在与暂时读不到状态在 390px 下，首页页头在 768 / 1024px 下，由 `apps/portal/tests/touch-targets.spec.ts` 检查；题库目录开启时的 /practice 由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查。检查逻辑在 `apps/portal/tests/support/touch-targets.ts`。
+  - 按 WCAG 2.5.8，只有句中的行内链接（如同意告知里的《用户协议》）和装饰元素例外。`apps/portal/tests/touch-targets.spec.ts` 在 390px 下检查首页、五个子站（含终身会员的求职雷达）、登录页和找回密码页，资料、美食、互助单详情的不存在与暂时读不到状态，资料详情的目录展开与收起，美食详情，资料库书架、未开放的排行榜、收藏夹（未登录时、有收藏的题库收藏夹）和已登录的“我的交易”；首页页头另在 768 / 1024px 下检查。只在开关打开时才出现的控件，由跑这个开关的 spec 检查：题库目录开启时的 /practice 由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查；QuizCraft V2 读取开启（生产配置）时，首页 02 模块的“登录查看”“重试”、/practice/stats 的“登录查看”和排行榜的周期切换由 `apps/portal/tests/personal-stats.spec.ts` 与 `practice-leaderboard-live.spec.ts`（脚本 `test:e2e:stats`）检查。QQ 绑定页由 `apps/portal/tests/qq-binding.spec.ts` 检查，这个 spec 要用 `playwright.qq-binding.config.ts` 单独运行，目前不在部署流水线里。检查逻辑在 `apps/portal/tests/support/touch-targets.ts`。
+  - 尚未跟上：账户中心和两个发布页（/food/publish、/campus/publish）的下划线输入框约 37px 高；两个发布页里的校区与分类切换、美食发布页侧栏的两个按钮、删除菜品的 × 和删除图片的 ×（20 × 20，改法待定）也还小于 44px，待后续处理。
 - 手机首屏先给内容，装饰让位：
   - 子站首页（资料库、互助、刷题）在 `lg` 以下压缩标题区、隐藏右侧装饰插图，390 × 844 下第一屏能看到搜索框和至少一条内容（或加载占位）。插图隐藏后，同屏文字不再提到它。互助和刷题由 `apps/portal/tests/responsive.spec.ts` 检查，题库目录开启时的刷题另由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查，资料库的搜索与筛选由 `apps/portal/tests/library-discovery-ux.spec.ts` 检查。
   - 首页模块只在 `md` 及以上占满一屏，与吸附滚动同时启用；手机上是普通滚动，模块按内容高度排列，不留整屏空白。由 `apps/portal/tests/responsive.spec.ts` 检查。
 - 正文与背景至少 WCAG AA，配色规则见第 3 节“文字配色”。
-- 焦点状态不得移除。
+- 焦点状态不得移除，焦点框也不能被滚动容器裁掉一截。滚动容器里贴边的控件（子站标签行、首页手机菜单、美食五档榜单导览、账户中心菜单）把焦点框画在自己里面（墨色 2px、向内 2px），键盘聚焦的控件整个滑进容器的可见范围：浏览器聚焦时只要控件露出一截就不再滚动。做法在 `apps/portal/src/lib/navigation/scroller-focus.ts`；子站标签行由 `apps/portal/tests/sub-site-nav.spec.ts` 检查，其余三处由 `apps/portal/tests/focus-rings.spec.ts` 检查。
 - 图片有有意义的 alt，装饰图使用空 alt。
 - 图片加载不挤动版面，也不一次下载整页（[#548](https://github.com/jry21223/HENU-Kit-DEV/issues/548)）：
   - 投稿与单子图片统一用 `apps/portal/src/components/ui/img.tsx`，默认懒加载、异步解码，首屏以下的图滚动到附近才请求。首屏关键图显式改为立即加载：详情页主图加 `loading="eager" fetchPriority="high"`，支付二维码加 `loading="eager"`。
@@ -295,6 +299,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
   - 手机 390 × 844 下 /food、/campus 的 layout-shift 总和小于 0.1，懒加载与占位由 `apps/portal/tests/image-loading.spec.ts` 检查。
   - 列表缩略图目前仍是原尺寸图，是 #548 中暂缓的一项：投稿图片以原尺寸存在数据库、不在对象存储上，由 `services/food` 的图片路由按原尺寸返回，`x-oss-process` 这类处理参数用不上。按显示尺寸请求要等服务端在清洗投稿图片时另存列表尺寸的缩略图，并提供单独的缩略图地址（food 服务、portal-api、portal-gateway 都要支持），Portal 再在列表里换用缩略图并加 `srcset` / `sizes`。
 - 动画短而克制，尊重减少动态设置。
+  - 装饰性的循环动画（跑马灯、刻度盘、首屏眉标旁旋转的 ®）只在动效开启时播放，减少动态设置下停着不动，® 照常显示；® 由 `apps/portal/tests/first-screen-entrance.spec.ts` 检查。
   - 首屏入场只能让内容越来越可见：服务端已经画出的标题和内容块不在水合后被隐藏再重播，LCP 元素首绘之后不再被隐藏。首页、子站与题库 Hero 用首帧即开始播放的 CSS 动画，脚本没加载也停在可见态；减少动态设置下直接静态展示。慢 CPU 下由 `apps/portal/tests/first-screen-entrance.spec.ts` 逐帧检查。
 - 不依赖 Hover 完成核心任务。
 

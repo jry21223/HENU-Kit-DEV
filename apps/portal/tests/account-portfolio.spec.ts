@@ -437,6 +437,13 @@ test("account owner failures remain recoverable with 44px controls at 360px", as
   await expect(page.getByRole("button", { name: "新建工单" })).toHaveCSS("min-height", "44px");
   await expect(page.getByRole("button", { name: "退出登录" })).toHaveCSS("min-height", "44px");
   await expect(page.getByRole("link", { name: "小河同学的账户概览" })).toHaveCSS("min-height", "44px");
+  await expect(page.locator("header").getByRole("link", { name: /henukit/ })).toHaveCSS("min-height", "44px");
+
+  await page.goto("/account/security", { waitUntil: "domcontentloaded" });
+  for (const name of ["发送验证码", "确认修改"]) {
+    await expect(page.getByRole("button", { name })).toHaveCSS("min-height", "44px");
+  }
+  await expect(page.getByRole("link", { name: "管理 HENU Bot 的 QQ 账号绑定" })).toHaveCSS("min-height", "44px");
 });
 
 test("unshipped deals have no account-console entry or placeholder page", async ({ page }) => {

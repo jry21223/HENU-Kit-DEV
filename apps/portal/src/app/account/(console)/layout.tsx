@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AccountConsoleSessionProvider } from "@/components/account/account-console-session";
 import SiteShell from "@/components/site-shell";
 import { cn } from "@/lib/cn";
+import { INSET_FOCUS_RING, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 import {
   clearCachedSession,
   fetchSession,
@@ -128,7 +129,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
             <div className="flex items-baseline gap-4">
               <Link
                 href="/"
-                className="font-display text-base font-bold tracking-tight text-ink transition-colors hover:text-accent-text"
+                className="inline-flex min-h-11 items-center font-display text-base font-bold tracking-tight text-ink transition-colors hover:text-accent-text"
               >
                 ← henukit<span className="text-accent">®</span>
               </Link>
@@ -177,7 +178,11 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
         <AccountConsoleSessionProvider session={sessionState.session} requireLogin={requireLogin}>
           <div className="mx-auto max-w-site lg:flex">
             <aside className="border-b border-line lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
-              <nav className="flex gap-1 overflow-x-auto px-4 py-3 lg:sticky lg:top-14 lg:flex-col lg:gap-0 lg:px-0 lg:py-8">
+              {/* 手机上菜单横向滑动，桌面上每一项撑满侧栏宽：焦点框都画在项里面，键盘聚焦的那一项整个滑进来。 */}
+              <nav
+                onFocus={revealKeyboardFocus}
+                className="flex gap-1 overflow-x-auto px-4 py-3 lg:sticky lg:top-14 lg:flex-col lg:gap-0 lg:px-0 lg:py-8"
+              >
                 {MENU.map((item) => {
                   const active = item.exact
                     ? pathname === item.href
@@ -186,8 +191,10 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
                     <Link
                       key={item.href}
                       href={item.href}
+                      aria-current={active ? "page" : undefined}
                       className={cn(
                         "inline-flex min-h-11 shrink-0 items-center border-l-2 px-3 py-2 font-mono text-xs transition-colors lg:py-2.5",
+                        INSET_FOCUS_RING,
                         active
                           ? "border-accent font-semibold text-ink"
                           : "border-transparent text-ink/60 hover:text-ink"
@@ -204,7 +211,10 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
                   type="button"
                   disabled={signingOut}
                   onClick={() => void signOut()}
-                  className="mt-0 inline-flex min-h-11 shrink-0 items-center border-l-2 border-transparent px-3 py-2 text-left font-mono text-xs text-ink/60 transition-colors hover:text-accent-text disabled:cursor-wait disabled:opacity-50 lg:mt-8 lg:py-2.5"
+                  className={cn(
+                    "mt-0 inline-flex min-h-11 shrink-0 items-center border-l-2 border-transparent px-3 py-2 text-left font-mono text-xs text-ink/60 transition-colors hover:text-accent-text disabled:cursor-wait disabled:opacity-50 lg:mt-8 lg:py-2.5",
+                    INSET_FOCUS_RING
+                  )}
                 >
                   <span className="mr-1.5 tracking-widest text-ink/60">A-00</span>
                   {signingOut ? "正在退出…" : "退出登录"}

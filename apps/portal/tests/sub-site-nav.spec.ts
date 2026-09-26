@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { tabThroughScroller } from "./support/focus-rings";
 
 /**
  * 五个子站共用一条页头（SubSiteNav，#538）：页头与正文使用同一个内容框，
@@ -10,11 +11,12 @@ const quizBankID = "33333333-3333-4333-8333-333333333333";
 const quizBankVersionID = "44444444-4444-4444-8444-444444444444";
 
 /**
- * 子站首页，以及刷题里铺满内容框的内页——刷题页头过去用的是另一种宽度，
- * 这几页页头与正文全都错开。
+ * 子站首页，以及铺满内容框的内页——刷题页头过去用的是另一种宽度，这几页页头与
+ * 正文全都错开；资料库书架过去用自己居中的窄栏，标题同样离开了返回链接的左缘。
  */
 const ALIGNED_PAGES = [
   "/library",
+  "/library/shelf",
   "/food",
   "/campus",
   "/career",
@@ -285,6 +287,16 @@ test.describe("390px 手机", () => {
         .toBeGreaterThanOrEqual(0);
     });
   }
+
+  test("键盘聚焦标签时，焦点框整圈露在标签行里", async ({ page }) => {
+    // 标签行横向滑动，会裁掉画在行外的东西；标签又撑满了行高，画在标签外面的焦点框上下两边就没了。
+    await page.goto("/practice", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
+    const { stops, clipped } = await tabThroughScroller(page, page.locator("header nav"), { maxPresses: 5 });
+    // 刷题的四个标签里「刷题」未开放、不可聚焦，其余三个都要走到。
+    expect(stops).toBe(3);
+    expect(clipped).toEqual([]);
+  });
 
   test("有多个标签的子站仍保留标签行", async ({ page }) => {
     await page.goto("/food", { waitUntil: "domcontentloaded" });

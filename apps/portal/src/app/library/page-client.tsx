@@ -174,7 +174,7 @@ export default function LibraryHomePage() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索：真题 / 高数 / 课件"
+                placeholder="如：真题 / 高数 / 课件"
                 className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-accent"
               />
             </div>

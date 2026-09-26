@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { expectTouchTargets } from "./support/touch-targets";
 
 test("binding requires an explicit website approval and sends no caller identity", async ({ page }) => {
   const token = "a".repeat(43);
@@ -101,4 +102,18 @@ test("invalid links cannot authorize", async ({ page }) => {
   await page.goto("/bind/qq#invalid");
   await expect(page.getByText("请在 QQ 私聊 HENU Bot 发送“绑定 HENU KIT”，获取新的绑定链接。")).toBeVisible();
   await expect(page.getByRole("button", { name: "授权绑定当前账号" })).toHaveCount(0);
+});
+
+test("390px links and buttons on the binding page are at least 44×44 (#543)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/v1/session", (route) => route.fulfill({ json: SIGNED_IN }));
+  await page.route("**/api/v1/account/qq-binding/status", (route) => route.fulfill({ json: { data: { bound: true } } }));
+  await page.goto("/bind/qq");
+  const unlink = page.getByRole("button", { name: "解除 QQ 绑定" });
+  await expect(unlink).toBeVisible();
+  await expectTouchTargets(page, "/bind/qq (bound)");
+
+  await unlink.click();
+  await expect(page.getByRole("button", { name: "确认解绑" })).toBeVisible();
+  await expectTouchTargets(page, "/bind/qq (confirm unlink)");
 });

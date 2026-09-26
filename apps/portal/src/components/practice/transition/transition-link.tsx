@@ -36,11 +36,14 @@ export default function TransitionLink({
   morph,
   className,
   children,
+  "aria-current": ariaCurrent,
 }: {
   href: string;
   morph?: Omit<MorphPayload, "rect">;
   className?: string;
   children: React.ReactNode;
+  /** 子站标签行用它标出当前页。 */
+  "aria-current"?: "page";
 }) {
   const router = useRouter();
 
@@ -110,7 +113,7 @@ export default function TransitionLink({
   };
 
   return (
-    <Link href={href} onClick={onClick} className={className}>
+    <Link href={href} onClick={onClick} className={className} aria-current={ariaCurrent}>
       {children}
     </Link>
   );

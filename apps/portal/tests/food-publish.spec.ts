@@ -120,6 +120,8 @@ for (const viewport of [
     await expect(page.getByRole("button", { name: "明伦校区" })).toBeVisible();
     await expect(page.getByRole("button", { name: "夯" })).toBeVisible();
     await expect(page.getByLabel("锐评正文")).toBeVisible();
+    // 有边框的按钮本身做到 44px 高（DESIGN_SYSTEM §13）。
+    await expect(page.getByRole("button", { name: "+ 加一道" })).toHaveCSS("min-height", "44px");
     await expect(page.getByRole("link", { name: "查看我的投稿" })).toHaveAttribute(
       "href",
       "/account/posts"

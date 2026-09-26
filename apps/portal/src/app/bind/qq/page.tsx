@@ -109,7 +109,7 @@ export default function QQBindingPage() {
   return (
     <main className="bg-paper px-6 py-16 text-ink">
       <section className="mx-auto max-w-lg border border-ink/25 p-8">
-        <Link href="/account/security" className="text-sm underline">返回账号安全</Link>
+        <Link href="/account/security" className="-my-3 inline-flex min-h-11 items-center text-sm underline">返回账号安全</Link>
         <h1 className="mt-6 font-display text-3xl font-bold">绑定 HENU Bot</h1>
         <p className="mt-4">绑定后，HENU Bot 可以识别你的 HENU KIT 账号。绑定不等于登录学校 IDS 或雨课堂。</p>
         <p className="mt-3 text-sm">只授权你本人在 QQ 私聊中发起的请求，不要授权别人转发的链接。链接五分钟内有效。</p>
@@ -120,8 +120,8 @@ export default function QQBindingPage() {
         {signedIn && <p className="mt-5">当前账号：{name}</p>}
         {signedIn && token && !message && <button disabled={busy} onClick={() => void act("authorize")} className="mt-6 border border-ink bg-ink px-5 py-3 text-paper disabled:opacity-50">授权绑定当前账号</button>}
         {!token && !message && <p className="mt-5">请在 QQ 私聊 HENU Bot 发送“绑定 HENU KIT”，获取新的绑定链接。</p>}
-        {binding?.bound && !unlinkPrompt && <button disabled={busy} onClick={() => setUnlinkPrompt(true)} className="mt-6 block underline">解除 QQ 绑定</button>}
-        {unlinkPrompt && <div className="mt-6 border p-4"><p>解绑后，此 QQ 将无法继续以你的账号操作 HENU KIT。确定解绑吗？</p><button disabled={busy} onClick={() => void act("unlink")} className="mt-3 border px-4 py-2">确认解绑</button><button disabled={busy} onClick={() => setUnlinkPrompt(false)} className="ml-4 underline">取消</button></div>}
+        {binding?.bound && !unlinkPrompt && <button disabled={busy} onClick={() => setUnlinkPrompt(true)} className="mt-3.5 flex min-h-11 items-center underline">解除 QQ 绑定</button>}
+        {unlinkPrompt && <div className="mt-6 border p-4"><p>解绑后，此 QQ 将无法继续以你的账号操作 HENU KIT。确定解绑吗？</p><button disabled={busy} onClick={() => void act("unlink")} className="mt-3 min-h-11 border px-4 py-2">确认解绑</button><button disabled={busy} onClick={() => setUnlinkPrompt(false)} className="ml-4 min-h-11 min-w-11 underline">取消</button></div>}
       </section>
     </main>
   );

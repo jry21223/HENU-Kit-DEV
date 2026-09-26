@@ -127,7 +127,8 @@ export default function SecurityPage() {
       </p>
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">安全设置</h1>
 
-      <a href="/bind/qq" className="mt-6 inline-block underline">管理 HENU Bot 的 QQ 账号绑定</a>
+      {/* 点击区撑到 44px 高，外边距跟着让出（原先 mt-6），文字和下面的表单都不挪位置。 */}
+      <a href="/bind/qq" className="-mb-2.5 mt-3.5 inline-flex min-h-11 items-center underline">管理 HENU Bot 的 QQ 账号绑定</a>
 
       <section data-enter className="mt-8 max-w-md border border-ink/25 p-6">
         <p className="font-mono text-xs text-ink/60">修改密码</p>
@@ -136,15 +137,16 @@ export default function SecurityPage() {
         </p>
         <div className="mt-5 space-y-4">
           {[
-            { label: "当前密码", v: oldPwd, set: setOldPwd },
-            { label: "新密码", v: newPwd, set: setNewPwd },
-            { label: "确认新密码", v: newPwd2, set: setNewPwd2 },
+            { id: "security-current-password", label: "当前密码", v: oldPwd, set: setOldPwd },
+            { id: "security-new-password", label: "新密码", v: newPwd, set: setNewPwd },
+            { id: "security-new-password-confirm", label: "确认新密码", v: newPwd2, set: setNewPwd2 },
           ].map((f) => (
             <div key={f.label}>
-              <label className="mb-1 block font-mono text-xs text-ink/60">
+              <label htmlFor={f.id} className="mb-1 block font-mono text-xs text-ink/60">
                 {f.label}
               </label>
               <input
+                id={f.id}
                 type="password"
                 value={f.v}
                 onChange={(e) => f.set(e.target.value)}
@@ -154,10 +156,11 @@ export default function SecurityPage() {
             </div>
           ))}
           <div>
-            <label className="mb-1 block font-mono text-xs text-ink/60">
+            <label htmlFor="security-email" className="mb-1 block font-mono text-xs text-ink/60">
               绑定邮箱
             </label>
             <input
+              id="security-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -167,11 +170,12 @@ export default function SecurityPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block font-mono text-xs text-ink/60">
+            <label htmlFor="security-code" className="mb-1 block font-mono text-xs text-ink/60">
               邮箱验证码
             </label>
             <div className="flex gap-3">
               <input
+                id="security-code"
                 value={code}
                 onChange={(event) =>
                   setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
@@ -186,7 +190,7 @@ export default function SecurityPage() {
                 type="button"
                 disabled={pending || cd > 0}
                 onClick={() => void sendCode()}
-                className="shrink-0 border border-ink/40 px-3 py-1.5 font-mono text-xs transition-colors hover:border-ink disabled:cursor-not-allowed disabled:border-line disabled:text-ink/40"
+                className="min-h-11 shrink-0 border border-ink/40 px-3 py-1.5 font-mono text-xs transition-colors hover:border-ink disabled:cursor-not-allowed disabled:border-line disabled:text-ink/40"
               >
                 {cd > 0 ? `${cd}s 后重发` : "发送验证码"}
               </button>
@@ -204,7 +208,7 @@ export default function SecurityPage() {
           onClick={() => void submit()}
           disabled={pending}
           className={cn(
-            "mt-5 border px-6 py-2.5 font-mono text-xs transition-colors",
+            "mt-5 min-h-11 border px-6 py-2.5 font-mono text-xs transition-colors",
             pending
               ? "cursor-wait border-line text-ink/40"
               : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"

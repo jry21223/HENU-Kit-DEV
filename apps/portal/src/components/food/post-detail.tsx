@@ -361,7 +361,7 @@ export default function PostDetail({ id }: { id: string }) {
             </p>
             <Link
               href="/food/publish"
-              className="mt-5 block bg-ink px-4 py-3 text-center font-mono text-xs text-paper transition-colors hover:bg-accent hover:text-ink"
+              className="mt-5 flex min-h-11 items-center justify-center bg-ink px-4 py-3 text-center font-mono text-xs text-paper transition-colors hover:bg-accent hover:text-ink"
             >
               投稿一家好店 →
             </Link>

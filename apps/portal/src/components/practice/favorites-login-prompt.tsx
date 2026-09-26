@@ -16,7 +16,7 @@ export default function FavoritesLoginPrompt({ next }: { next: string }) {
       <button
         type="button"
         onClick={() => redirectToLogin(next)}
-        className="mt-6 inline-flex border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
+        className="mt-6 inline-flex min-h-11 items-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
       >
         去登录 →
       </button>

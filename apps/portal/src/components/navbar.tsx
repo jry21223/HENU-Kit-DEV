@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { gsap, useGSAP, ScrollTrigger, FINE_MOTION } from "@/lib/gsap";
 import AccountEntry from "@/components/account/account-entry";
 import { cn } from "@/lib/cn";
+import { INSET_FOCUS_RING, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 
 const LINKS = [
   { index: "01", label: "资料库", href: "/library" },
@@ -196,11 +197,13 @@ export default function Navbar() {
         </div>
 
         {/* 移动端下拉面板：常驻 DOM，aria-controls 才总有指向。页面锁着滚动，
-            矮屏（横屏手机）放不下时面板自己滚。 */}
+            矮屏（横屏手机）放不下时面板自己滚。每一行都贴着面板的边，面板又会裁掉
+            画在行外面的东西：焦点框画在行里面，键盘聚焦的那一行整个滑进来。 */}
         <nav
           ref={menuRef}
           id={MOBILE_MENU_ID}
           hidden={!open}
+          onFocus={revealKeyboardFocus}
           className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-line bg-paper md:hidden"
         >
           {LINKS.map((link) => (
@@ -208,7 +211,7 @@ export default function Navbar() {
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
-              className="flex items-center gap-3 border-b border-line px-5 py-4 font-mono text-sm"
+              className={cn("flex items-center gap-3 border-b border-line px-5 py-4 font-mono text-sm", INSET_FOCUS_RING)}
             >
               <span className="text-accent-text">{link.index}</span>
               {link.label}
@@ -216,7 +219,7 @@ export default function Navbar() {
           ))}
           <AccountEntry
             onClick={() => setOpen(false)}
-            className="flex w-full items-center gap-3 px-5 py-4 font-mono text-sm text-ink"
+            className={cn("flex w-full items-center gap-3 px-5 py-4 font-mono text-sm text-ink", INSET_FOCUS_RING)}
             nameClassName="max-w-none text-sm text-ink"
           />
         </nav>

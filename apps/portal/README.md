@@ -49,14 +49,14 @@ npm run dev
 ## 子站路由
 
 ### 子站页头
-五个子站共用 `SubSiteNav`（`src/components/sub-site-nav.tsx`）：返回上一级、子站字标、标签行和账户入口。只有一个标签的子站（资料库）不渲染标签行；未开放的功能标签不可点，旁边直接标“未开放”。手机上标签行放不下时横向滑动，当前标签会被滑进可见范围。
+五个子站共用 `SubSiteNav`（`src/components/sub-site-nav.tsx`）：返回上一级、子站字标、标签行和账户入口。只有一个标签的子站（资料库）不渲染标签行；未开放的功能标签不可点，旁边直接标“未开放”。手机上标签行放不下时横向滑动，当前标签和键盘聚焦的标签会被整个滑进可见范围；标签的焦点框画在标签里面，不会被滑动行裁掉。当前标签带 `aria-current="page"`，已登录时账户入口读作“昵称的账户概览”。返回上一级（`src/components/back-link.tsx`）默认就是 44px 高的点击区，正文里的回退入口只补间距和边框。
 
 首页、子站页头和页面正文共用同一个内容框 `max-w-site`（1440px，左右留白 `px-5 md:px-8`），返回链接与正文标题左缘对齐；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“内容框”。
 
 ### 首页 `/`
 首屏提供“找资料”“开始刷题”“看岗位”，分别进入 `/library`、`/practice`、`/career`；下方介绍与导航对应的五个模块，只写已上线的能力。刷题区块介绍按科目搜索题库、随机 / 难题 / 章节 / 收藏四种练习、作答后的参考答案与题库自带解析，以及按题库计算的掌握度；右侧解析面板标为示例。AI 推题（[#530](https://github.com/jry21223/HENU-Kit-DEV/issues/530)）上线前不做相关宣传。保留米白、网格、墨黑和橙色视觉，以及 md+ 视口由 GSAP Observer 接管的吸附滚动和 WebGL 3D 场景。各模块只在 md+ 占满一屏，与吸附滚动同时启用；md 以下是普通滚动，模块按内容高度排列，不留整屏空白（[#542](https://github.com/jry21223/HENU-Kit-DEV/issues/542)）。
 
-md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.tsx`）：打开期间页面锁住滚动、面板下方铺遮罩，Tab 只在菜单里循环，读屏软件也读不到遮罩下面的页面；Esc 或点遮罩关闭，焦点回到菜单按钮；窗口拉宽到 md 起菜单自动收起。规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“首页手机菜单”。
+md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.tsx`）：打开期间页面锁住滚动、面板下方铺遮罩，Tab 只在菜单里循环，读屏软件也读不到遮罩下面的页面；Esc 或点遮罩关闭，焦点回到菜单按钮；窗口拉宽到 md 起菜单自动收起。面板里每一行的焦点框画在行里面，不会被面板裁掉（美食五档榜单导览和账户中心菜单同样，共用 `src/lib/navigation/scroller-focus.ts`）。规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“首页手机菜单”。
 
 首屏入口、互助开放状态和手机资料查找体验的范围见 [Issue #482](https://github.com/jry21223/HENU-Kit-DEV/issues/482)。
 

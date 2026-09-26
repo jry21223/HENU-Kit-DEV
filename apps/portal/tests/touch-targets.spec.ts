@@ -171,6 +171,81 @@ for (const detail of [
   });
 }
 
+// 子站内页和找回密码页：有边框的按钮和正文里的返回链接同样要达标（DESIGN_SYSTEM §13）。
+for (const inner of [
+  { route: "/library/shelf", ready: (page: Page) => page.getByRole("heading", { name: "我的书架" }) },
+  // 默认构建里排行榜未开放，正文是空状态；开放后的周期切换由 practice-leaderboard-live.spec.ts 检查。
+  { route: "/practice/leaderboard", ready: (page: Page) => page.getByText("排行榜数据暂未开放") },
+  { route: "/practice/favorites", ready: (page: Page) => page.getByRole("button", { name: "去登录 →" }) },
+  { route: "/account/recover", ready: (page: Page) => page.getByRole("heading", { name: "找回密码" }) },
+  { route: `/food/post/${FOOD_POSTS[0].id}`, ready: (page: Page) => page.getByRole("link", { name: "投稿一家好店 →" }) },
+] as const) {
+  test(`${inner.route}：正文里的按钮和返回链接不小于 44×44`, async ({ page }) => {
+    await mockUnavailableGateway(page);
+    // 收藏读接口对未登录的人回 401，页面换成登录引导。
+    await page.route("**/api/v1/practice/favorites", (route) =>
+      route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
+    );
+    await page.route(`**/api/v1/food/posts/${FOOD_POSTS[0].id}`, (route) =>
+      route.fulfill({ json: { post: FOOD_POSTS[0], comments: [], request_id: "req_targets_post" } })
+    );
+    await page.goto(inner.route);
+    await waitForHydration(page);
+    await expect(inner.ready(page)).toBeVisible();
+    await expectTouchTargets(page, inner.route);
+  });
+}
+
+// 目录超过六节才出现的「展开全部 N 节 +」是文字按钮：点击区同样撑到 44px 高，展开后的「收起」也一样。
+test("资料详情：目录的展开和收起按钮不小于 44×44", async ({ page }) => {
+  await mockUnavailableGateway(page);
+  const material = {
+    ...LIBRARY_MATERIALS[0],
+    id: "targets-toc",
+    toc: ["第一节", "第二节", "第三节", "第四节", "第五节", "第六节", "第七节", "第八节"],
+  };
+  await page.route(`**/api/v1/library/materials/${material.id}`, (route) =>
+    route.fulfill({ json: { material, request_id: "req_targets_toc" } })
+  );
+
+  await page.goto(`/library/item/${material.id}`);
+  await waitForHydration(page);
+  const expand = page.getByRole("button", { name: "展开全部 8 节 +" });
+  await expect(expand).toBeVisible();
+  await expectTouchTargets(page, "资料详情（目录收起）");
+
+  await expand.click();
+  await expect(page.getByRole("button", { name: "收起 −" })).toBeVisible();
+  await expectTouchTargets(page, "资料详情（目录展开）");
+});
+
+test("已登录时，「我的交易」的返回按钮和题库收藏夹的取消收藏、返回链接不小于 44×44", async ({ page }) => {
+  await mockUnavailableGateway(page);
+  await page.route("**/api/v1/session", (route) =>
+    route.fulfill({
+      json: { user_id: "11111111-1111-4111-8111-111111111111", display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" },
+    })
+  );
+  await page.route("**/api/v1/practice/banks/targets-bank/favorites", (route) =>
+    route.fulfill({
+      json: {
+        data: [{ bank_id: "targets-bank", question_id: "targets-question", available: true, question_version_id: "0123456789abcdef" }],
+        request_id: "req_targets_favorites",
+      },
+    })
+  );
+
+  await page.goto("/campus/deals");
+  await waitForHydration(page);
+  await expect(page.getByRole("heading", { name: "我的交易" })).toBeVisible();
+  await expectTouchTargets(page, "/campus/deals（已登录）");
+
+  await page.goto("/practice/favorites/targets-bank");
+  await waitForHydration(page);
+  await expect(page.getByRole("button", { name: "取消收藏" })).toBeVisible();
+  await expectTouchTargets(page, "题库收藏夹（有收藏）");
+});
+
 test("已登录时，子站页头的账户入口不小于 44×44", async ({ page }) => {
   await mockGatewayWithContent(page);
   await page.route("**/api/v1/session", (route) =>

@@ -75,7 +75,7 @@ test("campus filters with no match offer to clear them and bring the list back",
   // 真实有内容时不出现清除筛选。
   await expect(page.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
 
-  const search = page.getByPlaceholder("搜索：快递 / 键盘 / 占座");
+  const search = page.getByLabel("搜索单子");
   await search.fill("快递");
   await page.getByRole("button", { name: "闲置单", exact: true }).click();
   await page.getByRole("button", { name: "代取快递", exact: true }).click();
@@ -119,7 +119,7 @@ test("an empty campus market points back to the home page without promising post
   await expect(main.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
 
   // 一条单子都没有时，有筛选条件也一样：清除筛选帮不上忙，仍然只给回首页。
-  await page.getByPlaceholder("搜索：快递 / 键盘 / 占座").fill("快递");
+  await page.getByLabel("搜索单子").fill("快递");
   await expect(main.getByText("暂无互助或闲置信息", { exact: true })).toBeVisible();
   await expect(main.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
   await expect(home).toBeVisible();
@@ -182,7 +182,7 @@ test("library filters with no match offer to clear them and bring the shelf back
   await expect(exam).toBeVisible();
   await expect(page.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
 
-  const search = page.getByPlaceholder("搜索：真题 / 高数 / 课件");
+  const search = page.getByLabel("搜索资料");
   const subject = page.getByRole("combobox", { name: "按科目筛选" });
   const types = page.getByRole("group", { name: "资料类型" });
   await subject.selectOption("高等数学");

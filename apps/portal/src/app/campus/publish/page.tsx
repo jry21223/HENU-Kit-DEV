@@ -84,6 +84,7 @@ function PublishForm() {
             <button
               key={t}
               type="button"
+              aria-pressed={type === t}
               onClick={() => {
                 setType(t);
                 setCategory(t === "help" ? "errand" : "flea");
@@ -107,14 +108,15 @@ function PublishForm() {
           ))}
         </div>
 
-        {/* 分类 */}
+        {/* 分类：一组按钮，不是一个输入框，组名用 aria-labelledby 连上（与 /campus 的筛选一样）。 */}
         <div data-enter>
-          <label className="mb-1 block font-mono text-xs text-ink/60">分类</label>
-          <div className="flex flex-wrap gap-2">
+          <p id="campus-publish-category" className="mb-1 font-mono text-xs text-ink/60">分类</p>
+          <div role="group" aria-labelledby="campus-publish-category" className="flex flex-wrap gap-2">
             {CATEGORIES.filter((c) => (type === "sell" ? c.key === "flea" : c.key !== "flea")).map((c) => (
               <button
                 key={c.key}
                 type="button"
+                aria-pressed={category === c.key}
                 onClick={() => setCategory(c.key)}
                 className={cn(
                   "border px-3 py-1.5 font-mono text-xs transition-colors",
@@ -128,8 +130,9 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-xs text-ink/60">标题</label>
+          <label htmlFor="campus-publish-title" className="mb-1 block font-mono text-xs text-ink/60">标题</label>
           <input
+            id="campus-publish-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={type === "help" ? "如：代取中通快递 3 件到 6 号楼" : "如：九成新机械键盘"}
@@ -138,8 +141,9 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-xs text-ink/60">描述</label>
+          <label htmlFor="campus-publish-desc" className="mb-1 block font-mono text-xs text-ink/60">描述</label>
           <textarea
+            id="campus-publish-desc"
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
             rows={4}
@@ -149,9 +153,9 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-xs text-ink/60">
+          <p className="mb-1 font-mono text-xs text-ink/60">
             图片（{images.length}/3，≤2MB，可选）
-          </label>
+          </p>
           <div className="flex flex-wrap items-start gap-3">
             {images.map((src, i) => (
               <div key={i} className="relative">
@@ -182,10 +186,11 @@ function PublishForm() {
 
         <div data-enter className="grid gap-4 md:grid-cols-3">
           <div>
-            <label className="mb-1 block font-mono text-xs text-ink/60">
+            <label htmlFor="campus-publish-price" className="mb-1 block font-mono text-xs text-ink/60">
               {type === "help" ? "赏金（元）" : "价格（元）"}
             </label>
             <input
+              id="campus-publish-price"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               inputMode="numeric"
@@ -194,8 +199,9 @@ function PublishForm() {
             />
           </div>
           <div>
-            <label className="mb-1 block font-mono text-xs text-ink/60">位置</label>
+            <label htmlFor="campus-publish-place" className="mb-1 block font-mono text-xs text-ink/60">位置</label>
             <input
+              id="campus-publish-place"
               value={place}
               onChange={(e) => setPlace(e.target.value)}
               placeholder="明伦校区 · 西门"
@@ -204,8 +210,9 @@ function PublishForm() {
           </div>
           {type === "help" && (
             <div>
-              <label className="mb-1 block font-mono text-xs text-ink/60">时限（可选）</label>
+              <label htmlFor="campus-publish-deadline" className="mb-1 block font-mono text-xs text-ink/60">时限（可选）</label>
               <input
+                id="campus-publish-deadline"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
                 placeholder="今天 18:00 前"

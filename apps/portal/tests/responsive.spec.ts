@@ -75,7 +75,7 @@ test.describe("Portal mobile layout", () => {
     );
     await page.goto("/campus", { waitUntil: "domcontentloaded" });
 
-    const search = page.getByPlaceholder("搜索：快递 / 键盘 / 占座");
+    const search = page.getByLabel("搜索单子");
     await expect(search).toBeVisible();
     expect(await bottomEdge(search)).toBeLessThan(844);
     await expect(page.getByRole("heading", { name: "代取快递到南门", exact: true })).toBeInViewport({ ratio: 1 });

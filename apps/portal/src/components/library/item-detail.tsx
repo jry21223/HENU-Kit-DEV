@@ -101,11 +101,13 @@ export default function ItemDetail({ id }: { id: string }) {
                   </li>
                 ))}
               </ul>
+              {/* 文字按钮的点击区撑到 44 × 44：上下各多出 14px，外边距跟着让出，文字仍在原位（原先 mt-2）。 */}
               {material.toc.length > 6 && (
                 <button
                   type="button"
                   onClick={() => setTocOpen((v) => !v)}
-                  className="mt-2 font-mono text-xs text-ink/60 hover:text-accent-text"
+                  aria-expanded={tocOpen}
+                  className="-mb-3.5 -mt-1.5 inline-flex min-h-11 min-w-11 items-center font-mono text-xs text-ink/60 hover:text-accent-text"
                 >
                   {tocOpen ? "收起 −" : `展开全部 ${material.toc.length} 节 +`}
                 </button>

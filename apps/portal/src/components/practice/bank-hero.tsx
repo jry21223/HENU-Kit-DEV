@@ -251,10 +251,11 @@ export default function BankHero({
             className="enter-rise mt-5 w-full max-w-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent lg:mt-8"
             style={{ animationDelay: "0.2s" }}
           >
-            <label className="mb-1 block font-mono text-xs text-ink/60">
+            <label htmlFor="practice-query" className="mb-1 block font-mono text-xs text-ink/60">
               <span className="tracking-[0.25em]">SEARCH</span> / 搜索科目
             </label>
             <input
+              id="practice-query"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="如：数据结构 / 高等数学"

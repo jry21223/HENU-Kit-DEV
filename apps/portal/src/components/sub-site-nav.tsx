@@ -6,6 +6,7 @@ import { useEffect, useRef, type ComponentType, type ReactNode } from "react";
 import AccountEntry from "@/components/account/account-entry";
 import BackLink from "@/components/back-link";
 import { cn } from "@/lib/cn";
+import { INSET_FOCUS_RING, revealInScroller, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 
 export type SubSiteTab = {
   href: string;
@@ -16,7 +17,7 @@ export type SubSiteTab = {
   disabled?: boolean;
 };
 
-type TabLink = ComponentType<{ href: string; className?: string; children: ReactNode }>;
+type TabLink = ComponentType<{ href: string; className?: string; "aria-current"?: "page"; children: ReactNode }>;
 
 /**
  * 五个子站共用的页头：返回上一级 + 品牌字标 + 标签行 + 账户入口。
@@ -41,18 +42,10 @@ export default function SubSiteNav({
 
   // 手机上标签行放不下时横向滑动；当前标签被裁在哪一边，就往哪一边把它滑进来。
   // 页头在同一子站的页面之间一直挂着，上一页滑过的位置会带过来，所以两边都要管。
-  // 只动标签行自己的 scrollLeft，不碰页面滚动（那归 ScrollMemory 管）。
   useEffect(() => {
     const nav = navRef.current;
     const active = activeIndex >= 0 ? nav?.children[activeIndex] : undefined;
-    if (!nav || !active) return;
-    const style = getComputedStyle(nav);
-    const navBox = nav.getBoundingClientRect();
-    const tabBox = active.getBoundingClientRect();
-    const clippedLeft = navBox.left + parseFloat(style.paddingLeft) - tabBox.left;
-    const clippedRight = tabBox.right - (navBox.right - parseFloat(style.paddingRight));
-    if (clippedLeft > 0) nav.scrollLeft -= clippedLeft;
-    else if (clippedRight > 0) nav.scrollLeft += clippedRight;
+    if (nav && active) revealInScroller(nav, active);
   }, [activeIndex]);
 
   return (
@@ -77,6 +70,8 @@ export default function SubSiteNav({
         {showTabs ? (
           <nav
             ref={navRef}
+            // 键盘聚焦的标签同样整个滑进来：浏览器聚焦时只要标签露出一截就不再横滑，焦点框会被裁掉一边。
+            onFocus={revealKeyboardFocus}
             className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0"
           >
             {tabs.map((tab, index) => {
@@ -102,6 +97,7 @@ export default function SubSiteNav({
                   <span
                     key={tab.href}
                     data-tab-unavailable={active ? undefined : true}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "relative shrink-0 py-1 font-mono text-xs md:shrink",
                       active ? "text-ink" : "cursor-not-allowed text-ink/60"
@@ -115,13 +111,17 @@ export default function SubSiteNav({
                 );
               }
               // 点击区撑到 44px 高（DESIGN_SYSTEM §13），下划线仍贴着文字：它挂在里层的 span 上。
+              // 手机上的标签行横向滑动，会裁掉画在标签外面的东西，而标签又撑满了行高：焦点框画在
+              // 标签里面，左右各留 6px（等量负外边距，间距不变），整圈都看得见。
               return (
                 <TabLinkComponent
                   key={tab.href}
                   href={tab.href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     // 只在手机的横向滑动行里不收缩；md 起标签行不滑动，放不下时允许折行，页面不横向溢出。
-                    "group inline-flex min-h-11 shrink-0 items-center font-mono text-xs transition-colors md:shrink",
+                    "group -mx-1.5 inline-flex min-h-11 shrink-0 items-center px-1.5 font-mono text-xs transition-colors md:shrink",
+                    INSET_FOCUS_RING,
                     active ? "text-ink" : "text-ink/60 hover:text-ink"
                   )}
                 >

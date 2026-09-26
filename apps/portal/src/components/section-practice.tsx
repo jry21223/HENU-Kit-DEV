@@ -116,7 +116,7 @@ export default function SectionPractice() {
             <button
               type="button"
               onClick={() => redirectToLogin("/practice")}
-              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
+              className="mt-4 inline-flex min-h-11 items-center border border-paper/40 px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
             >
               登录查看
             </button>
@@ -131,7 +131,7 @@ export default function SectionPractice() {
             <button
               type="button"
               onClick={retry}
-              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
+              className="mt-4 inline-flex min-h-11 items-center border border-paper/40 px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
             >
               重试
             </button>

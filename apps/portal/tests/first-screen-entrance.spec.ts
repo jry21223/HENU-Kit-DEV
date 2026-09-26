@@ -302,6 +302,39 @@ test.describe("减少动态效果", () => {
   });
 });
 
+// 眉标旁旋转的 ® 是纯装饰的慢速循环：动效开启时转，减少动态设置下停住，符号本身留着。
+test.describe("眉标旁的 ®", () => {
+  test.use({ viewport: MOBILE });
+
+  const rotation = (page: Page) => page.locator("[data-hero-reg]").evaluate((element) => getComputedStyle(element).transform);
+
+  test("动效开启时慢慢转", async ({ page }) => {
+    await page.goto("/");
+    await expect.poll(() => rotation(page), { timeout: 30_000 }).not.toBe("none");
+  });
+
+  test.describe("减少动态设置", () => {
+    test.use({ contextOptions: { reducedMotion: "reduce" } });
+
+    test("停着不转", async ({ page }) => {
+      await page.goto("/");
+      await page.waitForSelector("html[data-scroll-memory='ready']", { state: "attached", timeout: 90_000 });
+      const reg = page.locator("[data-hero-reg]");
+      await expect(reg).toHaveText("®");
+      // 连着读 30 帧（约半秒）：在转的话，这段时间里至少转过好几度。
+      const transforms = await reg.evaluate(async (element) => {
+        const seen = new Set<string>();
+        for (let frame = 0; frame < 30; frame += 1) {
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          seen.add(getComputedStyle(element).transform);
+        }
+        return [...seen];
+      });
+      expect(transforms).toEqual(["none"]);
+    });
+  });
+});
+
 test.describe("脚本没有运行", () => {
   test.use({ viewport: MOBILE, javaScriptEnabled: false });
 

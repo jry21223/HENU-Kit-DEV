@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { gsap, useGSAP, REDUCED_MOTION } from "@/lib/gsap";
+import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
 import Marquee from "@/components/marquee";
 import AmbientSvg from "@/components/ui/ambient-svg";
 
@@ -88,12 +88,15 @@ export default function Hero() {
   // 按原 GSAP 时间轴排好。这里只剩不参与入场的装饰循环。
   useGSAP(
     () => {
-      // 旋转的 ®（所有动效偏好下都允许，纯装饰且极慢）
-      gsap.to("[data-hero-reg]", {
-        rotate: 360,
-        duration: 20,
-        repeat: -1,
-        ease: "none",
+      // 旋转的 ®：纯装饰的慢速循环，减少动态设置下停着不转（® 本身照常显示）。
+      const mm = gsap.matchMedia();
+      mm.add(FINE_MOTION, () => {
+        gsap.to("[data-hero-reg]", {
+          rotate: 360,
+          duration: 20,
+          repeat: -1,
+          ease: "none",
+        });
       });
     },
     { scope: sectionRef }

@@ -143,9 +143,10 @@ export default function RecoverPage() {
           <p className="font-mono text-xs text-ink/60">
             账号恢复
           </p>
+          {/* 点击区撑到 44 × 44，等量负外边距让这一行的高度不变。 */}
           <Link
             href="/account/login"
-            className="font-mono text-xs text-ink/60 hover:text-accent-text"
+            className="-my-3.5 inline-flex min-h-11 min-w-11 items-center justify-end font-mono text-xs text-ink/60 hover:text-accent-text"
           >
             ← 登录
           </Link>

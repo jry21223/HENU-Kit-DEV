@@ -48,6 +48,9 @@ export default function AccountEntry({
     <Link
       href="/account"
       onClick={onClick}
+      // 可访问名读出完整昵称：紧凑模式只剩头像块上的一个字，完整模式也不把首字读两遍。
+      // 与账户中心页头的头像链接同名。
+      aria-label={`${user.name}的账户概览`}
       // 紧凑模式只剩 28px 的头像块：向四周各借 8px 撑满 44px 点击区，占位和位置不变。
       className={cn("group flex min-h-11 items-center gap-2", compact && "-m-2 p-2", className)}
     >

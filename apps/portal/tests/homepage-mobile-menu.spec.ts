@@ -39,6 +39,43 @@ async function menuPanel(page: Page): Promise<Locator> {
   return page.locator(`[id="${id}"]`);
 }
 
+declare global {
+  interface Window {
+    __wheelSettled?: boolean;
+  }
+}
+
+/**
+ * 视口实际用的纵向 overflow：<html> 不是 visible 时用它自己的，否则沿用 <body> 的
+ * （CSS 溢出传播）。只看 body 会漏掉「<html> 另设了 overflow，body 的 hidden 管不到视口」。
+ */
+const viewportOverflowY = (page: Page) =>
+  page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement).overflowY;
+    return root === "visible" ? getComputedStyle(document.body).overflowY : root;
+  });
+
+/**
+ * 滚一下滚轮，等页面处理完这一下：滚轮事件到达页面后再过两帧，页面若会滚，scrollY
+ * 这时已经变了。等的是这一下滚轮本身，不按固定时长干等。
+ */
+async function wheelAndSettle(page: Page, deltaY: number) {
+  await page.evaluate(() => {
+    window.__wheelSettled = false;
+    const settle = () =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          window.__wheelSettled = true;
+        })
+      );
+    window.addEventListener("wheel", settle, { once: true, capture: true, passive: true });
+  });
+  await page.mouse.wheel(0, deltaY);
+  await expect
+    .poll(() => page.evaluate(() => window.__wheelSettled), { message: "页面要收到这一下滚轮" })
+    .toBe(true);
+}
+
 test.use({ viewport: { width: 390, height: 800 }, contextOptions: { reducedMotion: "reduce" } });
 
 test.beforeEach(async ({ page }) => {
@@ -106,23 +143,22 @@ test("点面板下方的遮罩关闭菜单，焦点回到菜单按钮", async ({
 test("菜单打开期间页面不滚动，关上后恢复", async ({ page }) => {
   await openHomepage(page);
   const toggle = menuToggle(page);
-  const bodyOverflow = () => page.evaluate(() => getComputedStyle(document.body).overflowY);
   const scrollY = () => page.evaluate(() => window.scrollY);
 
   await toggle.click();
   await expect(await menuPanel(page)).toBeVisible();
-  await expect.poll(bodyOverflow).toBe("hidden");
-  // 在遮罩上滚滚轮：页面不能跟着走。
+  await expect.poll(() => viewportOverflowY(page)).toBe("hidden");
+  // 在遮罩上滚滚轮，等页面处理完这一下：页面不能跟着走。
   await page.mouse.move(195, 760);
-  await page.mouse.wheel(0, 600);
-  await page.waitForTimeout(300);
+  await wheelAndSettle(page, 600);
   expect(await scrollY()).toBe(0);
 
   await page.keyboard.press("Escape");
-  await expect.poll(bodyOverflow).not.toBe("hidden");
-  // 手机上首页是原生滚动：关上菜单后同样一下滚轮要能滚动页面。
-  await page.mouse.wheel(0, 600);
-  await expect.poll(scrollY).toBeGreaterThan(0);
+  await expect.poll(() => viewportOverflowY(page)).not.toBe("hidden");
+  // 手机上首页是原生滚动：关上菜单后，同样一下滚轮、同样的等法，页面要已经滚动。
+  // 这也说明上面的等法够久：锁要是失效，那一下同样来得及滚。
+  await wheelAndSettle(page, 600);
+  expect(await scrollY()).toBeGreaterThan(0);
 });
 
 test("点菜单里的链接离开首页，滚动锁不带到下一页", async ({ page }) => {

@@ -79,7 +79,7 @@ export default function LeaderboardPage() {
           按累计答对次数排名，重复提交不会重复计分；榜单只显示展示名，不显示邮箱或账号。
         </p>
 
-        {enabled && <div className="mt-8 flex gap-2" aria-label="排行榜周期">
+        {enabled && <div className="mt-8 flex gap-2" role="group" aria-label="排行榜周期">
           {periods.map((item) => (
             <button
               key={item.value}
@@ -87,7 +87,7 @@ export default function LeaderboardPage() {
               aria-pressed={period === item.value}
               onClick={() => selectPeriod(item.value)}
               className={cn(
-                "border px-4 py-2 font-mono text-xs transition-colors",
+                "min-h-11 border px-4 py-2 font-mono text-xs transition-colors",
                 period === item.value
                   ? "border-ink bg-ink text-paper"
                   : "border-ink/25 hover:border-ink"
