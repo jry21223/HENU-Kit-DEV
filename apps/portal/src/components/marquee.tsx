@@ -38,7 +38,7 @@ export default function Marquee({
       {items.map((item, i) => (
         <span key={`${key}-${i}`} className="flex items-center whitespace-nowrap">
           <span className="px-6 font-mono text-sm tracking-[0.2em]">{item}</span>
-          <span aria-hidden className={cn("text-xs", dark ? "text-paper/70" : "text-paper/80")}>
+          <span aria-hidden className={cn("text-xs", dark ? "text-paper/70" : "text-ink/80")}>
             +
           </span>
         </span>
@@ -50,7 +50,8 @@ export default function Marquee({
     <div
       className={cn(
         "overflow-hidden border-y py-3",
-        dark ? "border-line-dark bg-ink text-paper" : "border-ink/20 bg-accent text-paper",
+        // 橙底用墨色字（5.49:1）；纸白字在强调橙上只有 2.92:1。
+        dark ? "border-line-dark bg-ink text-paper" : "border-ink/20 bg-accent text-ink",
         className
       )}
     >

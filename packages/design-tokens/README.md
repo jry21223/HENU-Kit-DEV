@@ -28,6 +28,8 @@
 }
 ```
 
+当前消费方：Portal 在 `apps/portal/src/app/globals.css` 引入 `tokens.css`，由 Tailwind 在构建时内联进产物 CSS，运行时不依赖仓库路径；它的 Tailwind 颜色只指向 `--hk-*` 变量，不另写色值。
+
 ## 约束
 
 - 品牌主色是“强调橙”（`--hk-accent`），不是河南大学官方标准色。

@@ -65,9 +65,10 @@ HENU Kit 是面向河南大学学生的统一校园工具系统，由学生自�
 
 | Token | 色值 | 用途 |
 |---|---:|---|
-| `--hk-accent` | `#FF4D00` | 主按钮、品牌标志、重点标题、选中状态、导航编号标记 |
+| `--hk-accent` | `#FF4D00` | 色块（主按钮、选中状态）、品牌标志、墨色底上的文字 |
 | `--hk-accent-deep` | `#D84300` | Hover、按下、深色强调区 |
 | `--hk-accent-soft` | `#FFE9DE` | 浅标签、提示背景、选中背景 |
+| `--hk-accent-text` | `#BB3800` | 浅色底上的橙字，不论大小：编号（含导航编号）、眉标、链接、大号数字 |
 
 “强调橙”是 HENU Kit 内部品牌命名，不是“河大橙”或河南大学官方标准色。
 
@@ -89,6 +90,17 @@ HENU Kit 是面向河南大学学生的统一校园工具系统，由学生自�
 | `--hk-warning` | `#C79A2A` | 警告状态 |
 | `--hk-danger` | `#C2401F` | 危险/错误状态 |
 | `--hk-info` | `#175CD3` | 信息状态 |
+
+### 文字配色
+
+文字与底色至少 WCAG AA：小字 4.5:1，大字（≥24px，或 ≥18.66px 粗体）3:1。
+
+- 强调橙 `#FF4D00` 用于色块和品牌标志；作文字只用在墨色底上（在 `#161513` 上 5.49:1）。它在纸白上只有 2.92:1，在 `--hk-accent-soft` 上 2.85:1，连大字的 3:1 也不到。
+- 浅色底上的橙字不论大小（编号、眉标、链接、大号数字）都用 `--hk-accent-text`：纸白上 5.01:1，白色卡片上 5.71:1，`--hk-accent-soft` 上 4.88:1，5% 强调橙叠在纸白上（Portal 的提示框与选中态 `bg-accent/5`）4.73:1，5% 墨色叠在纸白上（Portal 列表行悬停 `hover:bg-ink/5`）4.53:1。它是这类文字的语义基线，看起来仍是强调橙，只是更深。`--hk-accent-deep` 在纸白上只有 3.90:1，不当文字色。
+- 强调橙色块上的文字用墨色（5.49:1），不用纸白（2.92:1），例如首页跑马灯和选中文字的高亮。
+- 次要说明用 `--hk-ink-muted`（纸白上 4.75:1）。
+
+以上配色由 `apps/portal/src/app/design-tokens.test.ts` 按 `tokens.json` 计算检查。
 
 ### 使用比例
 
@@ -191,7 +203,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 
 - Primary：墨色（`--hk-ink`）背景、纸白文字；Hover 转为强调橙（与主站 `button.tsx` 一致）。
 - Secondary：纸白或透明背景、墨色文字、浅边框。
-- Accent：强调橙背景、纸白文字（用于少量主操作或品牌强调）。
+- Accent：强调橙背景、墨色文字（用于少量主操作或品牌强调；纸白字在强调橙上只有 2.92:1，见第 3 节“文字配色”）。
 - Tertiary：纯文字。
 - Danger：只用于删除、退出和不可逆操作。
 
@@ -251,7 +263,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 手机首屏先给内容，装饰让位：
   - 子站首页（资料库、互助、刷题）在 `lg` 以下压缩标题区、隐藏右侧装饰插图，390 × 844 下第一屏能看到搜索框和至少一条内容（或加载占位）。插图隐藏后，同屏文字不再提到它。互助和刷题由 `apps/portal/tests/responsive.spec.ts` 检查，题库目录开启时的刷题另由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查，资料库的搜索与筛选由 `apps/portal/tests/library-discovery-ux.spec.ts` 检查。
   - 首页模块只在 `md` 及以上占满一屏，与吸附滚动同时启用；手机上是普通滚动，模块按内容高度排列，不留整屏空白。由 `apps/portal/tests/responsive.spec.ts` 检查。
-- 正文与背景至少 WCAG AA。
+- 正文与背景至少 WCAG AA，配色规则见第 3 节“文字配色”。
 - 焦点状态不得移除。
 - 图片有有意义的 alt，装饰图使用空 alt。
 - 图片加载不挤动版面，也不一次下载整页（[#548](https://github.com/jry21223/HENU-Kit-DEV/issues/548)）：

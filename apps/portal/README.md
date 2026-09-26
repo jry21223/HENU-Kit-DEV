@@ -174,17 +174,20 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 ## 设计系统
 
-**工业极简（Industrial Minimal）** 视觉风格：
+**工业极简（Industrial Minimal）** 视觉风格。颜色来自 `packages/design-tokens/tokens.css`：`globals.css` 引入它，Tailwind 颜色只指向 `--hk-*` 变量，不另写色值（[#536](https://github.com/jry21223/HENU-Kit-DEV/issues/536)）。
 
-| 令牌 | 值 | 用途 |
-|---|---|---|
-| `--color-paper` | `#F2F0EA` | 主背景（暖纸白） |
-| `--color-ink` | `#161513` | 主文字 / 深色区块 |
-| `--color-accent` | `#FF4D00` | 安全橙（仅 CTA / 激活态 / 反馈） |
-| `--color-easy` | `#3E7C4F` | 难度 < 4.0 |
-| `--color-mid` | `#C79A2A` | 难度 4.0–6.9 |
-| `--color-hard` | `#C2401F` | 难度 ≥ 7.0 |
-| `--container-site` | `1440px` | 内容框宽度（`max-w-site`），首页、子站页头与正文共用 |
+| 令牌 | 指向 | 值 | 用途 |
+|---|---|---|---|
+| `--color-paper` | `--hk-paper` | `#F2F0EA` | 主背景（暖纸白） |
+| `--color-ink` | `--hk-ink` | `#161513` | 主文字 / 深色区块 |
+| `--color-accent` | `--hk-accent` | `#FF4D00` | 安全橙：色块（CTA / 激活态 / 反馈）、墨色底上的文字 |
+| `--color-accent-text` | `--hk-accent-text` | `#BB3800` | 浅色底上的橙字，不论大小（编号、眉标、链接、大号数字），类名 `text-accent-text` |
+| `--color-easy` | `--hk-success` | `#3E7C4F` | 难度 < 4.0 |
+| `--color-mid` | `--hk-warning` | `#C79A2A` | 难度 4.0–6.9 |
+| `--color-hard` | `--hk-danger` | `#C2401F` | 难度 ≥ 7.0 |
+| `--container-site` | — | `1440px` | 内容框宽度（`max-w-site`），首页、子站页头与正文共用 |
+
+强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `globals.css` 不另写 token 里已有的色值、选中文字是橙底墨色字；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
 
 语言元素：1px 结构线、十字对位标记、mono 编号、工程图纸网格、大小字强对比排版。
 
@@ -220,5 +223,5 @@ src/
 │   ├── food/               # 美食 mock
 │   ├── library/            # 资料库 mock
 │   └── practice/           # 刷题会话与统计工具
-└── globals.css             # 设计令牌 + 全局样式
+└── globals.css             # 引入 design-tokens + Tailwind 主题 + 全局样式
 ```
