@@ -153,7 +153,8 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
               ) : (
                 <p className="mt-2 text-xs leading-5 text-ink/50">暂未命中画像关键词，仍可查看官方岗位。</p>
               )}
-              <a href={job.url} target="_blank" rel="noreferrer" className="mt-3 inline-block font-mono text-xs text-accent hover:underline">
+              {/* 一行小字只有 16px 高：点击区撑到 44px（DESIGN_SYSTEM §13）。 */}
+              <a href={job.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex min-h-11 items-center font-mono text-xs text-accent hover:underline">
                 查看官方岗位 →
               </a>
             </li>

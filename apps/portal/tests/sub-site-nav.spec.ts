@@ -235,8 +235,8 @@ test.describe("390px 手机", () => {
 
     await expect(header.locator("nav")).toHaveCount(0);
     await expect(header.getByRole("link", { name: /L-01/ })).toHaveCount(0);
-    // 账户入口仍然在页头那一行里。
-    await expect(header.getByRole("link", { name: "登录/注册" })).toBeVisible();
+    // 账户入口仍然在页头那一行里；它和首页菜单的账户行一样是 flex 链接，读出的名字相同。
+    await expect(header.getByRole("link", { name: "登录 / 注册", exact: true })).toBeVisible();
     const box = await header.boundingBox();
     // 一行页头：56px 行高 + 1px 底边。
     expect(box?.height ?? 0).toBeLessThanOrEqual(57);

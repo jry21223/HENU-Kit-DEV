@@ -76,7 +76,7 @@ export default function FoodBoardPage() {
                 aria-pressed={campus === "all"}
                 onClick={() => setCampus("all")}
                 className={cn(
-                  "min-h-10 border px-4 font-mono text-xs transition-colors",
+                  "min-h-11 border px-4 font-mono text-xs transition-colors",
                   campus === "all"
                     ? "border-ink bg-ink text-paper"
                     : "border-line text-ink/60 hover:border-ink"
@@ -91,7 +91,7 @@ export default function FoodBoardPage() {
                   aria-pressed={campus === key}
                   onClick={() => setCampus(key)}
                   className={cn(
-                    "min-h-10 border px-4 font-mono text-xs transition-colors",
+                    "min-h-11 border px-4 font-mono text-xs transition-colors",
                     campus === key
                       ? "border-ink bg-ink text-paper"
                       : "border-line text-ink/60 hover:border-ink"

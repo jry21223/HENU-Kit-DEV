@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectTouchTargets } from "./support/touch-targets";
 
 test("controlled QuizCraft catalog hands off a bank version before explicit session setup", async ({ page }) => {
   let catalogRequests = 0;
@@ -123,4 +124,32 @@ test("controlled QuizCraft catalog keeps an upstream failure honest", async ({ p
   await expect(page.getByText("示例题库", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(0);
   expect(catalogRequests).toBeGreaterThan(0);
+});
+
+test("390px catalog cards keep every control at least 44×44 (#543)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/v1/practice/catalog", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        banks: [
+          {
+            bank_id: "11111111-1111-4111-8111-111111111111",
+            bank_version_id: "22222222-2222-4222-8222-222222222222",
+            name: "计算机基础",
+            question_count: 42,
+            available: true,
+            chapters: [],
+          },
+        ],
+        request_id: "req_catalog_touch_targets",
+      }),
+    });
+  });
+
+  await page.goto("/practice", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByTestId("quizcraft-catalog-start")).toBeVisible();
+  await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1);
+  await expectTouchTargets(page, "/practice (catalog on)");
 });

@@ -50,9 +50,10 @@ function RankRow({ item }: { item: RankRowItem }) {
         <span className="font-display text-4xl font-bold text-ink/25 md:text-6xl">
           {item.rank}
         </span>
+        {/* 店名一行只有 28px 高：上下各借 8px 撑满 44px 点击区，行距不变。 */}
         <Link
           href={item.href}
-          className="flex-1 text-lg font-medium transition-colors hover:text-accent md:text-2xl"
+          className="-my-2 flex-1 py-2 text-lg font-medium transition-colors hover:text-accent md:text-2xl"
         >
           {item.name}
         </Link>
@@ -155,7 +156,7 @@ export default function SectionFood() {
                 <button
                   type="button"
                   onClick={() => void load()}
-                  className="mt-3 font-mono text-xs text-accent underline underline-offset-4"
+                  className="inline-flex min-h-11 items-center font-mono text-xs text-accent underline underline-offset-4"
                 >
                   重新加载
                 </button>

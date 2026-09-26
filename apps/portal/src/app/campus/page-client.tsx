@@ -165,7 +165,7 @@ export default function MarketPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索：快递 / 键盘 / 占座"
-            className="w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
+            className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
           />
           <span aria-hidden className="hidden h-4 w-px bg-ink/20 sm:block" />
           {(["all", "help", "sell"] as const).map((t) => (
@@ -175,7 +175,7 @@ export default function MarketPage() {
               onClick={() => setType(t)}
               aria-pressed={type === t}
               className={cn(
-                "border px-3 py-1.5 font-mono text-xs transition-colors",
+                "min-h-11 border px-3 font-mono text-xs transition-colors",
                 type === t
                   ? t === "help"
                     ? "border-accent bg-accent text-paper"
@@ -191,7 +191,7 @@ export default function MarketPage() {
             onClick={() => setCat("all")}
             aria-pressed={cat === "all"}
             className={cn(
-              "border px-3 py-1.5 font-mono text-xs transition-colors",
+              "min-h-11 border px-3 font-mono text-xs transition-colors",
               cat === "all" ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
             )}
           >
@@ -204,7 +204,7 @@ export default function MarketPage() {
               onClick={() => setCat(c.key)}
               aria-pressed={cat === c.key}
               className={cn(
-                "border px-3 py-1.5 font-mono text-xs transition-colors",
+                "min-h-11 border px-3 font-mono text-xs transition-colors",
                 cat === c.key ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
               )}
             >

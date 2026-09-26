@@ -65,7 +65,7 @@ export default function SubSiteNav({
           )}
         >
           <div className="flex items-baseline gap-4">
-            <BackLink />
+            <BackLink className="inline-flex min-h-11 min-w-11 items-center" />
             <span className="font-display text-base font-bold tracking-tight">
               {brand}<span className="text-accent">®</span>
             </span>
@@ -77,7 +77,7 @@ export default function SubSiteNav({
         {showTabs ? (
           <nav
             ref={navRef}
-            className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 py-2 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0 md:py-0"
+            className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0"
           >
             {tabs.map((tab, index) => {
               const active = index === activeIndex;
@@ -113,17 +113,18 @@ export default function SubSiteNav({
                   </span>
                 );
               }
+              // 点击区撑到 44px 高（DESIGN_SYSTEM §13），下划线仍贴着文字：它挂在里层的 span 上。
               return (
                 <TabLinkComponent
                   key={tab.href}
                   href={tab.href}
                   className={cn(
                     // 只在手机的横向滑动行里不收缩；md 起标签行不滑动，放不下时允许折行，页面不横向溢出。
-                    "group relative shrink-0 py-1 font-mono text-xs tracking-widest transition-colors md:shrink",
+                    "group inline-flex min-h-11 shrink-0 items-center font-mono text-xs tracking-widest transition-colors md:shrink",
                     active ? "text-ink" : "text-ink/50 hover:text-ink"
                   )}
                 >
-                  {content}
+                  <span className="relative py-1">{content}</span>
                 </TabLinkComponent>
               );
             })}

@@ -228,7 +228,7 @@ export default function BankHero({
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="如：数据结构 / 高等数学"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/30 focus:border-accent"
+              className="h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/30 focus:border-accent"
             />
           </div>
 

@@ -44,7 +44,7 @@ function QuizCraftCatalogCard({
           <Link
             data-testid="quizcraft-catalog-start"
             href={href}
-            className="inline-flex border border-ink px-3 py-1.5 font-mono text-xs tracking-wider transition-colors hover:bg-ink hover:text-paper"
+            className="inline-flex min-h-11 items-center border border-ink px-3 font-mono text-xs tracking-wider transition-colors hover:bg-ink hover:text-paper"
           >
             开始刷题 →
           </Link>

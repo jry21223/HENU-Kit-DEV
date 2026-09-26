@@ -136,7 +136,8 @@ export default function Navbar() {
         )}
       >
         <div className="mx-auto flex h-16 max-w-site items-center justify-between px-5 md:px-8">
-          <Link href="/" className="flex items-baseline gap-3">
+          {/* 字标一行只有 28px 高：上下各借 8px 撑满 44px 点击区，页头布局不变。 */}
+          <Link href="/" className="-my-2 flex items-baseline gap-3 py-2">
             <span className="font-display text-xl font-bold tracking-tight">
               henukit<span className="text-accent">®</span>
             </span>
@@ -145,20 +146,22 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* 桌面导航 */}
+          {/* 桌面导航：平板上同样靠手指点，点击区撑到 44px 高；下划线挂在里层 span 上，仍贴着文字。 */}
           <nav className="hidden items-center gap-7 md:flex">
             {LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="group relative py-1 font-mono text-xs tracking-widest text-ink/80 transition-colors hover:text-ink"
+                className="group inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/80 transition-colors hover:text-ink"
               >
-                <span className="mr-1.5 text-accent">{link.index}</span>
-                {link.label}
-                <span
-                  aria-hidden
-                  className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 bg-accent transition-transform duration-300 group-hover:scale-x-100"
-                />
+                <span className="relative py-1">
+                  <span className="mr-1.5 text-accent">{link.index}</span>
+                  {link.label}
+                  <span
+                    aria-hidden
+                    className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 bg-accent transition-transform duration-300 group-hover:scale-x-100"
+                  />
+                </span>
               </Link>
             ))}
             <span aria-hidden className="h-4 w-px bg-ink/20" />
@@ -173,7 +176,7 @@ export default function Navbar() {
             aria-expanded={open}
             aria-controls={MOBILE_MENU_ID}
             onClick={() => setOpen((v) => !v)}
-            className="flex h-10 w-10 flex-col items-center justify-center gap-1.5 md:hidden"
+            className="flex h-11 w-11 flex-col items-center justify-center gap-1.5 md:hidden"
           >
             <span
               className={cn(

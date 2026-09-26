@@ -33,7 +33,10 @@ export default function AccountEntry({
       <Link
         href="/account/login"
         onClick={onClick}
-        className={cn("font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-accent", className)}
+        className={cn(
+          "inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-accent",
+          className
+        )}
       >
         登录<span className="text-ink/30">/</span>注册
       </Link>
@@ -41,7 +44,12 @@ export default function AccountEntry({
   }
 
   return (
-    <Link href="/account" onClick={onClick} className={cn("group flex items-center gap-2", className)}>
+    <Link
+      href="/account"
+      onClick={onClick}
+      // 紧凑模式只剩 28px 的头像块：向四周各借 8px 撑满 44px 点击区，占位和位置不变。
+      className={cn("group flex min-h-11 items-center gap-2", compact && "-m-2 p-2", className)}
+    >
       <span className="flex h-7 w-7 items-center justify-center border border-ink bg-paper font-display text-sm font-bold transition-colors group-hover:border-accent group-hover:text-accent">
         {user.name.slice(0, 1)}
       </span>

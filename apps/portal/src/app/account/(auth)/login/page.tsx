@@ -462,7 +462,7 @@ function LoginForm() {
           )}
           <Link
             href="/"
-            className="mt-4 block text-center font-mono text-[10px] tracking-widest text-ink/45 hover:text-accent"
+            className="mt-1 flex min-h-11 items-center justify-center font-mono text-[10px] tracking-widest text-ink/45 hover:text-accent"
           >
             返回 HENU Kit 首页
           </Link>
@@ -496,9 +496,10 @@ function LoginForm() {
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
             账号中心
           </p>
+          {/* 一行小字只有 15px 高：上下各借 14px 撑满 44px 点击区，标题行高度不变。 */}
           <Link
             href="/"
-            className="font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent"
+            className="-my-3.5 inline-flex min-h-11 items-center font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent"
           >
             ← henukit
           </Link>
@@ -530,7 +531,7 @@ function LoginForm() {
                 setInfo("");
               }}
               className={cn(
-                "flex-1 py-2 font-mono text-xs tracking-widest transition-colors",
+                "min-h-11 flex-1 font-mono text-xs tracking-widest transition-colors",
                 tab === t ? "bg-ink text-paper" : "text-ink/50 hover:text-ink"
               )}
             >
@@ -552,7 +553,7 @@ function LoginForm() {
                   setInfo("");
                 }}
                 className={cn(
-                  "border px-3 py-1.5 font-mono text-[11px] transition-colors",
+                  "min-h-11 border px-3 font-mono text-[11px] transition-colors",
                   mode === m
                     ? "border-ink bg-ink text-paper"
                     : "border-line text-ink/60 hover:border-ink/40"
@@ -672,8 +673,8 @@ function LoginForm() {
           <LegalConsent data-account-consent action={tab === "login" ? "登录" : "注册"} />
         </form>
 
-        <div className="mt-4 flex flex-col gap-2 font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">
-          <Link href="/account/recover" className="hover:text-accent">
+        <div className="mt-1 flex flex-col font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">
+          <Link href="/account/recover" className="inline-flex min-h-11 items-center hover:text-accent">
             忘记密码 / 收不到验证码 →
           </Link>
           <span className="text-ink/35">@henu.edu.cn 固定后缀</span>

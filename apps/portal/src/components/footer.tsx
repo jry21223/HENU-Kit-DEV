@@ -95,19 +95,22 @@ export default function Footer() {
             <p className="font-display text-xl font-bold">
               henukit<span className="text-accent">®</span>
             </p>
-            <nav aria-label="模块导航" className="flex flex-wrap gap-x-8 gap-y-3">
+            {/* 链接撑到 44px 高，折行时上下两行的点击区紧挨着而不重叠；下划线挂在里层 span 上，仍贴着文字。 */}
+            <nav aria-label="模块导航" className="flex flex-wrap gap-x-8">
               {LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="group relative font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
+                  className="group inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
                 >
-                  <span className="mr-1.5 text-accent">{link.index}</span>
-                  {link.label}
-                  <span
-                    aria-hidden
-                    className="absolute inset-x-0 -bottom-1 h-px origin-left scale-x-0 bg-accent transition-transform duration-300 group-hover:scale-x-100"
-                  />
+                  <span className="relative">
+                    <span className="mr-1.5 text-accent">{link.index}</span>
+                    {link.label}
+                    <span
+                      aria-hidden
+                      className="absolute inset-x-0 -bottom-1 h-px origin-left scale-x-0 bg-accent transition-transform duration-300 group-hover:scale-x-100"
+                    />
+                  </span>
                 </Link>
               ))}
             </nav>

@@ -256,7 +256,8 @@ export default function CareerReadyView({
           <div className="border border-line p-5">
             <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.22em] text-ink/50">
               <span>SCAN HISTORY</span>
-              <Link href="/career/history" className="transition-colors hover:text-accent">
+              {/* 一行小字只有 15px 高：上下各借 14.5px 撑满 44px 点击区，标题行高度不变。 */}
+              <Link href="/career/history" className="-my-[14.5px] inline-flex min-h-11 items-center transition-colors hover:text-accent">
                 全部历史 →
               </Link>
             </div>
