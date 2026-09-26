@@ -26,7 +26,7 @@ NEXT_PUBLIC_SITE_URL=https://henukit.cn
 
 该值必须是一个 HTTP(S) origin，不得包含用户名、密码、路径、查询或片段。未配置时回退到仓库已确认的生产主站 `https://henukit.cn`。它是构建时值；域名变化后必须重建 Portal 制品，不能只重启容器。
 
-当前首页和五个顶层页面（资料库、刷题、美食榜、互助平台、求职雷达）各发布自己的 canonical。六个页面全部是稳定的公开列表页；canonical 只挂在这些页面自己的 page 级 metadata 上，不写在父级 layout 上。详情页和动态内容仍是 Client Component 且依赖 owner 数据，在它们具备逐页、可验证的服务端 metadata 之前，不用父级 layout 批量写 canonical，避免把不同详情错误规范到同一个列表页。
+当前首页和七个顶层页面（资料库、刷题、美食榜、互助平台、求职雷达、隐私政策、用户协议）各发布自己的 canonical。前五个顶层页面是稳定的公开列表页，隐私政策和用户协议是稳定的法律文档；canonical 只挂在这些页面自己的 page 级 metadata 上，不写在父级 layout 上。详情页和动态内容仍是 Client Component 且依赖 owner 数据，在它们具备逐页、可验证的服务端 metadata 之前，不用父级 layout 批量写 canonical，避免把不同详情错误规范到同一个列表页。
 
 ## Sitemap 纳入门槛
 

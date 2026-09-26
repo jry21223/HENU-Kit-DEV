@@ -18,7 +18,7 @@ function loadingLabel(html: string) {
 }
 
 describe("detail pages while loading", () => {
-  it("library detail and reader say 加载中… in Chinese only", () => {
+  it("library detail says 加载中… in Chinese only", () => {
     const html = renderToStaticMarkup(<LibraryLoading />);
 
     expect(html).not.toContain("LOADING");

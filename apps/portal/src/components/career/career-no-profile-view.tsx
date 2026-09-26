@@ -43,7 +43,7 @@ export default function CareerNoProfileView() {
           去设置求职画像 →
         </Link>
         <p className="mt-3 font-mono text-xs text-ink/60">
-          简历文件仅在识别期间临时保存，识别完成或失败后即删除；不会保存招聘站账号
+          简历文件在识别完成或失败后即删除，保留文件名、文件校验值和识别出的内容；不会保存招聘站账号
         </p>
       </div>
     </section>

@@ -25,7 +25,7 @@ type LibraryCard = { id: string; code: string; title: string; meta: string; size
 const CARD_DEFS = [
   { type: "handout", code: "HO", title: "复习讲义", meta: "知识点讲义 / 原文件下载", unit: "份" },
   { type: "exam", code: "EX", title: "往年真题", meta: "按课程归档 / 原文件下载", unit: "套" },
-  { type: "slides", code: "SL", title: "课件", meta: "真实课程课件 / 原文件下载", unit: "份" },
+  { type: "slides", code: "SL", title: "课件", meta: "课程课件 / 原文件下载", unit: "份" },
   { type: "exercise", code: "PR", title: "题库练习", meta: "练习题与题库 / 原文件下载", unit: "份" },
   { type: "answer", code: "AN", title: "答案解析", meta: "答案与题解 / 原文件下载", unit: "份" },
   { type: "note", code: "NO", title: "笔记总结", meta: "公开学习笔记 / 原文件下载", unit: "份" },
@@ -51,7 +51,7 @@ function buildCards(materials: Material[], courses: CourseSummary[]): LibraryCar
       id: "CU",
       code: "CU",
       title: "课程归档",
-      meta: "按专业整理 / 从入门到期末",
+      meta: "按科目浏览 / 原文件下载",
       size: `${courses.length} 门`,
     });
   }

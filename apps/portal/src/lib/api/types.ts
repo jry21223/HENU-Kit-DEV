@@ -637,7 +637,7 @@ export interface CareerProfileResponse {
 export type CareerExtractionStatus = "queued" | "running" | "completed" | "failed";
 
 /**
- * 简历提取任务。文件字节在任务完成或失败后删除，只保留提取字段；
+ * 简历提取任务。文件字节在任务完成或失败后删除，保留文件名、文件校验值和提取字段；
  * completed 时 extracted 为可回填表单的画像草稿。
  */
 export interface CareerResumeExtraction {

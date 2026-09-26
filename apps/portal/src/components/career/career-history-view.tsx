@@ -51,7 +51,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
           <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
-          LIFETIME REQUIRED
+          LIFETIME MEMBERSHIP
         </p>
         {/* 按词组换行：窄屏上不把“会员”拆到两行（#549）。 */}
         <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">

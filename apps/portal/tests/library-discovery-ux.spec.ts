@@ -147,7 +147,7 @@ test("readable titles show segments with middle dots while the source title stay
   const title = "2020级 · 第1章 · 扫描版 · 含答案";
   await expect(page.getByRole("heading", { level: 1, name: title, exact: true })).toBeVisible();
   await expect(page.getByText("原始标题", { exact: true }).locator("..")).toContainText(source.title);
-  // 封面只标类型与科目，完整标题只在右侧 H1 出现一次。
+  // 封面只标类型与科目，易读标题只在右侧 H1 出现一次（完整标题在“原始标题”一行）。
   await expect(page.locator("main").getByText(title, { exact: true })).toHaveCount(1);
   await expect(page.getByText("收藏功能即将上线")).toHaveCount(0);
   await expect(page.locator("main").getByText("免费", { exact: true })).toHaveCount(0);

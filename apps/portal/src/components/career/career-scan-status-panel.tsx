@@ -68,7 +68,7 @@ function ActivePanel({
       </p>
       <p className="mt-2 text-sm leading-6 text-ink/65">
         {emailEnabled
-          ? "可以关闭本页面，扫描会在后台继续，完成后将把结果简报加入邮件发送队列。"
+          ? "可以关闭本页面，扫描会在后台继续，完成后会向你的账户邮箱发送结果简报。"
           : "可以关闭本页面，扫描会在后台继续，稍后回来即可查看结果。"}
       </p>
       <p className="mt-1 font-mono text-xs tracking-[0.15em] text-ink/60">

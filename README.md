@@ -68,7 +68,7 @@ Monorepo Foundation 新增或导入：
 - `apps/portal`：HENU Kit 主站入口。
 - `products/quizcraft`：从 `jry21223/quizcraft-cn` 导入的完整 QuizCraft 产品代码，当前仍是运行与迁移事实，不能当作普通历史目录删除。
 - `services/platform-core`：独立 Go Platform Core；已交付已有 Core Session 的 S256 授权码签发、单次服务端交换和短期 exchange Session，并持续加固邮箱登录、角色/Scope 与会话管理。
-- `packages/design-tokens`：纸白、墨色、强调橙等跨前端框架设计变量；Portal 在 `apps/portal/src/app/globals.css` 引入。
+- `packages/design-tokens`：纸白、墨色、强调橙等跨前端框架设计变量；Portal 由其中的 `tokens.json` 生成颜色主题 `apps/portal/src/app/theme.css`。
 - `packages/api-contracts`：OpenAPI 3.1、错误码、事件 schema 和生成产物。
 
 完整结构、迁移顺序和兼容策略见：

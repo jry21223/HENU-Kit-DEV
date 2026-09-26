@@ -385,7 +385,7 @@ export default function CareerProfilePage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">求职画像</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          画像用于求职雷达在已收录的招聘来源中匹配岗位；简历文件仅在识别期间临时保存，识别完成或失败后即删除，不保存招聘站账号或密码。
+          画像用于求职雷达在已收录的招聘来源中匹配岗位；简历文件在识别完成或失败后即删除，保留文件名、文件校验值和识别出的内容，不保存招聘站账号或密码。
         </p>
       </section>
 
@@ -401,7 +401,7 @@ export default function CareerProfilePage() {
 
       {state.kind === "locked" ? (
         <section data-account-career-profile-state="locked" className="mt-6 border border-accent px-5 py-8">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">LIFETIME REQUIRED</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">LIFETIME MEMBERSHIP</p>
           <h2 className="mt-3 font-display text-2xl font-bold tracking-tight">求职雷达需要终身会员</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/70">
             求职画像、匹配扫描与结果简报属于终身会员权益；免费会员无法查看或编辑画像。
@@ -448,7 +448,7 @@ export default function CareerProfilePage() {
                 <p className="font-mono text-xs text-ink/60">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
               </div>
               <p className="mt-2 text-sm leading-6 text-ink/60">
-                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；简历文件在识别完成或失败后即删除，只保留识别出的内容。
+                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；简历文件在识别完成或失败后即删除，保留文件名、文件校验值和识别出的内容。
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <input
@@ -632,7 +632,7 @@ export default function CareerProfilePage() {
                     {form.resume_text.length} / {FIELD_LIMITS.resume_text}
                   </p>
                   <p className="mt-2 text-xs leading-5 text-ink/60">
-                    娱乐功能。点击后，当前经历摘要会发送给 HENU Kit 配置的外部 AI 模型服务。HENU Kit 仅为重试在 Redis 保留草稿最多 10 分钟且不自动写入画像；模型服务可能按其自身政策处理请求数据。应用前请逐项核对事实。
+                    娱乐功能。点击后，当前经历摘要会发送给 HENU Kit 配置的外部 AI 模型服务。HENU Kit 仅为重试临时保存草稿最多 10 分钟，且不自动写入画像；模型服务可能按其自身政策处理请求数据。应用前请逐项核对事实。
                   </p>
                   {suification.kind === "preview" ? (
                     <div

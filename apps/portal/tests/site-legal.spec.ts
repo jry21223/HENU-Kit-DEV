@@ -75,6 +75,10 @@ test("the privacy policy covers the HENU Bot QQ binding the site offers", async 
   await expect(main).toContainText("5 分钟");
   await expect(main).toContainText("安全设置");
   await expect(main).toContainText("QQ 开放平台");
+  // HENU Bot 每次代你操作都会读账户信息，发给它的消息交给 AI 模型服务理解，解绑后留下的授权记录里有 QQ 用户标识。
+  await expect(main).toContainText("账户标识和展示名");
+  await expect(main).toContainText("发给 HENU Bot 的消息");
+  await expect(main).toContainText("QQ 用户标识");
 });
 
 test("legal documents and the footer fit a 360px screen", async ({ page }) => {

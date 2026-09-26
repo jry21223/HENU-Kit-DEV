@@ -52,7 +52,7 @@ export default function ItemDetail({ id }: { id: string }) {
   return (
     <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="gap-10 md:flex">
-        {/* 封面：只标类型与科目，完整标题留给右侧 H1。 */}
+        {/* 封面只标类型与科目；标题在右侧，H1 是易读标题，“原始标题”一行是完整标题。 */}
         <div data-enter className="bg-blueprint relative flex h-72 w-full shrink-0 flex-col justify-between border border-ink p-5 md:w-64">
           <span aria-hidden className="font-mono text-[10px] tracking-[0.3em] text-ink/50">{t.code}</span>
           <div>
