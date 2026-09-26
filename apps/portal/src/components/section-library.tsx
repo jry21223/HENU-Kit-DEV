@@ -199,9 +199,10 @@ export default function SectionLibrary() {
                     <div key={card.id} data-lib-card className="shrink-0">
                       <TiltCard>
                         <article className="flex h-72 w-56 flex-col justify-between border border-ink/25 bg-paper p-5">
-                          <div className="flex items-start justify-between">
-                            <span className="font-mono text-xs text-accent">{card.code}</span>
-                            <span aria-hidden className="font-mono text-xs text-ink/40">+</span>
+                          {/* 缩写只作装饰：卡片的主标记是下方的中文类型名。 */}
+                          <div className="flex items-start justify-between font-mono text-xs text-ink/30">
+                            <span aria-hidden>{card.code}</span>
+                            <span aria-hidden>+</span>
                           </div>
                           <div>
                             <h3 className="font-display text-2xl font-bold">{card.title}</h3>

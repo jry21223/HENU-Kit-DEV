@@ -53,8 +53,10 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           <span className="mx-2">/</span>
           LIFETIME REQUIRED
         </p>
+        {/* 按词组换行：窄屏上不把“会员”拆到两行（#549）。 */}
         <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
-          扫描历史属于终身会员权益
+          <span className="inline-block">扫描历史属于</span>
+          <span className="inline-block">终身会员权益</span>
         </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
           当前账户还不是终身会员，无法查看求职雷达的扫描历史。

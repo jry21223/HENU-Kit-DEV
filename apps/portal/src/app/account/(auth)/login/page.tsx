@@ -610,7 +610,7 @@ function LoginForm() {
                     setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
                   }
                   className={cn(
-                    "tracking-[0.35em]",
+                    "tracking-[0.35em] placeholder:tracking-normal",
                     errors.code ? "border-accent focus:border-accent" : undefined
                   )}
                 />
@@ -673,11 +673,11 @@ function LoginForm() {
           <LegalConsent data-account-consent action={tab === "login" ? "登录" : "注册"} />
         </form>
 
-        <div className="mt-1 flex flex-col font-mono text-[10px] tracking-wider text-ink/50 sm:flex-row sm:items-center sm:justify-between">
+        {/* 邮箱后缀已固定显示在输入框右侧，这里不再重复。 */}
+        <div className="mt-1 font-mono text-[10px] tracking-wider text-ink/50">
           <Link href="/account/recover" className="inline-flex min-h-11 items-center hover:text-accent">
             忘记密码 / 收不到验证码 →
           </Link>
-          <span className="text-ink/35">@henu.edu.cn 固定后缀</span>
         </div>
       </div>
     </main>

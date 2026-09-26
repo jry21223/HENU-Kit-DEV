@@ -426,6 +426,8 @@ test("/career keeps free members off the scan entry and points at ¥9.9 membersh
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-state="free"]')).toBeVisible();
   await expect(page.getByText("¥9.9 开通终身会员 →")).toBeVisible();
+  // 描述段说扫描什么，下面的要点不再逐字重复一遍（#549）。
+  await expect(page.locator('[data-career-state="free"]').getByText(/扫描已收录的官方招聘来源/)).toHaveCount(1);
   await expect(page.locator('[data-career-state="free"]')).not.toContainText("永久");
   await expect(page.locator("body")).not.toContainText("Lifetime VIP");
   const buy = page.getByRole("link", { name: "¥9.9 开通终身会员 →" });

@@ -141,10 +141,8 @@ test("library filters with no match offer to clear them and bring the shelf back
   const search = page.getByPlaceholder("搜索：真题 / 高数 / 课件");
   const subject = page.getByRole("combobox", { name: "按科目筛选" });
   const types = page.getByRole("group", { name: "资料类型" });
-  const prices = page.getByRole("group", { name: "资料价格" });
   await subject.selectOption("高等数学");
   await types.getByRole("button", { name: "往年真题", exact: true }).click();
-  await prices.getByRole("button", { name: "收费", exact: true }).click();
   await search.fill("极限");
   await expect(page.getByText("无匹配资料", { exact: true })).toBeVisible();
   await expect(limits).toHaveCount(0);
@@ -161,6 +159,5 @@ test("library filters with no match offer to clear them and bring the shelf back
   await expect(search).toHaveValue("");
   await expect(subject).toHaveValue("all");
   await expect(types.getByRole("button", { name: "全部", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(prices.getByRole("button", { name: "全部", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
 });

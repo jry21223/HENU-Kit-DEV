@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useReveal } from "@/components/account/use-reveal";
-import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
+import { ErrorBanner, LoadingBlock } from "@/components/data-state";
 import Img from "@/components/ui/img";
 import { useScrollRestoration } from "@/components/use-scroll-restoration";
 import { cn } from "@/lib/cn";
@@ -115,11 +115,7 @@ export default function FoodBoardPage() {
           <div className="mt-8">
             <LoadingBlock label="加载五档榜单" />
           </div>
-        ) : loadState === "error" ? (
-          <div className="mt-8">
-            <EmptyBlock label="榜单暂时加载不出来，请稍后刷新试试" />
-          </div>
-        ) : (
+        ) : loadState === "error" ? null : (
           <>
             <nav
               data-enter

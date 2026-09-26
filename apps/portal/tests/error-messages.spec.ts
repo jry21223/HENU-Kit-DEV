@@ -89,3 +89,21 @@ test("/library turns an HTML 404 into one Chinese message with retry", async ({ 
   await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /极限复习笔记/ })).toBeVisible();
 });
+
+test("/food says a failed ranking load once, in the error banner only (#549)", async ({ page }) => {
+  await page.route("**/api/v1/food/posts", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_food_down" },
+    })
+  );
+  await page.goto("/food");
+  await expect(page.locator("html")).toHaveAttribute("data-scroll-memory", "ready");
+
+  const alert = page.locator("main").getByRole("alert");
+  await expect(alert).toHaveCount(1);
+  await expect(alert.getByRole("button", { name: "重试" })).toBeVisible();
+  // 与 /library、/campus 一致：失败只由提示条说明，列表区不再叠一句空状态。
+  await expect(page.getByText(/榜单暂时加载不出来/)).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText(LEAKS);
+});

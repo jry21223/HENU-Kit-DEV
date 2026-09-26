@@ -15,6 +15,7 @@ import PostBlocks from "@/components/food/post-blocks";
 import Img from "@/components/ui/img";
 import BackLink from "@/components/back-link";
 import { useDocumentTitle } from "@/components/use-document-title";
+import { cn } from "@/lib/cn";
 import {
   EmptyBlock,
   ErrorBanner,
@@ -122,6 +123,17 @@ export default function PostDetail({ id }: { id: string }) {
 
   const campus = CAMPUSES[post.campus];
   const tierLabel = detail.tier?.label ?? "未定档";
+  // 价格、营业时间没填就不占格子，不把空值摆出来。
+  const facts = [
+    {
+      label: "五档定位",
+      value: detail.tier
+        ? `${detail.tier.label} · ${detail.tier.blurb}`
+        : "未定档 · 不进入五档榜",
+    },
+    { label: "价格参考", value: detail.priceReference },
+    { label: "营业参考", value: detail.hoursReference },
+  ].flatMap((fact) => (fact.value ? [{ label: fact.label, value: fact.value }] : []));
 
   return (
     <main className="mx-auto max-w-site px-5 py-10 md:px-8 md:py-14">
@@ -148,33 +160,19 @@ export default function PostDetail({ id }: { id: string }) {
             {post.excerpt}
           </p>
 
-          <div className="mt-7 grid border-y border-ink md:grid-cols-3">
-            {[
-              {
-                index: "01",
-                label: "五档定位",
-                value: detail.tier
-                  ? `${detail.tier.label} · ${detail.tier.blurb}`
-                  : "未定档 · 不进入五档榜",
-              },
-              {
-                index: "02",
-                label: "价格参考",
-                value: detail.priceReference ?? "未填写",
-              },
-              {
-                index: "03",
-                label: "营业参考",
-                value:
-                  detail.hoursReference ?? "未填写",
-              },
-            ].map((item) => (
+          <div
+            className={cn(
+              "mt-7 grid border-y border-ink",
+              facts.length === 3 ? "md:grid-cols-3" : facts.length === 2 ? "md:grid-cols-2" : undefined
+            )}
+          >
+            {facts.map((item, index) => (
               <div
-                key={item.index}
+                key={item.label}
                 className="border-b border-ink px-4 py-5 last:border-b-0 md:border-r md:border-b-0 md:last:border-r-0"
               >
                 <p className="font-mono text-[10px] tracking-[0.22em] text-accent">
-                  {item.index} / {item.label}
+                  {String(index + 1).padStart(2, "0")} / {item.label}
                 </p>
                 <p className="mt-3 text-sm leading-6">{item.value}</p>
               </div>
@@ -250,12 +248,13 @@ export default function PostDetail({ id }: { id: string }) {
             )}
           </section>
 
-          <section className="mt-12">
-            <p className="font-mono text-[10px] tracking-[0.28em] text-accent">
-              IMAGE NOTES / THE VIBE
-            </p>
-            <h2 className="mt-2 font-display text-3xl font-bold">图片与环境</h2>
-            {detail.gallery.length ? (
+          {/* 没有图片时整节折叠成一行说明，不留大块占位。 */}
+          {detail.gallery.length ? (
+            <section className="mt-12">
+              <p className="font-mono text-[10px] tracking-[0.28em] text-accent">
+                IMAGE NOTES / THE VIBE
+              </p>
+              <h2 className="mt-2 font-display text-3xl font-bold">图片与环境</h2>
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {detail.gallery.map((src, index) => (
                   <figure key={`${src}-${index}`}>
@@ -271,12 +270,12 @@ export default function PostDetail({ id }: { id: string }) {
                   </figure>
                 ))}
               </div>
-            ) : (
-              <div className="mt-6">
-                <EmptyBlock label="图片与环境待补充" />
-              </div>
-            )}
-          </section>
+            </section>
+          ) : (
+            <p className="mt-12 border-t border-line pt-4 font-mono text-xs leading-6 text-ink/70">
+              图片与环境：投稿未附图片
+            </p>
+          )}
 
           <section className="mt-12 border-t border-ink pt-8">
             <p className="font-mono text-[10px] tracking-[0.28em] text-accent">
@@ -333,14 +332,6 @@ export default function PostDetail({ id }: { id: string }) {
                   </dt>
                   <dd className="mt-1 text-sm leading-6">
                     {detail.location}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">
-                    资料状态
-                  </dt>
-                  <dd className="mt-1 text-sm leading-6">
-                    社区稿件 · 投稿人提供
                   </dd>
                 </div>
                 <div>

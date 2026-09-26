@@ -47,7 +47,8 @@ function RankRow({ item }: { item: RankRowItem }) {
       className="border-b border-line"
     >
       <div className="flex items-baseline gap-5 py-5 md:gap-10">
-        <span className="font-display text-4xl font-bold text-ink/25 md:text-6xl">
+        {/* 编号列定宽、等宽数字，01–05 下店名左缘对齐；宽度与下方锐评的缩进一致。 */}
+        <span className="w-[3.25rem] shrink-0 font-display text-4xl font-bold tabular-nums text-ink/25 md:w-20 md:text-6xl">
           {item.rank}
         </span>
         {/* 店名一行只有 28px 高：上下各借 8px 撑满 44px 点击区，行距不变。 */}

@@ -27,7 +27,6 @@ function toMaterial(m: ApiMaterial): Material {
     intro: m.intro,
     toc: m.toc ?? [],
     pages: [],
-    pageCount: 0,
     price: m.price,
     previewPages: 0,
     rating: m.rating,

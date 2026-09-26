@@ -26,7 +26,6 @@ export interface Material {
   intro: string;
   toc: string[];
   pages: string[][]; // OSS-only contract: always empty
-  pageCount?: number; // 原文件历史页数元数据，不代表可在线阅读
   price: number; // 0 = 免费（积分）
   previewPages: number; // OSS-only contract: always 0
   rating?: number; // 0-5；owner 未提供时不展示伪造评分
@@ -116,7 +115,7 @@ const MATERIALS: Material[] = [
     intro: "2025 春季期末真题，每题附完整解题过程与评分点标注：积分应用与级数是本轮重点，压轴题为旋转体体积。",
     toc: ["一、填空题", "二、计算题", "三、应用题", "四、证明题", "逐题详解"],
     pages: [],
-    pageCount: 8, price: 60, previewPages: 0, rating: 4.9, downloads: 2876, favs: 924, downloadAvailable: false,
+    price: 60, previewPages: 0, rating: 4.9, downloads: 2876, favs: 924, downloadAvailable: false,
   },
   {
     id: "paid-ds-3years", type: "exam", subject: "数据结构",
@@ -124,7 +123,7 @@ const MATERIALS: Material[] = [
     intro: "三年 6 套真题 + 答案要点，树与图应用题逐年对比分析：2025 年图占比首次超过树，AVL 旋转连续三年出现。",
     toc: ["2023 A/B 卷", "2024 A/B 卷", "2025 A/B 卷", "三年考点对比", "答案要点"],
     pages: [],
-    pageCount: 7, price: 80, previewPages: 0, rating: 4.9, downloads: 3122, favs: 1105, downloadAvailable: false,
+    price: 80, previewPages: 0, rating: 4.9, downloads: 3122, favs: 1105, downloadAvailable: false,
   },
   {
     id: "paid-la-eigen", type: "note", subject: "线性代数",
@@ -132,7 +131,7 @@ const MATERIALS: Material[] = [
     intro: "线代最难一章的 20 页攻坚：特征值/特征向量求法、相似对角化条件、实对称矩阵三大性质，含 8 道阶梯训练。",
     toc: ["定义与求法", "相似与对角化", "实对称矩阵", "阶梯训练 8 题"],
     pages: [],
-    pageCount: 6, price: 45, previewPages: 0, rating: 4.7, downloads: 1654, favs: 431, downloadAvailable: false,
+    price: 45, previewPages: 0, rating: 4.7, downloads: 1654, favs: 431, downloadAvailable: false,
   },
   {
     id: "paid-phy-em-labs", type: "note", subject: "大学物理",
@@ -140,7 +139,7 @@ const MATERIALS: Material[] = [
     intro: "霍尔效应、示波器使用、螺线管磁场测定、RLC 稳态四篇 90+ 报告，数据表格与不确定度计算齐全。",
     toc: ["霍尔效应测磁场", "示波器的使用", "螺线管磁场分布", "RLC 稳态特性"],
     pages: [],
-    pageCount: 5, price: 50, previewPages: 0, rating: 4.6, downloads: 987, favs: 203, downloadAvailable: false,
+    price: 50, previewPages: 0, rating: 4.6, downloads: 987, favs: 203, downloadAvailable: false,
   },
   {
     id: "paid-math-5mocks", type: "exercise", subject: "高等数学A",
@@ -148,7 +147,7 @@ const MATERIALS: Material[] = [
     intro: "五套全真模拟：覆盖极限、微分、积分、级数全部题型，每套附答案与难度标注，适合考前两周每天一套。",
     toc: ["卷一（基础）", "卷二（基础+）", "卷三（中等）", "卷四（中等+）", "卷五（拔高）", "答案速查"],
     pages: [],
-    pageCount: 6, price: 70, previewPages: 0, rating: 4.8, downloads: 2210, favs: 687, downloadAvailable: false,
+    price: 70, previewPages: 0, rating: 4.8, downloads: 2210, favs: 687, downloadAvailable: false,
   },
   {
     id: "paid-la-sprint", type: "note", subject: "线性代数",
@@ -156,7 +155,7 @@ const MATERIALS: Material[] = [
     intro: "给只剩 7 天的人：每天一章 + 对应真题，舍小保大——行列式与矩阵计算必须全对，证明题背 4 个模板。",
     toc: ["D1 行列式", "D2 矩阵", "D3 向量组", "D4 方程组", "D5 特征值", "D6 二次型", "D7 模考"],
     pages: [],
-    pageCount: 6, price: 30, previewPages: 0, rating: 4.5, downloads: 1308, favs: 296, downloadAvailable: false,
+    price: 30, previewPages: 0, rating: 4.5, downloads: 1308, favs: 296, downloadAvailable: false,
   },
   {
     id: "paid-cet6-writing", type: "note", subject: "大学英语",
@@ -164,7 +163,7 @@ const MATERIALS: Material[] = [
     intro: "六级 588 分学姐的写作弹药库：开头 10 句、论证 20 句、结尾 10 句、闪光替换词 10 组，覆盖近五年全部题型。",
     toc: ["开头段 10 句", "主体论证 20 句", "结尾段 10 句", "闪光替换 10 组"],
     pages: [],
-    pageCount: 5, price: 40, previewPages: 0, rating: 4.6, downloads: 1517, favs: 354, downloadAvailable: false,
+    price: 40, previewPages: 0, rating: 4.6, downloads: 1517, favs: 354, downloadAvailable: false,
   },
   {
     id: "paid-ds-lab", type: "note", subject: "数据结构",
@@ -172,7 +171,7 @@ const MATERIALS: Material[] = [
     intro: "数据结构前两次上机的满分报告：单链表基本操作集 + 顺序栈与表达式求值，代码、测试用例、复杂度分析齐全。",
     toc: ["实验一 单链表", "代码与注释", "实验二 顺序栈", "表达式求值", "测试与结论"],
     pages: [],
-    pageCount: 5, price: 35, previewPages: 0, rating: 4.7, downloads: 876, favs: 167, downloadAvailable: false,
+    price: 35, previewPages: 0, rating: 4.7, downloads: 876, favs: 167, downloadAvailable: false,
   },
 ];
 

@@ -4,8 +4,9 @@ import Link from "next/link";
 import WorkRadar from "@/components/career/work-radar";
 import { useReveal } from "@/components/account/use-reveal";
 
+// 描述段说扫描什么，要点只列描述段之外的好处，两处不重复（#549）。
 const FEATURES = [
-  "在后台扫描，无需守在页面",
+  "无需守在页面",
   "匹配结果与命中原因一目了然",
   "完成后向已验证的账户邮箱发送结果简报",
 ];
@@ -23,12 +24,14 @@ export default function CareerGuestView() {
             <span className="mx-2">/</span>
             WORK RADAR
           </p>
+          {/* 按词组换行：窄屏上不把“招聘”拆到两行（#549）。 */}
           <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
-            让雷达替你扫一遍招聘信息
+            <span className="inline-block">让雷达替你</span>
+            <span className="inline-block">扫一遍</span>
+            <span className="inline-block">招聘信息</span>
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">
-            设定求职画像后，雷达会在后台扫描已收录的官方招聘来源，
-            匹配结果与命中原因一目了然，完成后自动把结果简报发送到已验证的账户邮箱。
+            设定求职画像后，雷达会在后台扫描已收录的官方招聘来源。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {FEATURES.map((f) => (

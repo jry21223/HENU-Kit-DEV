@@ -49,29 +49,15 @@ export default function ItemDetail({ id }: { id: string }) {
   ).slice(0, 3);
   const toc = tocOpen ? material.toc : material.toc.slice(0, 6);
 
-  const meta =
-    material.fileSize
-      ? `${formatBytes(material.fileSize)} · ${material.subject}`
-      : `${material.pageCount ?? material.pages.length} 页 · ${material.subject}`;
-
   return (
     <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="gap-10 md:flex">
-        {/* 封面 */}
+        {/* 封面：只标类型与科目，完整标题留给右侧 H1。 */}
         <div data-enter className="bg-blueprint relative flex h-72 w-full shrink-0 flex-col justify-between border border-ink p-5 md:w-64">
-          <div className="flex items-start justify-between">
-            <span className="font-mono text-[10px] tracking-[0.3em] text-ink/50">{t.code}</span>
-            {free ? (
-              <span className="bg-ink px-1.5 py-0.5 font-mono text-[10px] text-paper">免费</span>
-            ) : (
-              <span className="bg-accent px-1.5 py-0.5 font-mono text-[10px] text-paper">
-                {material.price} 积分
-              </span>
-            )}
-          </div>
+          <span className="font-mono text-[10px] tracking-[0.3em] text-ink/50">{t.code}</span>
           <div>
-            <p className="break-words font-display text-2xl font-bold leading-snug">{title}</p>
-            <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">{meta}</p>
+            <p className="font-display text-2xl font-bold leading-snug">{t.name}</p>
+            <p className="mt-2 break-words font-mono text-[10px] tracking-wider text-ink/50">{material.subject}</p>
           </div>
         </div>
 
@@ -148,12 +134,6 @@ export default function ItemDetail({ id }: { id: string }) {
                 className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-60"
               />
             )}
-            <p
-              data-library-favorite-state="unavailable"
-              className="border border-ink/30 px-5 py-3 font-mono text-sm text-ink/55"
-            >
-              收藏功能即将上线
-            </p>
           </div>
         </div>
       </div>

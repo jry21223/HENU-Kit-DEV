@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useAccountConsoleSession,
@@ -68,10 +69,10 @@ function AccountOverviewContent({
       : "账户状态加载中";
   const cards = data
     ? [
-        { label: "积分余额", value: String(data.points_balance), mono: "C-01" },
-        { label: "会员", value: membershipLabel, mono: "C-02" },
-        { label: "未读通知", value: String(data.unread_notification_count), mono: "C-03" },
-        { label: "进行中工单", value: String(data.open_ticket_count), mono: "C-04" },
+        { label: "积分余额", value: String(data.points_balance), mono: "C-01", href: "/account/wallet", page: "积分钱包" },
+        { label: "会员", value: membershipLabel, mono: "C-02", href: "/account/membership", page: "会员权益" },
+        { label: "未读通知", value: String(data.unread_notification_count), mono: "C-03", href: "/account/notifications", page: "系统通知" },
+        { label: "进行中工单", value: String(data.open_ticket_count), mono: "C-04", href: "/account/tickets", page: "工单" },
       ]
     : [];
 
@@ -125,17 +126,20 @@ function AccountOverviewContent({
         <section data-account-summary-state="success" aria-live="polite">
           <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
             {cards.map((card) => (
-              <div
+              <Link
                 key={card.mono}
+                href={card.href}
                 data-enter
-                className="border border-ink/25 p-5"
+                className="group block border border-ink/25 p-5 transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
                   {card.mono} / {card.label}
                 </p>
                 <p className="mt-3 font-display text-3xl font-bold">{card.value}</p>
-                <p className="mt-2 font-mono text-[10px] text-ink/40">详情即将上线</p>
-              </div>
+                <p className="mt-2 font-mono text-[10px] text-ink/70 transition-colors group-hover:text-accent">
+                  查看{card.page} →
+                </p>
+              </Link>
             ))}
           </div>
 
@@ -144,10 +148,6 @@ function AccountOverviewContent({
               暂无通知和进行中工单
             </p>
           ) : null}
-
-          <p data-enter className="mt-8 font-mono text-[10px] tracking-[0.22em] text-ink/40">
-            新用户从 0 积分和免费会员开始
-          </p>
         </section>
       ) : null}
     </div>

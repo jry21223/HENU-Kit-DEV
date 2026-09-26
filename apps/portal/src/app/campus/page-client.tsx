@@ -164,7 +164,7 @@ export default function MarketPage() {
           role="search"
           aria-label="互助搜索与筛选"
           tabIndex={-1}
-          className="flex flex-wrap items-center gap-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+          className="flex flex-wrap items-center gap-x-6 gap-y-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
         >
           <input
             value={query}
@@ -172,50 +172,60 @@ export default function MarketPage() {
             placeholder="搜索：快递 / 键盘 / 占座"
             className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
           />
-          <span aria-hidden className="hidden h-4 w-px bg-ink/20 sm:block" />
-          {(["all", "help", "sell"] as const).map((t) => (
+          {/* 两组筛选都以“全部”开头：各带一个看得见的组名，免得分不清。 */}
+          <div role="group" aria-labelledby="campus-filter-type" className="flex flex-wrap items-center gap-2">
+            <span id="campus-filter-type" className="mr-1 font-mono text-xs text-ink/70">
+              单子类型
+            </span>
+            {(["all", "help", "sell"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                aria-pressed={type === t}
+                className={cn(
+                  "min-h-11 border px-3 font-mono text-xs transition-colors",
+                  type === t
+                    ? t === "help"
+                      ? "border-accent bg-accent text-paper"
+                      : "border-ink bg-ink text-paper"
+                    : "border-line text-ink/60 hover:border-ink/40"
+                )}
+              >
+                {t === "all" ? "全部" : t === "help" ? "求助单" : "闲置单"}
+              </button>
+            ))}
+          </div>
+          <div role="group" aria-labelledby="campus-filter-category" className="flex flex-wrap items-center gap-2">
+            <span id="campus-filter-category" className="mr-1 font-mono text-xs text-ink/70">
+              分类
+            </span>
             <button
-              key={t}
               type="button"
-              onClick={() => setType(t)}
-              aria-pressed={type === t}
+              onClick={() => setCat("all")}
+              aria-pressed={cat === "all"}
               className={cn(
                 "min-h-11 border px-3 font-mono text-xs transition-colors",
-                type === t
-                  ? t === "help"
-                    ? "border-accent bg-accent text-paper"
-                    : "border-ink bg-ink text-paper"
-                  : "border-line text-ink/60 hover:border-ink/40"
+                cat === "all" ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
               )}
             >
-              {t === "all" ? "全部" : t === "help" ? "求助单" : "闲置单"}
+              全部
             </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setCat("all")}
-            aria-pressed={cat === "all"}
-            className={cn(
-              "min-h-11 border px-3 font-mono text-xs transition-colors",
-              cat === "all" ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-            )}
-          >
-            全部
-          </button>
-          {categories.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => setCat(c.key)}
-              aria-pressed={cat === c.key}
-              className={cn(
-                "min-h-11 border px-3 font-mono text-xs transition-colors",
-                cat === c.key ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-              )}
-            >
-              {c.name}
-            </button>
-          ))}
+            {categories.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setCat(c.key)}
+                aria-pressed={cat === c.key}
+                className={cn(
+                  "min-h-11 border px-3 font-mono text-xs transition-colors",
+                  cat === c.key ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div data-enter className="mt-8">

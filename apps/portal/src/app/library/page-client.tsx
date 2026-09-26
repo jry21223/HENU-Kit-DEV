@@ -9,6 +9,7 @@ import type { Material as ApiMaterial } from "@/lib/api/types";
 import type { Material } from "@/lib/library/mock";
 import { rememberLibraryMaterials } from "@/lib/library/gateway";
 import { MATERIAL_TYPES, type MaterialType } from "@/lib/library/material-types";
+import { readableMaterialTitle } from "@/lib/library/material-title";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneBooks } from "@/components/site-hero/scenes";
@@ -47,7 +48,6 @@ type LibraryStatistics = {
 export default function LibraryHomePage() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<MaterialType | "all">("all");
-  const [price, setPrice] = useState<"all" | "free" | "paid">("all");
   const [subject, setSubject] = useState("all");
   const [materials, setMaterials] = useState<Material[]>([]);
   const [statistics, setStatistics] = useState<LibraryStatistics | null>(null);
@@ -99,17 +99,17 @@ export default function LibraryHomePage() {
   const items = materials.filter(
     (m) =>
       (type === "all" || m.type === type) &&
-      (price === "all" || (price === "free" ? m.price === 0 : m.price > 0)) &&
       (subject === "all" || m.subject === subject) &&
+      // 原始标题、卡片上显示的易读标题（间隔号分段）和课程都能搜到。
       (!query.trim() ||
         m.title.includes(query.trim()) ||
+        readableMaterialTitle(m).includes(query.trim()) ||
         m.subject.includes(query.trim()))
   );
-  const hasActiveFilter = query.trim() !== "" || type !== "all" || price !== "all" || subject !== "all";
+  const hasActiveFilter = query.trim() !== "" || type !== "all" || subject !== "all";
   const clearFilters = () => {
     setQuery("");
     setType("all");
-    setPrice("all");
     setSubject("all");
     // 清除筛选按钮会随空状态一起消失；焦点交给刚复位的搜索与筛选区，键盘和读屏用户不丢位置。
     // 不直接聚焦搜索框：手机上会弹出输入法，挡住刚恢复的书架。
@@ -194,39 +194,22 @@ export default function LibraryHomePage() {
               </select>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <div role="group" aria-label="资料类型" className="flex flex-wrap gap-2">
-              {(["all", ...TYPE_KEYS] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(t)}
-                  aria-pressed={type === t}
-                  className={cn(
-                    "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                    type === t ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-                  )}
-                >
-                  {t === "all" ? "全部" : MATERIAL_TYPES[t].name}
-                </button>
-              ))}
-            </div>
-            <div role="group" aria-label="资料价格" className="flex flex-wrap gap-2">
-              {(["all", "free", "paid"] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPrice(p)}
-                  aria-pressed={price === p}
-                  className={cn(
-                    "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                    price === p ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
-                  )}
-                >
-                  {p === "all" ? "全部" : p === "free" ? "免费" : "收费"}
-                </button>
-              ))}
-            </div>
+          {/* 公开目录只收免费资料（契约 price 恒为 0），不提供价格筛选。 */}
+          <div role="group" aria-label="资料类型" className="flex flex-wrap gap-2">
+            {(["all", ...TYPE_KEYS] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                aria-pressed={type === t}
+                className={cn(
+                  "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                  type === t ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
+                )}
+              >
+                {t === "all" ? "全部" : MATERIAL_TYPES[t].name}
+              </button>
+            ))}
           </div>
         </div>
 

@@ -121,6 +121,8 @@ test("controlled QuizCraft catalog keeps an upstream failure honest", async ({ p
   await page.goto("/practice", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("题库暂时加载不出来，请检查网络后重试。")).toBeVisible();
+  // 失败只由提示条说一次，题库区不再叠一句空状态（#549）。
+  await expect(page.getByText(/内容暂时加载不出来/)).toHaveCount(0);
   await expect(page.getByText("示例题库", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(0);
   expect(catalogRequests).toBeGreaterThan(0);

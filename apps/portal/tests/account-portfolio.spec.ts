@@ -125,6 +125,46 @@ test("account overview renders the real zero state and never exposes UID as a la
   await expect(page.getByText(sessionUserID, { exact: true })).toHaveCount(0);
 });
 
+test("account overview cards open their own pages (#549)", async ({ page }) => {
+  await mockSession(page);
+  await page.route("**/api/v1/account/summary", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          points_balance: 12,
+          plan: "lifetime",
+          lifetime: true,
+          unread_notification_count: 3,
+          open_ticket_count: 1,
+        },
+        request_id: "req_account_summary_links",
+      }),
+    });
+  });
+
+  await page.goto("/account", { waitUntil: "domcontentloaded" });
+  const summary = page.locator('[data-account-summary-state="success"]');
+  await expect(summary).toBeVisible();
+  for (const [name, href] of [
+    [/积分余额/, "/account/wallet"],
+    [/会员/, "/account/membership"],
+    [/未读通知/, "/account/notifications"],
+    [/进行中工单/, "/account/tickets"],
+  ] as const) {
+    const card = summary.getByRole("link", { name });
+    await expect(card).toHaveAttribute("href", href);
+    const box = await card.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  }
+  await expect(summary.getByRole("link", { name: /积分余额/ })).toContainText("12");
+  await expect(page.getByText("详情即将上线")).toHaveCount(0);
+  await expect(page.getByText(/新用户从 0 积分/)).toHaveCount(0);
+
+  await summary.getByRole("link", { name: /进行中工单/ }).click();
+  await expect(page).toHaveURL(/\/account\/tickets$/);
+});
+
 test("account overview renders a recoverable error when Account Portfolio is unavailable", async ({ page }) => {
   await mockSession(page);
   await page.route("**/api/v1/account/summary", async (route) => {
@@ -864,7 +904,8 @@ test("paid Library materials never use Account session mocks as purchase, previe
 
   await page.goto("/library/item/paid-math-exam25", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-library-purchase-state="unavailable"]')).toBeVisible();
-  await expect(page.locator('[data-library-favorite-state="unavailable"]')).toBeVisible();
+  // 收藏上线前详情页不放占位按钮（#549）。
+  await expect(page.getByText("收藏功能即将上线")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /积分购买|登录后购买/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /立即阅读|免费试读/ })).toHaveCount(0);
 

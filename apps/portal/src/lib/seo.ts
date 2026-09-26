@@ -145,7 +145,7 @@ export const libraryMetadata: Metadata = pageMetadata(
 export const practiceMetadata: Metadata = pageMetadata(
   "/practice",
   MODULE_TITLES.practice,
-  "HENU Kit 智能刷题提供按学校、专业和科目组织的题库与题单，支持搜索与练习；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+  "HENU Kit 智能刷题可按科目搜索题库，提供随机、难题、章节、收藏四种练习；学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
 );
 
 export const foodMetadata: Metadata = pageMetadata(

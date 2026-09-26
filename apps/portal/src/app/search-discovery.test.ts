@@ -122,6 +122,17 @@ describe("Portal search discovery routes", () => {
     });
   });
 
+  it("describes practice only as the bank search and modes that exist (#549, ADR-0036)", () => {
+    // 按学校 / 专业浏览没有建成，也没有题单；搜索的说法与首页刷题区块、题库页搜索框（搜索科目）一致。
+    const llmsPractice = readFileSync(new URL("../../public/llms.txt", import.meta.url), "utf8")
+      .split("\n")
+      .find((line) => line.includes("https://henukit.cn/practice"));
+    for (const text of [String(practiceMetadata.description), llmsPractice ?? ""]) {
+      expect(text).toContain("按科目搜索题库");
+      expect(text).not.toMatch(/学校、专业|按学校|题单/);
+    }
+  });
+
   it("keeps page-level share cards honest and page-specific instead of inheriting the home card", () => {
     for (const meta of [
       libraryMetadata,

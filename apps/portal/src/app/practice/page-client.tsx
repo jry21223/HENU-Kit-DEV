@@ -135,12 +135,10 @@ export default function PracticeBankPage() {
         <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">
           <LoadingBlock label="加载题库" />
         </div>
-      ) : (
+      ) : loadState === "error" ? null : (
         <div className="mx-auto max-w-site lg:flex">
           <div data-block className="flex-1 px-5 py-6 md:px-8 lg:py-10">
-            {loadState === "error" ? (
-              <EmptyBlock label="内容暂时加载不出来，请稍后刷新试试" />
-            ) : quizCraftCatalogIsEnabled ? (
+            {quizCraftCatalogIsEnabled ? (
               filteredQuizCraftBanks.length === 0 ? (
                 <EmptyBlock label={searching ? "无匹配题库" : "暂无题库"} />
               ) : (
