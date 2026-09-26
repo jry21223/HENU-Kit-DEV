@@ -124,7 +124,9 @@ export default function LibraryHomePage() {
         : "无匹配资料";
 
   return (
-    <main>
+    // 主体至少一屏高：资料是挂载后才拉取的，加载中的短页面会让页脚露在首屏底部，
+    // 资料一到就把页脚挤出去，手机上这一下就是 0.12 的布局偏移（#548）。
+    <main className="min-h-svh">
       <SubHero
         index="01"
         en="LIBRARY"

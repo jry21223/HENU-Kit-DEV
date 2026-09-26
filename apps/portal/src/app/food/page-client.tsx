@@ -111,123 +111,129 @@ export default function FoodBoardPage() {
           )}
         </div>
 
-        {loadState === "error" && error && (
-          <ErrorBanner message={error} onRetry={() => void load()} className="mt-8" />
-        )}
+        {/* 榜单区至少一屏高（#548）：加载占位和错误提示都比五档矮。不留这段高度，下方的“榜单说明”
+            和页脚就露在首屏里，五档一到就被挤下去（1440 × 900 下 0.15 的布局偏移）；只在加载时留、
+            失败时收起，又会把它们拉回首屏（0.1）。/campus、/library 把这条下限放在 <main> 上；
+            这里列表下面还有榜单说明，要连它一起推到首屏以下，所以放在榜单区。 */}
+        <div className="min-h-svh">
+          {loadState === "error" && error && (
+            <ErrorBanner message={error} onRetry={() => void load()} className="mt-8" />
+          )}
 
-        {loadState === "loading" ? (
-          <div className="mt-8">
-            <LoadingBlock label="加载五档榜单" />
-          </div>
-        ) : loadState === "error" ? null : (
-          <>
-            {/* 手机上五档放不下时横向滑动：焦点框画在每一档里面，键盘聚焦的那一档整个滑进来。 */}
-            <nav
-              data-enter
-              aria-label="五档榜单导览"
-              onFocus={revealKeyboardFocus}
-              className="mt-8 flex max-w-full gap-px overflow-x-auto border border-ink bg-ink"
-            >
-              {groups.map(({ tier, posts: tierPosts }) => (
-                <a
-                  key={tier.key}
-                  href={`#tier-${tier.key}`}
-                  className={cn("group min-w-28 flex-1 bg-paper px-4 py-3 transition-colors hover:bg-accent", INSET_FOCUS_RING)}
-                >
-                  {/* 悬停时整格变强调橙，小字跟着转成墨色，在橙底上才够清楚。 */}
-                  <span className="block font-mono text-xs tracking-[0.2em] text-ink/60 group-hover:text-ink">
-                    {tier.index}
-                  </span>
-                  <span className="mt-1 block font-display text-lg font-bold">{tier.label}</span>
-                  <span className="mt-1 block font-mono text-xs text-ink/60 group-hover:text-ink">
-                    {tierPosts.length} ENTRIES
-                  </span>
-                </a>
-              ))}
-            </nav>
-
-            <div className="mt-16">
-              {groups.map(({ tier, posts: tierPosts }) => (
-                <section
-                  key={tier.key}
-                  id={`tier-${tier.key}`}
-                  data-food-tier={tier.key}
-                  className="grid scroll-mt-20 border-t border-ink py-8 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10 md:py-12"
-                >
-                  <header data-enter className="pb-6 md:pb-0">
-                    <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
-                      {tier.index} / {tier.en}
-                    </p>
-                    <h2
-                      data-food-tier-label
-                      className={cn(
-                        "mt-2 font-display text-5xl font-bold tracking-tight md:text-6xl",
-                        tier.key === HANG_TIER_KEY && "text-accent-text"
-                      )}
-                    >
-                      {tier.label}
-                    </h2>
-                    <p className="mt-3 font-mono text-xs text-ink/60">{tier.blurb}</p>
-                  </header>
-
-                  {tierPosts.length === 0 ? (
-                    <p
-                      data-enter
-                      className="border-t border-dashed border-line py-8 font-mono text-xs text-ink/60"
-                    >
-                      暂无上榜条目
-                    </p>
-                  ) : (
-                    <ol className="border-t border-ink">
-                      {tierPosts.map((post, index) => (
-                        <li key={post.id} data-enter>
-                          <Link
-                            href={`/food/post/${post.id}`}
-                            className="group grid grid-cols-[2rem_5.5rem_minmax(0,1fr)] gap-3 border-b border-line py-5 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:items-center md:gap-5"
-                          >
-                            <span className="font-mono text-sm text-ink/60">
-                              {String(index + 1).padStart(2, "0")}
-                            </span>
-                            <div className="h-16 overflow-hidden bg-ink/[0.04] md:h-20">
-                              {post.images?.[0] ? (
-                                <Img
-                                  src={post.images[0]}
-                                  alt=""
-                                  label={tier.index}
-                                  className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
-                                />
-                              ) : (
-                                <span aria-hidden className="flex h-full items-center justify-center font-display text-4xl font-bold text-ink/12">
-                                  {tier.label}
-                                </span>
-                              )}
-                            </div>
-                            <span className="min-w-0">
-                              <span className="block font-display text-xl font-bold transition-colors group-hover:text-accent-text">
-                                {post.shop.name}
-                              </span>
-                              <span className="mt-1 block truncate text-sm text-ink/65">
-                                {post.title}
-                              </span>
-                              <span className="mt-2 block font-mono text-xs text-ink/60">
-                                {CAMPUSES[post.campus].name} · {post.tags.join(" / ")}
-                              </span>
-                            </span>
-                            <span className="col-start-3 flex items-center gap-4 font-mono text-xs text-ink/50 md:col-start-auto">
-                              <span className="transition-transform group-hover:translate-x-1" aria-hidden>
-                                →
-                              </span>
-                            </span>
-                          </Link>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </section>
-              ))}
+          {loadState === "loading" ? (
+            <div className="mt-8">
+              <LoadingBlock label="加载五档榜单" />
             </div>
-          </>
-        )}
+          ) : loadState === "error" ? null : (
+            <>
+              {/* 手机上五档放不下时横向滑动：焦点框画在每一档里面，键盘聚焦的那一档整个滑进来。 */}
+              <nav
+                data-enter
+                aria-label="五档榜单导览"
+                onFocus={revealKeyboardFocus}
+                className="mt-8 flex max-w-full gap-px overflow-x-auto border border-ink bg-ink"
+              >
+                {groups.map(({ tier, posts: tierPosts }) => (
+                  <a
+                    key={tier.key}
+                    href={`#tier-${tier.key}`}
+                    className={cn("group min-w-28 flex-1 bg-paper px-4 py-3 transition-colors hover:bg-accent", INSET_FOCUS_RING)}
+                  >
+                    {/* 悬停时整格变强调橙，小字跟着转成墨色，在橙底上才够清楚。 */}
+                    <span className="block font-mono text-xs tracking-[0.2em] text-ink/60 group-hover:text-ink">
+                      {tier.index}
+                    </span>
+                    <span className="mt-1 block font-display text-lg font-bold">{tier.label}</span>
+                    <span className="mt-1 block font-mono text-xs text-ink/60 group-hover:text-ink">
+                      {tierPosts.length} ENTRIES
+                    </span>
+                  </a>
+                ))}
+              </nav>
+
+              <div className="mt-16">
+                {groups.map(({ tier, posts: tierPosts }) => (
+                  <section
+                    key={tier.key}
+                    id={`tier-${tier.key}`}
+                    data-food-tier={tier.key}
+                    className="grid scroll-mt-20 border-t border-ink py-8 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10 md:py-12"
+                  >
+                    <header data-enter className="pb-6 md:pb-0">
+                      <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
+                        {tier.index} / {tier.en}
+                      </p>
+                      <h2
+                        data-food-tier-label
+                        className={cn(
+                          "mt-2 font-display text-5xl font-bold tracking-tight md:text-6xl",
+                          tier.key === HANG_TIER_KEY && "text-accent-text"
+                        )}
+                      >
+                        {tier.label}
+                      </h2>
+                      <p className="mt-3 font-mono text-xs text-ink/60">{tier.blurb}</p>
+                    </header>
+
+                    {tierPosts.length === 0 ? (
+                      <p
+                        data-enter
+                        className="border-t border-dashed border-line py-8 font-mono text-xs text-ink/60"
+                      >
+                        暂无上榜条目
+                      </p>
+                    ) : (
+                      <ol className="border-t border-ink">
+                        {tierPosts.map((post, index) => (
+                          <li key={post.id} data-enter>
+                            <Link
+                              href={`/food/post/${post.id}`}
+                              className="group grid grid-cols-[2rem_5.5rem_minmax(0,1fr)] gap-3 border-b border-line py-5 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:items-center md:gap-5"
+                            >
+                              <span className="font-mono text-sm text-ink/60">
+                                {String(index + 1).padStart(2, "0")}
+                              </span>
+                              <div className="h-16 overflow-hidden bg-ink/[0.04] md:h-20">
+                                {post.images?.[0] ? (
+                                  <Img
+                                    src={post.images[0]}
+                                    alt=""
+                                    label={tier.index}
+                                    className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
+                                  />
+                                ) : (
+                                  <span aria-hidden className="flex h-full items-center justify-center font-display text-4xl font-bold text-ink/12">
+                                    {tier.label}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="min-w-0">
+                                <span className="block font-display text-xl font-bold transition-colors group-hover:text-accent-text">
+                                  {post.shop.name}
+                                </span>
+                                <span className="mt-1 block truncate text-sm text-ink/65">
+                                  {post.title}
+                                </span>
+                                <span className="mt-2 block font-mono text-xs text-ink/60">
+                                  {CAMPUSES[post.campus].name} · {post.tags.join(" / ")}
+                                </span>
+                              </span>
+                              <span className="col-start-3 flex items-center gap-4 font-mono text-xs text-ink/50 md:col-start-auto">
+                                <span className="transition-transform group-hover:translate-x-1" aria-hidden>
+                                  →
+                                </span>
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </section>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
         <div data-enter className="mt-4 border-y border-ink py-8 md:flex md:items-center md:justify-between">
           <div>

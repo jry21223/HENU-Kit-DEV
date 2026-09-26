@@ -67,10 +67,6 @@ export function rememberCreatedFoodPost(post: FoodPost): void {
   gatewayPosts = [post, ...gatewayPosts.filter((item) => item.id !== post.id)];
 }
 
-export function isFoodReady(): boolean {
-  return loaded || mockAllowed;
-}
-
 export interface FoodPostsResult {
   posts: FoodPost[];
   error: string | null;

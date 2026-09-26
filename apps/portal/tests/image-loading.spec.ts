@@ -3,12 +3,14 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * 用户上传图片（#548）：列表缩略图懒加载，首屏以下的图片滚动到附近才请求；详情页主图
  * 立即加载、高优先级，其余图集照样懒加载。图片放在固定尺寸的框里，到达前后尺寸不变；
- * 列表数据到达时也不把首屏里的页脚挤走——手机 390 视口下 /food、/campus 的
- * layout-shift 总和小于 0.1。图片由 page.route 返回一张真实的 48×36 PNG，
- * 没有固定框的图片会按这张图的原始尺寸撑开版面。
+ * 列表数据到达时也不把首屏里的页脚和列表下方的内容挤走——手机 390 视口下 /food、
+ * /campus、/library 和桌面 1440 视口下 /food 的 layout-shift 总和小于 0.1；/food 列表
+ * 加载失败、重试又失败时也一样。
+ * 图片由 page.route 返回一张真实的 48×36 PNG，没有固定框的图片会按这张图的原始尺寸撑开版面。
  */
 
 const MOBILE = { width: 390, height: 844 };
+const DESKTOP = { width: 1440, height: 900 };
 
 const PHOTO = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAADAAAAAkCAIAAABAJy5dAAAAM0lEQVR42u3OAQkAAAgDsMcxhP0xljUUBguwTNcpERISEhISEhISEhISEhISEhISEvoUWoiW6WpoFdbUAAAAAElFTkSuQmCC",
@@ -54,6 +56,23 @@ const CAMPUS_ITEMS = Array.from({ length: 12 }, (_, index) => ({
   status: "open",
   time: "2026-09-20",
   images: [`https://images.example.com/campus/campus-${index + 1}.png`],
+}));
+
+// 资料卡没有图片：只看书架到达时版面动不动。
+const LIBRARY_MATERIALS = Array.from({ length: 12 }, (_, index) => ({
+  id: `library-${index + 1}`,
+  type: "note",
+  subject: "高等数学",
+  title: `高等数学_笔记_第${index + 1}章`,
+  author: "资料库收录",
+  intro: "",
+  toc: [],
+  pages: [],
+  price: 0,
+  previewPages: 0,
+  downloads: index,
+  downloadAvailable: true,
+  fileSize: 1024,
 }));
 
 const FOOD_DETAIL = {
@@ -114,6 +133,24 @@ async function mockCampus(page: Page) {
   );
   await page.route("https://images.example.com/**", (route) =>
     route.fulfill({ contentType: "image/png", body: PHOTO })
+  );
+}
+
+async function mockLibrary(page: Page) {
+  await page.route("**/api/v1/library/materials", (route) =>
+    route.fulfill({
+      json: {
+        materials: LIBRARY_MATERIALS,
+        statistics: {
+          releaseId: "0123456789abcdef0123456789abcdef01234567-0123456789abcdef",
+          materialCount: LIBRARY_MATERIALS.length,
+          downloadStarts: 99,
+          countingSince: "2026-08-11T00:00:00Z",
+          asOf: "2026-08-11T01:00:00Z",
+        },
+        request_id: "req_image_library",
+      },
+    })
   );
 }
 
@@ -292,11 +329,15 @@ test("a food article photo holds its box before the image arrives", async ({ pag
   expect(after?.height).toBe(before?.height);
 });
 
-for (const { path, mock } of [
-  { path: "/food", mock: mockFood },
-  { path: "/campus", mock: mockCampus },
+for (const { path, mock, label, viewport } of [
+  { path: "/food", mock: mockFood, label: "mobile", viewport: MOBILE },
+  // 桌面首屏装得下加载占位下方的“榜单说明”和页脚：五档到达时不能把它们挤下去。
+  { path: "/food", mock: mockFood, label: "desktop", viewport: DESKTOP },
+  { path: "/campus", mock: mockCampus, label: "mobile", viewport: MOBILE },
+  { path: "/library", mock: mockLibrary, label: "mobile", viewport: MOBILE },
 ]) {
-  test(`${path} keeps the mobile layout-shift total under 0.1 while the list and its images load`, async ({ page }) => {
+  test(`${path} keeps the ${label} layout-shift total under 0.1 while the list and its images load`, async ({ page }) => {
+    await page.setViewportSize(viewport);
     await mock(page);
     await observeLayoutShift(page);
 
@@ -307,3 +348,31 @@ for (const { path, mock } of [
     expect(await layoutShiftTotal(page)).toBeLessThan(0.1);
   });
 }
+
+test("/food keeps the desktop layout-shift total under 0.1 when the list fails to load, and when a retry fails", async ({ page }) => {
+  await page.setViewportSize(DESKTOP);
+  const failure = {
+    status: 503,
+    json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_image_food_down" },
+  };
+  let retryDelay = 0;
+  await page.route("**/api/v1/food/posts", async (route) => {
+    if (retryDelay) await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    await route.fulfill(failure);
+  });
+  await observeLayoutShift(page);
+
+  // 错误提示比加载占位短：留出的高度若跟着收起，占位下方的“榜单说明”和页脚会被拉进首屏。
+  await page.goto("/food");
+  await settle(page);
+  const alert = page.locator("main").getByRole("alert");
+  await expect(alert).toHaveCount(1);
+  expect(await layoutShiftTotal(page)).toBeLessThan(0.1);
+
+  // 重试晚于 500 ms 才又失败：这次收起不算紧跟点击的偏移，照样计入。
+  retryDelay = 800;
+  await alert.getByRole("button", { name: "重试" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "加载五档榜单" })).toBeVisible();
+  await expect(alert).toHaveCount(1, { timeout: 5_000 });
+  expect(await layoutShiftTotal(page)).toBeLessThan(0.1);
+});

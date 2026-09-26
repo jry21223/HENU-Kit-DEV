@@ -44,6 +44,7 @@ defineOAuthContinuationJourney({
     { path: "/account/security", readySelector: "h1" },
     { path: "/account/tickets", readySelector: "[data-account-tickets-state]" },
     { path: "/account/wallet", readySelector: "[data-account-points-state]" },
+    { path: "/bind/qq", readySelector: "main" },
     { path: "/campus", readySelector: "main" },
     { path: "/campus/deals", readySelector: "main" },
     { path: "/campus/item/h-01", readySelector: "main" },
@@ -77,6 +78,8 @@ defineOAuthContinuationJourney({
     },
     { path: "/practice/quiz", readySelector: "main" },
     { path: "/practice/stats", readySelector: "main" },
+    { path: "/privacy", readySelector: "main" },
+    { path: "/terms", readySelector: "main" },
   ],
   start: async (page) => {
     await page.goto("/api/v1/auth/login?return_to=%2Faccount");

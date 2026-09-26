@@ -60,7 +60,7 @@ export function careerSearchCreateErrorMessage(error: unknown): string {
 // ---- mock 最小占位 ----
 
 /** 空画像占位（仅 ALLOW_MOCK=1 且无 gateway 时生效）。 */
-export const EMPTY_CAREER_PROFILE: CareerProfile = {
+const EMPTY_CAREER_PROFILE: CareerProfile = {
   user_id: "",
   target_roles: "",
   tech_stack: "",
@@ -77,12 +77,10 @@ export const EMPTY_CAREER_PROFILE: CareerProfile = {
 let profileCache: CareerProfile | null = null;
 let searchesCache: CareerSearch[] | null = null;
 let lastError: unknown = null;
-let loaded = false;
 
 async function refreshCareerGateway(): Promise<void> {
   if (!hasGateway) {
     if (mockAllowed) {
-      loaded = true;
       lastError = null;
       return;
     }
@@ -97,30 +95,14 @@ async function refreshCareerGateway(): Promise<void> {
     ]);
     profileCache = profileResp.profile;
     searchesCache = searchesResp.searches;
-    loaded = true;
     lastError = null;
   } catch (e) {
     lastError = e;
     if (!mockAllowed) {
       profileCache = null;
       searchesCache = null;
-      loaded = false;
-    } else {
-      loaded = true;
     }
   }
-}
-
-export function getCareerProfileData(): CareerProfile | null {
-  return profileCache;
-}
-
-export function getCareerSearches(): CareerSearch[] | null {
-  return searchesCache;
-}
-
-export function isCareerReady(): boolean {
-  return loaded || mockAllowed;
 }
 
 export interface CareerDataResult {
@@ -142,8 +124,8 @@ export async function loadCareerData(): Promise<CareerDataResult> {
   // after the session and Lifetime gate, so guests never request career data.
   await refreshCareerGateway();
 
-  const profile = getCareerProfileData();
-  const searches = getCareerSearches();
+  const profile = profileCache;
+  const searches = searchesCache;
   if (profile && searches) {
     return { profile, searches, error: null };
   }
@@ -228,7 +210,6 @@ export async function requestCareerProfileUpdate(
   }
   const response = await updateCareerProfile(profile);
   profileCache = response.profile;
-  loaded = true;
   lastError = null;
   return response;
 }

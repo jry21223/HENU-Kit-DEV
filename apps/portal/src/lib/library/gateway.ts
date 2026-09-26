@@ -8,11 +8,7 @@
 
 import { fetchLibraryMaterials, mockAllowed } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
-import {
-  STATIC_MATERIALS,
-  getMaterial,
-  type Material,
-} from "./mock";
+import { STATIC_MATERIALS, type Material } from "./mock";
 
 let cachedMaterials: Material[] | null = null;
 let inflight: Promise<Material[]> | null = null;
@@ -74,21 +70,4 @@ export function getMaterials(): Material[] {
   if (cachedMaterials) return cachedMaterials;
   if (mockAllowed) return STATIC_MATERIALS;
   return [];
-}
-
-export function getMaterialOrFallback(id: string): Material | undefined {
-  if (cachedMaterials) {
-    return cachedMaterials.find((m) => m.id === id);
-  }
-  if (mockAllowed) return getMaterial(id);
-  return undefined;
-}
-
-export function toggleFavViaGateway(
-  id: string,
-  currentFavs: string[]
-): string[] {
-  return currentFavs.includes(id)
-    ? currentFavs.filter((f) => f !== id)
-    : [...currentFavs, id];
 }

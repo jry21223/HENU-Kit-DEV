@@ -295,8 +295,8 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 图片加载不挤动版面，也不一次下载整页（[#548](https://github.com/jry21223/HENU-Kit-DEV/issues/548)）：
   - 投稿与单子图片统一用 `apps/portal/src/components/ui/img.tsx`，默认懒加载、异步解码，首屏以下的图滚动到附近才请求。首屏关键图显式改为立即加载：详情页主图加 `loading="eager" fetchPriority="high"`，支付二维码加 `loading="eager"`。
   - 调用方用固定宽高或 `aspect-ratio` 给图片占位，图片到达前后尺寸不变；加载失败的占位图块沿用同一尺寸。
-  - 数据在挂载后才到的列表页，加载占位时页脚不应露在首屏底部，否则数据一到就把页脚挤出去。目前只有 /campus 做到（主体至少一屏高）；/food 桌面宽度和 /library 手机端的加载态还有同一原因的偏移，尚未处理。
-  - 手机 390 × 844 下 /food、/campus 的 layout-shift 总和小于 0.1，懒加载与占位由 `apps/portal/tests/image-loading.spec.ts` 检查。
+  - 数据在挂载后才到的列表页，加载占位下方的内容和页脚不应露在首屏里，否则数据一到就把它们挤出去；加载失败时错误提示比占位矮，留出的高度也不能跟着收起，否则又把它们拉上来。/campus、/library 的主体至少一屏高；/food 的列表下面还有“榜单说明”，改为榜单区（加载占位、错误提示和五档）至少一屏高。
+  - 手机 390 × 844 下 /food、/campus、/library 和桌面 1440 × 900 下 /food 的 layout-shift 总和小于 0.1，/food 加载失败、重试又失败时也一样；懒加载与占位由 `apps/portal/tests/image-loading.spec.ts` 检查。
   - 列表缩略图目前仍是原尺寸图，是 #548 中暂缓的一项：投稿图片以原尺寸存在数据库、不在对象存储上，由 `services/food` 的图片路由按原尺寸返回，`x-oss-process` 这类处理参数用不上。按显示尺寸请求要等服务端在清洗投稿图片时另存列表尺寸的缩略图，并提供单独的缩略图地址（food 服务、portal-api、portal-gateway 都要支持），Portal 再在列表里换用缩略图并加 `srcset` / `sizes`。
 - 动画短而克制，尊重减少动态设置。
   - 装饰性的循环动画（跑马灯、刻度盘、首屏眉标旁旋转的 ®）只在动效开启时播放，减少动态设置下停着不动，® 照常显示；® 由 `apps/portal/tests/first-screen-entrance.spec.ts` 检查。

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -182,13 +182,17 @@ describe("透明度写法在不支持 color-mix() 的浏览器里有静态回退
 
   /** 按生产构建的方式（压缩）编译 globals.css，只生成给定的类。 */
   async function compile(classes: string[]) {
-    // 自动扫描源码的根目录指向空目录，产物里只有 @source inline 列出的类。
+    // 自动扫描源码的根目录指向空目录，产物里只有 @source inline 列出的类；编译完就删掉。
     const emptyBase = mkdtempSync(path.join(os.tmpdir(), "portal-theme-"));
-    const input = `@import "${path.resolve(__dirname, "globals.css")}";\n@source inline("${classes.join(" ")}");`;
-    const result = await postcss([tailwind({ base: emptyBase, optimize: { minify: true } })]).process(input, {
-      from: path.resolve(__dirname, "theme-fallback-check.css"),
-    });
-    return result.css as string;
+    try {
+      const input = `@import "${path.resolve(__dirname, "globals.css")}";\n@source inline("${classes.join(" ")}");`;
+      const result = await postcss([tailwind({ base: emptyBase, optimize: { minify: true } })]).process(input, {
+        from: path.resolve(__dirname, "theme-fallback-check.css"),
+      });
+      return result.css as string;
+    } finally {
+      rmSync(emptyBase, { recursive: true, force: true });
+    }
   }
 
   // 不支持 color-mix() 的浏览器只认规则里的第一条声明。它必须是算好的半透明色：
