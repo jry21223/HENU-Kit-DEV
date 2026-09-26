@@ -146,7 +146,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
           <button
             type="button"
             onClick={start}
-            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-5 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-5 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             {state.kind === "error" ? "重新发起支付" : "购买终身会员"}
           </button>
@@ -185,7 +185,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
             <button
               type="button"
               onClick={start}
-              className="mt-5 inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:border-ink"
+              className="mt-5 inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
             >
               刷新二维码
             </button>

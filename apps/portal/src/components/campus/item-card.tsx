@@ -45,14 +45,14 @@ export default function ItemCard({ item }: { item: Item }) {
         )}
         <span
           className={cn(
-            "absolute left-0 top-0 px-1.5 py-0.5 font-mono text-[10px]",
+            "absolute left-0 top-0 px-1.5 py-0.5 font-mono text-xs",
             item.type === "help" ? "bg-accent text-ink" : "bg-ink text-paper"
           )}
         >
           {item.type === "help" ? "求助" : "闲置"}
         </span>
         {statusLabel && (
-          <span className="absolute right-2 top-2 border border-ink/40 bg-paper px-1.5 py-0.5 font-mono text-[10px] text-ink/60">
+          <span className="absolute right-2 top-2 border border-ink/40 bg-paper px-1.5 py-0.5 font-mono text-xs text-ink/60">
             {statusLabel}
           </span>
         )}
@@ -68,13 +68,13 @@ export default function ItemCard({ item }: { item: Item }) {
         <p className="mt-3 font-display text-2xl font-bold tabular-nums">
           <span className="text-accent-text">¥</span>
           {item.price}
-          <span className="ml-1.5 font-mono text-[10px] font-normal text-ink/60">
+          <span className="ml-1.5 font-mono text-xs font-normal text-ink/60">
             {item.type === "help" ? "赏金" : "一口价"}
           </span>
         </p>
 
-        <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 font-mono text-[10px] text-ink/60">
-          <span className="flex h-5 w-5 items-center justify-center border border-ink/40 font-display text-[10px] font-bold">
+        <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 font-mono text-xs text-ink/60">
+          <span className="flex h-5 w-5 items-center justify-center border border-ink/40 font-display text-xs font-bold">
             {item.seller.slice(0, 1)}
           </span>
           <span className="truncate">{item.seller}</span>

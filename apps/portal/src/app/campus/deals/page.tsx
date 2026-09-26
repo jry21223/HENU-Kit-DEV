@@ -36,13 +36,13 @@ export default function DealsPage() {
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">我的交易</h1>
 
       <div data-enter className="mt-6 border border-dashed border-ink/30 px-6 py-16 text-center">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+        <p className="font-mono text-xs text-ink/60">
           订单管理暂未开放
         </p>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-ink/70">
           互助平台的发布、接单和结算暂未开放；开放后，这里会展示你发布的单子和参与的交易。
         </p>
-        <BackLink className="mt-6 inline-block border border-ink px-6 py-2.5 font-mono text-xs tracking-widest text-ink transition-colors hover:border-accent hover:text-accent-text" />
+        <BackLink className="mt-6 inline-block border border-ink px-6 py-2.5 font-mono text-xs text-ink transition-colors hover:border-accent hover:text-accent-text" />
       </div>
     </main>
   );

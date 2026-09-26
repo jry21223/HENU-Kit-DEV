@@ -94,7 +94,7 @@ export default function MyFoodPostsPage() {
               setListState({ kind: "loading" });
               loadPosts();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -111,7 +111,7 @@ export default function MyFoodPostsPage() {
               </p>
               <Link
                 href="/food/publish"
-                className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
+                className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
               >
                 去投稿
               </Link>
@@ -128,12 +128,12 @@ export default function MyFoodPostsPage() {
                     <p className="min-w-0 truncate font-display text-lg font-bold transition-colors group-hover:text-accent-text">
                       {post.title}
                     </p>
-                    <span className="shrink-0 border border-accent px-2 py-1 font-mono text-[10px] tracking-wider text-accent-text">
+                    <span className="shrink-0 border border-accent px-2 py-1 font-mono text-xs text-accent-text">
                       {tierLabelFor(post.tags)}
                     </span>
                   </div>
                   {/* 行悬停时叠 5% 墨色，灰字至少 ink/65。 */}
-                  <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/65">
+                  <p className="mt-2 font-mono text-xs text-ink/65">
                     {CAMPUSES[post.campus].name} · 发布于 {formatTimestamp(post.time)}
                   </p>
                 </Link>

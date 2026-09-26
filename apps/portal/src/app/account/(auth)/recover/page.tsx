@@ -140,12 +140,12 @@ export default function RecoverPage() {
         className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10"
       >
         <div className="flex items-baseline justify-between">
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <p className="font-mono text-xs text-ink/60">
             账号恢复
           </p>
           <Link
             href="/account/login"
-            className="font-mono text-[10px] tracking-widest text-ink/60 hover:text-accent-text"
+            className="font-mono text-xs text-ink/60 hover:text-accent-text"
           >
             ← 登录
           </Link>
@@ -153,7 +153,7 @@ export default function RecoverPage() {
         <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">
           找回密码
         </h1>
-        <p className="mt-3 font-mono text-xs leading-6 tracking-wider text-ink/60">
+        <p className="mt-3 font-mono text-xs leading-6 text-ink/60">
           验证学校邮箱后设置新密码；完成后旧会话会全部失效，并自动登录当前设备。
         </p>
 
@@ -162,7 +162,7 @@ export default function RecoverPage() {
             <li
               key={label}
               className={cn(
-                "font-mono text-[10px] tracking-widest",
+                "font-mono text-xs",
                 i === step
                   ? "text-accent-text"
                   : i < step
@@ -170,7 +170,7 @@ export default function RecoverPage() {
                     : "text-ink/60"
               )}
             >
-              {String(i + 1).padStart(2, "0")} {label}
+              <span className="tracking-widest">{String(i + 1).padStart(2, "0")}</span> {label}
               {i < STEPS.length - 1 ? (
                 <span aria-hidden className="mx-2 text-ink/20">/</span>
               ) : null}
@@ -188,7 +188,7 @@ export default function RecoverPage() {
                 autoFocus
               />
               {error ? (
-                <p className="font-mono text-[10px] text-accent-text">{error}</p>
+                <p className="font-mono text-xs text-accent-text">{error}</p>
               ) : null}
               <Button
                 type="button"
@@ -203,7 +203,7 @@ export default function RecoverPage() {
 
           {step === 1 && (
             <>
-              <p className="font-mono text-[11px] text-ink/60">
+              <p className="font-mono text-xs text-ink/60">
                 已发送至 <span className="text-ink">{fullEmail}</span>
               </p>
               <div>
@@ -253,7 +253,7 @@ export default function RecoverPage() {
                 />
               </div>
               {error ? (
-                <p className="font-mono text-[10px] text-accent-text">{error}</p>
+                <p className="font-mono text-xs text-accent-text">{error}</p>
               ) : null}
               <Button
                 type="button"

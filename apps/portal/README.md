@@ -191,6 +191,8 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，部署流水线目前不跑这一组）。两处共用 `tests/support/color-contrast.ts`。
 
+字号不小于 12px（`text-xs`），小于 12px 的只留给加了 `aria-hidden` 的纯装饰拉丁标签（最小 10px）。宽字距只加在拉丁 / 等宽文本上，中文用 `tracking-normal`；中英混排的标签把拉丁部分拆进单独的 span，只给它加字距，如 `<span className="tracking-widest">01</span>资料库`。规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 第 4 节。`src/app/typography.test.ts` 按源码检查写死的字号类和文字；`tests/typography.spec.ts` 在首页、五个子站首页和登录页上按计算样式检查，1440 与 390 下都应为 0；题库目录开启时的 /practice 由 `tests/quizcraft-catalog.spec.ts` 检查。`tests/typography.spec.ts` 与 `tests/color-contrast.spec.ts` 打开同一组页面、用同一份网关 mock，都来自 `tests/support/readability-routes.ts`。
+
 语言元素：1px 结构线、十字对位标记、mono 编号、工程图纸网格、大小字强对比排版。
 
 ## 动效约定

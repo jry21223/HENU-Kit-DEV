@@ -128,8 +128,8 @@ export default function SecurityPage() {
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">安全设置</h1>
 
       <section data-enter className="mt-8 max-w-md border border-ink/25 p-6">
-        <p className="font-mono text-xs tracking-[0.25em] text-ink/60">修改密码</p>
-        <p className="mt-3 font-mono text-[10px] leading-5 tracking-wider text-ink/60">
+        <p className="font-mono text-xs text-ink/60">修改密码</p>
+        <p className="mt-3 font-mono text-xs leading-5 text-ink/60">
           修改密码需当前密码与学校邮箱验证码；成功后其他设备会自动下线。
         </p>
         <div className="mt-5 space-y-4">
@@ -139,7 +139,7 @@ export default function SecurityPage() {
             { label: "确认新密码", v: newPwd2, set: setNewPwd2 },
           ].map((f) => (
             <div key={f.label}>
-              <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+              <label className="mb-1 block font-mono text-xs text-ink/60">
                 {f.label}
               </label>
               <input
@@ -152,7 +152,7 @@ export default function SecurityPage() {
             </div>
           ))}
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+            <label className="mb-1 block font-mono text-xs text-ink/60">
               绑定邮箱
             </label>
             <input
@@ -165,7 +165,7 @@ export default function SecurityPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+            <label className="mb-1 block font-mono text-xs text-ink/60">
               邮箱验证码
             </label>
             <div className="flex gap-3">
@@ -184,7 +184,7 @@ export default function SecurityPage() {
                 type="button"
                 disabled={pending || cd > 0}
                 onClick={() => void sendCode()}
-                className="shrink-0 border border-ink/40 px-3 py-1.5 font-mono text-[11px] transition-colors hover:border-ink disabled:cursor-not-allowed disabled:border-line disabled:text-ink/40"
+                className="shrink-0 border border-ink/40 px-3 py-1.5 font-mono text-xs transition-colors hover:border-ink disabled:cursor-not-allowed disabled:border-line disabled:text-ink/40"
               >
                 {cd > 0 ? `${cd}s 后重发` : "发送验证码"}
               </button>
@@ -202,7 +202,7 @@ export default function SecurityPage() {
           onClick={() => void submit()}
           disabled={pending}
           className={cn(
-            "mt-5 border px-6 py-2.5 font-mono text-xs tracking-widest transition-colors",
+            "mt-5 border px-6 py-2.5 font-mono text-xs transition-colors",
             pending
               ? "cursor-wait border-line text-ink/40"
               : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
@@ -213,7 +213,7 @@ export default function SecurityPage() {
       </section>
 
       <section data-enter className="mt-10">
-        <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
+        <p className="font-mono text-xs text-ink/60">
           会话安全
         </p>
         <div className="mt-4 border-y border-line py-4">

@@ -87,7 +87,7 @@ export default function LeaderboardPage() {
               aria-pressed={period === item.value}
               onClick={() => selectPeriod(item.value)}
               className={cn(
-                "border px-4 py-2 font-mono text-xs tracking-widest transition-colors",
+                "border px-4 py-2 font-mono text-xs transition-colors",
                 period === item.value
                   ? "border-ink bg-ink text-paper"
                   : "border-ink/25 hover:border-ink"

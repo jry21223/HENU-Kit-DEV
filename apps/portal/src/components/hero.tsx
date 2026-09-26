@@ -137,8 +137,10 @@ export default function Hero() {
 
         <p className="mb-4 flex items-center gap-2 font-mono text-xs tracking-[0.35em] text-ink/60">
           HENU — STUDENT PLATFORM
+          {/* 旋转的 ® 只是装饰，读屏跳过；10px 只留给这类读屏隐藏的拉丁装饰。 */}
           <span
             data-hero-reg
+            aria-hidden
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-ink/30 text-[10px] text-ink/60"
           >
             ®
@@ -191,8 +193,8 @@ export default function Hero() {
         </nav>
 
         <div data-hero-gridline className="enter-grow-x mt-8 h-px w-full max-w-md bg-line" style={{ animationDelay: "0.74s" }} />
-        <p className="mt-3 font-mono text-[10px] tracking-[0.3em] text-ink/60">
-          SCROLL / 向下滚动查看模块 01—05
+        <p className="mt-3 font-mono text-xs text-ink/60">
+          <span className="tracking-[0.3em]">SCROLL</span> / 向下滚动查看模块 01—05
         </p>
       </div>
 

@@ -17,7 +17,7 @@ export default function MaterialCard({ material }: { material: Material }) {
         {/* 类型代号只作装饰：卡片下方写着中文类型名。 */}
         <span aria-hidden className="font-mono text-[10px] tracking-[0.3em] text-ink/40">{t.code}</span>
         <div className="min-w-0">
-          <p className="mb-1 break-words font-mono text-[11px] text-ink/60">{material.subject}</p>
+          <p className="mb-1 break-words font-mono text-xs text-ink/60">{material.subject}</p>
           <h2 className="line-clamp-2 break-words font-display text-lg font-bold leading-snug">
             {readableMaterialTitle(material)}
           </h2>
@@ -25,10 +25,10 @@ export default function MaterialCard({ material }: { material: Material }) {
       </div>
 
       <div className="p-4">
-        <p className="font-mono text-[11px] text-ink/60">
+        <p className="font-mono text-xs text-ink/60">
           {t.name}
         </p>
-        <div className="mt-3 flex items-center gap-3 border-t border-line pt-3 font-mono text-[10px] text-ink/60">
+        <div className="mt-3 flex items-center gap-3 border-t border-line pt-3 font-mono text-xs text-ink/60">
           <span className="truncate">{material.author}</span>
           {material.rating !== undefined && (
             <span className="ml-auto shrink-0">★ {material.rating.toFixed(1)}</span>

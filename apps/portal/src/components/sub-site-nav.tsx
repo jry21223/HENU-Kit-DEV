@@ -81,9 +81,10 @@ export default function SubSiteNav({
           >
             {tabs.map((tab, index) => {
               const active = index === activeIndex;
+              // 宽字距只加在编号上，中文标签不拉开（DESIGN_SYSTEM.md 第 4 节）。
               const content = (
                 <>
-                  <span className={cn("mr-1", active ? "text-accent-text" : "text-ink/60")}>{tab.index}</span>
+                  <span className={cn("mr-1 tracking-widest", active ? "text-accent-text" : "text-ink/60")}>{tab.index}</span>
                   {tab.label}
                   <span
                     aria-hidden
@@ -102,13 +103,13 @@ export default function SubSiteNav({
                     key={tab.href}
                     data-tab-unavailable={active ? undefined : true}
                     className={cn(
-                      "relative shrink-0 py-1 font-mono text-xs tracking-widest md:shrink",
+                      "relative shrink-0 py-1 font-mono text-xs md:shrink",
                       active ? "text-ink" : "cursor-not-allowed text-ink/60"
                     )}
                   >
                     {content}
                     {active ? null : (
-                      <span className="ml-2 border border-line px-1 text-[10px] tracking-wider text-ink/70">未开放</span>
+                      <span className="ml-2 border border-line px-1 text-ink/70">未开放</span>
                     )}
                   </span>
                 );
@@ -120,7 +121,7 @@ export default function SubSiteNav({
                   href={tab.href}
                   className={cn(
                     // 只在手机的横向滑动行里不收缩；md 起标签行不滑动，放不下时允许折行，页面不横向溢出。
-                    "group inline-flex min-h-11 shrink-0 items-center font-mono text-xs tracking-widest transition-colors md:shrink",
+                    "group inline-flex min-h-11 shrink-0 items-center font-mono text-xs transition-colors md:shrink",
                     active ? "text-ink" : "text-ink/60 hover:text-ink"
                   )}
                 >

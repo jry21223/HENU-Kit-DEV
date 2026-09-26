@@ -244,8 +244,8 @@ export default function BankHero({
             className="enter-rise mt-5 w-full max-w-md lg:mt-8"
             style={{ animationDelay: "0.2s" }}
           >
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
-              SEARCH / 搜索科目
+            <label className="mb-1 block font-mono text-xs text-ink/60">
+              <span className="tracking-[0.25em]">SEARCH</span> / 搜索科目
             </label>
             <input
               value={query}
@@ -261,7 +261,7 @@ export default function BankHero({
             style={{ animationDelay: "0.25s" }}
           >
             <div className="border border-line px-4 py-3">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
+              <p className="font-mono text-xs text-ink/60">
                 已确认作答
               </p>
               <p className="mt-1 font-display text-3xl font-bold tabular-nums">
@@ -269,7 +269,7 @@ export default function BankHero({
               </p>
             </div>
             <div className="border border-line px-4 py-3">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
+              <p className="font-mono text-xs text-ink/60">
                 正确率
               </p>
               <p className="mt-1 font-display text-3xl font-bold tabular-nums">
@@ -278,7 +278,7 @@ export default function BankHero({
             </div>
             <p
               data-testid="practice-hero-stats-state"
-              className="col-span-2 font-mono text-[10px] leading-5 text-ink/60"
+              className="col-span-2 font-mono text-xs leading-5 text-ink/60"
             >
               {stateMessage}
             </p>
@@ -289,9 +289,10 @@ export default function BankHero({
         <div className="bg-blueprint relative hidden min-h-72 border-line lg:block lg:border-l">
           <span
             aria-hidden
-            className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-[10px] tracking-[0.25em] text-ink/40"
+            className="absolute left-4 top-4 z-10 max-w-[70%] font-mono text-xs text-ink/40"
           >
-            FIG.01 知识点结构 / KNOWLEDGE MESH
+            <span className="tracking-[0.25em]">FIG.01</span> 知识点结构 /{" "}
+            <span className="tracking-[0.25em]">KNOWLEDGE MESH</span>
           </span>
           <span
             aria-hidden
@@ -303,7 +304,7 @@ export default function BankHero({
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
             {/* 图例压在 3D 知识体上，底色不透明：半透明时底下的深色块会把小字的对比度拉到 AA 以下。 */}
             <ul className="border border-line bg-paper px-2.5 py-1.5">
-              <li className="py-1 font-mono text-[10px] leading-5 tracking-wide text-ink/60">
+              <li className="py-1 font-mono text-xs leading-5 text-ink/60">
                 {figureMessage}
               </li>
               {ringSubjects.map((s, i) => {
@@ -312,7 +313,7 @@ export default function BankHero({
                 return (
                   <li
                     key={s.label}
-                    className="flex items-center gap-2 py-0.5 font-mono text-[10px] tracking-wide"
+                    className="flex items-center gap-2 py-0.5 font-mono text-xs"
                   >
                     <span className="w-5 shrink-0 text-ink/60">R{i + 1}</span>
                     <span className="w-16 shrink-0 truncate text-ink/60">
@@ -342,7 +343,7 @@ export default function BankHero({
                 );
               })}
               {ringSubjects.length > 0 ? (
-                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/60">
+                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-xs text-ink/60">
                   <span>
                     核 {mastery.accuracy}% · 连续 {mastery.streakDays}d · 块{" "}
                     {cubeCount}
@@ -364,7 +365,7 @@ export default function BankHero({
       </div>
 
       <div className="relative border-t border-line py-2.5">
-        <div className="mx-auto flex max-w-site items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/60 md:px-8">
+        <div className="mx-auto flex max-w-site items-center gap-3 px-5 font-mono text-xs tracking-[0.2em] text-ink/60 md:px-8">
           <span className="text-accent-text">DATA</span>
           <span aria-hidden>+</span>
           <span className="tracking-normal">来自你的答题记录</span>

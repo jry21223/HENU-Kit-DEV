@@ -16,7 +16,7 @@ import { cn } from "@/lib/cn";
  * 替换，所以页面正文里的回退入口只要补自己的间距/边框，导航那一行的观感不会丢。
  */
 const NAV_LINK_CLASS =
-  "font-mono text-xs tracking-widest text-ink/60 transition-colors hover:text-accent-text";
+  "font-mono text-xs text-ink/60 transition-colors hover:text-accent-text";
 export default function BackLink({ className }: { className?: string }) {
   const pathname = usePathname();
   const parent = parentRoute(pathname);

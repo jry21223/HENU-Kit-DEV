@@ -101,10 +101,10 @@ export default function Footer() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="group inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
+                  className="group inline-flex min-h-11 items-center font-mono text-xs text-ink/70 transition-colors hover:text-ink"
                 >
                   <span className="relative">
-                    <span className="mr-1.5 text-accent-text">{link.index}</span>
+                    <span className="mr-1.5 tracking-widest text-accent-text">{link.index}</span>
                     {link.label}
                     <span
                       aria-hidden

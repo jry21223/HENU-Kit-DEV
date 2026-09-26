@@ -22,7 +22,7 @@ export default function SectionCareer() {
             别再一个招聘网站一个招聘网站地翻。让雷达替你扫描岗位，
             按方向、技术栈和城市筛出更值得看的机会。
           </p>
-          <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
+          <ul className="mt-6 space-y-2 font-mono text-xs text-ink/60">
             {FEATURES.map((feature) => (
               <li key={feature}>
                 <span aria-hidden className="mr-2 text-accent-text">+</span>
@@ -33,7 +33,7 @@ export default function SectionCareer() {
           <MagneticButton href="/career" className="mt-8">
             进入求职雷达
           </MagneticButton>
-          <p className="mt-5 font-mono text-[10px] tracking-[0.18em] text-ink/60">
+          <p className="mt-5 font-mono text-xs tracking-[0.18em] text-ink/60">
             RADAR SCHEMATIC · LIFETIME MEMBERSHIP
           </p>
         </div>

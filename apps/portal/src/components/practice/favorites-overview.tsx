@@ -26,12 +26,12 @@ function FolderCard({ folder, index }: { folder: FavoriteFolder; index: number }
       <h3 className="mt-3 font-display text-xl font-bold leading-snug group-hover:underline">
         {folder.bank_name}
       </h3>
-      <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/60">
+      <p className="mt-2 font-mono text-xs text-ink/60">
         {folder.available_count} 题可练习
         {folder.unavailable_count > 0 && ` · ${folder.unavailable_count} 题暂不可用`}
       </p>
       <div className="mt-5 border-t border-line pt-3">
-        <span className="font-mono text-xs tracking-wider text-ink/60">
+        <span className="font-mono text-xs text-ink/60">
           查看收藏 →
         </span>
       </div>

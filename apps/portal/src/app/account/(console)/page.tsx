@@ -84,9 +84,9 @@ function AccountOverviewContent({
         </span>
         <div className="min-w-0">
           <h1 className="truncate font-display text-2xl font-bold">{displayName}</h1>
-          <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/60">账户概览</p>
+          <p className="mt-1 font-mono text-xs text-ink/60">账户概览</p>
         </div>
-        <span className="ml-auto shrink-0 border border-accent px-2 py-1 font-mono text-[10px] tracking-widest text-accent-text">
+        <span className="ml-auto shrink-0 border border-accent px-2 py-1 font-mono text-xs text-accent-text">
           {membershipLabel}
         </span>
       </section>
@@ -95,7 +95,7 @@ function AccountOverviewContent({
         <section
           data-account-summary-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs text-ink/60"
         >
           正在读取账户概览<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
@@ -107,7 +107,7 @@ function AccountOverviewContent({
           role="alert"
           className="mt-6 border border-accent px-5 py-6"
         >
-          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">账户概览暂时不可用</p>
+          <p className="font-mono text-xs text-accent-text">账户概览暂时不可用</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">请稍后点「重新加载」再试一次。</p>
           <button
             type="button"
@@ -115,7 +115,7 @@ function AccountOverviewContent({
               setState({ kind: "loading" });
               loadSummary();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -132,11 +132,11 @@ function AccountOverviewContent({
                 data-enter
                 className="group block border border-ink/25 p-5 transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
-                  {card.mono} / {card.label}
+                <p className="font-mono text-xs text-ink/60">
+                  <span className="tracking-[0.25em]">{card.mono}</span> / {card.label}
                 </p>
                 <p className="mt-3 font-display text-3xl font-bold">{card.value}</p>
-                <p className="mt-2 font-mono text-[10px] text-ink/70 transition-colors group-hover:text-accent-text">
+                <p className="mt-2 font-mono text-xs text-ink/70 transition-colors group-hover:text-accent-text">
                   查看{card.page} →
                 </p>
               </Link>
@@ -144,7 +144,7 @@ function AccountOverviewContent({
           </div>
 
           {data.unread_notification_count === 0 && data.open_ticket_count === 0 ? (
-            <p data-enter className="mt-6 border-y border-line py-4 font-mono text-[11px] tracking-[0.12em] text-ink/60">
+            <p data-enter className="mt-6 border-y border-line py-4 font-mono text-xs text-ink/60">
               暂无通知和进行中工单
             </p>
           ) : null}

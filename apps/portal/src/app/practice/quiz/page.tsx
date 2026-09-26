@@ -586,8 +586,8 @@ export default function QuizPage() {
     return (
       <main className="mx-auto max-w-site px-5 py-16 md:px-8">
         <div className="max-w-3xl">
-          <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent-text">RESULT</span>
+          <p data-enter className="font-mono text-xs text-ink/60">
+            <span className="tracking-[0.3em] text-accent-text">RESULT</span>
             <span className="mx-2">/</span>
             本组结算
           </p>
@@ -611,7 +611,7 @@ export default function QuizPage() {
               </div>
             </div>
             <div className="mt-6 border-t border-line pt-6">
-              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">薄弱章节</p>
+              <p className="font-mono text-xs text-ink/60">薄弱章节</p>
               {weakChapters.length ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {weakChapters.map((chapter) => (
@@ -627,13 +627,13 @@ export default function QuizPage() {
             <button
               type="button"
               onClick={startAnotherSession}
-              className="border border-ink bg-ink px-7 py-3.5 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
+              className="border border-ink bg-ink px-7 py-3.5 font-mono text-sm text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
             >
               再来一组
             </button>
             <TransitionLink
               href="/practice"
-              className="border border-ink/30 px-7 py-3.5 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent-text"
+              className="border border-ink/30 px-7 py-3.5 font-mono text-sm text-ink transition-colors hover:border-accent hover:text-accent-text"
             >
               返回题库目录 →
             </TransitionLink>
@@ -709,8 +709,8 @@ export default function QuizPage() {
           <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${((idx + (confirmed ? 1 : 0)) / questions.length) * 100}%` }} />
         </div>
         <p className="font-mono text-xs tracking-widest text-ink/60">TIME {fmtTime(elapsed)}</p>
-        <p className="font-mono text-xs tracking-widest text-ink/60">已答 <span className="text-accent-text">{answeredCount}</span></p>
-        <p className="font-mono text-xs tracking-widest text-ink/60">连对 <span className={streak >= 3 ? "text-accent-text" : ""}>{streak}</span></p>
+        <p className="font-mono text-xs text-ink/60">已答 <span className="text-accent-text">{answeredCount}</span></p>
+        <p className="font-mono text-xs text-ink/60">连对 <span className={streak >= 3 ? "text-accent-text" : ""}>{streak}</span></p>
       </div>
 
       <div className="mt-8 grid max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_12rem]">
@@ -726,8 +726,8 @@ export default function QuizPage() {
           >
             <div className="flex flex-wrap items-center gap-3">
               <span className="font-mono text-xs text-accent-text">Q-{String(idx + 1).padStart(2, "0")}</span>
-              <span className="border border-line px-2 py-0.5 font-mono text-[10px] text-ink/60">{question.chapter}</span>
-              <span className="border border-line px-2 py-0.5 font-mono text-[10px] text-ink/60">{questionTypeLabel(question.type)}</span>
+              <span className="border border-line px-2 py-0.5 font-mono text-xs text-ink/60">{question.chapter}</span>
+              <span className="border border-line px-2 py-0.5 font-mono text-xs text-ink/60">{questionTypeLabel(question.type)}</span>
               <span className="ml-auto">
                 <button
                   type="button"
@@ -735,7 +735,7 @@ export default function QuizPage() {
                   disabled={favoriteBusy || !authReady || !favoriteSeedReady}
                   aria-pressed={user ? isFavorited : undefined}
                   className={cn(
-                    "border px-3 py-1.5 font-mono text-xs tracking-widest transition-colors",
+                    "border px-3 py-1.5 font-mono text-xs transition-colors",
                     favoriteBusy || !authReady || !favoriteSeedReady
                       ? "cursor-not-allowed border-line text-ink/30"
                       : !user
@@ -835,7 +835,9 @@ export default function QuizPage() {
             <div ref={explainRef} className="h-0 overflow-hidden">
               {confirmed && (
                 <div className="mt-6 border-t border-line pt-5">
-                  <p className="font-mono text-[10px] tracking-[0.25em] text-accent-text">解析 / EXPLAIN</p>
+                  <p className="font-mono text-xs text-accent-text">
+                    解析 / <span className="tracking-[0.25em]">EXPLAIN</span>
+                  </p>
                   <p className="mt-2 font-mono text-xs text-ink/60">参考答案：{expectedAnswerText(result.expected_answer, question)}</p>
                   <p className="mt-2 text-sm leading-7 text-ink/80">{result.analysis || "本题暂无补充解析。"}</p>
                   {result.replayed && <p className="mt-2 font-mono text-xs text-ink/60">这次作答之前已提交成功，显示的是当时的判题结果。</p>}
@@ -853,7 +855,7 @@ export default function QuizPage() {
                   onClick={submit}
                   disabled={submitting || !hasAnswer(question, selected) || ((question.type === "single" || question.type === "multi") && options.length === 0)}
                   className={cn(
-                    "border px-7 py-3 font-mono text-sm tracking-widest transition-colors",
+                    "border px-7 py-3 font-mono text-sm transition-colors",
                     submitting || !hasAnswer(question, selected) || ((question.type === "single" || question.type === "multi") && options.length === 0)
                       ? "cursor-not-allowed border-line text-ink/30"
                       : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
@@ -868,7 +870,7 @@ export default function QuizPage() {
                     if (idx === questions.length - 1) setLoadState("finished");
                     else goToQuestion(idx + 1);
                   }}
-                  className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
+                  className="border border-ink bg-ink px-7 py-3 font-mono text-sm text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
                 >
                   {idx === questions.length - 1 ? "查看结算 →" : "下一题 →"}
                 </button>
@@ -881,7 +883,7 @@ export default function QuizPage() {
                 aria-label="上一道题"
                 disabled={idx === 0 || submitting}
                 onClick={() => goToQuestion(idx - 1)}
-                className="min-h-11 border border-ink/30 px-4 font-mono text-xs tracking-widest disabled:cursor-not-allowed disabled:border-line disabled:text-ink/30"
+                className="min-h-11 border border-ink/30 px-4 font-mono text-xs disabled:cursor-not-allowed disabled:border-line disabled:text-ink/30"
               >
                 ← 上一题
               </button>
@@ -890,7 +892,7 @@ export default function QuizPage() {
                 aria-label="下一道题"
                 disabled={idx === questions.length - 1 || submitting}
                 onClick={() => goToQuestion(idx + 1)}
-                className="min-h-11 border border-ink/30 px-4 font-mono text-xs tracking-widest disabled:cursor-not-allowed disabled:border-line disabled:text-ink/30"
+                className="min-h-11 border border-ink/30 px-4 font-mono text-xs disabled:cursor-not-allowed disabled:border-line disabled:text-ink/30"
               >
                 下一题 →
               </button>
@@ -908,8 +910,8 @@ export default function QuizPage() {
 
               {feedbackOpen && (
                 <div className="mt-4 border border-dashed border-ink/25 p-5">
-                  <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
-                    CORRECTION / 题内纠错
+                  <p className="font-mono text-xs text-ink/60">
+                    <span className="tracking-[0.25em]">CORRECTION</span> / 题内纠错
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {FEEDBACK_CATEGORIES.map((item) => (
@@ -941,7 +943,7 @@ export default function QuizPage() {
                     <p className="mt-3 text-sm text-ink/70">
                       {feedbackMessage}
                       {feedbackStatus && (
-                        <span className="ml-2 border border-accent/60 px-1.5 py-0.5 font-mono text-[10px] text-accent-text">
+                        <span className="ml-2 border border-accent/60 px-1.5 py-0.5 font-mono text-xs text-accent-text">
                           {FEEDBACK_STATUS_LABEL[feedbackStatus]}
                         </span>
                       )}
@@ -958,7 +960,7 @@ export default function QuizPage() {
                       onClick={() => void submitFeedback()}
                       disabled={feedbackSubmitting}
                       className={cn(
-                        "border px-5 py-2 font-mono text-xs tracking-widest transition-colors",
+                        "border px-5 py-2 font-mono text-xs transition-colors",
                         feedbackSubmitting
                           ? "cursor-not-allowed border-line text-ink/30"
                           : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
@@ -976,7 +978,7 @@ export default function QuizPage() {
                       </button>
                     )}
                   </div>
-                  <p className="mt-3 font-mono text-[10px] leading-5 text-ink/60">
+                  <p className="mt-3 font-mono text-xs leading-5 text-ink/60">
                     纠错需要登录后提交；内容会连同题目版本引用交给题库维护者处理。
                   </p>
                 </div>
@@ -986,7 +988,9 @@ export default function QuizPage() {
         </div>
 
         <aside data-enter className="hidden lg:block">
-          <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">INDEX / 跳题</p>
+          <p className="font-mono text-xs text-ink/60">
+            <span className="tracking-[0.25em]">INDEX</span> / 跳题
+          </p>
           <div className="mt-3 grid grid-cols-4 gap-1.5">
             {questions.map((item, itemIndex) => {
               const itemResult = answers[questionKey(item)];
@@ -996,7 +1000,7 @@ export default function QuizPage() {
                   type="button"
                   onClick={() => goToQuestion(itemIndex)}
                   className={cn(
-                    "flex h-9 items-center justify-center border font-mono text-[11px] transition-colors",
+                    "flex h-9 items-center justify-center border font-mono text-xs transition-colors",
                     itemIndex === idx && "border-accent text-accent-text",
                     itemIndex !== idx && !itemResult && "border-line text-ink/60 hover:border-ink/40",
                     itemIndex !== idx && itemResult?.correct && "border-ink bg-ink text-paper",
@@ -1008,7 +1012,7 @@ export default function QuizPage() {
               );
             })}
           </div>
-          <div className="mt-4 space-y-1.5 font-mono text-[10px] text-ink/60">
+          <div className="mt-4 space-y-1.5 font-mono text-xs text-ink/60">
             <p><span className="mr-2 inline-block h-2 w-2 border border-line align-middle" />未答</p>
             <p><span className="mr-2 inline-block h-2 w-2 bg-ink align-middle" />答对</p>
             <p><span className="mr-2 inline-block h-2 w-2 bg-accent align-middle" />答错</p>
@@ -1035,16 +1039,18 @@ function PracticeState({
     <main className="mx-auto max-w-site px-5 py-16 md:px-8">
       <div className="max-w-3xl">
         <div data-enter className="border border-ink p-8 md:p-12">
-          <p className="font-mono text-xs tracking-[0.3em] text-accent-text">PRACTICE / 刷题</p>
+          <p className="font-mono text-xs text-accent-text">
+            <span className="tracking-[0.3em]">PRACTICE</span> / 刷题
+          </p>
           <h1 className="mt-5 text-2xl font-medium md:text-3xl">{title}</h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">{detail}</p>
           <div className="mt-8 flex flex-wrap gap-4">
             {actionLabel && onAction && (
-              <button type="button" onClick={onAction} className="border border-ink bg-ink px-6 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink">
+              <button type="button" onClick={onAction} className="border border-ink bg-ink px-6 py-3 font-mono text-sm text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink">
                 {actionLabel}
               </button>
             )}
-            <TransitionLink href="/practice" className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent-text">
+            <TransitionLink href="/practice" className="border border-ink/30 px-6 py-3 font-mono text-sm text-ink transition-colors hover:border-accent hover:text-accent-text">
               返回题库目录 →
             </TransitionLink>
           </div>

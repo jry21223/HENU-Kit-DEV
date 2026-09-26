@@ -79,7 +79,7 @@ export default function MembershipPage() {
               setState({ kind: "loading" });
               loadMembership();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>

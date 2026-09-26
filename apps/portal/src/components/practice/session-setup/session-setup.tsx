@@ -94,8 +94,8 @@ export default function SessionSetup({
     return (
       <main className="mx-auto max-w-site px-5 py-16 md:px-8">
         <div className="max-w-3xl">
-          <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent-text">SETUP</span>
+          <p data-enter className="font-mono text-xs text-ink/60">
+            <span className="tracking-[0.3em] text-accent-text">SETUP</span>
             <span className="mx-2">/</span>
             组卷设置
           </p>
@@ -112,13 +112,13 @@ export default function SessionSetup({
               <button
                 type="button"
                 onClick={retryCatalog}
-                className="min-h-11 border border-ink bg-ink px-5 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
+                className="min-h-11 border border-ink bg-ink px-5 py-3 font-mono text-sm text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
               >
                 重新检查题库
               </button>
               <TransitionLink
                 href="/practice"
-                className="flex min-h-11 items-center border border-ink/30 px-5 py-3 font-mono text-sm tracking-widest transition-colors hover:border-accent hover:text-accent-text"
+                className="flex min-h-11 items-center border border-ink/30 px-5 py-3 font-mono text-sm transition-colors hover:border-accent hover:text-accent-text"
               >
                 返回题库目录 →
               </TransitionLink>
@@ -149,8 +149,8 @@ export default function SessionSetup({
 
   const countInput = (
     <div>
-      <label htmlFor="session-question-count" className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
-        题数 / COUNT
+      <label htmlFor="session-question-count" className="font-mono text-xs text-ink/60">
+        题数 / <span className="tracking-[0.25em]">COUNT</span>
       </label>
       <input
         id="session-question-count"
@@ -181,8 +181,8 @@ export default function SessionSetup({
       className="mx-auto max-w-site px-5 py-16 md:px-8"
     >
       <div className="max-w-3xl">
-        <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent-text">SETUP</span>
+        <p data-enter className="font-mono text-xs text-ink/60">
+          <span className="tracking-[0.3em] text-accent-text">SETUP</span>
           <span className="mx-2">/</span>
           组卷设置
         </p>
@@ -193,7 +193,7 @@ export default function SessionSetup({
           </p>
         )}
         {chaptersState.kind === "ready" && chaptersState.bankName && (
-          <p data-enter className="mt-2 font-mono text-[10px] tracking-widest text-ink/60">
+          <p data-enter className="mt-2 font-mono text-xs text-ink/60">
             {chaptersState.bankName}
           </p>
         )}
@@ -226,7 +226,9 @@ export default function SessionSetup({
           <div className="mt-6 border-t border-line pt-6">
             {mode === "chapter" ? (
               <div>
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">章节 / CHAPTER</p>
+                <p className="font-mono text-xs text-ink/60">
+                  章节 / <span className="tracking-[0.25em]">CHAPTER</span>
+                </p>
                 {chaptersState.kind === "loading" && <p className="mt-2 text-sm text-ink/60">正在加载章节列表…</p>}
                 {chaptersState.kind === "ready" && chaptersState.chapters.length === 0 && (
                   <p className="mt-2 text-sm text-ink/60">该题库暂未划分章节，请选择其他模式。</p>
@@ -234,7 +236,7 @@ export default function SessionSetup({
                 {chaptersState.kind === "ready" && chaptersState.chapters.length > 0 && (
                   <div className="flex flex-wrap items-end gap-6">
                     <div>
-                      <label htmlFor="session-chapter" className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                      <label htmlFor="session-chapter" className="font-mono text-xs text-ink/60">
                         选择章节
                       </label>
                       <select
@@ -283,7 +285,7 @@ export default function SessionSetup({
               onClick={() => void start()}
               disabled={!canStart || starting}
               className={cn(
-                "min-h-11 border px-7 py-3.5 font-mono text-sm tracking-widest transition-colors",
+                "min-h-11 border px-7 py-3.5 font-mono text-sm transition-colors",
                 canStart && !starting
                   ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
                   : "cursor-not-allowed border-line text-ink/30"
@@ -293,7 +295,7 @@ export default function SessionSetup({
             </button>
             <TransitionLink
               href="/practice"
-              className="flex min-h-11 items-center border border-ink/30 px-7 py-3.5 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent-text"
+              className="flex min-h-11 items-center border border-ink/30 px-7 py-3.5 font-mono text-sm text-ink transition-colors hover:border-accent hover:text-accent-text"
             >
               返回题库目录 →
             </TransitionLink>

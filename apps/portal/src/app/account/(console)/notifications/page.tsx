@@ -130,7 +130,7 @@ export default function NotificationsPage() {
               setState({ kind: "loading" });
               loadNotifications();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -160,23 +160,23 @@ export default function NotificationsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h2 className="font-display text-xl font-bold">{notification.title}</h2>
                           {unread ? (
-                            <span className="border border-accent px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent-text">未读</span>
+                            <span className="border border-accent px-2 py-0.5 font-mono text-xs text-accent-text">未读</span>
                           ) : (
-                            <span className="font-mono text-[10px] tracking-widest text-ink/60">已读</span>
+                            <span className="font-mono text-xs text-ink/60">已读</span>
                           )}
                         </div>
                         {notification.ticket_reference ? (
-                          <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/60">{notification.ticket_reference}</p>
+                          <p className="mt-2 font-mono text-xs tracking-[0.12em] text-ink/60">{notification.ticket_reference}</p>
                         ) : null}
                         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink/75">{notification.body}</p>
-                        <p className="mt-3 font-mono text-[10px] text-ink/60">{formatTimestamp(notification.created_at)}</p>
+                        <p className="mt-3 font-mono text-xs text-ink/60">{formatTimestamp(notification.created_at)}</p>
                       </div>
                       {unread ? (
                         <button
                           type="button"
                           onClick={() => void markRead(notification.id)}
                           disabled={pendingID === notification.id}
-                          className="inline-flex min-h-11 shrink-0 items-center justify-center border border-ink px-3 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                          className="inline-flex min-h-11 shrink-0 items-center justify-center border border-ink px-3 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
                         >
                           {pendingID === notification.id ? "正在更新…" : "标为已读"}
                         </button>

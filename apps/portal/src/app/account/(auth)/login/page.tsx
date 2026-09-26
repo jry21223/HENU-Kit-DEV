@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { HenuEmailField } from "@/components/account/henu-email-field";
@@ -54,7 +54,8 @@ function Field({
   autoComplete,
   hint,
 }: {
-  label: string;
+  /** 中英混排的标签只给英文部分加字距，中文不拉开（DESIGN_SYSTEM.md 第 4 节）。 */
+  label: ReactNode;
   id: string;
   type?: string;
   value: string;
@@ -84,7 +85,7 @@ function Field({
         </p>
       ) : null}
       {error ? (
-        <p className="mt-1 font-mono text-[10px] text-accent-text">{error}</p>
+        <p className="mt-1 font-mono text-xs text-accent-text">{error}</p>
       ) : null}
     </div>
   );
@@ -407,7 +408,7 @@ function LoginForm() {
     return (
       <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
         <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <p className="font-mono text-xs text-ink/60">
             账号中心
           </p>
           <h1 className="mt-4 font-display text-3xl font-bold tracking-tight">
@@ -427,7 +428,7 @@ function LoginForm() {
                 : "这次登录无法继续。请重新开始登录，我们会为你创建一条新的安全链接。"}
           </p>
           {displayedRequestID ? (
-            <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/60">
+            <p className="mt-4 font-mono text-xs text-ink/60">
               请求编号：{displayedRequestID}
             </p>
           ) : null}
@@ -462,7 +463,7 @@ function LoginForm() {
           )}
           <Link
             href="/"
-            className="mt-1 flex min-h-11 items-center justify-center font-mono text-[10px] tracking-widest text-ink/60 hover:text-accent-text"
+            className="mt-1 flex min-h-11 items-center justify-center font-mono text-xs text-ink/60 hover:text-accent-text"
           >
             返回 HENU Kit 首页
           </Link>
@@ -475,10 +476,10 @@ function LoginForm() {
     return (
       <main className="bg-blueprint flex min-h-svh items-center justify-center px-4 py-10 sm:px-5 sm:py-16">
         <div data-enter className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10">
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <p className="font-mono text-xs text-ink/60">
             账号中心
           </p>
-          <p className="mt-6 font-mono text-xs tracking-wider text-ink/60" role="status">
+          <p className="mt-6 font-mono text-xs text-ink/60" role="status">
             正在验证登录链接…
           </p>
         </div>
@@ -493,13 +494,13 @@ function LoginForm() {
         className="w-full max-w-md border border-ink bg-paper p-5 sm:p-8 md:p-10"
       >
         <div className="flex items-baseline justify-between">
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <p className="font-mono text-xs text-ink/60">
             账号中心
           </p>
-          {/* 一行小字只有 15px 高：上下各借 14px 撑满 44px 点击区，标题行高度不变。 */}
+          {/* 一行小字只有 16px 高：上下各借 14px 撑满 44px 点击区，标题行高度不变。 */}
           <Link
             href="/"
-            className="-my-3.5 inline-flex min-h-11 items-center font-mono text-[10px] tracking-widest text-ink/60 hover:text-accent-text"
+            className="-my-3.5 inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/60 hover:text-accent-text"
           >
             ← henukit
           </Link>
@@ -507,11 +508,11 @@ function LoginForm() {
         <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">
           {tab === "login" ? "登录" : "注册"}
         </h1>
-        <p className="mt-2 font-mono text-[11px] leading-5 tracking-wider text-ink/60">
+        <p className="mt-2 font-mono text-xs leading-5 text-ink/60">
           首次注册需验证学校邮箱并设置密码；之后可用密码或验证码登录。
         </p>
         {continuationProduct ? (
-          <p className="mt-3 border-l-2 border-accent pl-3 font-mono text-[11px] leading-5 tracking-wider text-ink/65">
+          <p className="mt-3 border-l-2 border-accent pl-3 font-mono text-xs leading-5 text-ink/65">
             登录后继续前往 {continuationProduct}
           </p>
         ) : null}
@@ -531,7 +532,7 @@ function LoginForm() {
                 setInfo("");
               }}
               className={cn(
-                "min-h-11 flex-1 font-mono text-xs tracking-widest transition-colors",
+                "min-h-11 flex-1 font-mono text-xs transition-colors",
                 tab === t ? "bg-ink text-paper" : "text-ink/60 hover:text-ink"
               )}
             >
@@ -553,7 +554,7 @@ function LoginForm() {
                   setInfo("");
                 }}
                 className={cn(
-                  "min-h-11 border px-3 font-mono text-[11px] transition-colors",
+                  "min-h-11 border px-3 font-mono text-xs transition-colors",
                   mode === m
                     ? "border-ink bg-ink text-paper"
                     : "border-line text-ink/60 hover:border-ink/40"
@@ -575,7 +576,7 @@ function LoginForm() {
           {tab === "register" && (
             <Field
               id="reg-name"
-              label="展示名 / NAME"
+              label={<>展示名 / <span className="tracking-[0.25em]">NAME</span></>}
               value={name}
               onChange={setName}
               error={errors.name}
@@ -590,7 +591,7 @@ function LoginForm() {
             onChange={setLocalPart}
           />
           {errors.email ? (
-            <p className="-mt-3 font-mono text-[10px] text-accent-text">
+            <p className="-mt-3 font-mono text-xs text-accent-text">
               {errors.email}
             </p>
           ) : null}
@@ -626,12 +627,12 @@ function LoginForm() {
                 </Button>
               </div>
               {errors.code ? (
-                <p className="mt-1 font-mono text-[10px] text-accent-text">
+                <p className="mt-1 font-mono text-xs text-accent-text">
                   {errors.code}
                 </p>
               ) : null}
               {info ? (
-                <p className="mt-1 font-mono text-[10px] leading-5 text-ink/60">
+                <p className="mt-1 font-mono text-xs leading-5 text-ink/60">
                   {info}
                 </p>
               ) : null}
@@ -641,7 +642,7 @@ function LoginForm() {
           {(tab === "register" || mode === "password") && (
             <Field
               id="auth-pwd"
-              label="密码 / PASSWORD"
+              label={<>密码 / <span className="tracking-[0.25em]">PASSWORD</span></>}
               type="password"
               value={pwd}
               onChange={setPwd}
@@ -655,7 +656,7 @@ function LoginForm() {
           {tab === "register" && (
             <Field
               id="auth-pwd-confirm"
-              label="确认密码 / CONFIRM"
+              label={<>确认密码 / <span className="tracking-[0.25em]">CONFIRM</span></>}
               type="password"
               value={pwd2}
               onChange={setPwd2}
@@ -674,7 +675,7 @@ function LoginForm() {
         </form>
 
         {/* 邮箱后缀已固定显示在输入框右侧，这里不再重复。 */}
-        <div className="mt-1 font-mono text-[10px] tracking-wider text-ink/60">
+        <div className="mt-1 font-mono text-xs text-ink/60">
           <Link href="/account/recover" className="inline-flex min-h-11 items-center hover:text-accent-text">
             忘记密码 / 收不到验证码 →
           </Link>
@@ -689,7 +690,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main className="bg-blueprint flex min-h-svh items-center justify-center">
-          <p className="font-mono text-xs tracking-widest text-ink/60">
+          <p className="font-mono text-xs text-ink/60">
             加载中…
           </p>
         </main>

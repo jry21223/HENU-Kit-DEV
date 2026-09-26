@@ -57,7 +57,7 @@ export default function MagneticButton({
       onMouseMove={onMove}
       onMouseLeave={onLeave}
       className={cn(
-        "group relative inline-flex w-fit items-center gap-3 overflow-hidden border px-7 py-3.5 font-mono text-sm tracking-widest",
+        "group relative inline-flex w-fit items-center gap-3 overflow-hidden border px-7 py-3.5 font-mono text-sm",
         dark
           ? "border-line-dark text-paper"
           : "border-ink/30 text-ink",

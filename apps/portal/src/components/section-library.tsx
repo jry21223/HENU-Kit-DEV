@@ -155,7 +155,7 @@ export default function SectionLibrary() {
             </p>
           </div>
           <div className="md:justify-self-end">
-            <ul className="space-y-2 font-mono text-xs tracking-wider text-ink/60">
+            <ul className="space-y-2 font-mono text-xs text-ink/60">
               {FEATURES.map((f) => (
                 <li key={f}>
                   <span aria-hidden className="mr-2 text-accent-text">+</span>
@@ -206,7 +206,7 @@ export default function SectionLibrary() {
                           </div>
                           <div>
                             <h3 className="font-display text-2xl font-bold">{card.title}</h3>
-                            <p className="mt-3 border-t border-line pt-3 font-mono text-[10px] leading-5 tracking-wider text-ink/60">
+                            <p className="mt-3 border-t border-line pt-3 font-mono text-xs leading-5 text-ink/60">
                               {card.meta}
                               <br />
                               收录 {card.size}
@@ -218,7 +218,7 @@ export default function SectionLibrary() {
                   ))}
               {cards !== null && cards.length > 0 ? (
                 <div data-lib-card className="shrink-0">
-                  <div className="flex h-72 w-40 items-center justify-center border border-dashed border-ink/30 font-mono text-xs tracking-widest text-ink/60">
+                  <div className="flex h-72 w-40 items-center justify-center border border-dashed border-ink/30 font-mono text-xs text-ink/60">
                     持续收录中…
                   </div>
                 </div>
@@ -229,12 +229,12 @@ export default function SectionLibrary() {
 
         <div className="mt-8">
           <div className="mb-4 flex items-center justify-between">
-            <p className="font-mono text-[10px] tracking-[0.3em] text-ink/60">
-              AUTO-SCAN / 档案卡循环巡检中
+            <p className="font-mono text-xs text-ink/60">
+              <span className="tracking-[0.3em]">AUTO-SCAN</span> / 档案卡循环巡检中
             </p>
             {/* 失败时只由上方 ErrorBanner 说明，这里不再叠一个英文状态。 */}
             {error ? null : (
-              <p className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/60 md:block">
+              <p className="hidden font-mono text-xs tracking-[0.3em] text-ink/60 md:block">
                 {totalCount === null ? "LOADING…" : `${totalCount} FILES INDEXED`}
               </p>
             )}

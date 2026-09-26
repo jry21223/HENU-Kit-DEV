@@ -35,7 +35,8 @@ export default function SubHero({
   title: string;
   slogan: string;
   counters: HeroCounter[];
-  fig: string;
+  /** 画板左上角的图注：拉丁编号与英文名拉开字距，中文名不拉开（DESIGN_SYSTEM.md 第 4 节）。 */
+  fig: { code: string; name: string; en: string };
   scene: React.ReactNode;
   compactOnMobile?: boolean;
 }) {
@@ -118,7 +119,7 @@ export default function SubHero({
           >
             {counters.map((c, i) => (
               <div key={c.label} aria-busy={c.busy ?? false}>
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">{c.label}</p>
+                <p className="font-mono text-xs text-ink/60">{c.label}</p>
                 <p className="mt-1 font-display text-3xl font-bold tabular-nums">
                   <span ref={(el) => { counterRefs.current[i] = el; }} aria-hidden="true">
                     {c.value === null ? "—" : formatNum(c.value)}
@@ -134,8 +135,9 @@ export default function SubHero({
 
         {/* 右：图纸画板 + 场景 */}
         <div className={cn("bg-blueprint relative items-center justify-center border-t border-line p-10 lg:border-l lg:border-t-0", compactOnMobile ? "hidden lg:flex" : "flex")}>
-          <span aria-hidden className="absolute left-4 top-4 font-mono text-[10px] tracking-[0.3em] text-ink/40">
-            {fig}
+          <span aria-hidden className="absolute left-4 top-4 font-mono text-xs text-ink/40">
+            <span className="tracking-[0.3em]">{fig.code}</span> {fig.name} /{" "}
+            <span className="tracking-[0.3em]">{fig.en}</span>
           </span>
           <span aria-hidden className="absolute bottom-4 right-4 font-mono text-accent-text">+</span>
           <div

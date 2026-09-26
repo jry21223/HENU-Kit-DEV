@@ -132,7 +132,7 @@ export default function WalletPage() {
         <section
           data-account-points-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs text-ink/60"
         >
           正在读取积分<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
@@ -140,13 +140,13 @@ export default function WalletPage() {
 
       {state.kind === "error" ? (
         <section data-account-points-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">积分暂时不可用</p>
+          <p className="font-mono text-xs text-accent-text">积分暂时不可用</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <p className="mt-3 text-sm leading-6 text-ink/60">积分数据暂时加载不出来，请稍后重试。</p>
           <button
             type="button"
             onClick={loadWallet}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -164,10 +164,10 @@ export default function WalletPage() {
           <div className="mt-8">
             <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ink pb-3">
               <div>
-                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">HISTORY</p>
+                <p className="font-mono text-xs tracking-[0.2em] text-ink/60">HISTORY</p>
                 <h2 className="mt-1 font-display text-2xl font-bold">积分变动明细</h2>
               </div>
-              <span className="font-mono text-[10px] tracking-[0.12em] text-ink/60">时间以中国标准时间显示</span>
+              <span className="font-mono text-xs text-ink/60">时间以中国标准时间显示</span>
             </div>
 
             {state.entries.length === 0 ? (
@@ -181,7 +181,7 @@ export default function WalletPage() {
                   <article key={entry.id} className="grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-6">
                     <div className="min-w-0">
                       <h3 className="break-words text-base font-semibold leading-6">{entry.reason}</h3>
-                      <p className="mt-2 font-mono text-[10px] tracking-[0.08em] text-ink/60">{formatTimestamp(entry.created_at)}</p>
+                      <p className="mt-2 font-mono text-xs text-ink/60">{formatTimestamp(entry.created_at)}</p>
                     </div>
                     <p className={`font-display text-2xl font-bold ${entry.amount >= 0 ? "text-accent-text" : "text-ink"}`}>
                       {entry.amount > 0 ? "+" : ""}{formatPoints(entry.amount)}
@@ -199,7 +199,7 @@ export default function WalletPage() {
                 type="button"
                 onClick={loadMore}
                 disabled={state.loadingMore}
-                className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
               >
                 {state.loadingMore ? "正在加载…" : "加载更多记录"}
               </button>

@@ -142,7 +142,7 @@ export default function LibraryHomePage() {
             busy: loadState === "loading",
           },
         ]}
-        fig="FIG.02 书脊 / SPINES"
+        fig={{ code: "FIG.02", name: "书脊", en: "SPINES" }}
         scene={<SceneBooks />}
         compactOnMobile
       />

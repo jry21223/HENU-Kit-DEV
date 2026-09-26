@@ -145,13 +145,13 @@ export default function SectionFood() {
 
         <ul className="border-t border-line">
           {loadState === "loading" && (
-            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/60">
+            <li className="border-b border-line py-5 font-mono text-xs text-ink/60">
               榜单加载中…
             </li>
           )}
           {loadState === "error" && (
             <li className="border-b border-line py-5">
-              <p className="font-mono text-xs tracking-[0.18em] text-ink/60">
+              <p className="font-mono text-xs text-ink/60">
                 榜单暂时加载不出来，请稍后刷新试试。
               </p>
               {error ? (
@@ -166,7 +166,7 @@ export default function SectionFood() {
             </li>
           )}
           {loadState === "ready" && rows.length === 0 && (
-            <li className="border-b border-line py-5 font-mono text-xs tracking-[0.18em] text-ink/60">
+            <li className="border-b border-line py-5 font-mono text-xs text-ink/60">
               还没有上榜条目。
             </li>
           )}

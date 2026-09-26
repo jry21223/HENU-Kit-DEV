@@ -33,7 +33,7 @@ export default function CareerGuestView() {
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">
             设定求职画像后，雷达会在后台扫描已收录的官方招聘来源。
           </p>
-          <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
+          <ul className="mt-6 space-y-2 font-mono text-xs text-ink/60">
             {FEATURES.map((f) => (
               <li key={f}>
                 <span aria-hidden className="mr-2 text-accent-text">+</span>
@@ -43,7 +43,7 @@ export default function CareerGuestView() {
           </ul>
           <Link
             href="/account/login?next=/career"
-            className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             登录后开始使用 →
           </Link>

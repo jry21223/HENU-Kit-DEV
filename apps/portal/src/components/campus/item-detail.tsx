@@ -21,7 +21,7 @@ export default function ItemDetail({ id }: { id: string }) {
         <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">404 / NOT FOUND</p>
           <p className="mt-4 font-display text-2xl font-bold">单子不存在或已下架</p>
-          {state.error && <p className="mt-2 font-mono text-[11px] text-ink/60">{state.error}</p>}
+          {state.error && <p className="mt-2 font-mono text-xs text-ink/60">{state.error}</p>}
           <BackLink className="mt-6 inline-block font-mono text-sm text-accent-text hover:underline" />
         </main>
       );
@@ -59,13 +59,13 @@ export default function ItemDetail({ id }: { id: string }) {
             )}
             <span
               className={cn(
-                "absolute left-0 top-0 px-2 py-0.5 font-mono text-[10px]",
+                "absolute left-0 top-0 px-2 py-0.5 font-mono text-xs",
                 item.type === "help" ? "bg-accent text-ink" : "bg-ink text-paper"
               )}
             >
               {item.type === "help" ? "求助单" : "闲置单"}
             </span>
-            <span className="absolute right-3 top-3 font-mono text-[10px] tracking-widest text-ink/60">
+            <span className="absolute right-3 top-3 font-mono text-xs text-ink/60">
               {STATUS_LABEL[item.status]}
             </span>
           </div>
@@ -86,7 +86,7 @@ export default function ItemDetail({ id }: { id: string }) {
             {item.desc}
           </p>
 
-          <div data-enter className="mt-6 grid grid-cols-2 gap-3 border-y border-line py-4 font-mono text-[11px] text-ink/60 md:grid-cols-3">
+          <div data-enter className="mt-6 grid grid-cols-2 gap-3 border-y border-line py-4 font-mono text-xs text-ink/60 md:grid-cols-3">
             <p>分类 · {cat.name}</p>
             <p>位置 · {item.place}</p>
             {item.deadline && <p className="text-accent-text">时限 · {item.deadline}</p>}
@@ -95,8 +95,8 @@ export default function ItemDetail({ id }: { id: string }) {
 
           {/* 留言区（真实数据来自服务端；留言发布接口尚未接通） */}
           <section data-enter className="mt-10">
-            <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
-              MESSAGES / 留言 · {messages.length}
+            <p className="font-mono text-xs text-ink/60">
+              <span className="tracking-[0.25em]">MESSAGES</span> / 留言 · {messages.length}
             </p>
             <ul className="mt-5 space-y-5">
               {messages.map((m) => (
@@ -105,7 +105,7 @@ export default function ItemDetail({ id }: { id: string }) {
                     {m.author.slice(0, 1)}
                   </span>
                   <div className="min-w-0">
-                    <p className="font-mono text-[11px] text-ink/60">
+                    <p className="font-mono text-xs text-ink/60">
                       {m.author}
                       <span className="mx-2">·</span>
                       {m.time}
@@ -131,8 +131,9 @@ export default function ItemDetail({ id }: { id: string }) {
           <div className="lg:sticky lg:top-20 lg:space-y-5">
             {/* 赏金卡 */}
             <div data-enter className="border border-ink p-6">
-              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
-                {item.type === "help" ? "BOUNTY / 赏金" : "PRICE / 一口价"}
+              <p className="font-mono text-xs text-ink/60">
+                <span className="tracking-[0.25em]">{item.type === "help" ? "BOUNTY" : "PRICE"}</span> /{" "}
+                {item.type === "help" ? "赏金" : "一口价"}
               </p>
               <p className="mt-2 font-display text-5xl font-bold tabular-nums">
                 <span className="text-accent-text">¥</span>
@@ -140,7 +141,7 @@ export default function ItemDetail({ id }: { id: string }) {
               </p>
               <p
                 data-campus-escrow-state="unavailable"
-                className="mt-3 border border-dashed border-ink/30 px-2.5 py-1.5 font-mono text-[10px] tracking-widest text-ink/60"
+                className="mt-3 border border-dashed border-ink/30 px-2.5 py-1.5 font-mono text-xs text-ink/60"
               >
                 接单与结算暂未开放，暂不涉及资金托管。
               </p>
@@ -149,12 +150,12 @@ export default function ItemDetail({ id }: { id: string }) {
                 <button
                   type="button"
                   disabled
-                  className="mt-5 w-full cursor-not-allowed border border-line py-3 font-mono text-sm tracking-widest text-ink/40"
+                  className="mt-5 w-full cursor-not-allowed border border-line py-3 font-mono text-sm text-ink/40"
                 >
                   {item.type === "help" ? "接单功能即将开放" : "想要功能即将开放"}
                 </button>
               ) : (
-                <p className="mt-5 border border-line py-3 text-center font-mono text-sm tracking-widest text-ink/60">
+                <p className="mt-5 border border-line py-3 text-center font-mono text-sm text-ink/60">
                   {item.status === "ongoing" ? "进行中 · 已被接" : item.status === "done" ? "已完成" : "已隐藏"}
                 </p>
               )}
@@ -162,7 +163,7 @@ export default function ItemDetail({ id }: { id: string }) {
               <button
                 type="button"
                 disabled
-                className="mt-3 w-full cursor-not-allowed border border-line py-2.5 font-mono text-xs tracking-widest text-ink/40"
+                className="mt-3 w-full cursor-not-allowed border border-line py-2.5 font-mono text-xs text-ink/40"
               >
                 ☆ 想要 · {item.wants}
               </button>
@@ -176,13 +177,13 @@ export default function ItemDetail({ id }: { id: string }) {
                 </span>
                 <div>
                   <p className="text-sm font-medium">{item.seller}</p>
-                  <p className="font-mono text-[10px] text-ink/60">
+                  <p className="font-mono text-xs text-ink/60">
                     成交 {item.dealsDone} 单
                   </p>
                 </div>
                 <div className="ml-auto text-right">
                   <p className="font-display text-2xl font-bold text-accent-text">{item.credit}</p>
-                  <p className="font-mono text-[9px] tracking-widest text-ink/60">信用分</p>
+                  <p className="font-mono text-xs text-ink/60">信用分</p>
                 </div>
               </div>
             </div>

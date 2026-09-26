@@ -142,7 +142,7 @@ export default function Navbar() {
               henukit<span className="text-accent">®</span>
             </span>
             {/* 页头是 95% 纸白，压在墨色的刷题模块上会变深，灰字至少 ink/65。 */}
-            <span className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/65 sm:inline">
+            <span className="hidden font-mono text-xs tracking-[0.3em] text-ink/65 sm:inline">
               KEEP IN TOUCH
             </span>
           </Link>
@@ -153,10 +153,11 @@ export default function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="group inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/80 transition-colors hover:text-ink"
+                className="group inline-flex min-h-11 items-center font-mono text-xs text-ink/80 transition-colors hover:text-ink"
               >
+                {/* 宽字距只加在编号上，中文模块名不拉开（DESIGN_SYSTEM.md 第 4 节）。 */}
                 <span className="relative py-1">
-                  <span className="mr-1.5 text-accent-text">{link.index}</span>
+                  <span className="mr-1.5 tracking-widest text-accent-text">{link.index}</span>
                   {link.label}
                   <span
                     aria-hidden
@@ -215,7 +216,7 @@ export default function Navbar() {
           ))}
           <AccountEntry
             onClick={() => setOpen(false)}
-            className="flex w-full items-center gap-3 px-5 py-4 font-mono text-sm tracking-normal text-ink"
+            className="flex w-full items-center gap-3 px-5 py-4 font-mono text-sm text-ink"
             nameClassName="max-w-none text-sm text-ink"
           />
         </nav>

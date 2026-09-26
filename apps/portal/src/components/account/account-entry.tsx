@@ -34,7 +34,7 @@ export default function AccountEntry({
         href="/account/login"
         onClick={onClick}
         className={cn(
-          "inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-accent-text",
+          "inline-flex min-h-11 items-center font-mono text-xs text-ink/70 transition-colors hover:text-accent-text",
           className
         )}
       >

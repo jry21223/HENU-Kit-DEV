@@ -27,8 +27,8 @@ function StatCards({
     <div data-block data-enter className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4">
       {cards.map((card, index) => (
         <div key={card.label} className="border border-ink/25 p-5">
-          <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
-            {String(index + 1).padStart(2, "0")} / {card.label}
+          <p className="font-mono text-xs text-ink/60">
+            <span className="tracking-[0.25em]">{String(index + 1).padStart(2, "0")}</span> / {card.label}
           </p>
           <p className="mt-3 font-display text-4xl font-bold tabular-nums">
             {card.value}
@@ -76,13 +76,13 @@ export default function StatsPage() {
 
       {state.status === "unauthenticated" && (
         <section data-testid="practice-stats-unauthenticated" className="mt-10 border border-ink/25 p-6">
-          <p className="font-mono text-xs tracking-[0.2em] text-ink/60">
-            SIGN IN REQUIRED / 请先登录后查看跨设备同步的学习状态
+          <p className="font-mono text-xs text-ink/60">
+            <span className="tracking-[0.2em]">SIGN IN REQUIRED</span> / 请先登录后查看跨设备同步的学习状态
           </p>
           <button
             type="button"
             onClick={() => redirectToLogin("/practice/stats")}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             登录查看
           </button>
@@ -118,14 +118,14 @@ export default function StatsPage() {
             <section data-testid="practice-stats-success" data-block data-enter className="mt-12 border border-ink/25 p-5 md:p-7">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
-                    MASTERY / 题库掌握度
+                  <p className="font-mono text-xs text-ink/60">
+                    <span className="tracking-[0.25em]">MASTERY</span> / 题库掌握度
                   </p>
                   <p className="mt-2 text-sm text-ink/60">
                     分值为当前题库中至少答对过一次的题目占比。
                   </p>
                 </div>
-                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
+                <p className="font-mono text-xs text-ink/60">
                   {state.data.mastery.length} 个练过的题库
                 </p>
               </div>

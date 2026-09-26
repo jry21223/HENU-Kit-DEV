@@ -90,7 +90,7 @@ export default function TransitionProvider({
                 {p.title}
               </p>
               {p.sub && (
-                <p className="mt-1 font-mono text-[10px] tracking-wider text-ink/50">
+                <p className="mt-1 font-mono text-xs text-ink/50">
                   {p.sub}
                 </p>
               )}

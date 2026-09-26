@@ -29,7 +29,7 @@ export default function NotFound() {
         </Link>
       </div>
       <nav aria-labelledby="not-found-entries" className="mt-12 max-w-xl border-t border-line pt-5">
-        <p id="not-found-entries" className="font-mono text-xs tracking-[0.25em] text-ink/60">
+        <p id="not-found-entries" className="font-mono text-xs text-ink/60">
           常用入口
         </p>
         <ul className="mt-2 flex flex-wrap gap-x-8">
@@ -37,9 +37,9 @@ export default function NotFound() {
             <li key={entry.href}>
               <Link
                 href={entry.href}
-                className="inline-flex min-h-11 items-center font-mono text-sm tracking-widest text-ink/70 transition-colors hover:text-accent-text"
+                className="inline-flex min-h-11 items-center font-mono text-sm text-ink/70 transition-colors hover:text-accent-text"
               >
-                <span className="mr-1.5 text-accent-text">{entry.index}</span>
+                <span className="mr-1.5 tracking-widest text-accent-text">{entry.index}</span>
                 {entry.label}
               </Link>
             </li>

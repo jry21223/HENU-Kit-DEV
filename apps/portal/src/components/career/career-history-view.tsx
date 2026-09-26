@@ -37,7 +37,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <Link
           data-enter
           href="/account/login?next=/career/history"
-          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
           登录后查看 →
         </Link>
@@ -65,7 +65,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <Link
           data-enter
           href="/account/membership"
-          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
           ¥9.9 开通终身会员 →
         </Link>
@@ -90,7 +90,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         <Link
           data-enter
           href="/account/profile"
-          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
           去设置求职画像 →
         </Link>
@@ -114,7 +114,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           扫描历史暂时不可用
         </h1>
         <p className="mt-4 text-sm leading-6 text-ink/65">{state.message}</p>
-        <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest text-ink transition-colors hover:bg-ink hover:text-paper" />
+        <BackLink className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs text-ink transition-colors hover:bg-ink hover:text-paper" />
       </section>
     );
   }
@@ -138,7 +138,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
           </p>
           <Link
             href="/career"
-            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             去发起扫描 →
           </Link>
@@ -166,20 +166,20 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                   <span
                     className={
                       search.status === "failed"
-                        ? "border border-accent/60 px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent-text"
+                        ? "border border-accent/60 px-2 py-0.5 font-mono text-xs text-accent-text"
                         : search.status === "completed"
-                          ? "border border-ink/40 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/70"
-                          : "border border-ink/30 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/60"
+                          ? "border border-ink/40 px-2 py-0.5 font-mono text-xs text-ink/70"
+                          : "border border-ink/30 px-2 py-0.5 font-mono text-xs text-ink/60"
                     }
                   >
                     {careerSearchStatusLabel(search.status)}
                   </span>
                   {search.status === "running" && search.stage ? (
-                    <span className="font-mono text-[10px] tracking-wider text-ink/60">
+                    <span className="font-mono text-xs text-ink/60">
                       {careerScanStageLabel(search.stage)}
                     </span>
                   ) : null}
-                  <span className="font-mono text-[10px] tracking-wider text-ink/60">
+                  <span className="font-mono text-xs tracking-wider text-ink/60">
                     #{search.id.slice(0, 8)}
                   </span>
                 </div>
@@ -201,7 +201,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                     ) : null}
                     {search.result.jobs.length ? (
                       <div className="mt-2">
-                        <p className="font-mono text-[10px] tracking-wider text-ink/60">岗位预览（最多 3 个）</p>
+                        <p className="font-mono text-xs text-ink/60">岗位预览（最多 3 个）</p>
                         <ul className="mt-1 space-y-1">
                           {search.result.jobs.map((job) => (
                             <li key={`${job.source_key}:${job.url}`}>
@@ -223,14 +223,14 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
               </div>
               <Link
                 href={`/career?search=${encodeURIComponent(search.id)}`}
-                className="shrink-0 font-mono text-[11px] tracking-widest text-ink/60 transition-colors hover:text-accent-text"
+                className="shrink-0 font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
               >
                 查看详情 →
               </Link>
             </li>
           ))}
         </ul>
-        <p data-enter className="mt-4 font-mono text-[10px] tracking-[0.15em] text-ink/60">
+        <p data-enter className="mt-4 font-mono text-xs text-ink/60">
           记录保存在你的账户中，换设备登录也能查看
         </p>
       </div>

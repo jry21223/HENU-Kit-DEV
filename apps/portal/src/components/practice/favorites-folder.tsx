@@ -41,22 +41,22 @@ function FavoriteRow({
               Q-{String(index + 1).padStart(2, "0")}
             </span>
             {item.available ? (
-              <span className="border border-ink/40 px-1.5 py-0.5 font-mono text-[10px] text-ink/70">
+              <span className="border border-ink/40 px-1.5 py-0.5 font-mono text-xs text-ink/70">
                 可用
               </span>
             ) : (
-              <span className="border border-accent/50 px-1.5 py-0.5 font-mono text-[10px] text-accent-text">
+              <span className="border border-accent/50 px-1.5 py-0.5 font-mono text-xs text-accent-text">
                 暂不可用
               </span>
             )}
           </div>
           <p className="mt-1.5 truncate font-mono text-xs text-ink/70">{item.question_id}</p>
           {item.available && item.question_version_id ? (
-            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/60">
+            <p className="mt-0.5 font-mono text-xs text-ink/60">
               内容版本 {item.question_version_id.slice(0, 8)}
             </p>
           ) : (
-            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/60">
+            <p className="mt-0.5 font-mono text-xs text-ink/60">
               题目内容暂不可用，保留收藏关系
             </p>
           )}
@@ -66,7 +66,7 @@ function FavoriteRow({
           onClick={onRemove}
           disabled={removing}
           className={cn(
-            "border px-3 py-1.5 font-mono text-xs tracking-widest transition-colors",
+            "border px-3 py-1.5 font-mono text-xs transition-colors",
             removing
               ? "cursor-not-allowed border-line text-ink/30"
               : "border-ink/30 text-ink/70 hover:border-accent hover:text-accent-text"
@@ -197,7 +197,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
             onClick={() => void startSession()}
             disabled={!canStart}
             className={cn(
-              "border px-6 py-3 font-mono text-sm tracking-widest transition-colors",
+              "border px-6 py-3 font-mono text-sm transition-colors",
               canStart
                 ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
                 : "cursor-not-allowed border-line text-ink/30"
@@ -206,12 +206,12 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
             {starting ? "正在发起…" : "发起收藏练习 →"}
           </button>
           {state.status === "ready" && items.length > 0 && availableCount === 0 && (
-            <p className="font-mono text-[10px] tracking-wider text-ink/60">
+            <p className="font-mono text-xs text-ink/60">
               没有可练习的收藏，练习按钮不可用
             </p>
           )}
           {startError && (
-            <p role="alert" className="font-mono text-[10px] leading-5 text-accent-text">
+            <p role="alert" className="font-mono text-xs leading-5 text-accent-text">
               {startError}
             </p>
           )}
@@ -245,7 +245,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
             <EmptyBlock label="这个题库还没有收藏题目" />
           ) : (
             <>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-ink/40 pb-2 font-mono text-[10px] tracking-[0.25em] text-ink/60">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-ink/40 pb-2 font-mono text-xs text-ink/60">
                 <span>题目引用</span>
                 <span className="text-right">操作</span>
               </div>
@@ -265,7 +265,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
                   {removeError}
                 </p>
               )}
-              <p className="mt-4 font-mono text-[10px] leading-5 text-ink/60">
+              <p className="mt-4 font-mono text-xs leading-5 text-ink/60">
                 不可用的收藏会保留在这里，但不会进入收藏练习，也不展示题目内容。
               </p>
               <BackLink className="mt-6 inline-block" />

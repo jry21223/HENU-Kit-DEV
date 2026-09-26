@@ -73,7 +73,7 @@ export function ErrorBanner({
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center border border-ink px-4 tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center border border-ink px-4 transition-colors hover:bg-ink hover:text-paper"
         >
           重试
         </button>

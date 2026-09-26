@@ -31,7 +31,7 @@ export default function CareerFreeView() {
           <p className="mt-4 max-w-xl text-sm leading-7 text-ink/70">
             设定求职画像后，雷达会在后台扫描已收录的官方招聘来源。
           </p>
-          <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
+          <ul className="mt-6 space-y-2 font-mono text-xs text-ink/60">
             {BENEFITS.map((b) => (
               <li key={b}>
                 <span aria-hidden className="mr-2 text-accent-text">+</span>
@@ -43,8 +43,8 @@ export default function CareerFreeView() {
 
         <div data-enter className="flex items-start">
           <article className="w-full max-w-md border border-dashed border-ink/25 bg-paper p-6">
-            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/60">
-              <span>LIFETIME MEMBERSHIP</span>
+            <div className="flex items-center justify-between font-mono text-xs text-ink/60">
+              <span className="tracking-[0.25em]">LIFETIME MEMBERSHIP</span>
               <span className="border border-ink/30 px-2 py-0.5">¥9.9 终身</span>
             </div>
             <h3 className="mt-4 font-display text-2xl font-bold">一次付费，无需续费</h3>
@@ -54,11 +54,11 @@ export default function CareerFreeView() {
             </p>
             <Link
               href="/account/membership"
-              className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+              className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
             >
               ¥9.9 开通终身会员 →
             </Link>
-            <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/60">
+            <p className="mt-3 font-mono text-xs text-ink/60">
               在账户中心完成支付，开通后立即生效
             </p>
           </article>

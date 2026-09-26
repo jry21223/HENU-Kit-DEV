@@ -54,8 +54,8 @@ function ActivePanel({
       className="mt-6 max-w-xl border border-ink px-4 py-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">TASK RUNNING</p>
-        <span className="border border-ink/30 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/60">
+        <p className="font-mono text-xs tracking-[0.2em] text-ink/60">TASK RUNNING</p>
+        <span className="border border-ink/30 px-2 py-0.5 font-mono text-xs text-ink/60">
           {careerSearchStatusLabel(search.status)}
         </span>
       </div>
@@ -71,13 +71,13 @@ function ActivePanel({
           ? "可以关闭本页面，扫描会在后台继续，完成后将把结果简报加入邮件发送队列。"
           : "可以关闭本页面，扫描会在后台继续，稍后回来即可查看结果。"}
       </p>
-      <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/60">
+      <p className="mt-1 font-mono text-xs tracking-[0.15em] text-ink/60">
         #{search.id.slice(0, 8)}
       </p>
       {pollError ? (
         <p
           role="status"
-          className="mt-2 border-t border-line pt-2 font-mono text-[10px] tracking-wider text-accent-text"
+          className="mt-2 border-t border-line pt-2 font-mono text-xs text-accent-text"
         >
           {pollError}
         </p>
@@ -97,20 +97,20 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
       className="mt-6 max-w-3xl border border-ink px-4 py-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">TASK COMPLETED</p>
-        <span className="border border-ink/40 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/70">
+        <p className="font-mono text-xs tracking-[0.2em] text-ink/60">TASK COMPLETED</p>
+        <span className="border border-ink/40 px-2 py-0.5 font-mono text-xs text-ink/70">
           {careerSearchStatusLabel(search.status)}
         </span>
       </div>
       <p className="mt-2 text-sm leading-6 text-ink/75">
         {search.result?.summary ?? "扫描已完成，结果已保存。"}
       </p>
-      <p className="mt-1 font-mono text-[10px] tracking-[0.15em] text-ink/60">
-        #{search.id.slice(0, 8)} · {formatCareerSearchTime(search.created_at)}
+      <p className="mt-1 font-mono text-xs text-ink/60">
+        <span className="tracking-[0.15em]">#{search.id.slice(0, 8)}</span> · {formatCareerSearchTime(search.created_at)}
         {` · ${digestStatus}`}
       </p>
       {search.result ? (
-        <div className="mt-4 grid grid-cols-3 border-y border-line py-3 text-center font-mono text-[10px] tracking-wider text-ink/60">
+        <div className="mt-4 grid grid-cols-3 border-y border-line py-3 text-center font-mono text-xs text-ink/60">
           <p>来源<br /><strong className="text-base text-ink">{search.result.source_count}</strong></p>
           <p>岗位<br /><strong className="text-base text-ink">{search.result.job_count}</strong></p>
           <p>相关岗位<br /><strong className="text-base text-accent-text">{search.result.matched_count}</strong></p>
@@ -118,7 +118,7 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
       ) : null}
       {sources.length ? (
         <div className="mt-4">
-          <p className="font-mono text-[10px] tracking-[0.18em] text-ink/60">SOURCE REPORT</p>
+          <p className="font-mono text-xs tracking-[0.18em] text-ink/60">SOURCE REPORT</p>
           <ul className="mt-2 grid gap-2 sm:grid-cols-2">
             {sources.map((source) => (
               <li key={source.key} className="flex items-center justify-between gap-3 border border-line px-3 py-2 text-xs">
@@ -176,8 +176,8 @@ function FailedPanel({ search, onRetry }: { search: CareerSearch; onRetry: () =>
       className="mt-6 max-w-xl border border-accent px-4 py-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-[10px] tracking-[0.2em] text-accent-text">TASK FAILED</p>
-        <span className="border border-accent/60 px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent-text">
+        <p className="font-mono text-xs tracking-[0.2em] text-accent-text">TASK FAILED</p>
+        <span className="border border-accent/60 px-2 py-0.5 font-mono text-xs text-accent-text">
           {careerSearchStatusLabel(search.status)}
         </span>
       </div>
@@ -188,7 +188,7 @@ function FailedPanel({ search, onRetry }: { search: CareerSearch; onRetry: () =>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-4 inline-flex min-h-11 items-center justify-center border border-ink px-5 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+        className="mt-4 inline-flex min-h-11 items-center justify-center border border-ink px-5 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
       >
         重新扫描 →
       </button>

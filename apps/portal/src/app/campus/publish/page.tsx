@@ -73,7 +73,7 @@ function PublishForm() {
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">
         {editItem ? "编辑单子" : "发布单子"}
       </h1>
-      <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/60">
+      <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-xs text-ink/60">
         发布和接单暂未开放，当前无法提交；开放后即可在这里发布互助单。
       </p>
 
@@ -100,7 +100,7 @@ function PublishForm() {
               <p className={cn("font-display text-xl font-bold", type === t && t === "help" && "text-accent-text")}>
                 {t === "help" ? "发求助单" : "出闲置"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-ink/60">
+              <p className="mt-1 font-mono text-xs text-ink/60">
                 {t === "help" ? "悬赏赏金，找人帮忙" : "一口价转让闲置物品"}
               </p>
             </button>
@@ -109,7 +109,7 @@ function PublishForm() {
 
         {/* 分类 */}
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">分类</label>
+          <label className="mb-1 block font-mono text-xs text-ink/60">分类</label>
           <div className="flex flex-wrap gap-2">
             {CATEGORIES.filter((c) => (type === "sell" ? c.key === "flea" : c.key !== "flea")).map((c) => (
               <button
@@ -128,7 +128,7 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">标题</label>
+          <label className="mb-1 block font-mono text-xs text-ink/60">标题</label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -138,7 +138,7 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">描述</label>
+          <label className="mb-1 block font-mono text-xs text-ink/60">描述</label>
           <textarea
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
@@ -149,7 +149,7 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+          <label className="mb-1 block font-mono text-xs text-ink/60">
             图片（{images.length}/3，≤2MB，可选）
           </label>
           <div className="flex flex-wrap items-start gap-3">
@@ -159,7 +159,7 @@ function PublishForm() {
                 <button
                   type="button"
                   onClick={() => setImages((imgs) => imgs.filter((_, j) => j !== i))}
-                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-[10px] hover:border-accent hover:text-accent-text"
+                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs hover:border-accent hover:text-accent-text"
                   aria-label={`删除图 ${i + 1}`}
                 >
                   ×
@@ -167,7 +167,7 @@ function PublishForm() {
               </div>
             ))}
             {images.length < 3 && (
-              <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-[10px] text-ink/60 transition-colors hover:border-ink hover:text-ink">
+              <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-xs text-ink/60 transition-colors hover:border-ink hover:text-ink">
                 + 上传
                 <input
                   type="file"
@@ -182,7 +182,7 @@ function PublishForm() {
 
         <div data-enter className="grid gap-4 md:grid-cols-3">
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+            <label className="mb-1 block font-mono text-xs text-ink/60">
               {type === "help" ? "赏金（元）" : "价格（元）"}
             </label>
             <input
@@ -194,7 +194,7 @@ function PublishForm() {
             />
           </div>
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">位置</label>
+            <label className="mb-1 block font-mono text-xs text-ink/60">位置</label>
             <input
               value={place}
               onChange={(e) => setPlace(e.target.value)}
@@ -204,7 +204,7 @@ function PublishForm() {
           </div>
           {type === "help" && (
             <div>
-              <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">时限（可选）</label>
+              <label className="mb-1 block font-mono text-xs text-ink/60">时限（可选）</label>
               <input
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
@@ -220,7 +220,7 @@ function PublishForm() {
           type="button"
           disabled
           title="发布暂未开放"
-          className="cursor-not-allowed border border-line px-8 py-3 font-mono text-sm tracking-widest text-ink/40"
+          className="cursor-not-allowed border border-line px-8 py-3 font-mono text-sm text-ink/40"
         >
           {editItem ? "保存修改 →" : "发布 →"}
         </button>

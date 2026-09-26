@@ -408,7 +408,7 @@ export default function CareerProfilePage() {
           </p>
           <Link
             href="/account/membership"
-            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-5 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-6 inline-flex min-h-11 items-center justify-center border border-ink px-5 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             前往会员权益开通
           </Link>
@@ -425,7 +425,7 @@ export default function CareerProfilePage() {
               setState({ kind: "loading" });
               loadProfile();
             }}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             重新加载
           </button>
@@ -442,10 +442,10 @@ export default function CareerProfilePage() {
           >
             <div data-account-career-extraction className="border border-ink/20 px-5 py-6 md:px-6">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                <p className="font-mono text-xs text-ink/60">
                   上传简历 · 自动识别填写（默认方式）
                 </p>
-                <p className="font-mono text-[10px] text-ink/60">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
+                <p className="font-mono text-xs text-ink/60">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
               </div>
               <p className="mt-2 text-sm leading-6 text-ink/60">
                 上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；简历文件在识别完成或失败后即删除，只保留识别出的内容。
@@ -462,7 +462,7 @@ export default function CareerProfilePage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+                  className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
                 >
                   选择简历文件
                 </button>
@@ -471,7 +471,7 @@ export default function CareerProfilePage() {
                     {selectedFile.name}
                   </span>
                 ) : (
-                  <span className="font-mono text-[10px] tracking-[0.15em] text-ink/60">
+                  <span className="font-mono text-xs text-ink/60">
                     未选择文件
                   </span>
                 )}
@@ -479,7 +479,7 @@ export default function CareerProfilePage() {
                   type="button"
                   disabled={!selectedFile || upload.kind === "uploading" || upload.kind === "active"}
                   onClick={() => void uploadResume()}
-                  className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink disabled:cursor-wait disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink disabled:cursor-wait disabled:opacity-50"
                 >
                   {upload.kind === "uploading" ? "上传中…" : "上传并识别"}
                 </button>
@@ -504,7 +504,7 @@ export default function CareerProfilePage() {
             <div className="grid gap-10 border-t border-ink pt-8 md:grid-cols-2">
               <div className="space-y-8 md:col-span-2">
                 <div>
-                  <label htmlFor="career-target-roles" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                  <label htmlFor="career-target-roles" className="mb-1 block font-mono text-xs text-ink/60">
                     目标岗位 / 方向（≤500 字）
                   </label>
                   <textarea
@@ -517,13 +517,13 @@ export default function CareerProfilePage() {
                     placeholder="例如：后端开发、数据分析、产品运营"
                     className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
+                  <p className="mt-1 text-right font-mono text-xs text-ink/60">
                     {form.target_roles.length} / {FIELD_LIMITS.target_roles}
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="career-tech-stack" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                  <label htmlFor="career-tech-stack" className="mb-1 block font-mono text-xs text-ink/60">
                     技术栈关键词（≤1000 字）
                   </label>
                   <textarea
@@ -535,13 +535,13 @@ export default function CareerProfilePage() {
                     placeholder="例如：Go、Vue、PostgreSQL"
                     className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
+                  <p className="mt-1 text-right font-mono text-xs text-ink/60">
                     {form.tech_stack.length} / {FIELD_LIMITS.tech_stack}
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="career-locations" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                  <label htmlFor="career-locations" className="mb-1 block font-mono text-xs text-ink/60">
                     目标城市（≤500 字）
                   </label>
                   <textarea
@@ -553,14 +553,14 @@ export default function CareerProfilePage() {
                     placeholder="例如：郑州、北京、远程"
                     className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
+                  <p className="mt-1 text-right font-mono text-xs text-ink/60">
                     {form.locations.length} / {FIELD_LIMITS.locations}
                   </p>
                 </div>
 
                 <div className="grid gap-8 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="career-job-type" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                    <label htmlFor="career-job-type" className="mb-1 block font-mono text-xs text-ink/60">
                       求职类型
                     </label>
                     <select
@@ -577,7 +577,7 @@ export default function CareerProfilePage() {
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="career-graduation-year" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                    <label htmlFor="career-graduation-year" className="mb-1 block font-mono text-xs text-ink/60">
                       毕业年份（可空）
                     </label>
                     <input
@@ -599,7 +599,7 @@ export default function CareerProfilePage() {
 
                 <div>
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-                    <label htmlFor="career-resume-text" className="block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                    <label htmlFor="career-resume-text" className="block font-mono text-xs text-ink/60">
                       经历摘要（≤4000 字）
                     </label>
                     <button
@@ -613,7 +613,7 @@ export default function CareerProfilePage() {
                         upload.kind === "active"
                       }
                       onClick={() => void suifyResume()}
-                      className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                      className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
                     >
                       {suification.kind === "loading" ? "酥化中…" : "🧀 酥化"}
                     </button>
@@ -628,7 +628,7 @@ export default function CareerProfilePage() {
                     placeholder="简述项目、竞赛或实习经历，用于匹配命中原因说明。不上传文件。"
                     className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
+                  <p className="mt-1 text-right font-mono text-xs text-ink/60">
                     {form.resume_text.length} / {FIELD_LIMITS.resume_text}
                   </p>
                   <p className="mt-2 text-xs leading-5 text-ink/60">
@@ -639,7 +639,7 @@ export default function CareerProfilePage() {
                       data-account-career-suification="preview"
                       className="mt-4 border border-ink px-4 py-4"
                     >
-                      <label htmlFor="career-resume-suification-preview" className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
+                      <label htmlFor="career-resume-suification-preview" className="font-mono text-xs text-ink/60">
                         酥化预览
                       </label>
                       <textarea
@@ -654,14 +654,14 @@ export default function CareerProfilePage() {
                         <button
                           type="button"
                           onClick={() => setSuification({ kind: "idle" })}
-                          className="inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:border-ink"
+                          className="inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
                         >
                           撤销
                         </button>
                         <button
                           type="button"
                           onClick={applySuification}
-                          className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink"
+                          className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
                         >
                           应用
                         </button>
@@ -672,7 +672,7 @@ export default function CareerProfilePage() {
                     <button
                       type="button"
                       onClick={restoreSuificationOriginal}
-                      className="mt-4 inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:border-ink"
+                      className="mt-4 inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
                     >
                       恢复原文
                     </button>
@@ -697,7 +697,7 @@ export default function CareerProfilePage() {
                     className="mt-1 size-4 shrink-0 accent-ink"
                   />
                   <div>
-                    <label htmlFor="career-email-notification" className="block font-mono text-[10px] tracking-[0.25em] text-ink/60">
+                    <label htmlFor="career-email-notification" className="block font-mono text-xs text-ink/60">
                       扫描结果邮件通知
                     </label>
                     <p className="mt-1 text-sm leading-6 text-ink/60">
@@ -723,11 +723,11 @@ export default function CareerProfilePage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+                className="inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
               >
                 {saving ? "保存中…" : "保存画像"}
               </button>
-              <p className="font-mono text-[10px] tracking-[0.15em] text-ink/60">
+              <p className="font-mono text-xs text-ink/60">
                 画像保存在你的账户中，换设备登录也能读取
               </p>
             </div>

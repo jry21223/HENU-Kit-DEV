@@ -148,7 +148,7 @@ export default function MarketPage() {
           { label: "在架单子", value: loadState === "ready" ? openCount : null, busy: loadState === "loading" },
           { label: "已完成单子", value: loadState === "ready" ? doneCount : null, busy: loadState === "loading" },
         ]}
-        fig="FIG.04 交接 / HANDOVER"
+        fig={{ code: "FIG.04", name: "交接", en: "HANDOVER" }}
         scene={<SceneHandshake />}
         compactOnMobile
       />

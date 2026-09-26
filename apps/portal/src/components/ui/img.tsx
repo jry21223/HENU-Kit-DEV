@@ -39,8 +39,8 @@ export default function Img({
         aria-label={alt}
       >
         {/* 图块本身透明，常叠在列表缩略图框的浅灰底（4% 墨色）上：灰字至少 ink/65。 */}
-        <span className="font-mono text-[10px] tracking-[0.3em] text-ink/65">
-          {label} / 暂无图片
+        <span className="font-mono text-xs text-ink/65">
+          <span className="tracking-[0.3em]">{label}</span> / 暂无图片
         </span>
       </div>
     );

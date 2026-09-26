@@ -116,7 +116,7 @@ export default function SectionPractice() {
             <button
               type="button"
               onClick={() => redirectToLogin("/practice")}
-              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink"
+              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
             >
               登录查看
             </button>
@@ -131,7 +131,7 @@ export default function SectionPractice() {
             <button
               type="button"
               onClick={retry}
-              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:bg-paper hover:text-ink"
+              className="mt-4 border border-paper/40 px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
             >
               重试
             </button>
@@ -195,7 +195,7 @@ export default function SectionPractice() {
           <p className="mt-6 max-w-sm text-sm leading-7 text-paper/70">
             按科目找到题库，选一种方式开始练习。每题作答后显示参考答案，题目附有解析的一并展示。
           </p>
-          <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-paper/60">
+          <ul className="mt-6 space-y-2 font-mono text-xs text-paper/60">
             {FEATURES.map((f) => (
               <li key={f}>
                 <span aria-hidden className="mr-2 text-accent">+</span>
@@ -209,8 +209,8 @@ export default function SectionPractice() {
 
           {/* 掌握度进度条（真实作答事实聚合） */}
           <div className="mt-12 space-y-5">
-            <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
-              MASTERY / 题库掌握度
+            <p className="font-mono text-xs text-paper/50">
+              <span className="tracking-[0.3em]">MASTERY</span> / 题库掌握度
             </p>
             {renderMastery()}
           </div>
@@ -218,8 +218,10 @@ export default function SectionPractice() {
 
         {/* 右侧题目解析示例面板 */}
         <div data-terminal className="w-full self-center border border-line-dark bg-ink/60">
-          <div className="flex items-center justify-between border-b border-line-dark px-4 py-2.5 font-mono text-[10px] tracking-[0.25em] text-paper/50">
-            <span>SAMPLE / 解析示例</span>
+          <div className="flex items-center justify-between border-b border-line-dark px-4 py-2.5 font-mono text-xs text-paper/50">
+            <span>
+              <span className="tracking-[0.25em]">SAMPLE</span> / 解析示例
+            </span>
             <span className="flex gap-1.5">
               <i className="h-2 w-2 border border-paper/40" />
               <i className="h-2 w-2 border border-paper/40" />
@@ -227,14 +229,16 @@ export default function SectionPractice() {
             </span>
           </div>
           <div className="p-5">
-            <p className="mb-3 font-mono text-[10px] tracking-[0.25em] text-accent">解析 / EXPLAIN</p>
+            <p className="mb-3 font-mono text-xs text-accent">
+              解析 / <span className="tracking-[0.25em]">EXPLAIN</span>
+            </p>
             <p
               ref={textRef}
               className="min-h-40 whitespace-pre-line font-mono text-[13px] leading-7 text-paper/85"
             >
               {TYPE_TEXT}
             </p>
-            <p className="mt-4 border-t border-line-dark pt-3 font-mono text-[10px] tracking-wider text-paper/50">
+            <p className="mt-4 border-t border-line-dark pt-3 font-mono text-xs text-paper/50">
               示例 · 解析由题库提供，部分题目暂无解析
             </p>
           </div>
