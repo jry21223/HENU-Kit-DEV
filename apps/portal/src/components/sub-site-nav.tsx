@@ -83,7 +83,7 @@ export default function SubSiteNav({
               const active = index === activeIndex;
               const content = (
                 <>
-                  <span className={cn("mr-1", active ? "text-accent" : "text-ink/30")}>{tab.index}</span>
+                  <span className={cn("mr-1", active ? "text-accent-text" : "text-ink/60")}>{tab.index}</span>
                   {tab.label}
                   <span
                     aria-hidden
@@ -103,7 +103,7 @@ export default function SubSiteNav({
                     data-tab-unavailable={active ? undefined : true}
                     className={cn(
                       "relative shrink-0 py-1 font-mono text-xs tracking-widest md:shrink",
-                      active ? "text-ink" : "cursor-not-allowed text-ink/50"
+                      active ? "text-ink" : "cursor-not-allowed text-ink/60"
                     )}
                   >
                     {content}
@@ -121,7 +121,7 @@ export default function SubSiteNav({
                   className={cn(
                     // 只在手机的横向滑动行里不收缩；md 起标签行不滑动，放不下时允许折行，页面不横向溢出。
                     "group inline-flex min-h-11 shrink-0 items-center font-mono text-xs tracking-widest transition-colors md:shrink",
-                    active ? "text-ink" : "text-ink/50 hover:text-ink"
+                    active ? "text-ink" : "text-ink/60 hover:text-ink"
                   )}
                 >
                   <span className="relative py-1">{content}</span>

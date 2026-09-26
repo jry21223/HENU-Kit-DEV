@@ -9,7 +9,7 @@ export default function ShelfPage() {
   return (
     <main data-library-shelf-state="unavailable" className="mx-auto max-w-2xl px-5 py-10 md:px-8">
       <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        <span className="text-accent">L-02</span>
+        <span className="text-accent-text">L-02</span>
         <span className="mx-2">/</span>
         MY SHELF
       </p>

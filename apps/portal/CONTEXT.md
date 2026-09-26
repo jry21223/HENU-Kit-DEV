@@ -71,7 +71,7 @@ zero.
 
 ## Design language
 
-"Industrial Minimal" — warm paper white (#F2F0EA), deep ink text (#161513), safety orange accent (#FF4D00). The colours come from `packages/design-tokens`; Portal's Tailwind theme only points at its `--hk-*` variables. The safety orange is for fills and text on ink (on paper it is 2.92:1, below even the 3:1 large-text minimum); orange text of any size on light surfaces uses the darker text-safe accent (`--hk-accent-text`, #BB3800), and text on an orange fill is ink. Typography: Space Grotesk (display), IBM Plex Mono (labels), system Chinese fonts (body). Visual elements: 1px structural lines, crosshair alignment marks, mono numbering, engineering blueprint grid backgrounds.
+"Industrial Minimal" — warm paper white (#F2F0EA), deep ink text (#161513), safety orange accent (#FF4D00). The colours come from `packages/design-tokens`; Portal's Tailwind theme only points at its `--hk-*` variables. The safety orange is for fills and text on ink (on paper it is 2.92:1, below even the 3:1 large-text minimum); orange text of any size on light surfaces uses the darker text-safe accent (`--hk-accent-text`, #BB3800), and text on an orange fill is ink. Grey text is at least ink/60 (ink/65 over a 5% tint) and paper text on ink at least paper/50; lighter greys are reserved for `aria-hidden` decoration and disabled controls. Typography: Space Grotesk (display), IBM Plex Mono (labels), system Chinese fonts (body). Visual elements: 1px structural lines, crosshair alignment marks, mono numbering, engineering blueprint grid backgrounds.
 
 ## Tech stack
 

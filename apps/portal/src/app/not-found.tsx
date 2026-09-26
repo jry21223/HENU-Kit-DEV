@@ -37,9 +37,9 @@ export default function NotFound() {
             <li key={entry.href}>
               <Link
                 href={entry.href}
-                className="inline-flex min-h-11 items-center font-mono text-sm tracking-widest text-ink/70 transition-colors hover:text-accent"
+                className="inline-flex min-h-11 items-center font-mono text-sm tracking-widest text-ink/70 transition-colors hover:text-accent-text"
               >
-                <span className="mr-1.5 text-accent">{entry.index}</span>
+                <span className="mr-1.5 text-accent-text">{entry.index}</span>
                 {entry.label}
               </Link>
             </li>

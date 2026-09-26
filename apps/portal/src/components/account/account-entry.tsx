@@ -34,11 +34,12 @@ export default function AccountEntry({
         href="/account/login"
         onClick={onClick}
         className={cn(
-          "inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-accent",
+          "inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-accent-text",
           className
         )}
       >
-        登录<span className="text-ink/30">/</span>注册
+        {/* 首页页头是 95% 纸白，压在墨色的刷题模块上会变深，分隔符至少 ink/65。 */}
+        登录<span className="text-ink/65">/</span>注册
       </Link>
     );
   }
@@ -50,7 +51,7 @@ export default function AccountEntry({
       // 紧凑模式只剩 28px 的头像块：向四周各借 8px 撑满 44px 点击区，占位和位置不变。
       className={cn("group flex min-h-11 items-center gap-2", compact && "-m-2 p-2", className)}
     >
-      <span className="flex h-7 w-7 items-center justify-center border border-ink bg-paper font-display text-sm font-bold transition-colors group-hover:border-accent group-hover:text-accent">
+      <span className="flex h-7 w-7 items-center justify-center border border-ink bg-paper font-display text-sm font-bold transition-colors group-hover:border-accent group-hover:text-accent-text">
         {user.name.slice(0, 1)}
       </span>
       {!compact && (

@@ -115,7 +115,7 @@ export default function Hero() {
       <span aria-hidden className="absolute left-6 top-24 font-mono text-lg text-ink/40">+</span>
       <span aria-hidden className="absolute right-6 top-24 font-mono text-lg text-ink/40">+</span>
       <span aria-hidden className="absolute bottom-24 left-6 font-mono text-lg text-ink/40">+</span>
-      <span aria-hidden className="absolute bottom-24 right-6 font-mono text-lg text-accent">+</span>
+      <span aria-hidden className="absolute bottom-24 right-6 font-mono text-lg text-accent-text">+</span>
 
       {/* 3D 场景 / 静态替代：常驻 Hero，不做滚动淡出。WebGL 只对桌面端渲染，移动端统一用静态图纸 SVG */}
       <div
@@ -191,7 +191,7 @@ export default function Hero() {
         </nav>
 
         <div data-hero-gridline className="enter-grow-x mt-8 h-px w-full max-w-md bg-line" style={{ animationDelay: "0.74s" }} />
-        <p className="mt-3 font-mono text-[10px] tracking-[0.3em] text-ink/40">
+        <p className="mt-3 font-mono text-[10px] tracking-[0.3em] text-ink/60">
           SCROLL / 向下滚动查看模块 01—05
         </p>
       </div>

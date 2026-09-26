@@ -198,7 +198,7 @@ export default function SectionPractice() {
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-paper/60">
             {FEATURES.map((f) => (
               <li key={f}>
-                <span className="mr-2 text-accent">+</span>
+                <span aria-hidden className="mr-2 text-accent">+</span>
                 {f}
               </li>
             ))}
@@ -209,7 +209,7 @@ export default function SectionPractice() {
 
           {/* 掌握度进度条（真实作答事实聚合） */}
           <div className="mt-12 space-y-5">
-            <p className="font-mono text-[10px] tracking-[0.3em] text-paper/40">
+            <p className="font-mono text-[10px] tracking-[0.3em] text-paper/50">
               MASTERY / 题库掌握度
             </p>
             {renderMastery()}
@@ -234,7 +234,7 @@ export default function SectionPractice() {
             >
               {TYPE_TEXT}
             </p>
-            <p className="mt-4 border-t border-line-dark pt-3 font-mono text-[10px] tracking-wider text-paper/40">
+            <p className="mt-4 border-t border-line-dark pt-3 font-mono text-[10px] tracking-wider text-paper/50">
               示例 · 解析由题库提供，部分题目暂无解析
             </p>
           </div>

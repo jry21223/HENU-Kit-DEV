@@ -189,6 +189,8 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `globals.css` 不另写 token 里已有的色值、选中文字是橙底墨色字；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
 
+灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，部署流水线目前不跑这一组）。两处共用 `tests/support/color-contrast.ts`。
+
 语言元素：1px 结构线、十字对位标记、mono 编号、工程图纸网格、大小字强对比排版。
 
 ## 动效约定

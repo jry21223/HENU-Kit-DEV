@@ -176,7 +176,7 @@ export default function CareerReadyView({
       <div className="grid gap-10 lg:grid-cols-5">
         <div className="lg:col-span-3">
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">R-01</span>
+            <span className="text-accent-text">R-01</span>
             <span className="mx-2">/</span>
             READY TO SCAN
           </p>
@@ -186,19 +186,19 @@ export default function CareerReadyView({
 
           <dl data-enter className="mt-8 grid gap-x-10 gap-y-5 border-t border-line pt-6 sm:grid-cols-2">
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">目标岗位</dt>
+              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/60">目标岗位</dt>
               <dd className="mt-1.5 text-sm leading-6">{profile.target_roles ?? "—"}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">技术栈</dt>
+              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/60">技术栈</dt>
               <dd className="mt-1.5 text-sm leading-6">{profile.tech_stack || "—"}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">目标城市</dt>
+              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/60">目标城市</dt>
               <dd className="mt-1.5 text-sm leading-6">{profile.locations || "—"}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">求职类型</dt>
+              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/60">求职类型</dt>
               <dd className="mt-1.5 text-sm leading-6">
                 {profile.job_type ? JOB_TYPE_LABELS[profile.job_type] : "不限"}
               </dd>
@@ -254,10 +254,10 @@ export default function CareerReadyView({
           <WorkRadar compact status={radarStatus} matched={radarMatched} className="mb-6" />
 
           <div className="border border-line p-5">
-            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.22em] text-ink/50">
+            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.22em] text-ink/60">
               <span>SCAN HISTORY</span>
               {/* 一行小字只有 15px 高：上下各借 14.5px 撑满 44px 点击区，标题行高度不变。 */}
-              <Link href="/career/history" className="-my-[14.5px] inline-flex min-h-11 items-center transition-colors hover:text-accent">
+              <Link href="/career/history" className="-my-[14.5px] inline-flex min-h-11 items-center transition-colors hover:text-accent-text">
                 全部历史 →
               </Link>
             </div>
@@ -271,7 +271,7 @@ export default function CareerReadyView({
                     {careerSearchStatusLabel(displayedLatest.status)}
                   </span>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-ink/55">
+                <p className="mt-2 text-xs leading-5 text-ink/60">
                   {formatCareerSearchTime(displayedLatest.created_at)}
                   {careerDigestStatusLabel(displayedLatest)
                     ? ` · ${careerDigestStatusLabel(displayedLatest)}`
@@ -279,7 +279,7 @@ export default function CareerReadyView({
                 </p>
               </div>
             ) : (
-              <p className="mt-4 border-t border-line pt-4 text-sm leading-6 text-ink/55">
+              <p className="mt-4 border-t border-line pt-4 text-sm leading-6 text-ink/60">
                 还没有扫描记录，发起第一次扫描后在此查看历史。
               </p>
             )}

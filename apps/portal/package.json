@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run src/app/error-pages.test.tsx src/app/public-copy.test.ts src/app/design-tokens.test.ts src/components/data-state.test.tsx src/components/detail-loading.test.tsx src/components/ui/img.test.tsx src/app/search-discovery.test.ts src/lib/auth/account-center.test.ts src/lib/auth/display-name.test.ts src/lib/auth/store.test.ts src/lib/api/account-portfolio.test.ts src/lib/api/membership-order.test.ts src/lib/api/practice-session.test.ts src/lib/api/favorites.test.ts src/lib/api/env.test.ts src/lib/api/portal-error.test.ts src/lib/food/ranking.test.ts src/lib/food/detail.test.ts src/lib/food/submit.test.ts src/lib/food/myposts.test.ts src/lib/food/gateway.test.ts src/lib/career/gateway.test.ts src/lib/career/page-state.test.ts src/lib/career/career-scan-state.test.ts src/lib/career/career-extraction-state.test.ts src/lib/career/result.test.ts src/lib/api/career-profile.test.ts src/lib/library/material-types.test.ts src/lib/library/material-title.test.ts src/lib/navigation/parent-route.test.ts src/lib/navigation/scroll-memory.test.ts src/lib/navigation/gesture-intent.test.ts",
     "test:unit": "node --experimental-strip-types --test src/components/practice/bank-hero-mastery.test.mjs src/components/account/account-console-boundary.test.mjs",
-    "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts tests/quizcraft-catalog-dark.spec.ts tests/library-owner-stats.spec.ts tests/homepage-entry-ux.spec.ts tests/homepage-mobile-menu.spec.ts tests/library-discovery-ux.spec.ts tests/site-legal.spec.ts tests/fallback-pages.spec.ts tests/page-titles.spec.ts tests/error-messages.spec.ts tests/empty-state-actions.spec.ts tests/sub-site-nav.spec.ts tests/touch-targets.spec.ts tests/first-screen-entrance.spec.ts tests/module-data-requests.spec.ts tests/image-loading.spec.ts tests/ui-polish.spec.ts tests/readability.spec.ts",
+    "test:e2e:responsive": "playwright test tests/responsive.spec.ts tests/practice-leaderboard.spec.ts tests/quizcraft-catalog-dark.spec.ts tests/library-owner-stats.spec.ts tests/homepage-entry-ux.spec.ts tests/homepage-mobile-menu.spec.ts tests/library-discovery-ux.spec.ts tests/site-legal.spec.ts tests/fallback-pages.spec.ts tests/page-titles.spec.ts tests/error-messages.spec.ts tests/empty-state-actions.spec.ts tests/sub-site-nav.spec.ts tests/touch-targets.spec.ts tests/first-screen-entrance.spec.ts tests/module-data-requests.spec.ts tests/image-loading.spec.ts tests/ui-polish.spec.ts tests/readability.spec.ts tests/color-contrast.spec.ts",
     "test:e2e:food": "playwright test --workers=1 tests/food-ranking.spec.ts tests/food-detail.spec.ts tests/food-publish.spec.ts tests/food-scroll-restoration.spec.ts",
     "test:e2e:practice": "playwright test tests/practice-session.spec.ts tests/practice-swipe.spec.ts",
     "test:e2e:navigation": "playwright test tests/homepage-snap-scroll.spec.ts tests/gesture-intent-snap.spec.ts tests/wheel-burst-snap.spec.ts tests/sub-site-back-navigation.spec.ts tests/latent-go-origin.spec.ts",
@@ -39,6 +39,7 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@henukit/oauth-continuation-e2e": "workspace:*",
     "@playwright/test": "1.61.0",
     "@tailwindcss/postcss": "^4",
@@ -49,6 +50,7 @@
     "@types/three": "^0.185.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
+    "playwright-core": "1.61.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "4.1.10"

@@ -170,7 +170,7 @@ export default function MarketPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索：快递 / 键盘 / 占座"
-            className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-accent"
+            className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-accent"
           />
           {/* 两组筛选都以“全部”开头：各带一个看得见的组名，免得分不清。 */}
           <div role="group" aria-labelledby="campus-filter-type" className="flex flex-wrap items-center gap-2">
@@ -187,7 +187,7 @@ export default function MarketPage() {
                   "min-h-11 border px-3 font-mono text-xs transition-colors",
                   type === t
                     ? t === "help"
-                      ? "border-accent bg-accent text-paper"
+                      ? "border-accent bg-accent text-ink"
                       : "border-ink bg-ink text-paper"
                     : "border-line text-ink/60 hover:border-ink/40"
                 )}

@@ -378,8 +378,8 @@ export default function CareerProfilePage() {
   return (
     <div>
       <section data-enter className="border-b border-ink pb-5">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/55">
-          <span className="text-accent">A-08</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent-text">A-08</span>
           <span className="mx-2">/</span>
           CAREER PROFILE
         </p>
@@ -393,15 +393,15 @@ export default function CareerProfilePage() {
         <section
           data-account-career-profile-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          CAREER PROFILE LOADING<span className="animate-pulse text-accent">…</span>
+          CAREER PROFILE LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
       {state.kind === "locked" ? (
         <section data-account-career-profile-state="locked" className="mt-6 border border-accent px-5 py-8">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">LIFETIME REQUIRED</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">LIFETIME REQUIRED</p>
           <h2 className="mt-3 font-display text-2xl font-bold tracking-tight">求职雷达需要终身会员</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/70">
             求职画像、匹配扫描与结果简报属于终身会员权益；免费会员无法查看或编辑画像。
@@ -417,7 +417,7 @@ export default function CareerProfilePage() {
 
       {state.kind === "error" ? (
         <section data-account-career-profile-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">CAREER PROFILE UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">CAREER PROFILE UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <button
             type="button"
@@ -445,9 +445,9 @@ export default function CareerProfilePage() {
                 <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
                   上传简历 · 自动识别填写（默认方式）
                 </p>
-                <p className="font-mono text-[10px] text-ink/40">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
+                <p className="font-mono text-[10px] text-ink/60">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
               </div>
-              <p className="mt-2 text-sm leading-6 text-ink/55">
+              <p className="mt-2 text-sm leading-6 text-ink/60">
                 上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；简历文件在识别完成或失败后即删除，只保留识别出的内容。
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -471,7 +471,7 @@ export default function CareerProfilePage() {
                     {selectedFile.name}
                   </span>
                 ) : (
-                  <span className="font-mono text-[10px] tracking-[0.15em] text-ink/35">
+                  <span className="font-mono text-[10px] tracking-[0.15em] text-ink/60">
                     未选择文件
                   </span>
                 )}
@@ -504,7 +504,7 @@ export default function CareerProfilePage() {
             <div className="grid gap-10 border-t border-ink pt-8 md:grid-cols-2">
               <div className="space-y-8 md:col-span-2">
                 <div>
-                  <label htmlFor="career-target-roles" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                  <label htmlFor="career-target-roles" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                     目标岗位 / 方向（≤500 字）
                   </label>
                   <textarea
@@ -515,15 +515,15 @@ export default function CareerProfilePage() {
                     maxLength={FIELD_LIMITS.target_roles}
                     rows={3}
                     placeholder="例如：后端开发、数据分析、产品运营"
-                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/40">
+                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
                     {form.target_roles.length} / {FIELD_LIMITS.target_roles}
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="career-tech-stack" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                  <label htmlFor="career-tech-stack" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                     技术栈关键词（≤1000 字）
                   </label>
                   <textarea
@@ -533,15 +533,15 @@ export default function CareerProfilePage() {
                     maxLength={FIELD_LIMITS.tech_stack}
                     rows={3}
                     placeholder="例如：Go、Vue、PostgreSQL"
-                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/40">
+                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
                     {form.tech_stack.length} / {FIELD_LIMITS.tech_stack}
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="career-locations" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                  <label htmlFor="career-locations" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                     目标城市（≤500 字）
                   </label>
                   <textarea
@@ -551,16 +551,16 @@ export default function CareerProfilePage() {
                     maxLength={FIELD_LIMITS.locations}
                     rows={2}
                     placeholder="例如：郑州、北京、远程"
-                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/40">
+                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
                     {form.locations.length} / {FIELD_LIMITS.locations}
                   </p>
                 </div>
 
                 <div className="grid gap-8 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="career-job-type" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                    <label htmlFor="career-job-type" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                       求职类型
                     </label>
                     <select
@@ -577,7 +577,7 @@ export default function CareerProfilePage() {
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="career-graduation-year" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                    <label htmlFor="career-graduation-year" className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                       毕业年份（可空）
                     </label>
                     <input
@@ -592,14 +592,14 @@ export default function CareerProfilePage() {
                       }}
                       maxLength={4}
                       placeholder="例如 2027"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                   </div>
                 </div>
 
                 <div>
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-                    <label htmlFor="career-resume-text" className="block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+                    <label htmlFor="career-resume-text" className="block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                       经历摘要（≤4000 字）
                     </label>
                     <button
@@ -626,12 +626,12 @@ export default function CareerProfilePage() {
                     maxLength={FIELD_LIMITS.resume_text}
                     rows={6}
                     placeholder="简述项目、竞赛或实习经历，用于匹配命中原因说明。不上传文件。"
-                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
                   />
-                  <p className="mt-1 text-right font-mono text-[10px] text-ink/40">
+                  <p className="mt-1 text-right font-mono text-[10px] text-ink/60">
                     {form.resume_text.length} / {FIELD_LIMITS.resume_text}
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-ink/45">
+                  <p className="mt-2 text-xs leading-5 text-ink/60">
                     娱乐功能。点击后，当前经历摘要会发送给 HENU Kit 配置的外部 AI 模型服务。HENU Kit 仅为重试在 Redis 保留草稿最多 10 分钟且不自动写入画像；模型服务可能按其自身政策处理请求数据。应用前请逐项核对事实。
                   </p>
                   {suification.kind === "preview" ? (
@@ -639,7 +639,7 @@ export default function CareerProfilePage() {
                       data-account-career-suification="preview"
                       className="mt-4 border border-ink px-4 py-4"
                     >
-                      <label htmlFor="career-resume-suification-preview" className="font-mono text-[10px] tracking-[0.2em] text-ink/55">
+                      <label htmlFor="career-resume-suification-preview" className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
                         酥化预览
                       </label>
                       <textarea
@@ -700,7 +700,7 @@ export default function CareerProfilePage() {
                     <label htmlFor="career-email-notification" className="block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                       扫描结果邮件通知
                     </label>
-                    <p className="mt-1 text-sm leading-6 text-ink/55">
+                    <p className="mt-1 text-sm leading-6 text-ink/60">
                       开启后，求职雷达扫描完成时向当前账户邮箱发送结果简报；关闭后仅站内查看。
                     </p>
                   </div>
@@ -727,7 +727,7 @@ export default function CareerProfilePage() {
               >
                 {saving ? "保存中…" : "保存画像"}
               </button>
-              <p className="font-mono text-[10px] tracking-[0.15em] text-ink/40">
+              <p className="font-mono text-[10px] tracking-[0.15em] text-ink/60">
                 画像保存在你的账户中，换设备登录也能读取
               </p>
             </div>

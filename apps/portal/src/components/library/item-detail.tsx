@@ -54,17 +54,17 @@ export default function ItemDetail({ id }: { id: string }) {
       <div className="gap-10 md:flex">
         {/* 封面：只标类型与科目，完整标题留给右侧 H1。 */}
         <div data-enter className="bg-blueprint relative flex h-72 w-full shrink-0 flex-col justify-between border border-ink p-5 md:w-64">
-          <span className="font-mono text-[10px] tracking-[0.3em] text-ink/50">{t.code}</span>
+          <span aria-hidden className="font-mono text-[10px] tracking-[0.3em] text-ink/50">{t.code}</span>
           <div>
             <p className="font-display text-2xl font-bold leading-snug">{t.name}</p>
-            <p className="mt-2 break-words font-mono text-[10px] tracking-wider text-ink/50">{material.subject}</p>
+            <p className="mt-2 break-words font-mono text-[10px] tracking-wider text-ink/60">{material.subject}</p>
           </div>
         </div>
 
         {/* 元信息 + 操作 */}
         <div className="mt-8 min-w-0 flex-1 md:mt-0">
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">{t.code}</span>
+            <span className="text-accent-text">{t.code}</span>
             <span className="mx-2">/</span>
             {t.name} · {material.subject}
           </p>
@@ -72,10 +72,10 @@ export default function ItemDetail({ id }: { id: string }) {
             {title}
           </h1>
           <dl data-enter className="mt-3 text-xs leading-6 text-ink/60">
-            <dt className="font-mono text-[10px] tracking-widest text-ink/40">原始标题</dt>
+            <dt className="font-mono text-[10px] tracking-widest text-ink/60">原始标题</dt>
             <dd className="break-words">{material.title}</dd>
           </dl>
-          <p data-enter className="mt-3 font-mono text-[11px] tracking-wider text-ink/50">
+          <p data-enter className="mt-3 font-mono text-[11px] tracking-wider text-ink/60">
             {material.author}
             {material.rating !== undefined ? ` · ★ ${material.rating.toFixed(1)}` : ""}
             {` · ↓ ${material.downloads}`}
@@ -90,11 +90,11 @@ export default function ItemDetail({ id }: { id: string }) {
           {/* 目录 */}
           {material.toc.length > 0 && (
             <div data-enter className="mt-6 max-w-xl">
-              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">CONTENTS / 目录</p>
+              <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">CONTENTS / 目录</p>
               <ul className="mt-2 border-t border-line">
                 {toc.map((c, i) => (
                   <li key={i} className="flex gap-3 border-b border-line py-2 font-mono text-xs text-ink/70">
-                    <span className="text-ink/30">{String(i + 1).padStart(2, "0")}</span>
+                    <span className="text-ink/60">{String(i + 1).padStart(2, "0")}</span>
                     {c}
                   </li>
                 ))}
@@ -103,7 +103,7 @@ export default function ItemDetail({ id }: { id: string }) {
                 <button
                   type="button"
                   onClick={() => setTocOpen((v) => !v)}
-                  className="mt-2 font-mono text-[10px] tracking-widest text-ink/50 hover:text-accent"
+                  className="mt-2 font-mono text-[10px] tracking-widest text-ink/60 hover:text-accent-text"
                 >
                   {tocOpen ? "收起 −" : `展开全部 ${material.toc.length} 节 +`}
                 </button>
@@ -115,14 +115,14 @@ export default function ItemDetail({ id }: { id: string }) {
           <div data-enter className="mt-8 flex flex-wrap items-center gap-3">
             {free ? (
               !material.downloadAvailable ? (
-                <p className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55">
+                <p className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/60">
                   下载即将开放
                 </p>
               ) : null
             ) : (
                 <p
                   data-library-purchase-state="unavailable"
-                  className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/55"
+                  className="border border-ink/30 px-6 py-3 font-mono text-sm tracking-widest text-ink/60"
                 >
                   积分兑换暂未开放
                 </p>
@@ -131,7 +131,7 @@ export default function ItemDetail({ id }: { id: string }) {
               <MaterialDownloadButton
                 materialId={material.id}
                 label={`下载资料 ↓${material.fileSize ? `（${formatBytes(material.fileSize)}）` : ""}`}
-                className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-wait disabled:opacity-60"
+                className="border border-ink bg-ink px-7 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink disabled:cursor-wait disabled:opacity-60"
               />
             )}
           </div>

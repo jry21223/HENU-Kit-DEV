@@ -218,7 +218,7 @@ export default function BankHero({
             className="enter-rise font-mono text-xs tracking-[0.3em] text-ink/60"
             style={{ animationDelay: "0.05s" }}
           >
-            <span className="text-accent">01</span>
+            <span className="text-accent-text">01</span>
             <span className="mx-2">/</span>
             QUESTION BANK
           </p>
@@ -244,14 +244,14 @@ export default function BankHero({
             className="enter-rise mt-5 w-full max-w-md lg:mt-8"
             style={{ animationDelay: "0.2s" }}
           >
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
               SEARCH / 搜索科目
             </label>
             <input
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="如：数据结构 / 高等数学"
-              className="h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/30 focus:border-accent"
+              className="h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-accent"
             />
           </div>
 
@@ -261,7 +261,7 @@ export default function BankHero({
             style={{ animationDelay: "0.25s" }}
           >
             <div className="border border-line px-4 py-3">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
                 已确认作答
               </p>
               <p className="mt-1 font-display text-3xl font-bold tabular-nums">
@@ -269,7 +269,7 @@ export default function BankHero({
               </p>
             </div>
             <div className="border border-line px-4 py-3">
-              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/40">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
                 正确率
               </p>
               <p className="mt-1 font-display text-3xl font-bold tabular-nums">
@@ -278,7 +278,7 @@ export default function BankHero({
             </div>
             <p
               data-testid="practice-hero-stats-state"
-              className="col-span-2 font-mono text-[10px] leading-5 text-ink/50"
+              className="col-span-2 font-mono text-[10px] leading-5 text-ink/60"
             >
               {stateMessage}
             </p>
@@ -295,14 +295,15 @@ export default function BankHero({
           </span>
           <span
             aria-hidden
-            className="absolute right-4 top-4 z-10 font-mono text-accent"
+            className="absolute right-4 top-4 z-10 font-mono text-accent-text"
           >
             +
           </span>
 
           <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20">
-            <ul className="border border-line bg-paper/85 px-2.5 py-1.5 backdrop-blur-sm">
-              <li className="py-1 font-mono text-[10px] leading-5 tracking-wide text-ink/50">
+            {/* 图例压在 3D 知识体上，底色不透明：半透明时底下的深色块会把小字的对比度拉到 AA 以下。 */}
+            <ul className="border border-line bg-paper px-2.5 py-1.5">
+              <li className="py-1 font-mono text-[10px] leading-5 tracking-wide text-ink/60">
                 {figureMessage}
               </li>
               {ringSubjects.map((s, i) => {
@@ -313,8 +314,8 @@ export default function BankHero({
                     key={s.label}
                     className="flex items-center gap-2 py-0.5 font-mono text-[10px] tracking-wide"
                   >
-                    <span className="w-5 shrink-0 text-ink/35">R{i + 1}</span>
-                    <span className="w-16 shrink-0 truncate text-ink/50">
+                    <span className="w-5 shrink-0 text-ink/60">R{i + 1}</span>
+                    <span className="w-16 shrink-0 truncate text-ink/60">
                       {s.label}
                     </span>
                     <span
@@ -332,7 +333,7 @@ export default function BankHero({
                     <span
                       className={cn(
                         "w-9 shrink-0 text-right tabular-nums",
-                        weak ? "text-accent" : "text-ink/65"
+                        weak ? "text-accent-text" : "text-ink/65"
                       )}
                     >
                       {t}%
@@ -341,7 +342,7 @@ export default function BankHero({
                 );
               })}
               {ringSubjects.length > 0 ? (
-                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/40">
+                <li className="mt-1 flex justify-between border-t border-line pt-1 font-mono text-[10px] text-ink/60">
                   <span>
                     核 {mastery.accuracy}% · 连续 {mastery.streakDays}d · 块{" "}
                     {cubeCount}
@@ -363,8 +364,8 @@ export default function BankHero({
       </div>
 
       <div className="relative border-t border-line py-2.5">
-        <div className="mx-auto flex max-w-site items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/50 md:px-8">
-          <span className="text-accent">DATA</span>
+        <div className="mx-auto flex max-w-site items-center gap-3 px-5 font-mono text-[10px] tracking-[0.2em] text-ink/60 md:px-8">
+          <span className="text-accent-text">DATA</span>
           <span aria-hidden>+</span>
           <span className="tracking-normal">来自你的答题记录</span>
         </div>

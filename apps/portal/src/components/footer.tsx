@@ -104,7 +104,7 @@ export default function Footer() {
                   className="group inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/70 transition-colors hover:text-ink"
                 >
                   <span className="relative">
-                    <span className="mr-1.5 text-accent">{link.index}</span>
+                    <span className="mr-1.5 text-accent-text">{link.index}</span>
                     {link.label}
                     <span
                       aria-hidden
@@ -114,7 +114,7 @@ export default function Footer() {
                 </Link>
               ))}
             </nav>
-            <p className="font-mono text-xs tracking-widest text-ink/50">
+            <p className="font-mono text-xs tracking-widest text-ink/60">
               © {new Date().getFullYear()} henukit
             </p>
           </div>

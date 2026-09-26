@@ -21,7 +21,7 @@ export default function SectionHeading({
           dark ? "text-paper/60" : "text-ink/60"
         )}
       >
-        <span className="text-accent">{index}</span>
+        <span className={dark ? "text-accent" : "text-accent-text"}>{index}</span>
         <span className="mx-2">/</span>
         {en}
       </p>

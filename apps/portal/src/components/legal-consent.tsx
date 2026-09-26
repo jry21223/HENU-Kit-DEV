@@ -23,7 +23,7 @@ export default function LegalConsent({
             href={link.href}
             target="_blank"
             rel="noopener"
-            className="text-ink underline underline-offset-4 hover:text-accent"
+            className="text-ink underline underline-offset-4 hover:text-accent-text"
           >
             《{link.label}》
           </Link>

@@ -121,7 +121,7 @@ export default function SecurityPage() {
   return (
     <div>
       <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        <span className="text-accent">A-02</span>
+        <span className="text-accent-text">A-02</span>
         <span className="mx-2">/</span>
         SECURITY
       </p>
@@ -129,7 +129,7 @@ export default function SecurityPage() {
 
       <section data-enter className="mt-8 max-w-md border border-ink/25 p-6">
         <p className="font-mono text-xs tracking-[0.25em] text-ink/60">修改密码</p>
-        <p className="mt-3 font-mono text-[10px] leading-5 tracking-wider text-ink/50">
+        <p className="mt-3 font-mono text-[10px] leading-5 tracking-wider text-ink/60">
           修改密码需当前密码与学校邮箱验证码；成功后其他设备会自动下线。
         </p>
         <div className="mt-5 space-y-4">
@@ -139,7 +139,7 @@ export default function SecurityPage() {
             { label: "确认新密码", v: newPwd2, set: setNewPwd2 },
           ].map((f) => (
             <div key={f.label}>
-              <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+              <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
                 {f.label}
               </label>
               <input
@@ -152,7 +152,7 @@ export default function SecurityPage() {
             </div>
           ))}
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
               绑定邮箱
             </label>
             <input
@@ -161,11 +161,11 @@ export default function SecurityPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@henu.edu.cn"
               autoComplete="email"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
               邮箱验证码
             </label>
             <div className="flex gap-3">
@@ -178,7 +178,7 @@ export default function SecurityPage() {
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 maxLength={6}
-                className="min-w-0 flex-1 border-b border-ink/30 bg-transparent py-2 font-mono text-sm tracking-[0.4em] outline-none placeholder:tracking-normal placeholder:text-ink/30 focus:border-ink"
+                className="min-w-0 flex-1 border-b border-ink/30 bg-transparent py-2 font-mono text-sm tracking-[0.4em] outline-none placeholder:tracking-normal placeholder:text-ink/60 focus:border-ink"
               />
               <button
                 type="button"
@@ -191,7 +191,7 @@ export default function SecurityPage() {
             </div>
           </div>
         </div>
-        {error && <p className="mt-3 font-mono text-xs text-accent">{error}</p>}
+        {error && <p className="mt-3 font-mono text-xs text-accent-text">{error}</p>}
         {ok && (
           <p className="mt-3 border border-ink bg-ink px-3 py-2 font-mono text-xs text-paper">
             ✓ 密码已更新，其他设备已下线
@@ -205,7 +205,7 @@ export default function SecurityPage() {
             "mt-5 border px-6 py-2.5 font-mono text-xs tracking-widest transition-colors",
             pending
               ? "cursor-wait border-line text-ink/40"
-              : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
+              : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
           )}
         >
           {pending ? "提交中…" : "确认修改"}

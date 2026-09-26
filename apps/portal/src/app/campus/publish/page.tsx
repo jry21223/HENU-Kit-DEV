@@ -41,8 +41,8 @@ function PublishForm() {
   if (!ready || !user) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/40">
-          AUTH CHECK<span className="animate-pulse text-accent">…</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          AUTH CHECK<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </p>
       </main>
     );
@@ -66,14 +66,14 @@ function PublishForm() {
     <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="max-w-3xl">
       <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        <span className="text-accent">M-03</span>
+        <span className="text-accent-text">M-03</span>
         <span className="mx-2">/</span>
         {editItem ? "EDIT" : "PUBLISH"}
       </p>
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">
         {editItem ? "编辑单子" : "发布单子"}
       </h1>
-      <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/50">
+      <p data-enter className="mt-3 border border-dashed border-ink/30 px-3 py-2 font-mono text-[10px] tracking-wider text-ink/60">
         发布和接单暂未开放，当前无法提交；开放后即可在这里发布互助单。
       </p>
 
@@ -97,10 +97,10 @@ function PublishForm() {
                   : "border-line hover:border-ink/40"
               )}
             >
-              <p className={cn("font-display text-xl font-bold", type === t && t === "help" && "text-accent")}>
+              <p className={cn("font-display text-xl font-bold", type === t && t === "help" && "text-accent-text")}>
                 {t === "help" ? "发求助单" : "出闲置"}
               </p>
-              <p className="mt-1 font-mono text-[10px] text-ink/50">
+              <p className="mt-1 font-mono text-[10px] text-ink/60">
                 {t === "help" ? "悬赏赏金，找人帮忙" : "一口价转让闲置物品"}
               </p>
             </button>
@@ -109,7 +109,7 @@ function PublishForm() {
 
         {/* 分类 */}
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">分类</label>
+          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">分类</label>
           <div className="flex flex-wrap gap-2">
             {CATEGORIES.filter((c) => (type === "sell" ? c.key === "flea" : c.key !== "flea")).map((c) => (
               <button
@@ -128,28 +128,28 @@ function PublishForm() {
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">标题</label>
+          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">标题</label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={type === "help" ? "如：代取中通快递 3 件到 6 号楼" : "如：九成新机械键盘"}
-            className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/30 focus:border-ink"
+            className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
           />
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">描述</label>
+          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">描述</label>
           <textarea
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
             rows={4}
             placeholder="具体要求 / 物品成色、交接方式…"
-            className="w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/30 focus:border-ink"
+            className="w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
           />
         </div>
 
         <div data-enter>
-          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+          <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
             图片（{images.length}/3，≤2MB，可选）
           </label>
           <div className="flex flex-wrap items-start gap-3">
@@ -159,7 +159,7 @@ function PublishForm() {
                 <button
                   type="button"
                   onClick={() => setImages((imgs) => imgs.filter((_, j) => j !== i))}
-                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-[10px] hover:border-accent hover:text-accent"
+                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-[10px] hover:border-accent hover:text-accent-text"
                   aria-label={`删除图 ${i + 1}`}
                 >
                   ×
@@ -167,7 +167,7 @@ function PublishForm() {
               </div>
             ))}
             {images.length < 3 && (
-              <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-[10px] text-ink/40 transition-colors hover:border-ink hover:text-ink">
+              <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-[10px] text-ink/60 transition-colors hover:border-ink hover:text-ink">
                 + 上传
                 <input
                   type="file"
@@ -182,7 +182,7 @@ function PublishForm() {
 
         <div data-enter className="grid gap-4 md:grid-cols-3">
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">
+            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">
               {type === "help" ? "赏金（元）" : "价格（元）"}
             </label>
             <input
@@ -190,32 +190,32 @@ function PublishForm() {
               onChange={(e) => setPrice(e.target.value)}
               inputMode="numeric"
               placeholder="3"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           <div>
-            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">位置</label>
+            <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">位置</label>
             <input
               value={place}
               onChange={(e) => setPlace(e.target.value)}
               placeholder="明伦校区 · 西门"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           {type === "help" && (
             <div>
-              <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/50">时限（可选）</label>
+              <label className="mb-1 block font-mono text-[10px] tracking-[0.25em] text-ink/60">时限（可选）</label>
               <input
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
                 placeholder="今天 18:00 前"
-                className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/30 focus:border-ink"
+                className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
               />
             </div>
           )}
         </div>
 
-        {error && <p className="font-mono text-xs text-accent">{error}</p>}
+        {error && <p className="font-mono text-xs text-accent-text">{error}</p>}
         <button
           type="button"
           disabled

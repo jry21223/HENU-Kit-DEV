@@ -8,10 +8,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "border border-ink bg-ink text-paper hover:border-accent hover:bg-accent",
+        default: "border border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink",
         outline: "border border-ink/40 bg-transparent text-ink hover:border-ink",
-        ghost: "text-ink/60 hover:text-accent",
-        accent: "border border-accent bg-accent text-paper hover:bg-ink hover:border-ink",
+        ghost: "text-ink/60 hover:text-accent-text",
+        accent: "border border-accent bg-accent text-ink hover:bg-ink hover:border-ink hover:text-paper",
       },
       size: {
         default: "h-12 px-5 py-3",

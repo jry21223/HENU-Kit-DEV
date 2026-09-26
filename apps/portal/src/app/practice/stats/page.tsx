@@ -27,12 +27,12 @@ function StatCards({
     <div data-block data-enter className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4">
       {cards.map((card, index) => (
         <div key={card.label} className="border border-ink/25 p-5">
-          <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
+          <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
             {String(index + 1).padStart(2, "0")} / {card.label}
           </p>
           <p className="mt-3 font-display text-4xl font-bold tabular-nums">
             {card.value}
-            <span className="ml-1 font-mono text-xs font-normal text-ink/50">
+            <span className="ml-1 font-mono text-xs font-normal text-ink/60">
               {card.unit}
             </span>
           </p>
@@ -50,7 +50,7 @@ export default function StatsPage() {
     <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div data-block data-enter>
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">STATS</span>
+          <span className="text-accent-text">STATS</span>
           <span className="mx-2">/</span>
           MY DATA
         </p>
@@ -76,7 +76,7 @@ export default function StatsPage() {
 
       {state.status === "unauthenticated" && (
         <section data-testid="practice-stats-unauthenticated" className="mt-10 border border-ink/25 p-6">
-          <p className="font-mono text-xs tracking-[0.2em] text-ink/55">
+          <p className="font-mono text-xs tracking-[0.2em] text-ink/60">
             SIGN IN REQUIRED / 请先登录后查看跨设备同步的学习状态
           </p>
           <button
@@ -121,11 +121,11 @@ export default function StatsPage() {
                   <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
                     MASTERY / 题库掌握度
                   </p>
-                  <p className="mt-2 text-sm text-ink/55">
+                  <p className="mt-2 text-sm text-ink/60">
                     分值为当前题库中至少答对过一次的题目占比。
                   </p>
                 </div>
-                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">
+                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
                   {state.data.mastery.length} 个练过的题库
                 </p>
               </div>
@@ -140,7 +140,7 @@ export default function StatsPage() {
                         <span
                           className={cn(
                             "shrink-0 tabular-nums",
-                            weak ? "text-accent" : "text-ink/60"
+                            weak ? "text-accent-text" : "text-ink/60"
                           )}
                         >
                           {subject.value}% · {subject.correct_questions}/

@@ -24,7 +24,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="anonymous" className="mt-10 max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           SIGN IN REQUIRED
         </p>
@@ -49,7 +49,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="free" className="mt-10 max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           LIFETIME REQUIRED
         </p>
@@ -77,7 +77,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="no-profile" className="mt-10 max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           PROFILE REQUIRED
         </p>
@@ -106,7 +106,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
         className="mt-10 max-w-2xl border border-accent px-5 py-6"
       >
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           HISTORY UNAVAILABLE
         </p>
@@ -125,7 +125,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
     return (
       <section data-career-history-state="empty" className="mt-10">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-02</span>
+          <span className="text-accent-text">R-02</span>
           <span className="mx-2">/</span>
           NO SCAN RECORDS
         </p>
@@ -150,7 +150,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
   return (
     <section data-career-history-state="ready" className="mt-10">
       <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        <span className="text-accent">R-02</span>
+        <span className="text-accent-text">R-02</span>
         <span className="mx-2">/</span>
         SCAN HISTORY
       </p>
@@ -166,7 +166,7 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                   <span
                     className={
                       search.status === "failed"
-                        ? "border border-accent/60 px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent"
+                        ? "border border-accent/60 px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent-text"
                         : search.status === "completed"
                           ? "border border-ink/40 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/70"
                           : "border border-ink/30 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/60"
@@ -175,22 +175,22 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                     {careerSearchStatusLabel(search.status)}
                   </span>
                   {search.status === "running" && search.stage ? (
-                    <span className="font-mono text-[10px] tracking-wider text-ink/40">
+                    <span className="font-mono text-[10px] tracking-wider text-ink/60">
                       {careerScanStageLabel(search.stage)}
                     </span>
                   ) : null}
-                  <span className="font-mono text-[10px] tracking-wider text-ink/40">
+                  <span className="font-mono text-[10px] tracking-wider text-ink/60">
                     #{search.id.slice(0, 8)}
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs leading-5 text-ink/55">
+                <p className="mt-1.5 text-xs leading-5 text-ink/60">
                   {formatCareerSearchTime(search.created_at)}
                   {careerDigestStatusLabel(search)
                     ? ` · ${careerDigestStatusLabel(search)}`
                     : ""}
                 </p>
                 {search.result ? (
-                  <div className="mt-1 text-xs leading-5 text-ink/55">
+                  <div className="mt-1 text-xs leading-5 text-ink/60">
                     <p>{search.result.source_count} 个来源 · {search.result.job_count} 个岗位</p>
                     {search.result.sources?.length ? (
                       <p className="mt-1">
@@ -201,11 +201,11 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                     ) : null}
                     {search.result.jobs.length ? (
                       <div className="mt-2">
-                        <p className="font-mono text-[10px] tracking-wider text-ink/40">岗位预览（最多 3 个）</p>
+                        <p className="font-mono text-[10px] tracking-wider text-ink/60">岗位预览（最多 3 个）</p>
                         <ul className="mt-1 space-y-1">
                           {search.result.jobs.map((job) => (
                             <li key={`${job.source_key}:${job.url}`}>
-                              <a href={job.url} target="_blank" rel="noreferrer" className="hover:text-accent hover:underline">
+                              <a href={job.url} target="_blank" rel="noreferrer" className="hover:text-accent-text hover:underline">
                                 {job.title} · {job.company} · 相关度 {job.match_score}
                               </a>
                             </li>
@@ -216,21 +216,21 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                   </div>
                 ) : null}
                 {search.status === "failed" ? (
-                  <p className="mt-1 text-xs leading-5 text-ink/50">
+                  <p className="mt-1 text-xs leading-5 text-ink/60">
                     {careerScanFailedMessage()}。可在扫描页重新发起。
                   </p>
                 ) : null}
               </div>
               <Link
                 href={`/career?search=${encodeURIComponent(search.id)}`}
-                className="shrink-0 font-mono text-[11px] tracking-widest text-ink/60 transition-colors hover:text-accent"
+                className="shrink-0 font-mono text-[11px] tracking-widest text-ink/60 transition-colors hover:text-accent-text"
               >
                 查看详情 →
               </Link>
             </li>
           ))}
         </ul>
-        <p data-enter className="mt-4 font-mono text-[10px] tracking-[0.15em] text-ink/40">
+        <p data-enter className="mt-4 font-mono text-[10px] tracking-[0.15em] text-ink/60">
           记录保存在你的账户中，换设备登录也能查看
         </p>
       </div>

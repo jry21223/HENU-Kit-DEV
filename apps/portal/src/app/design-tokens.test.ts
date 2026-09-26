@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Portal 的颜色来自 packages/design-tokens（#536）。这里检查设计系统承诺的文字配色
- * 达到 WCAG AA（正文 4.5:1），以及 tokens.css 与 tokens.json 是同一组色值——
+ * 达到 WCAG AA（小字 4.5:1，大字 3:1），以及 tokens.css 与 tokens.json 是同一组色值——
  * 对比度按 tokens.json 算，页面实际用的是 tokens.css。
  */
 
@@ -99,10 +99,26 @@ describe("design-tokens 的文字配色（#536）", () => {
     ["墨色字在强调橙色块上", () => ink, () => accent],
     ["强调橙字在墨色底上", () => accent, () => ink],
     ["纸白字在墨色底上", () => paper, () => ink],
+    // Portal 用墨色透明度写灰字（text-ink/NN），下限 ink/60；叠在 5% 色块上时下限 ink/65。
+    ["ink/60 灰字在纸白上", () => over(ink, 0.6, paper), () => paper],
+    ["ink/60 灰字在白色卡片上", () => over(ink, 0.6, raised), () => raised],
+    ["ink/65 灰字在 5% 墨色叠纸白上", () => over(ink, 0.65, over(ink, 0.05, paper)), () => over(ink, 0.05, paper)],
+    ["ink/65 灰字在 5% 强调橙叠纸白上", () => over(ink, 0.65, over(accent, 0.05, paper)), () => over(accent, 0.05, paper)],
+    // 墨色底上的纸白字（text-paper/NN）下限 paper/50。
+    ["paper/50 纸白字在墨色底上", () => over(paper, 0.5, ink), () => ink],
   ];
 
   it.each(PAIRS)("%s不低于 4.5:1", (_label, text, background) => {
     expect(contrast(text(), background())).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // 大字（≥24px，或 ≥18.66px 粗体）只要 3:1：首页美食榜 36px 粗体的名次用 ink/50。
+  const LARGE_PAIRS: Array<[string, () => Rgba, () => Rgba]> = [
+    ["ink/50 大字在纸白上", () => over(ink, 0.5, paper), () => paper],
+  ];
+
+  it.each(LARGE_PAIRS)("%s不低于 3:1", (_label, text, background) => {
+    expect(contrast(text(), background())).toBeGreaterThanOrEqual(3);
   });
 
   it("tokens.css 与 tokens.json 声明同一组色值", () => {

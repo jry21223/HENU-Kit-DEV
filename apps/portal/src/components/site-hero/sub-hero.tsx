@@ -88,7 +88,7 @@ export default function SubHero({
         {/* 左：文案 + 计数 */}
         <div className={cn("flex flex-col justify-center px-5 md:px-8", compactOnMobile ? "py-6 lg:py-14" : "py-14")}>
           <p data-hero-title className="enter-rise font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">{index}</span>
+            <span className="text-accent-text">{index}</span>
             <span className="mx-2">/</span>
             {en}
           </p>
@@ -118,7 +118,7 @@ export default function SubHero({
           >
             {counters.map((c, i) => (
               <div key={c.label} aria-busy={c.busy ?? false}>
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">{c.label}</p>
+                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">{c.label}</p>
                 <p className="mt-1 font-display text-3xl font-bold tabular-nums">
                   <span ref={(el) => { counterRefs.current[i] = el; }} aria-hidden="true">
                     {c.value === null ? "—" : formatNum(c.value)}
@@ -137,7 +137,7 @@ export default function SubHero({
           <span aria-hidden className="absolute left-4 top-4 font-mono text-[10px] tracking-[0.3em] text-ink/40">
             {fig}
           </span>
-          <span aria-hidden className="absolute bottom-4 right-4 font-mono text-accent">+</span>
+          <span aria-hidden className="absolute bottom-4 right-4 font-mono text-accent-text">+</span>
           <div
             className="enter-fade w-full max-w-sm"
             style={{ animationDelay: "0.9s", animationDuration: "0.7s" }}

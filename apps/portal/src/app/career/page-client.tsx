@@ -14,8 +14,8 @@ type PageState = { kind: "loading" } | CareerViewState;
 function LoadingBlock() {
   return (
     <div data-career-state="loading" className="flex min-h-[40vh] items-center justify-center">
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/40">
-        WORK RADAR LOADING<span className="animate-pulse text-accent">…</span>
+      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+        WORK RADAR LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </p>
     </div>
   );
@@ -93,7 +93,7 @@ export default function CareerPage() {
           className="mt-10 max-w-2xl border border-accent px-5 py-6"
         >
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">R-01</span>
+            <span className="text-accent-text">R-01</span>
             <span className="mx-2">/</span>
             RADAR UNAVAILABLE
           </p>

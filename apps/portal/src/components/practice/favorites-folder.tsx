@@ -37,7 +37,7 @@ function FavoriteRow({
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-ink/40">
+            <span className="font-mono text-xs text-ink/60">
               Q-{String(index + 1).padStart(2, "0")}
             </span>
             {item.available ? (
@@ -45,18 +45,18 @@ function FavoriteRow({
                 可用
               </span>
             ) : (
-              <span className="border border-accent/50 px-1.5 py-0.5 font-mono text-[10px] text-accent">
+              <span className="border border-accent/50 px-1.5 py-0.5 font-mono text-[10px] text-accent-text">
                 暂不可用
               </span>
             )}
           </div>
           <p className="mt-1.5 truncate font-mono text-xs text-ink/70">{item.question_id}</p>
           {item.available && item.question_version_id ? (
-            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/45">
+            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/60">
               内容版本 {item.question_version_id.slice(0, 8)}
             </p>
           ) : (
-            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/45">
+            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/60">
               题目内容暂不可用，保留收藏关系
             </p>
           )}
@@ -69,7 +69,7 @@ function FavoriteRow({
             "border px-3 py-1.5 font-mono text-xs tracking-widest transition-colors",
             removing
               ? "cursor-not-allowed border-line text-ink/30"
-              : "border-ink/30 text-ink/70 hover:border-accent hover:text-accent"
+              : "border-ink/30 text-ink/70 hover:border-accent hover:text-accent-text"
           )}
         >
           {removing ? "移除中…" : "取消收藏"}
@@ -176,7 +176,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       <div data-block ref={heroRef} className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">FAV</span>
+            <span className="text-accent-text">FAV</span>
             <span className="mx-2">/</span>
             BANK {bankID.slice(0, 8)}
           </p>
@@ -199,19 +199,19 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
             className={cn(
               "border px-6 py-3 font-mono text-sm tracking-widest transition-colors",
               canStart
-                ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
+                ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
                 : "cursor-not-allowed border-line text-ink/30"
             )}
           >
             {starting ? "正在发起…" : "发起收藏练习 →"}
           </button>
           {state.status === "ready" && items.length > 0 && availableCount === 0 && (
-            <p className="font-mono text-[10px] tracking-wider text-ink/45">
+            <p className="font-mono text-[10px] tracking-wider text-ink/60">
               没有可练习的收藏，练习按钮不可用
             </p>
           )}
           {startError && (
-            <p role="alert" className="font-mono text-[10px] leading-5 text-accent">
+            <p role="alert" className="font-mono text-[10px] leading-5 text-accent-text">
               {startError}
             </p>
           )}
@@ -245,7 +245,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
             <EmptyBlock label="这个题库还没有收藏题目" />
           ) : (
             <>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-ink/40 pb-2 font-mono text-[10px] tracking-[0.25em] text-ink/40">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-ink/40 pb-2 font-mono text-[10px] tracking-[0.25em] text-ink/60">
                 <span>题目引用</span>
                 <span className="text-right">操作</span>
               </div>
@@ -261,11 +261,11 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
                 ))}
               </ul>
               {removeError && (
-                <p role="alert" className="mt-4 font-mono text-xs text-accent">
+                <p role="alert" className="mt-4 font-mono text-xs text-accent-text">
                   {removeError}
                 </p>
               )}
-              <p className="mt-4 font-mono text-[10px] leading-5 text-ink/45">
+              <p className="mt-4 font-mono text-[10px] leading-5 text-ink/60">
                 不可用的收藏会保留在这里，但不会进入收藏练习，也不展示题目内容。
               </p>
               <BackLink className="mt-6 inline-block" />

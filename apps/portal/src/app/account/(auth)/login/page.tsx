@@ -84,7 +84,7 @@ function Field({
         </p>
       ) : null}
       {error ? (
-        <p className="mt-1 font-mono text-[10px] text-accent">{error}</p>
+        <p className="mt-1 font-mono text-[10px] text-accent-text">{error}</p>
       ) : null}
     </div>
   );
@@ -427,7 +427,7 @@ function LoginForm() {
                 : "这次登录无法继续。请重新开始登录，我们会为你创建一条新的安全链接。"}
           </p>
           {displayedRequestID ? (
-            <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/45">
+            <p className="mt-4 font-mono text-[10px] tracking-wider text-ink/60">
               请求编号：{displayedRequestID}
             </p>
           ) : null}
@@ -462,7 +462,7 @@ function LoginForm() {
           )}
           <Link
             href="/"
-            className="mt-1 flex min-h-11 items-center justify-center font-mono text-[10px] tracking-widest text-ink/45 hover:text-accent"
+            className="mt-1 flex min-h-11 items-center justify-center font-mono text-[10px] tracking-widest text-ink/60 hover:text-accent-text"
           >
             返回 HENU Kit 首页
           </Link>
@@ -499,7 +499,7 @@ function LoginForm() {
           {/* 一行小字只有 15px 高：上下各借 14px 撑满 44px 点击区，标题行高度不变。 */}
           <Link
             href="/"
-            className="-my-3.5 inline-flex min-h-11 items-center font-mono text-[10px] tracking-widest text-ink/40 hover:text-accent"
+            className="-my-3.5 inline-flex min-h-11 items-center font-mono text-[10px] tracking-widest text-ink/60 hover:text-accent-text"
           >
             ← henukit
           </Link>
@@ -507,7 +507,7 @@ function LoginForm() {
         <h1 className="mt-4 font-display text-4xl font-bold tracking-tight">
           {tab === "login" ? "登录" : "注册"}
         </h1>
-        <p className="mt-2 font-mono text-[11px] leading-5 tracking-wider text-ink/50">
+        <p className="mt-2 font-mono text-[11px] leading-5 tracking-wider text-ink/60">
           首次注册需验证学校邮箱并设置密码；之后可用密码或验证码登录。
         </p>
         {continuationProduct ? (
@@ -532,7 +532,7 @@ function LoginForm() {
               }}
               className={cn(
                 "min-h-11 flex-1 font-mono text-xs tracking-widest transition-colors",
-                tab === t ? "bg-ink text-paper" : "text-ink/50 hover:text-ink"
+                tab === t ? "bg-ink text-paper" : "text-ink/60 hover:text-ink"
               )}
             >
               {t === "login" ? "登录" : "注册"}
@@ -590,7 +590,7 @@ function LoginForm() {
             onChange={setLocalPart}
           />
           {errors.email ? (
-            <p className="-mt-3 font-mono text-[10px] text-accent">
+            <p className="-mt-3 font-mono text-[10px] text-accent-text">
               {errors.email}
             </p>
           ) : null}
@@ -626,12 +626,12 @@ function LoginForm() {
                 </Button>
               </div>
               {errors.code ? (
-                <p className="mt-1 font-mono text-[10px] text-accent">
+                <p className="mt-1 font-mono text-[10px] text-accent-text">
                   {errors.code}
                 </p>
               ) : null}
               {info ? (
-                <p className="mt-1 font-mono text-[10px] leading-5 text-ink/45">
+                <p className="mt-1 font-mono text-[10px] leading-5 text-ink/60">
                   {info}
                 </p>
               ) : null}
@@ -674,8 +674,8 @@ function LoginForm() {
         </form>
 
         {/* 邮箱后缀已固定显示在输入框右侧，这里不再重复。 */}
-        <div className="mt-1 font-mono text-[10px] tracking-wider text-ink/50">
-          <Link href="/account/recover" className="inline-flex min-h-11 items-center hover:text-accent">
+        <div className="mt-1 font-mono text-[10px] tracking-wider text-ink/60">
+          <Link href="/account/recover" className="inline-flex min-h-11 items-center hover:text-accent-text">
             忘记密码 / 收不到验证码 →
           </Link>
         </div>
@@ -689,7 +689,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main className="bg-blueprint flex min-h-svh items-center justify-center">
-          <p className="font-mono text-xs tracking-widest text-ink/40">
+          <p className="font-mono text-xs tracking-widest text-ink/60">
             加载中…
           </p>
         </main>

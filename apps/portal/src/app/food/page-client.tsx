@@ -46,13 +46,13 @@ export default function FoodBoardPage() {
             </div>
 
             <div data-enter className="border-t border-paper/25 pt-5 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
-              <p className="font-mono text-[10px] tracking-[0.28em] text-paper/45">
+              <p className="font-mono text-[10px] tracking-[0.28em] text-paper/50">
                 STUDENT FOOD DESK
               </p>
               <p className="mt-2 font-display text-2xl font-bold">你吃到的好店，也该上榜。</p>
               <Link
                 href="/food/publish"
-                className="mt-5 inline-flex min-h-11 items-center border border-paper px-5 font-mono text-xs tracking-[0.18em] transition-colors hover:border-accent hover:bg-accent hover:text-paper"
+                className="mt-5 inline-flex min-h-11 items-center border border-paper px-5 font-mono text-xs tracking-[0.18em] transition-colors hover:border-accent hover:bg-accent hover:text-ink"
               >
                 投稿一家好店
                 <span aria-hidden className="ml-3">
@@ -67,7 +67,7 @@ export default function FoodBoardPage() {
       <div className="mx-auto max-w-site px-5 py-10 md:px-8 md:py-12">
         <div data-enter className="flex flex-col gap-5 border-b border-ink pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="font-mono text-[10px] tracking-[0.28em] text-ink/45">
+            <p className="font-mono text-[10px] tracking-[0.28em] text-ink/60">
               CAMPUS FILTER
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -102,7 +102,7 @@ export default function FoodBoardPage() {
               ))}
             </div>
           </div>
-          <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">
+          <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">
             {loadState === "ready" ? `${visibleCount} ENTRIES` : "SYNCING"}
           </p>
         </div>
@@ -126,13 +126,14 @@ export default function FoodBoardPage() {
                 <a
                   key={tier.key}
                   href={`#tier-${tier.key}`}
-                  className="min-w-28 flex-1 bg-paper px-4 py-3 transition-colors hover:bg-accent hover:text-paper"
+                  className="group min-w-28 flex-1 bg-paper px-4 py-3 transition-colors hover:bg-accent"
                 >
-                  <span className="block font-mono text-[9px] tracking-[0.2em] opacity-50">
+                  {/* 悬停时整格变强调橙，小字跟着转成墨色，在橙底上才够清楚。 */}
+                  <span className="block font-mono text-[9px] tracking-[0.2em] text-ink/60 group-hover:text-ink">
                     {tier.index}
                   </span>
                   <span className="mt-1 block font-display text-lg font-bold">{tier.label}</span>
-                  <span className="mt-1 block font-mono text-[9px] opacity-45">
+                  <span className="mt-1 block font-mono text-[9px] text-ink/60 group-hover:text-ink">
                     {tierPosts.length} ENTRIES
                   </span>
                 </a>
@@ -148,25 +149,25 @@ export default function FoodBoardPage() {
                   className="grid scroll-mt-20 border-t border-ink py-8 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10 md:py-12"
                 >
                   <header data-enter className="pb-6 md:pb-0">
-                    <p className="font-mono text-[10px] tracking-[0.25em] text-ink/45">
+                    <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
                       {tier.index} / {tier.en}
                     </p>
                     <h2
                       data-food-tier-label
                       className={cn(
                         "mt-2 font-display text-5xl font-bold tracking-tight md:text-6xl",
-                        tier.key === HANG_TIER_KEY && "text-accent"
+                        tier.key === HANG_TIER_KEY && "text-accent-text"
                       )}
                     >
                       {tier.label}
                     </h2>
-                    <p className="mt-3 font-mono text-xs text-ink/55">{tier.blurb}</p>
+                    <p className="mt-3 font-mono text-xs text-ink/60">{tier.blurb}</p>
                   </header>
 
                   {tierPosts.length === 0 ? (
                     <p
                       data-enter
-                      className="border-t border-dashed border-line py-8 font-mono text-xs tracking-[0.18em] text-ink/35"
+                      className="border-t border-dashed border-line py-8 font-mono text-xs tracking-[0.18em] text-ink/60"
                     >
                       暂无上榜条目
                     </p>
@@ -178,7 +179,7 @@ export default function FoodBoardPage() {
                             href={`/food/post/${post.id}`}
                             className="group grid grid-cols-[2rem_5.5rem_minmax(0,1fr)] gap-3 border-b border-line py-5 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:items-center md:gap-5"
                           >
-                            <span className="font-mono text-sm text-ink/30">
+                            <span className="font-mono text-sm text-ink/60">
                               {String(index + 1).padStart(2, "0")}
                             </span>
                             <div className="h-16 overflow-hidden bg-ink/[0.04] md:h-20">
@@ -190,19 +191,19 @@ export default function FoodBoardPage() {
                                   className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
                                 />
                               ) : (
-                                <span className="flex h-full items-center justify-center font-display text-4xl font-bold text-ink/12">
+                                <span aria-hidden className="flex h-full items-center justify-center font-display text-4xl font-bold text-ink/12">
                                   {tier.label}
                                 </span>
                               )}
                             </div>
                             <span className="min-w-0">
-                              <span className="block font-display text-xl font-bold transition-colors group-hover:text-accent">
+                              <span className="block font-display text-xl font-bold transition-colors group-hover:text-accent-text">
                                 {post.shop.name}
                               </span>
                               <span className="mt-1 block truncate text-sm text-ink/65">
                                 {post.title}
                               </span>
-                              <span className="mt-2 block font-mono text-[10px] tracking-[0.12em] text-ink/40">
+                              <span className="mt-2 block font-mono text-[10px] tracking-[0.12em] text-ink/60">
                                 {CAMPUSES[post.campus].name} · {post.tags.join(" / ")}
                               </span>
                             </span>
@@ -224,7 +225,7 @@ export default function FoodBoardPage() {
 
         <div data-enter className="mt-4 border-y border-ink py-8 md:flex md:items-center md:justify-between">
           <div>
-            <p className="font-mono text-[10px] tracking-[0.25em] text-ink/45">
+            <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
               RANKING NOTE
             </p>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-ink/65">
@@ -233,7 +234,7 @@ export default function FoodBoardPage() {
           </div>
           <Link
             href="/food/publish"
-            className="mt-5 inline-flex min-h-11 items-center border border-ink bg-ink px-5 font-mono text-xs tracking-[0.18em] text-paper transition-colors hover:border-accent hover:bg-accent md:mt-0"
+            className="mt-5 inline-flex min-h-11 items-center border border-ink bg-ink px-5 font-mono text-xs tracking-[0.18em] text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink md:mt-0"
           >
             提交推荐 →
           </Link>

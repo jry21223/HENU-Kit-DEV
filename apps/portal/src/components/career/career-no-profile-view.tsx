@@ -17,7 +17,7 @@ export default function CareerNoProfileView() {
     <section data-career-state="lifetime-no-profile" className="mt-10">
       <div className="max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-01</span>
+          <span className="text-accent-text">R-01</span>
           <span className="mx-2">/</span>
           PROFILE REQUIRED
         </p>
@@ -31,7 +31,7 @@ export default function CareerNoProfileView() {
         <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
           {STEPS.map((s) => (
             <li key={s} data-enter>
-              <span className="mr-2 text-accent">+</span>
+              <span aria-hidden className="mr-2 text-accent-text">+</span>
               {s}
             </li>
           ))}
@@ -42,7 +42,7 @@ export default function CareerNoProfileView() {
         >
           去设置求职画像 →
         </Link>
-        <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/40">
+        <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/60">
           简历文件仅在识别期间临时保存，识别完成或失败后即删除；不会保存招聘站账号
         </p>
       </div>

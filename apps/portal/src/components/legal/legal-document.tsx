@@ -9,7 +9,7 @@ export type LegalSection = {
 
 /** 正文排版：协议是要逐字读完的长文，字号、行宽与列表都按阅读而不是装饰来定。 */
 const PROSE =
-  "space-y-4 text-base leading-8 text-ink/85 [&_a]:underline [&_a]:underline-offset-4 [&_a:hover]:text-accent [&_h3]:mt-8 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-ink [&_li+li]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_strong]:font-semibold [&_strong]:text-ink [&_ul]:list-disc [&_ul]:pl-6";
+  "space-y-4 text-base leading-8 text-ink/85 [&_a]:underline [&_a]:underline-offset-4 [&_a:hover]:text-accent-text [&_h3]:mt-8 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-ink [&_li+li]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_strong]:font-semibold [&_strong]:text-ink [&_ul]:list-disc [&_ul]:pl-6";
 
 /**
  * 隐私政策与用户协议共用的文档骨架：标题、更新日期、引言、目录与分节正文。
@@ -41,7 +41,7 @@ export default function LegalDocument({
             <li key={section.id}>
               <a
                 href={`#${section.id}`}
-                className="inline-flex min-h-11 items-center text-ink/80 transition-colors hover:text-accent"
+                className="inline-flex min-h-11 items-center text-ink/80 transition-colors hover:text-accent-text"
               >
                 {section.title}
               </a>

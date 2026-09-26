@@ -68,12 +68,13 @@ export default function MagneticButton({
         aria-hidden
         className="absolute inset-0 translate-y-full bg-accent transition-transform duration-300 ease-out group-hover:translate-y-0"
       />
-      <span className="relative z-10 transition-colors duration-300 group-hover:text-paper">
+      {/* 橙色填充滑入后文字转墨色：纸白字在强调橙上只有 2.92:1。 */}
+      <span className="relative z-10 transition-colors duration-300 group-hover:text-ink">
         {children}
       </span>
       <span
         aria-hidden
-        className="relative z-10 transition-all duration-300 group-hover:translate-x-1 group-hover:text-paper"
+        className="relative z-10 transition-all duration-300 group-hover:translate-x-1 group-hover:text-ink"
       >
         →
       </span>

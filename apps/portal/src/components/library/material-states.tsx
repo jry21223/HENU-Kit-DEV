@@ -6,7 +6,7 @@ export function LibraryLoading() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
       <p className="font-mono text-xs leading-6 text-ink/70">加载中…</p>
-      <BackLink className="mt-6 inline-block font-mono text-sm text-accent hover:underline" />
+      <BackLink className="mt-6 inline-block font-mono text-sm text-accent-text hover:underline" />
     </main>
   );
 }
@@ -18,11 +18,11 @@ export function LibraryLoading() {
 export function LibraryNotFound({ error }: { error?: string | null }) {
   return (
     <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/40">404 / NOT FOUND</p>
+      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">404 / NOT FOUND</p>
       <p className="mt-4 text-sm text-ink/60">
         内容不存在或已下架{error ? `（${error}）` : ""}。
       </p>
-      <BackLink className="mt-6 inline-block font-mono text-sm text-accent hover:underline" />
+      <BackLink className="mt-6 inline-block font-mono text-sm text-accent-text hover:underline" />
     </main>
   );
 }
@@ -32,7 +32,7 @@ export function LibraryUnavailable({ message, onRetry }: { message: string; onRe
   return (
     <main className="mx-auto max-w-3xl px-5 py-24 md:px-8">
       <ErrorBanner message={message} onRetry={onRetry} />
-      <BackLink className="mt-6 inline-block font-mono text-sm text-accent hover:underline" />
+      <BackLink className="mt-6 inline-block font-mono text-sm text-accent-text hover:underline" />
     </main>
   );
 }

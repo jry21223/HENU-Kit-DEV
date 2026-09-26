@@ -117,8 +117,8 @@ export default function WalletPage() {
   return (
     <div>
       <section data-enter className="border-b border-ink pb-5">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/55">
-          <span className="text-accent">A-03</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent-text">A-03</span>
           <span className="mx-2">/</span>
           WALLET
         </p>
@@ -132,15 +132,15 @@ export default function WalletPage() {
         <section
           data-account-points-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          正在读取积分<span className="animate-pulse text-accent">…</span>
+          正在读取积分<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
       {state.kind === "error" ? (
         <section data-account-points-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">积分暂时不可用</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">积分暂时不可用</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <p className="mt-3 text-sm leading-6 text-ink/60">积分数据暂时加载不出来，请稍后重试。</p>
           <button
@@ -156,7 +156,7 @@ export default function WalletPage() {
       {state.kind === "success" ? (
         <section data-account-points-state="success" className="mt-6">
           <div data-enter className="border border-ink p-6 sm:p-8">
-            <p className="font-mono text-xs tracking-[0.2em] text-ink/45">BALANCE</p>
+            <p className="font-mono text-xs tracking-[0.2em] text-ink/60">BALANCE</p>
             <p className="mt-3 font-display text-5xl font-bold tracking-tight">{formatPoints(state.balance)}</p>
             <p className="mt-2 text-sm leading-6 text-ink/60">当前积分余额 · 打开本页或加载更多记录时会自动更新。</p>
           </div>
@@ -164,10 +164,10 @@ export default function WalletPage() {
           <div className="mt-8">
             <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ink pb-3">
               <div>
-                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">HISTORY</p>
+                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/60">HISTORY</p>
                 <h2 className="mt-1 font-display text-2xl font-bold">积分变动明细</h2>
               </div>
-              <span className="font-mono text-[10px] tracking-[0.12em] text-ink/45">时间以中国标准时间显示</span>
+              <span className="font-mono text-[10px] tracking-[0.12em] text-ink/60">时间以中国标准时间显示</span>
             </div>
 
             {state.entries.length === 0 ? (
@@ -181,9 +181,9 @@ export default function WalletPage() {
                   <article key={entry.id} className="grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-6">
                     <div className="min-w-0">
                       <h3 className="break-words text-base font-semibold leading-6">{entry.reason}</h3>
-                      <p className="mt-2 font-mono text-[10px] tracking-[0.08em] text-ink/45">{formatTimestamp(entry.created_at)}</p>
+                      <p className="mt-2 font-mono text-[10px] tracking-[0.08em] text-ink/60">{formatTimestamp(entry.created_at)}</p>
                     </div>
-                    <p className={`font-display text-2xl font-bold ${entry.amount >= 0 ? "text-accent" : "text-ink"}`}>
+                    <p className={`font-display text-2xl font-bold ${entry.amount >= 0 ? "text-accent-text" : "text-ink"}`}>
                       {entry.amount > 0 ? "+" : ""}{formatPoints(entry.amount)}
                     </p>
                   </article>
@@ -192,7 +192,7 @@ export default function WalletPage() {
             )}
 
             {state.moreError ? (
-              <p role="alert" className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-accent">继续加载失败：{state.moreError}</p>
+              <p role="alert" className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-accent-text">继续加载失败：{state.moreError}</p>
             ) : null}
             {state.nextCursor ? (
               <button

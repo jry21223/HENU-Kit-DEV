@@ -63,8 +63,8 @@ export default function MyFoodPostsPage() {
   return (
     <div>
       <section data-enter className="border-b border-ink pb-5">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/55">
-          <span className="text-accent">A-07</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent-text">A-07</span>
           <span className="mx-2">/</span>
           MY FOOD POSTS
         </p>
@@ -78,15 +78,15 @@ export default function MyFoodPostsPage() {
         <section
           data-account-food-posts-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          FOOD POSTS LOADING<span className="animate-pulse text-accent">…</span>
+          FOOD POSTS LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
       {listState.kind === "error" ? (
         <section data-account-food-posts-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">FOOD POSTS UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">FOOD POSTS UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{listState.message}</p>
           <button
             type="button"
@@ -111,7 +111,7 @@ export default function MyFoodPostsPage() {
               </p>
               <Link
                 href="/food/publish"
-                className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+                className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
               >
                 去投稿
               </Link>
@@ -125,14 +125,15 @@ export default function MyFoodPostsPage() {
                   className="group block border-b border-line px-1 py-5 transition-colors hover:bg-ink/5"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 truncate font-display text-lg font-bold transition-colors group-hover:text-accent">
+                    <p className="min-w-0 truncate font-display text-lg font-bold transition-colors group-hover:text-accent-text">
                       {post.title}
                     </p>
-                    <span className="shrink-0 border border-accent px-2 py-1 font-mono text-[10px] tracking-wider text-accent">
+                    <span className="shrink-0 border border-accent px-2 py-1 font-mono text-[10px] tracking-wider text-accent-text">
                       {tierLabelFor(post.tags)}
                     </span>
                   </div>
-                  <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/45">
+                  {/* 行悬停时叠 5% 墨色，灰字至少 ink/65。 */}
+                  <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/65">
                     {CAMPUSES[post.campus].name} · 发布于 {formatTimestamp(post.time)}
                   </p>
                 </Link>

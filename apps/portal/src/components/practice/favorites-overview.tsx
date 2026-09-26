@@ -18,7 +18,7 @@ function FolderCard({ folder, index }: { folder: FavoriteFolder; index: number }
       className="group block border border-ink/25 bg-paper p-5 transition-colors hover:border-ink"
     >
       <div className="flex items-start justify-between">
-        <span className="font-mono text-xs text-accent">
+        <span className="font-mono text-xs text-accent-text">
           F-{String(index + 1).padStart(2, "0")}
         </span>
         <span aria-hidden className="font-mono text-xs text-ink/40">+</span>
@@ -26,12 +26,12 @@ function FolderCard({ folder, index }: { folder: FavoriteFolder; index: number }
       <h3 className="mt-3 font-display text-xl font-bold leading-snug group-hover:underline">
         {folder.bank_name}
       </h3>
-      <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">
+      <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/60">
         {folder.available_count} 题可练习
         {folder.unavailable_count > 0 && ` · ${folder.unavailable_count} 题暂不可用`}
       </p>
       <div className="mt-5 border-t border-line pt-3">
-        <span className="font-mono text-xs tracking-wider text-ink/45">
+        <span className="font-mono text-xs tracking-wider text-ink/60">
           查看收藏 →
         </span>
       </div>
@@ -47,7 +47,7 @@ export default function FavoritesOverview() {
     <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div data-block data-enter>
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">FAV</span>
+          <span className="text-accent-text">FAV</span>
           <span className="mx-2">/</span>
           COLLECTION
         </p>

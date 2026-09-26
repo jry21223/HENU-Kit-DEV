@@ -31,9 +31,9 @@ function FlowDiagram() {
         <text x="444" y="74" textAnchor="middle" fontSize="13" fill="#161513">查看</text>
       </g>
 
-      <text x="40" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.5" fontFamily="monospace">STEP 1</text>
-      <text x="242" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.5" fontFamily="monospace">STEP 2</text>
-      <text x="444" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.5" fontFamily="monospace">STEP 3</text>
+      <text x="40" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.6" fontFamily="monospace">STEP 1</text>
+      <text x="242" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.6" fontFamily="monospace">STEP 2</text>
+      <text x="444" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.6" fontFamily="monospace">STEP 3</text>
     </svg>
   );
 }
@@ -126,7 +126,7 @@ export default function SectionCampus() {
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {FEATURES.map((f) => (
               <li key={f}>
-                <span className="mr-2 text-accent">+</span>
+                <span aria-hidden className="mr-2 text-accent-text">+</span>
                 {f}
               </li>
             ))}
@@ -147,9 +147,9 @@ export default function SectionCampus() {
             data-order-card
             className="group w-full max-w-sm border border-dashed border-ink/25 bg-paper p-6"
           >
-            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/50">
+            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/60">
               <span>CAMPUS AID</span>
-              <span className="border border-ink/30 px-2 py-0.5 text-ink/50">信息浏览</span>
+              <span className="border border-ink/30 px-2 py-0.5">信息浏览</span>
             </div>
             <h3 className="mt-5 font-display text-3xl font-bold">先看看校园所需</h3>
             <p className="mt-2 text-sm text-ink/60">

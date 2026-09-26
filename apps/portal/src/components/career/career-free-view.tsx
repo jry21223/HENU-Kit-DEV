@@ -19,7 +19,7 @@ export default function CareerFreeView() {
       <div className="grid gap-10 md:grid-cols-2">
         <div data-enter>
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">R-01</span>
+            <span className="text-accent-text">R-01</span>
             <span className="mx-2">/</span>
             WORK RADAR
           </p>
@@ -34,7 +34,7 @@ export default function CareerFreeView() {
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {BENEFITS.map((b) => (
               <li key={b}>
-                <span className="mr-2 text-accent">+</span>
+                <span aria-hidden className="mr-2 text-accent-text">+</span>
                 {b}
               </li>
             ))}
@@ -43,9 +43,9 @@ export default function CareerFreeView() {
 
         <div data-enter className="flex items-start">
           <article className="w-full max-w-md border border-dashed border-ink/25 bg-paper p-6">
-            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/50">
+            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/60">
               <span>LIFETIME MEMBERSHIP</span>
-              <span className="border border-ink/30 px-2 py-0.5 text-ink/50">¥9.9 终身</span>
+              <span className="border border-ink/30 px-2 py-0.5">¥9.9 终身</span>
             </div>
             <h3 className="mt-4 font-display text-2xl font-bold">一次付费，无需续费</h3>
             <p className="mt-2 text-sm leading-6 text-ink/60">
@@ -58,7 +58,7 @@ export default function CareerFreeView() {
             >
               ¥9.9 开通终身会员 →
             </Link>
-            <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/40">
+            <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/60">
               在账户中心完成支付，开通后立即生效
             </p>
           </article>

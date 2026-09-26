@@ -47,8 +47,8 @@ export default function MembershipPage() {
   return (
     <div>
       <section data-enter className="border-b border-ink pb-5">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/55">
-          <span className="text-accent">A-04</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent-text">A-04</span>
           <span className="mx-2">/</span>
           MEMBERSHIP
         </p>
@@ -62,15 +62,15 @@ export default function MembershipPage() {
         <section
           data-account-membership-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          MEMBERSHIP LOADING<span className="animate-pulse text-accent">…</span>
+          MEMBERSHIP LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
       {state.kind === "error" ? (
         <section data-account-membership-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">MEMBERSHIP UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">MEMBERSHIP UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <p className="mt-3 text-sm leading-6 text-ink/60">页面加载失败不会改变你的会员状态，请稍后重新加载。</p>
           <button
@@ -88,7 +88,7 @@ export default function MembershipPage() {
 
       {membership ? (
         <section data-account-membership-state="success" className="mt-6 border border-ink p-6 sm:p-8">
-          <p className="font-mono text-xs tracking-[0.2em] text-ink/45">CURRENT ENTITLEMENT</p>
+          <p className="font-mono text-xs tracking-[0.2em] text-ink/60">CURRENT ENTITLEMENT</p>
           <h2 className="mt-3 font-display text-4xl font-bold tracking-tight">
             {isLifetime ? "终身会员" : "免费会员"}
           </h2>

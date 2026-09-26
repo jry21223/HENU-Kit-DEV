@@ -107,7 +107,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
   if (state.kind === "paid") {
     return (
       <section data-membership-purchase="paid" className="mt-6 border border-ink p-6">
-        <p className="font-mono text-xs tracking-[0.2em] text-accent">PAYMENT CONFIRMED</p>
+        <p className="font-mono text-xs tracking-[0.2em] text-accent-text">PAYMENT CONFIRMED</p>
         <p className="mt-3 text-sm leading-6 text-ink/70">
           支付成功，终身会员已生效。
         </p>
@@ -118,7 +118,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
   if (state.kind === "unavailable") {
     return (
       <section data-membership-purchase="unavailable" className="mt-6 border border-line p-6">
-        <p className="font-mono text-xs tracking-[0.2em] text-ink/45">PURCHASE UNAVAILABLE</p>
+        <p className="font-mono text-xs tracking-[0.2em] text-ink/60">PURCHASE UNAVAILABLE</p>
         <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
         <p className="mt-3 text-sm leading-6 text-ink/60">
           支付通道尚未开放，这次没有创建订单，也不会产生扣款。
@@ -129,7 +129,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
 
   return (
     <section data-membership-purchase={state.kind} className="mt-6 border border-ink p-6 sm:p-8">
-      <p className="font-mono text-xs tracking-[0.2em] text-ink/45">LIFETIME MEMBERSHIP</p>
+      <p className="font-mono text-xs tracking-[0.2em] text-ink/60">LIFETIME MEMBERSHIP</p>
       <h2 className="mt-3 font-display text-3xl font-bold tracking-tight">¥9.9 开通终身会员</h2>
 
       {state.kind === "idle" || state.kind === "error" ? (
@@ -157,9 +157,9 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
       {state.kind === "starting" ? (
         <p
           aria-live="polite"
-          className="mt-6 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          CREATING ORDER<span className="animate-pulse text-accent">…</span>
+          CREATING ORDER<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </p>
       ) : null}
 
@@ -175,11 +175,11 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
             </div>
           )}
           <div className="flex-1">
-            <p className="font-mono text-xs tracking-[0.2em] text-ink/45">AWAITING PAYMENT</p>
+            <p className="font-mono text-xs tracking-[0.2em] text-ink/60">AWAITING PAYMENT</p>
             <p className="mt-3 text-sm leading-6 text-ink/70">
               请使用微信扫码完成支付，支付完成后本页会自动更新。
             </p>
-            <p className="mt-3 text-sm leading-6 text-ink/55">
+            <p className="mt-3 text-sm leading-6 text-ink/60">
               离开本页后回来仍是同一个订单与同一个二维码，不会重复下单。
             </p>
             <button

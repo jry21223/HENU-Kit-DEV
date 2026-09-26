@@ -57,13 +57,13 @@ export function HenuEmailField({
         />
         <span
           id={`${id}-suffix`}
-          className="shrink-0 select-none pb-2 pl-1 font-mono text-sm tracking-wide text-ink/45"
+          className="shrink-0 select-none pb-2 pl-1 font-mono text-sm tracking-wide text-ink/60"
         >
           {HENU_EMAIL_SUFFIX}
         </span>
       </div>
       {full ? (
-        <p className="mt-1 font-mono text-[10px] tracking-wider text-ink/35">
+        <p className="mt-1 font-mono text-[10px] tracking-wider text-ink/60">
           将发送至 {full}
         </p>
       ) : null}

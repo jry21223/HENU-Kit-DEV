@@ -28,15 +28,15 @@ function QuizCraftCatalogCard({
       className="group border border-ink/25 bg-paper p-5"
     >
       <div className="flex items-start justify-between">
-        <span className="font-mono text-xs text-accent">
+        <span className="font-mono text-xs text-accent-text">
           题库 {String(index + 1).padStart(2, "0")}
         </span>
-        <span className="font-mono text-[10px] tracking-wider text-ink/50">
+        <span className="font-mono text-[10px] tracking-wider text-ink/60">
           {bank.available ? "可练习" : "暂不可用"}
         </span>
       </div>
       <h3 className="mt-3 font-display text-xl font-bold leading-snug">{bank.name}</h3>
-      <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/50">
+      <p className="mt-2 font-mono text-[10px] tracking-wider text-ink/60">
         {bank.question_count} 题
       </p>
       <div className="mt-5 border-t border-line pt-3">
@@ -49,7 +49,7 @@ function QuizCraftCatalogCard({
             开始刷题 →
           </Link>
         ) : (
-          <span className="font-mono text-xs tracking-wider text-ink/45">
+          <span className="font-mono text-xs tracking-wider text-ink/60">
             当前版本暂不可练习
           </span>
         )}
@@ -117,8 +117,8 @@ export default function PracticeBankPage() {
 
       <div data-block className="border-t border-line">
         <div className="mx-auto flex max-w-site items-center justify-between px-5 py-3 md:px-8">
-          <p className="font-mono text-[10px] tracking-[0.3em] text-ink/50">
-            <span className="text-accent">02</span>
+          <p className="font-mono text-[10px] tracking-[0.3em] text-ink/60">
+            <span className="text-accent-text">02</span>
             <span className="mx-2">/</span>
             BROWSE
           </p>

@@ -95,7 +95,7 @@ export default function SessionSetup({
       <main className="mx-auto max-w-site px-5 py-16 md:px-8">
         <div className="max-w-3xl">
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">SETUP</span>
+            <span className="text-accent-text">SETUP</span>
             <span className="mx-2">/</span>
             组卷设置
           </p>
@@ -112,13 +112,13 @@ export default function SessionSetup({
               <button
                 type="button"
                 onClick={retryCatalog}
-                className="min-h-11 border border-ink bg-ink px-5 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent"
+                className="min-h-11 border border-ink bg-ink px-5 py-3 font-mono text-sm tracking-widest text-paper transition-colors hover:border-accent hover:bg-accent hover:text-ink"
               >
                 重新检查题库
               </button>
               <TransitionLink
                 href="/practice"
-                className="flex min-h-11 items-center border border-ink/30 px-5 py-3 font-mono text-sm tracking-widest transition-colors hover:border-accent hover:text-accent"
+                className="flex min-h-11 items-center border border-ink/30 px-5 py-3 font-mono text-sm tracking-widest transition-colors hover:border-accent hover:text-accent-text"
               >
                 返回题库目录 →
               </TransitionLink>
@@ -149,7 +149,7 @@ export default function SessionSetup({
 
   const countInput = (
     <div>
-      <label htmlFor="session-question-count" className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
+      <label htmlFor="session-question-count" className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
         题数 / COUNT
       </label>
       <input
@@ -166,7 +166,7 @@ export default function SessionSetup({
         className="mt-2 min-h-11 w-32 border border-ink/30 bg-transparent px-3 py-2 font-mono text-sm outline-none transition-colors focus:border-ink"
       />
       {!countValid && (
-        <p role="alert" className="mt-2 text-sm text-accent">
+        <p role="alert" className="mt-2 text-sm text-accent-text">
           题数需为 {MIN_QUESTION_COUNT} 到 {MAX_QUESTION_COUNT} 之间的整数。
         </p>
       )}
@@ -182,7 +182,7 @@ export default function SessionSetup({
     >
       <div className="max-w-3xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">SETUP</span>
+          <span className="text-accent-text">SETUP</span>
           <span className="mx-2">/</span>
           组卷设置
         </p>
@@ -193,7 +193,7 @@ export default function SessionSetup({
           </p>
         )}
         {chaptersState.kind === "ready" && chaptersState.bankName && (
-          <p data-enter className="mt-2 font-mono text-[10px] tracking-widest text-ink/40">
+          <p data-enter className="mt-2 font-mono text-[10px] tracking-widest text-ink/60">
             {chaptersState.bankName}
           </p>
         )}
@@ -216,7 +216,7 @@ export default function SessionSetup({
                     : "border-line hover:border-ink/40"
                 )}
               >
-                <span className="font-mono text-xs text-accent">M-{String(index + 1).padStart(2, "0")}</span>
+                <span className={cn("font-mono text-xs", mode === item.value ? "text-accent" : "text-accent-text")}>M-{String(index + 1).padStart(2, "0")}</span>
                 <span className="mt-2 block font-display text-lg font-bold">{item.label}</span>
                 <span className={cn("mt-1 block text-xs leading-5", mode === item.value ? "text-paper/70" : "text-ink/60")}>{item.description}</span>
               </button>
@@ -226,7 +226,7 @@ export default function SessionSetup({
           <div className="mt-6 border-t border-line pt-6">
             {mode === "chapter" ? (
               <div>
-                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">章节 / CHAPTER</p>
+                <p className="font-mono text-[10px] tracking-[0.25em] text-ink/60">章节 / CHAPTER</p>
                 {chaptersState.kind === "loading" && <p className="mt-2 text-sm text-ink/60">正在加载章节列表…</p>}
                 {chaptersState.kind === "ready" && chaptersState.chapters.length === 0 && (
                   <p className="mt-2 text-sm text-ink/60">该题库暂未划分章节，请选择其他模式。</p>
@@ -234,7 +234,7 @@ export default function SessionSetup({
                 {chaptersState.kind === "ready" && chaptersState.chapters.length > 0 && (
                   <div className="flex flex-wrap items-end gap-6">
                     <div>
-                      <label htmlFor="session-chapter" className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
+                      <label htmlFor="session-chapter" className="font-mono text-[10px] tracking-[0.25em] text-ink/60">
                         选择章节
                       </label>
                       <select
@@ -271,7 +271,7 @@ export default function SessionSetup({
           </div>
 
           {startError && (
-            <p role="alert" className="mt-6 border border-accent px-4 py-3 text-sm text-accent">
+            <p role="alert" className="mt-6 border border-accent px-4 py-3 text-sm text-accent-text">
               {startError}
             </p>
           )}
@@ -285,7 +285,7 @@ export default function SessionSetup({
               className={cn(
                 "min-h-11 border px-7 py-3.5 font-mono text-sm tracking-widest transition-colors",
                 canStart && !starting
-                  ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
+                  ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
                   : "cursor-not-allowed border-line text-ink/30"
               )}
             >
@@ -293,7 +293,7 @@ export default function SessionSetup({
             </button>
             <TransitionLink
               href="/practice"
-              className="flex min-h-11 items-center border border-ink/30 px-7 py-3.5 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent"
+              className="flex min-h-11 items-center border border-ink/30 px-7 py-3.5 font-mono text-sm tracking-widest text-ink transition-colors hover:border-accent hover:text-accent-text"
             >
               返回题库目录 →
             </TransitionLink>

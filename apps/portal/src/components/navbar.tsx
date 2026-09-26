@@ -141,7 +141,8 @@ export default function Navbar() {
             <span className="font-display text-xl font-bold tracking-tight">
               henukit<span className="text-accent">®</span>
             </span>
-            <span className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/50 sm:inline">
+            {/* 页头是 95% 纸白，压在墨色的刷题模块上会变深，灰字至少 ink/65。 */}
+            <span className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/65 sm:inline">
               KEEP IN TOUCH
             </span>
           </Link>
@@ -155,7 +156,7 @@ export default function Navbar() {
                 className="group inline-flex min-h-11 items-center font-mono text-xs tracking-widest text-ink/80 transition-colors hover:text-ink"
               >
                 <span className="relative py-1">
-                  <span className="mr-1.5 text-accent">{link.index}</span>
+                  <span className="mr-1.5 text-accent-text">{link.index}</span>
                   {link.label}
                   <span
                     aria-hidden
@@ -208,7 +209,7 @@ export default function Navbar() {
               onClick={() => setOpen(false)}
               className="flex items-center gap-3 border-b border-line px-5 py-4 font-mono text-sm"
             >
-              <span className="text-accent">{link.index}</span>
+              <span className="text-accent-text">{link.index}</span>
               {link.label}
             </Link>
           ))}

@@ -25,7 +25,7 @@ export default function SectionCareer() {
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {FEATURES.map((feature) => (
               <li key={feature}>
-                <span className="mr-2 text-accent">+</span>
+                <span aria-hidden className="mr-2 text-accent-text">+</span>
                 {feature}
               </li>
             ))}
@@ -33,7 +33,7 @@ export default function SectionCareer() {
           <MagneticButton href="/career" className="mt-8">
             进入求职雷达
           </MagneticButton>
-          <p className="mt-5 font-mono text-[10px] tracking-[0.18em] text-ink/40">
+          <p className="mt-5 font-mono text-[10px] tracking-[0.18em] text-ink/60">
             RADAR SCHEMATIC · LIFETIME MEMBERSHIP
           </p>
         </div>

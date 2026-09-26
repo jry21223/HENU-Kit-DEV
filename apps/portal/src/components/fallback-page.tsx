@@ -23,7 +23,7 @@ export default function FallbackPage({
     <SiteShell className="bg-blueprint">
       <main className="mx-auto max-w-site px-5 py-16 md:px-8 md:py-24">
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">{code}</span>
+          <span className="text-accent-text">{code}</span>
           <span className="mx-2">/</span>
           {label}
         </p>

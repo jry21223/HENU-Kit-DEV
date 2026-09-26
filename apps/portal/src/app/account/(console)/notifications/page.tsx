@@ -99,8 +99,8 @@ export default function NotificationsPage() {
   return (
     <div>
       <section data-enter className="border-b border-ink pb-5">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/55">
-          <span className="text-accent">A-06</span>
+        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
+          <span className="text-accent-text">A-06</span>
           <span className="mx-2">/</span>
           NOTIFICATIONS
         </p>
@@ -114,15 +114,15 @@ export default function NotificationsPage() {
         <section
           data-account-notifications-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/50"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
         >
-          NOTIFICATIONS LOADING<span className="animate-pulse text-accent">…</span>
+          NOTIFICATIONS LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
       {state.kind === "error" ? (
         <section data-account-notifications-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent">NOTIFICATIONS UNAVAILABLE</p>
+          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">NOTIFICATIONS UNAVAILABLE</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <button
             type="button"
@@ -140,7 +140,7 @@ export default function NotificationsPage() {
       {state.kind === "success" ? (
         <section data-account-notifications-state="success" className="mt-6">
           {commandError ? (
-            <p role="alert" className="mb-4 border border-accent px-4 py-3 text-sm leading-6 text-accent">
+            <p role="alert" className="mb-4 border border-accent px-4 py-3 text-sm leading-6 text-accent-text">
               {commandError}
             </p>
           ) : null}
@@ -160,16 +160,16 @@ export default function NotificationsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h2 className="font-display text-xl font-bold">{notification.title}</h2>
                           {unread ? (
-                            <span className="border border-accent px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent">未读</span>
+                            <span className="border border-accent px-2 py-0.5 font-mono text-[10px] tracking-widest text-accent-text">未读</span>
                           ) : (
-                            <span className="font-mono text-[10px] tracking-widest text-ink/40">已读</span>
+                            <span className="font-mono text-[10px] tracking-widest text-ink/60">已读</span>
                           )}
                         </div>
                         {notification.ticket_reference ? (
-                          <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/45">{notification.ticket_reference}</p>
+                          <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/60">{notification.ticket_reference}</p>
                         ) : null}
                         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink/75">{notification.body}</p>
-                        <p className="mt-3 font-mono text-[10px] text-ink/45">{formatTimestamp(notification.created_at)}</p>
+                        <p className="mt-3 font-mono text-[10px] text-ink/60">{formatTimestamp(notification.created_at)}</p>
                       </div>
                       {unread ? (
                         <button

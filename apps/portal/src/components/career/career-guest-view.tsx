@@ -20,7 +20,7 @@ export default function CareerGuestView() {
       <div className="grid items-center gap-12 md:grid-cols-2">
         <div data-enter>
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">R-01</span>
+            <span className="text-accent-text">R-01</span>
             <span className="mx-2">/</span>
             WORK RADAR
           </p>
@@ -36,7 +36,7 @@ export default function CareerGuestView() {
           <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
             {FEATURES.map((f) => (
               <li key={f}>
-                <span className="mr-2 text-accent">+</span>
+                <span aria-hidden className="mr-2 text-accent-text">+</span>
                 {f}
               </li>
             ))}
