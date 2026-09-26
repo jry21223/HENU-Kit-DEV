@@ -235,6 +235,30 @@ async function mockCatalogBanks(page: Page) {
   );
 }
 
+// 搜不到题库时给「清除搜索」（#545）：清空搜索、题库回来，按钮随空状态消失后焦点交给搜索区。
+test("a search with no matching bank offers to clear it and brings the catalog back", async ({ page }) => {
+  await mockSignedOutGateway(page);
+  await mockCatalogBanks(page);
+
+  await page.goto("/practice", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1);
+  const computing = page.getByRole("heading", { name: "计算机基础", exact: true });
+  await expect(computing).toBeVisible();
+  await expect(page.getByRole("button", { name: "清除搜索" })).toHaveCount(0);
+
+  const search = page.getByPlaceholder("如：数据结构 / 高等数学");
+  await search.fill("高等数学");
+  await expect(page.getByText("无匹配题库", { exact: true })).toBeVisible();
+  await expect(computing).toHaveCount(0);
+
+  await page.getByRole("button", { name: "清除搜索", exact: true }).click();
+  await expect(computing).toBeVisible();
+  await expect(page.getByRole("heading", { name: "数据结构", exact: true })).toBeVisible();
+  await expect(search).toHaveValue("");
+  await expect(page.getByRole("search", { name: "题库搜索" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "清除搜索" })).toHaveCount(0);
+});
+
 /**
  * 生产构建开着题库目录（scripts/ops/henukit-release-images.sh），用户看到的 /practice 是题库卡片，
  * 或目录读不到时的失败提示。文字对比度要求同 color-contrast.spec.ts（#536）：axe 的 color-contrast

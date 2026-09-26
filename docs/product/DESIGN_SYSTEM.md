@@ -246,10 +246,14 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 
 错误信息说明发生了什么和下一步。空状态提供可执行动作，不用段子替代说明。
 
+- 详情页分清“内容不存在”和“暂时读不到”：前者只显示 404 页，后者说明原因并给“重试”，不显示 404。
+- 加载中和空状态的说明带 `role="status"`，列表换成它们时焦点不用挪，支持的读屏软件会读出；随内容一起插入的 status 并非所有读屏软件都会读，一定要读出的结果放在常驻的 status 区里（见第 11 节）。详情页里随整页出现的固定段落占位不是结果变化，不播报。外面不要再套一层 `aria-live`，否则会读两遍。
+
 ## 11. 表单
 
 - 输入框必须有可见标签，placeholder 不能代替标签。
 - 错误靠近字段，不只用颜色表达。
+- 字段错误出现时作为 alert 读出，并用 `aria-describedby`、`aria-invalid` 关联到输入框；操作结果（如验证码已发送）放在常驻的 status 区里读出。目前登录 / 注册已做到；找回密码页（`/account/recover`）的错误还是表单里的一行普通文字，“已发送至”也不在 status 区里，尚未跟上。
 - 失败后保留非敏感输入。
 - 验证码支持粘贴、自动聚焦和手动修改。
 - 触控区域至少 44 × 44px。
@@ -277,7 +281,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 点击区域不小于 44 × 44px。
   - 纯文字链接（返回上一级、账户入口、导航与子站标签、页脚链接）用内边距或 `min-h-11` 撑满点击区；所在的行放不下时配等量负外边距，视觉尺寸和行高不变。标签的下划线挂在文字上，不随点击区下移。桌面导航在平板上同样靠手指点，也按这条做。
   - 有边框或底色的控件（筛选、切换、按钮、输入框）本身做到 44px 高，看到的范围就是能点的范围。
-  - 按 WCAG 2.5.8，只有句中的行内链接（如同意告知里的《用户协议》）和装饰元素例外。首页、五个子站（含终身会员的求职雷达）和登录页在 390px 下、首页页头在 768 / 1024px 下由 `apps/portal/tests/touch-targets.spec.ts` 检查；题库目录开启时的 /practice 由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查。检查逻辑在 `apps/portal/tests/support/touch-targets.ts`。
+  - 按 WCAG 2.5.8，只有句中的行内链接（如同意告知里的《用户协议》）和装饰元素例外。首页、五个子站（含终身会员的求职雷达）、登录页，以及资料、美食、互助单详情的不存在与暂时读不到状态在 390px 下，首页页头在 768 / 1024px 下，由 `apps/portal/tests/touch-targets.spec.ts` 检查；题库目录开启时的 /practice 由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查。检查逻辑在 `apps/portal/tests/support/touch-targets.ts`。
 - 手机首屏先给内容，装饰让位：
   - 子站首页（资料库、互助、刷题）在 `lg` 以下压缩标题区、隐藏右侧装饰插图，390 × 844 下第一屏能看到搜索框和至少一条内容（或加载占位）。插图隐藏后，同屏文字不再提到它。互助和刷题由 `apps/portal/tests/responsive.spec.ts` 检查，题库目录开启时的刷题另由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查，资料库的搜索与筛选由 `apps/portal/tests/library-discovery-ux.spec.ts` 检查。
   - 首页模块只在 `md` 及以上占满一屏，与吸附滚动同时启用；手机上是普通滚动，模块按内容高度排列，不留整屏空白。由 `apps/portal/tests/responsive.spec.ts` 检查。

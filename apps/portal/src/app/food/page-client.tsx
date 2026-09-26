@@ -102,9 +102,12 @@ export default function FoodBoardPage() {
               ))}
             </div>
           </div>
-          <p className="font-mono text-xs tracking-[0.2em] text-ink/60">
-            {loadState === "ready" ? `${visibleCount} ENTRIES` : "SYNCING"}
-          </p>
+          {/* 失败时只由下方 ErrorBanner 说明，这里不再挂着“还在同步”。 */}
+          {loadState === "error" ? null : (
+            <p className="font-mono text-xs tracking-[0.2em] text-ink/60">
+              {loadState === "ready" ? `${visibleCount} ENTRIES` : "SYNCING"}
+            </p>
+          )}
         </div>
 
         {loadState === "error" && error && (

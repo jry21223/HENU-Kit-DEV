@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 /**
  * 空状态给出可执行的下一步（#545）：没有内容时说明原因，并提供一个动作——
- * 去别处（去题库、去刷题）或就地改条件（清除筛选）。清除筛选要让列表回来，
+ * 去别处（去题库、去刷题、回首页）或就地改条件（清除筛选、清除搜索）。清除筛选要让列表回来，
  * 筛选控件也回到「全部」。
  */
 
@@ -80,6 +80,8 @@ test("campus filters with no match offer to clear them and bring the list back",
   await page.getByRole("button", { name: "闲置单", exact: true }).click();
   await page.getByRole("button", { name: "代取快递", exact: true }).click();
   await expect(page.getByText("无匹配单子", { exact: true })).toBeVisible();
+  // 空状态的说明是礼貌播报的 status：结果变成空时焦点不动，支持的读屏软件会读出。
+  await expect(page.getByRole("status").filter({ hasText: "无匹配单子" })).toHaveText("无匹配单子");
   await expect(express).toHaveCount(0);
   await expect(bookcase).toHaveCount(0);
 
@@ -98,6 +100,48 @@ test("campus filters with no match offer to clear them and bring the list back",
     await expect(all).toHaveAttribute("aria-pressed", "true");
   }
   await expect(page.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
+});
+
+test("an empty campus market points back to the home page without promising posts", async ({ page }) => {
+  await page.route("**/api/v1/campus/items", (route) =>
+    route.fulfill({ json: { items: [], request_id: "req_campus_items_none" } })
+  );
+  await page.route("**/api/v1/campus/categories", (route) =>
+    route.fulfill({ json: { categories: [], request_id: "req_campus_categories" } })
+  );
+  await page.goto("/campus");
+  await waitForHydration(page);
+
+  const main = page.getByRole("main");
+  const home = main.getByRole("link", { name: "回首页", exact: true });
+  await expect(main.getByText("暂无互助或闲置信息", { exact: true })).toBeVisible();
+  await expect(home).toHaveAttribute("href", "/");
+  await expect(main.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
+
+  // 一条单子都没有时，有筛选条件也一样：清除筛选帮不上忙，仍然只给回首页。
+  await page.getByPlaceholder("搜索：快递 / 键盘 / 占座").fill("快递");
+  await expect(main.getByText("暂无互助或闲置信息", { exact: true })).toBeVisible();
+  await expect(main.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
+  await expect(home).toBeVisible();
+
+  await home.click();
+  await expect(page).toHaveURL(/:\d+\/$/);
+});
+
+test("an empty bank favorites folder links to the bank catalog", async ({ page }) => {
+  await page.route("**/api/v1/practice/banks/bank-empty/favorites", (route) =>
+    route.fulfill({ json: { request_id: "req_folder_empty", data: [] } })
+  );
+  await page.goto("/practice/favorites/bank-empty");
+  await waitForHydration(page);
+
+  const folder = page.getByTestId("practice-favorites-folder-list");
+  await expect(folder).toContainText("这个题库还没有收藏题目");
+  const toCatalog = folder.getByRole("link", { name: "去题库", exact: true });
+  await expect(toCatalog).toHaveAttribute("href", "/practice");
+
+  await toCatalog.click();
+  await expect(page).toHaveURL(/\/practice$/);
 });
 
 const LIBRARY_MATERIALS = [

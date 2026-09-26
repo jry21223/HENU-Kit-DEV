@@ -19,6 +19,7 @@ export function HenuEmailField({
   onChange,
   disabled,
   autoFocus,
+  errorId,
 }: {
   id?: string;
   label?: string;
@@ -27,6 +28,8 @@ export function HenuEmailField({
   onChange: (localPart: string) => void;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** Id of the error shown under this field; marks the input invalid and reads the error with it. */
+  errorId?: string;
 }) {
   const full = value ? toHenuEmail(value) : "";
 
@@ -53,7 +56,8 @@ export function HenuEmailField({
           value={value}
           onChange={(e) => onChange(toHenuLocalPart(e.target.value))}
           className="border-0 focus:border-transparent"
-          aria-describedby={`${id}-suffix`}
+          aria-describedby={errorId ? `${id}-suffix ${errorId}` : `${id}-suffix`}
+          aria-invalid={errorId ? true : undefined}
         />
         <span
           id={`${id}-suffix`}

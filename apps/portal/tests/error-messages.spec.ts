@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 /**
  * 资料库接口返回 HTML 错误页（反向代理 404、WAF 挑战页）时，首页 01 与 /library
@@ -106,4 +106,76 @@ test("/food says a failed ranking load once, in the error banner only (#549)", a
   // 与 /library、/campus 一致：失败只由提示条说明，列表区不再叠一句空状态。
   await expect(page.getByText(/榜单暂时加载不出来/)).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText(LEAKS);
+  // 筛选行右侧的英文状态也不再说还在同步：请求已经失败了。
+  await expect(page.locator("main")).not.toContainText("SYNCING");
 });
+
+/**
+ * 互助单详情分清两种失败（与资料详情、美食详情一致）：单子不存在时只显示 404 页；
+ * 服务不可用、返回 HTML 或断网时说明暂时读不到，并给「重试」。
+ */
+const CAMPUS_ITEM = {
+  id: "campus-bookcase", type: "sell", category: "flea", title: "九成新书架", desc: "宿舍搬家出",
+  price: 20, seller: "同学乙", credit: 0, dealsDone: 0, wants: 0, place: "金明校区", status: "open", time: "2026-09-21",
+};
+
+test("a campus item that does not exist says so once, without an error line or retry", async ({ page }) => {
+  await page.route(`**/api/v1/campus/items/${CAMPUS_ITEM.id}`, (route) =>
+    route.fulfill({ status: 404, json: { error: "not_found", request_id: "req_campus_gone" } })
+  );
+  await page.goto(`/campus/item/${CAMPUS_ITEM.id}`);
+  await expect(page.locator("html")).toHaveAttribute("data-scroll-memory", "ready");
+
+  const main = page.locator("main");
+  await expect(main.getByText("单子不存在或已下架", { exact: true })).toBeVisible();
+  await expect(main).toContainText("404 / NOT FOUND");
+  // 不存在就只说不存在：不叠一句“稍后再试”，也不给帮不上忙的重试。
+  await expect(main.getByRole("alert")).toHaveCount(0);
+  await expect(main).not.toContainText(/暂时不可用|稍后|重试/);
+  await expect(main.locator("[data-back-link]")).toHaveAttribute("href", "/campus");
+});
+
+const CAMPUS_FAILURES = [
+  {
+    name: "is unavailable",
+    message: "服务暂时不可用，请稍后再试。",
+    fail: (route: Route) =>
+      route.fulfill({ status: 503, json: { error: "upstream_unavailable", request_id: "req_campus_down" } }),
+  },
+  {
+    name: "comes back as an HTML page",
+    message: "服务暂时不可用，请稍后再试。",
+    fail: (route: Route) => route.fulfill({ status: 200, contentType: "text/html", body: HTML_404 }),
+  },
+  {
+    name: "cannot be reached",
+    message: "网络连接失败，请检查网络后重试。",
+    fail: (route: Route) => route.abort("internetdisconnected"),
+  },
+];
+
+for (const failure of CAMPUS_FAILURES) {
+  test(`a campus item that ${failure.name} is not reported as missing and can be retried`, async ({ page }) => {
+    let broken = true;
+    await page.route(`**/api/v1/campus/items/${CAMPUS_ITEM.id}`, (route) =>
+      broken
+        ? failure.fail(route)
+        : route.fulfill({ json: { item: CAMPUS_ITEM, messages: [], request_id: "req_campus_item" } })
+    );
+    await page.goto(`/campus/item/${CAMPUS_ITEM.id}`);
+    await expect(page.locator("html")).toHaveAttribute("data-scroll-memory", "ready");
+
+    const main = page.locator("main");
+    const alert = main.getByRole("alert");
+    await expect(alert).toContainText(failure.message);
+    // 暂时读不到不等于单子不存在。
+    await expect(main).not.toContainText(/404|NOT FOUND|不存在或已下架/);
+    await expect(main).not.toContainText(LEAKS);
+    await expect(main.locator("[data-back-link]")).toHaveAttribute("href", "/campus");
+
+    broken = false;
+    await alert.getByRole("button", { name: "重试" }).click();
+    await expect(main.getByRole("heading", { level: 1, name: CAMPUS_ITEM.title })).toBeVisible();
+    await expect(main.getByRole("alert")).toHaveCount(0);
+  });
+}

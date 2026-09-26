@@ -7,19 +7,35 @@ const STORAGE_KEY = "henukit-qq-binding";
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 type Binding = { bound: boolean; display_name?: string };
-class BindingLoginRequired extends Error {}
+// Only these messages reach the screen: this page's own Chinese copy or the binding
+// service's envelope message. Raw browser errors (fetch's TypeError, a JSON SyntaxError
+// from a gateway error page or WAF challenge) are mapped to Chinese copy instead.
+class BindingNotice extends Error {}
+class BindingLoginRequired extends BindingNotice {}
+const NETWORK_FAILED = "网络连接失败，请检查网络后重试。";
+const BINDING_UNAVAILABLE = "绑定服务暂时不可用，请稍后重试。";
+const SESSION_UNREADABLE = "登录状态暂时无法读取，请稍后刷新重试。";
+
+async function send(input: string, init: RequestInit) {
+  try {
+    return await fetch(input, init);
+  } catch {
+    throw new BindingNotice(NETWORK_FAILED);
+  }
+}
 
 async function bindingRequest(action: "status" | "authorize" | "unlink", token = "") {
-  const response = await fetch(`/api/v1/account/qq-binding/${action}`, {
+  const response = await send(`/api/v1/account/qq-binding/${action}`, {
     method: "POST", credentials: "same-origin", cache: "no-store",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(token ? { token } : {}),
   });
-  const envelope = await response.json();
+  const envelope = await response.json().catch(() => null);
   if (!response.ok) {
-    if (response.status === 401 || (response.status === 403 && envelope.error?.code === "BINDING_FORBIDDEN")) throw new BindingLoginRequired("登录已失效，请重新登录 HENU KIT。");
-    throw new Error(typeof envelope.error?.message === "string" ? envelope.error.message : "绑定服务暂时不可用，请稍后重试。");
+    if (response.status === 401 || (response.status === 403 && envelope?.error?.code === "BINDING_FORBIDDEN")) throw new BindingLoginRequired("登录已失效，请重新登录 HENU KIT。");
+    throw new BindingNotice(typeof envelope?.error?.message === "string" ? envelope.error.message : BINDING_UNAVAILABLE);
   }
+  if (envelope === null) throw new BindingNotice(BINDING_UNAVAILABLE);
   return envelope.data;
 }
 
@@ -55,10 +71,11 @@ export default function QQBindingPage() {
     window.history.replaceState(null, "", "/bind/qq");
     void (async () => {
       try {
-        const response = await fetch("/api/v1/session", { credentials: "same-origin", cache: "no-store" });
+        const response = await send("/api/v1/session", { credentials: "same-origin", cache: "no-store" });
         if (response.status === 401) return;
-        if (!response.ok) throw new Error("登录状态暂时无法读取，请稍后刷新重试。");
-        const current = await response.json();
+        if (!response.ok) throw new BindingNotice(SESSION_UNREADABLE);
+        const current = await response.json().catch(() => null);
+        if (current === null) throw new BindingNotice(SESSION_UNREADABLE);
         if (!current.user_id) return;
         const status: Binding = await bindingRequest("status");
         if (!cancelled) {
@@ -67,7 +84,7 @@ export default function QQBindingPage() {
           setBinding(status);
         }
       } catch (cause) {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "暂时无法读取绑定状态，请稍后重试。");
+        if (!cancelled) setError(cause instanceof BindingNotice ? cause.message : "暂时无法读取绑定状态，请稍后重试。");
       } finally {
         if (!cancelled) { setToken(recoveredToken); setBusy(false); }
       }
@@ -85,7 +102,7 @@ export default function QQBindingPage() {
       try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* optional storage */ }
     } catch (cause) {
       if (cause instanceof BindingLoginRequired) { setSignedIn(false); setBinding(null); }
-      setError(cause instanceof Error ? cause.message : "操作未完成，请稍后重试。");
+      setError(cause instanceof BindingNotice ? cause.message : "操作未完成，请稍后重试。");
     } finally { setBusy(false); }
   }
 

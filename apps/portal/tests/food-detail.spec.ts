@@ -112,4 +112,9 @@ test("a post without images collapses the gallery to one line and states its sou
   const aside = page.locator("aside");
   await expect(aside.getByText("学生编辑部 · 社区稿件")).toBeVisible();
   await expect(aside.getByText(/社区稿件/)).toHaveCount(1);
+
+  // 没有补充时的段落占位随整页一起出现，不是结果变化：看得到，但不作为状态播报。
+  const main = page.locator("main");
+  await expect(main.getByText("暂无学生补充", { exact: true })).toBeVisible();
+  await expect(main.getByRole("status")).toHaveCount(0);
 });

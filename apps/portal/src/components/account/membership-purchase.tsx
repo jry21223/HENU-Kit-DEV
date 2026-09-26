@@ -19,7 +19,7 @@ type PurchaseState =
   | { kind: "starting" }
   | { kind: "awaiting"; order: AccountMembershipOrder; checkoutURL?: string }
   | { kind: "paid" }
-  | { kind: "unavailable"; message: string }
+  | { kind: "unavailable" }
   | { kind: "error"; message: string };
 
 /**
@@ -62,8 +62,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
       (error: unknown) => {
         if (!active.current) return;
         // A disabled payment provider is an honest unavailable state, not a
-        // failure the user should retry into.
-        const message = formatPortalError(error);
+        // failure the user should retry into, so it gets no generic "try again".
         const unavailable =
           typeof error === "object" &&
           error !== null &&
@@ -71,7 +70,7 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
           (error as { status?: number }).status === 503 &&
           error instanceof Error &&
           error.message === "membership_payment_unavailable";
-        setState(unavailable ? { kind: "unavailable", message } : { kind: "error", message });
+        setState(unavailable ? { kind: "unavailable" } : { kind: "error", message: formatPortalError(error) });
       }
     );
   }, [onPaid]);
@@ -119,9 +118,8 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
     return (
       <section data-membership-purchase="unavailable" className="mt-6 border border-line p-6">
         <p className="font-mono text-xs tracking-[0.2em] text-ink/60">PURCHASE UNAVAILABLE</p>
-        <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
-        <p className="mt-3 text-sm leading-6 text-ink/60">
-          支付通道尚未开放，这次没有创建订单，也不会产生扣款。
+        <p className="mt-3 text-sm leading-6 text-ink/65">
+          支付通道尚未开放，这次没有创建订单，也不会产生扣款。通道开放后，可回到本页开通终身会员。
         </p>
       </section>
     );

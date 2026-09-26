@@ -66,6 +66,8 @@ function Field({
   /** 收集这一项时需要当场告知的用途说明，与输入框一起读出。 */
   hint?: string;
 }) {
+  // 错误出现时作为 alert 读出；之后回到这个输入框，错误也跟着用途说明一起读。
+  const describedBy = [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(" ");
   return (
     <div>
       <Label htmlFor={id}>{label}</Label>
@@ -76,7 +78,8 @@ function Field({
         autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        aria-describedby={hint ? `${id}-hint` : undefined}
+        aria-describedby={describedBy || undefined}
+        aria-invalid={error ? true : undefined}
         className={error ? "border-accent focus:border-accent" : undefined}
       />
       {hint ? (
@@ -85,7 +88,9 @@ function Field({
         </p>
       ) : null}
       {error ? (
-        <p className="mt-1 font-mono text-xs text-accent-text">{error}</p>
+        <p id={`${id}-error`} role="alert" className="mt-1 font-mono text-xs text-accent-text">
+          {error}
+        </p>
       ) : null}
     </div>
   );
@@ -589,9 +594,10 @@ function LoginForm() {
             id="auth-email"
             value={localPart}
             onChange={setLocalPart}
+            errorId={errors.email ? "auth-email-error" : undefined}
           />
           {errors.email ? (
-            <p className="-mt-3 font-mono text-xs text-accent-text">
+            <p id="auth-email-error" role="alert" className="-mt-3 font-mono text-xs text-accent-text">
               {errors.email}
             </p>
           ) : null}
@@ -610,6 +616,8 @@ function LoginForm() {
                   onChange={(e) =>
                     setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
                   }
+                  aria-describedby={errors.code ? "auth-code-error" : undefined}
+                  aria-invalid={errors.code ? true : undefined}
                   className={cn(
                     "tracking-[0.35em] placeholder:tracking-normal",
                     errors.code ? "border-accent focus:border-accent" : undefined
@@ -627,15 +635,15 @@ function LoginForm() {
                 </Button>
               </div>
               {errors.code ? (
-                <p className="mt-1 font-mono text-xs text-accent-text">
+                <p id="auth-code-error" role="alert" className="mt-1 font-mono text-xs text-accent-text">
                   {errors.code}
                 </p>
               ) : null}
-              {info ? (
-                <p className="mt-1 font-mono text-xs leading-5 text-ink/60">
-                  {info}
-                </p>
-              ) : null}
+              {/* 常驻的 status：验证码发出后读屏软件会读出这句。只在有内容时才插入的节点，
+                  有的读屏软件不会读。没有内容时它是空的，不占位置。 */}
+              <p role="status" className="mt-1 font-mono text-xs leading-5 text-ink/60">
+                {info}
+              </p>
             </div>
           )}
 

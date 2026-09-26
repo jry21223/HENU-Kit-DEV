@@ -3,10 +3,18 @@
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 
-/** 加载中：label 说明正在读什么，末尾统一补省略号。 */
+/**
+ * 加载中：label 说明正在读什么，末尾统一补省略号。
+ * 它和空状态的说明都带 role="status"（礼貌播报），列表换成它们时焦点不用挪，支持的读屏软件
+ * 会读出来。它们是跟着内容一起插进页面的，并非所有读屏软件都会读；一定要读出的结果（如验证码
+ * 已发送）放在常驻的 status 区里。调用方不要再套一层 aria-live，否则会读两遍。
+ */
 export function LoadingBlock({ label = "加载中" }: { label?: string }) {
   return (
-    <p className="border border-dashed border-ink/30 px-5 py-16 text-center font-mono text-xs leading-6 text-ink/70">
+    <p
+      role="status"
+      className="border border-dashed border-ink/30 px-5 py-16 text-center font-mono text-xs leading-6 text-ink/70"
+    >
       {label}…
     </p>
   );
@@ -20,11 +28,25 @@ type EmptyAction =
 const emptyActionClass =
   "mt-5 inline-flex min-h-11 min-w-11 items-center justify-center border border-ink px-4 font-mono text-xs text-ink transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-/** 真实为空：label 说明为什么没有内容，action 给出一个可执行的下一步。 */
-export function EmptyBlock({ label = "暂无数据", action }: { label?: string; action?: EmptyAction }) {
+/**
+ * 真实为空：label 说明为什么没有内容，action 给出一个可执行的下一步（不算在播报里）。
+ * 详情页里随整页一起出现的固定段落占位（如“暂无学生补充”）不是结果变化，传 announce={false}
+ * 不播报，免得页面一加载就连读几句。
+ */
+export function EmptyBlock({
+  label = "暂无数据",
+  action,
+  announce = true,
+}: {
+  label?: string;
+  action?: EmptyAction;
+  announce?: boolean;
+}) {
   return (
     <div className="border border-dashed border-ink/30 px-5 py-16 text-center">
-      <p className="font-mono text-xs leading-6 text-ink/70">{label}</p>
+      <p role={announce ? "status" : undefined} className="font-mono text-xs leading-6 text-ink/70">
+        {label}
+      </p>
       {action ? (
         "href" in action ? (
           <Link href={action.href} className={emptyActionClass}>

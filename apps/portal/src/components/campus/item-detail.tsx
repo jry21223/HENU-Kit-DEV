@@ -5,7 +5,8 @@ import Img from "@/components/ui/img";
 import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
 import { useCampusItemDetail } from "@/lib/campus/use-campus-item-detail";
-import BackLink from "@/components/back-link";
+import { DetailStateBackLink } from "@/components/back-link";
+import { ErrorBanner } from "@/components/data-state";
 import { useDocumentTitle } from "@/components/use-document-title";
 
 const STATUS_LABEL = { open: "待接单", ongoing: "进行中", done: "已完成", hidden: "已隐藏" } as const;
@@ -16,20 +17,28 @@ export default function ItemDetail({ id }: { id: string }) {
   useDocumentTitle(state.loadState === "ready" ? state.item.title : null, "campus");
 
   if (state.loadState !== "ready") {
-    if (state.loadState === "error") {
+    if (state.loadState === "not-found") {
       return (
         <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">404 / NOT FOUND</p>
           <p className="mt-4 font-display text-2xl font-bold">单子不存在或已下架</p>
-          {state.error && <p className="mt-2 font-mono text-xs text-ink/60">{state.error}</p>}
-          <BackLink className="mt-6 inline-block font-mono text-sm text-accent-text hover:underline" />
+          <DetailStateBackLink />
+        </main>
+      );
+    }
+    // 暂时读不到不等于单子不存在：说明原因并给重试，不显示 404。
+    if (state.loadState === "error") {
+      return (
+        <main className="mx-auto max-w-3xl px-5 py-24 md:px-8">
+          <ErrorBanner message={state.error} onRetry={state.retry} />
+          <DetailStateBackLink />
         </main>
       );
     }
     return (
       <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
         <p className="font-mono text-xs leading-6 text-ink/70">加载中…</p>
-        <BackLink className="mt-6 inline-block font-mono text-sm text-accent-text hover:underline" />
+        <DetailStateBackLink />
       </main>
     );
   }

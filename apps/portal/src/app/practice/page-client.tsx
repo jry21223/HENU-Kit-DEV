@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchQuizCraftCatalog,
 } from "@/lib/api/client";
@@ -69,6 +69,7 @@ export default function PracticeBankPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -105,6 +106,12 @@ export default function PracticeBankPage() {
     const q = query.trim();
     return quizCraftBanks.filter((bank) => bank.name.includes(q));
   }, [query, quizCraftBanks, searching]);
+  const clearSearch = () => {
+    setQuery("");
+    // 清除搜索按钮会随空状态一起消失；焦点交给搜索区，键盘和读屏用户不丢位置。
+    // 不直接聚焦搜索框：手机上会弹出输入法，挡住刚恢复的题库。
+    searchRef.current?.focus();
+  };
 
   return (
     <main>
@@ -113,6 +120,7 @@ export default function PracticeBankPage() {
         onQueryChange={setQuery}
         catalogMode={quizCraftCatalogIsEnabled}
         masteryState={masteryState}
+        searchRef={searchRef}
       />
 
       <div data-block className="border-t border-line">
@@ -140,7 +148,10 @@ export default function PracticeBankPage() {
           <div data-block className="flex-1 px-5 py-6 md:px-8 lg:py-10">
             {quizCraftCatalogIsEnabled ? (
               filteredQuizCraftBanks.length === 0 ? (
-                <EmptyBlock label={searching ? "无匹配题库" : "暂无题库"} />
+                <EmptyBlock
+                  label={searching ? "无匹配题库" : "暂无题库"}
+                  action={searching ? { label: "清除搜索", onClick: clearSearch } : undefined}
+                />
               ) : (
                 <div data-enter className="grid gap-5 md:grid-cols-2">
                   {filteredQuizCraftBanks.map((bank, index) => (

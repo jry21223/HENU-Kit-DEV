@@ -142,6 +142,35 @@ test("首页榜单加载失败时，重新加载按钮不小于 44×44", async (
   await expectTouchTargets(page, "首页（榜单出错）");
 });
 
+// 详情页拿不到内容时整页换成的状态：正文里的返回链接和重试按钮同样要达标。
+for (const detail of [
+  { name: "资料详情", path: "/library/item/targets-material", endpoint: "**/api/v1/library/materials/targets-material" },
+  { name: "美食详情", path: "/food/post/targets-post", endpoint: "**/api/v1/food/posts/targets-post" },
+  { name: "互助单详情", path: "/campus/item/targets-item", endpoint: "**/api/v1/campus/items/targets-item" },
+]) {
+  test(`${detail.name}不存在或暂时读不到时，返回链接和重试按钮不小于 44×44`, async ({ page }) => {
+    await mockUnavailableGateway(page);
+    let status = 404;
+    await page.route(detail.endpoint, (route) =>
+      route.fulfill({
+        status,
+        json: { error: status === 404 ? "not_found" : "upstream_unavailable", request_id: "req_targets_detail" },
+      })
+    );
+
+    await page.goto(detail.path);
+    await waitForHydration(page);
+    await expect(page.getByText("404 / NOT FOUND")).toBeVisible();
+    await expectTouchTargets(page, `${detail.name}（不存在）`);
+
+    status = 503;
+    await page.reload();
+    await waitForHydration(page);
+    await expect(page.locator("main").getByRole("alert")).toBeVisible();
+    await expectTouchTargets(page, `${detail.name}（暂时读不到）`);
+  });
+}
+
 test("已登录时，子站页头的账户入口不小于 44×44", async ({ page }) => {
   await mockGatewayWithContent(page);
   await page.route("**/api/v1/session", (route) =>

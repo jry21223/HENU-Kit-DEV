@@ -5,7 +5,8 @@ import { EmptyBlock, ErrorBanner, LoadingBlock } from "./data-state";
 
 /**
  * 空状态说明为什么没有内容，并可带一个下一步（链接或按钮）；中文不追加英文后缀、
- * 不拉宽字距（#545）。
+ * 不拉宽字距（#545）。加载中与空状态的说明带 role="status"（礼貌播报）；详情页里固定的
+ * 段落占位不是结果变化，不播报。
  */
 describe("EmptyBlock", () => {
   it("shows the Chinese label alone, without an English suffix or wide tracking", () => {
@@ -36,6 +37,26 @@ describe("EmptyBlock", () => {
     expect(html).toMatch(/<button[^>]*type="button"[^>]*>清除筛选<\/button>/);
     expect(html).not.toContain("<a");
   });
+
+  it("announces the label politely, without reading the action as part of it", () => {
+    const html = renderToStaticMarkup(
+      <EmptyBlock label="无匹配单子" action={{ label: "清除筛选", onClick: () => {} }} />
+    );
+
+    // 说明是礼貌播报的 status；按钮不在 status 里，不被当成状态念一遍。
+    expect(html).toMatch(/<p[^>]*role="status"[^>]*>无匹配单子<\/p>/);
+    expect(html.match(/role="status"/g)).toHaveLength(1);
+    expect(html).not.toContain("assertive");
+  });
+
+  it("stays quiet as a fixed section placeholder inside loaded content", () => {
+    // 美食详情里“暂无学生补充”这类段落占位随整页一起出现，不是结果变化：读到这里才读，不播报。
+    const html = renderToStaticMarkup(<EmptyBlock label="暂无学生补充" announce={false} />);
+
+    expect(html).toContain("暂无学生补充");
+    expect(html).not.toContain("role=");
+    expect(html).not.toContain("aria-live");
+  });
 });
 
 describe("LoadingBlock", () => {
@@ -46,6 +67,12 @@ describe("LoadingBlock", () => {
     expect(html).not.toContain("LOADING");
     // 任何加宽字距都不行（tracking-[…]、tracking-wide/wider/widest），只允许 tracking-normal。
     expect(html).not.toMatch(/tracking-(?!normal\b)/);
+  });
+
+  it("announces that loading started, politely", () => {
+    const html = renderToStaticMarkup(<LoadingBlock label="加载互助单" />);
+
+    expect(html).toMatch(/^<p[^>]*role="status"[^>]*>加载互助单…<\/p>$/);
   });
 });
 

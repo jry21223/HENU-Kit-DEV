@@ -7,6 +7,7 @@ import BackLink from "@/components/back-link";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import FavoritesLoginPrompt from "@/components/practice/favorites-login-prompt";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
+import { useDocumentTitle } from "@/components/use-document-title";
 import {
   createFavoritesSession,
   fetchBankFavorites,
@@ -90,6 +91,8 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   const favoriteKey = useIdempotencyKey("practice-unfavorite");
   const sessionKeys = useIdempotencyKey("practice-favorites-session");
   const [bankName, setBankName] = useState("");
+  // 页头显示题库名时，标签页也写上它；没有题库名就保留静态标题“题库收藏夹”。
+  useDocumentTitle(bankName ? `${bankName} 收藏夹` : null, "practice");
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -242,7 +245,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       {state.status === "ready" && (
         <section data-testid="practice-favorites-folder-list" data-block className="mt-10">
           {items.length === 0 ? (
-            <EmptyBlock label="这个题库还没有收藏题目" />
+            <EmptyBlock label="这个题库还没有收藏题目" action={{ label: "去题库", href: "/practice" }} />
           ) : (
             <>
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-ink/40 pb-2 font-mono text-xs text-ink/60">

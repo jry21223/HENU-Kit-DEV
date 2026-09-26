@@ -232,9 +232,16 @@ export default function MarketPage() {
           {loadState === "loading" ? (
             <LoadingBlock label="加载互助单" />
           ) : loadState === "error" ? null : filtered.length === 0 ? (
+            // 一条单子都没有时清除筛选帮不上忙，发布也还没开放：只给回首页。
             <EmptyBlock
               label={openCount === 0 ? "暂无互助或闲置信息" : "无匹配单子"}
-              action={hasActiveFilter ? { label: "清除筛选", onClick: clearFilters } : undefined}
+              action={
+                openCount === 0
+                  ? { label: "回首页", href: "/" }
+                  : hasActiveFilter
+                    ? { label: "清除筛选", onClick: clearFilters }
+                    : undefined
+              }
             />
           ) : (
             <div className="columns-1 gap-4 sm:columns-2">

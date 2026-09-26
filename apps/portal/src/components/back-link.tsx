@@ -32,3 +32,14 @@ export default function BackLink({ className }: { className?: string }) {
     </Link>
   );
 }
+
+/**
+ * 详情页整页状态（加载中、不存在、暂时读不到）正文里的回退入口：橙色等宽字，点击区撑到
+ * 44 × 44（DESIGN_SYSTEM §13）。点击区比文字高出的部分上下各一半，所以上外边距用 mt-3，
+ * 文字仍在原来 mt-6 的位置。
+ */
+export function DetailStateBackLink() {
+  return (
+    <BackLink className="mt-3 inline-flex min-h-11 min-w-11 items-center font-mono text-sm text-accent-text hover:underline" />
+  );
+}

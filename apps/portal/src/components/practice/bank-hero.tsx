@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import dynamic from "next/dynamic";
 import { REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
@@ -124,12 +124,15 @@ export default function BankHero({
   onQueryChange,
   catalogMode = false,
   masteryState,
+  searchRef,
 }: {
   query: string;
   onQueryChange: (v: string) => void;
   /** Alters catalog copy only; Hero facts always remain server-derived. */
   catalogMode?: boolean;
   masteryState: PersonalPracticeStatsState;
+  /** 搜索区：题库页清除搜索后把焦点交给它。 */
+  searchRef?: Ref<HTMLDivElement>;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const [active, setActive] = useState(true);
@@ -240,8 +243,12 @@ export default function BankHero({
           </p>
 
           <div
+            ref={searchRef}
             data-hero-title
-            className="enter-rise mt-5 w-full max-w-md lg:mt-8"
+            role="search"
+            aria-label="题库搜索"
+            tabIndex={-1}
+            className="enter-rise mt-5 w-full max-w-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent lg:mt-8"
             style={{ animationDelay: "0.2s" }}
           >
             <label className="mb-1 block font-mono text-xs text-ink/60">

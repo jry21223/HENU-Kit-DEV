@@ -165,8 +165,15 @@ test("a disabled payment provider is an honest unavailable state", async ({ cont
   await page.goto("/account/membership");
   await page.getByRole("button", { name: "购买终身会员" }).click();
 
-  await expect(page.locator('[data-membership-purchase="unavailable"]')).toBeVisible();
+  const panel = page.locator('[data-membership-purchase="unavailable"]');
+  await expect(panel).toBeVisible();
   await expect(page.locator('[data-membership-purchase="paid"]')).toHaveCount(0);
+  // 只说通道没开和能做什么，不再叠一句像故障一样的“服务暂时不可用，请稍后再试”。
+  await expect(panel).toContainText(
+    "支付通道尚未开放，这次没有创建订单，也不会产生扣款。通道开放后，可回到本页开通终身会员。"
+  );
+  await expect(panel).not.toContainText("暂时不可用");
+  await expect(panel).not.toContainText("稍后再试");
 });
 
 test("a dependency failure does not claim that no order was created", async ({ context, page }) => {

@@ -13,7 +13,7 @@ import { CAMPUSES } from "@/lib/food/campuses";
 import { foodStore } from "@/lib/food/mock";
 import PostBlocks from "@/components/food/post-blocks";
 import Img from "@/components/ui/img";
-import BackLink from "@/components/back-link";
+import { DetailStateBackLink } from "@/components/back-link";
 import { useDocumentTitle } from "@/components/use-document-title";
 import { cn } from "@/lib/cn";
 import {
@@ -116,7 +116,7 @@ export default function PostDetail({ id }: { id: string }) {
         <p className="mt-4 font-display text-2xl font-bold">
           商家档案不存在或已隐藏
         </p>
-        <BackLink className="mt-6 inline-block font-mono text-sm text-accent-text hover:underline" />
+        <DetailStateBackLink />
       </main>
     );
   }
@@ -214,7 +214,7 @@ export default function PostDetail({ id }: { id: string }) {
                 ))}
               </ol>
             ) : (
-              <EmptyBlock label="投稿未附推荐理由" />
+              <EmptyBlock label="投稿未附推荐理由" announce={false} />
             )}
           </section>
 
@@ -243,7 +243,7 @@ export default function PostDetail({ id }: { id: string }) {
               </div>
             ) : (
               <div className="mt-6">
-                <EmptyBlock label="推荐菜品待补充" />
+                <EmptyBlock label="推荐菜品待补充" announce={false} />
               </div>
             )}
           </section>
@@ -313,7 +313,7 @@ export default function PostDetail({ id }: { id: string }) {
               </ul>
             ) : (
               <div className="mt-6">
-                <EmptyBlock label="暂无学生补充" />
+                <EmptyBlock label="暂无学生补充" announce={false} />
               </div>
             )}
           </section>

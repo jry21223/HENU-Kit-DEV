@@ -164,6 +164,15 @@ const DETAILS = [
     fallback: "单子详情 — 互助平台 | HENU Kit",
     back: { href: "/campus", title: "互助平台 | HENU Kit" },
   },
+  // 题库收藏夹的页头是题库名（来自收藏夹列表链接上的 ?name=），标签页跟着写上。
+  {
+    path: `/practice/favorites/titles-bank?name=${encodeURIComponent("高等数学")}`,
+    endpoint: "**/api/v1/practice/banks/titles-bank/favorites",
+    body: { data: [], request_id: "req_titles_folder" },
+    title: "高等数学 收藏夹 — 智能刷题 | HENU Kit",
+    fallback: "题库收藏夹 — 智能刷题 | HENU Kit",
+    back: { href: "/practice/favorites", title: "收藏夹 — 智能刷题 | HENU Kit" },
+  },
 ];
 
 for (const detail of DETAILS) {
@@ -193,6 +202,49 @@ for (const detail of DETAILS) {
     await expect(page).toHaveTitle(detail.back.title);
   });
 }
+
+/**
+ * 内容名来自用户投稿，可能带连续空格或首尾空格。document.title 读回来的是整理过空白的文字，
+ * 标题要按读回来的样子写，不能因为对不上而一直重写、把页面卡死。
+ */
+test("a content name with irregular spacing is titled as the tab shows it, without endless rewrites", async ({ page }) => {
+  // 数一数标题被写了几次；写到第 50 次还在写就不再真正写入，免得死循环把浏览器卡住。
+  await page.addInitScript(() => {
+    const native = Object.getOwnPropertyDescriptor(Document.prototype, "title")!;
+    const counter = { writes: 0 };
+    (window as unknown as { __titleWrites: typeof counter }).__titleWrites = counter;
+    Object.defineProperty(document, "title", {
+      configurable: true,
+      get() {
+        return native.get!.call(this);
+      },
+      set(value: string) {
+        counter.writes += 1;
+        if (counter.writes <= 50) native.set!.call(this, value);
+      },
+    });
+  });
+  const post = { ...FOOD_POST, id: "titles-post-spaced", shop: { name: " 鼓楼  夜市 " } };
+  await mockGateway(page);
+  await page.route(`**/api/v1/food/posts/${post.id}`, (route) =>
+    route.fulfill({ json: { post, comments: [], request_id: "req_titles_spaced" } })
+  );
+
+  await page.goto(`/food/post/${post.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveTitle("鼓楼 夜市 — 美食榜 | HENU Kit", { timeout: 30_000 });
+  await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1);
+  // 稍晚挂上的静态 <title> 仍会被改回内容名；只补写几次，不会一直写下去（没修好时会写满 50 次）。
+  await page.evaluate(() => {
+    const late = document.createElement("title");
+    late.textContent = "锐评 — 美食榜 | HENU Kit";
+    document.head.insertBefore(late, document.querySelector("head > title"));
+  });
+  await expect(page).toHaveTitle("鼓楼 夜市 — 美食榜 | HENU Kit");
+  const writes = await page.evaluate(
+    () => (window as unknown as { __titleWrites: { writes: number } }).__titleWrites.writes
+  );
+  expect(writes).toBeLessThan(10);
+});
 
 const NEXT_MATERIAL = {
   ...MATERIAL,
