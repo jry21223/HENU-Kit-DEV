@@ -10,10 +10,10 @@ export const SITE_DISCLAIMER_SHORT = "学生自主运营 · 非河南大学官�
 export const SITE_OPERATOR_STATEMENT = "HENU Kit 由学生自主运营，非河南大学官方项目。";
 
 /**
- * henukit.cn 的 ICP 备案号，须与工信部备案系统（beian.miit.gov.cn）中的记录逐字一致，
- * 例如「豫ICP备xxxxxxxx号-1」。维护者确认号码之前保持 null，页脚不展示任何占位文字。
+ * henukit.cn 的网站备案号，须与工信部备案系统（beian.miit.gov.cn）中的记录逐字一致。
+ * 设为 null 时页脚不展示任何占位文字。
  */
-export const ICP_FILING: string | null = null;
+export const ICP_FILING: string | null = "苏ICP备2025220034号-3";
 
 export const ICP_FILING_URL = "https://beian.miit.gov.cn/";
 

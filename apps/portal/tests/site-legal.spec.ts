@@ -7,12 +7,17 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 const DISCLAIMER = "学生自主运营 · 非河南大学官方项目";
+/** 须与工信部备案系统中 henukit.cn 的网站备案号逐字一致。 */
+const ICP_FILING = "苏ICP备2025220034号-3";
 
 async function expectLegalFooter(page: Page) {
   const footer = page.getByRole("contentinfo").last();
   await expect(footer).toContainText(DISCLAIMER);
   await expect(footer.getByRole("link", { name: "隐私政策" })).toHaveAttribute("href", "/privacy");
   await expect(footer.getByRole("link", { name: "用户协议" })).toHaveAttribute("href", "/terms");
+  const icp = footer.getByRole("link", { name: ICP_FILING, exact: true });
+  await expect(icp).toHaveAttribute("href", "https://beian.miit.gov.cn/");
+  await expect(icp).toHaveAttribute("target", "_blank");
 }
 
 for (const path of [
