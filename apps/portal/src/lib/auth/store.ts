@@ -14,7 +14,6 @@ import {
   redirectToLogin,
 } from "@/lib/api/client";
 import { requireGateway } from "@/lib/api/env";
-import { initAllGateways } from "@/lib/gateway-init";
 import { publicDisplayName } from "./display-name";
 
 export interface AuthUser {
@@ -44,9 +43,7 @@ function init() {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
 
-  // Always warm product gateways on client boot (independent of login).
-  void initAllGateways();
-
+  // 只恢复会话；各模块数据由对应页面进入时自己加载，这里不预取（#546）。
   if (hasGateway || requireGateway()) {
     // 真实 Gateway 模式：只认 session；失败即未登录
     fetchSession()

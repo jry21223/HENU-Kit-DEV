@@ -18,6 +18,7 @@ import {
   getGatewayCategories,
   getGatewayItems,
   initCampusGateway,
+  rememberCampusItems,
 } from "@/lib/campus/gateway";
 import ItemCard from "@/components/campus/item-card";
 import SubHero from "@/components/site-hero/sub-hero";
@@ -74,6 +75,7 @@ export default function MarketPage() {
       ]);
       setItems(itemsResp.items.map(toItem));
       setCategories(toCategories(catsResp?.categories ?? null));
+      rememberCampusItems(itemsResp.items, catsResp?.categories ?? null);
       setLoadState("ready");
     } catch {
       try {

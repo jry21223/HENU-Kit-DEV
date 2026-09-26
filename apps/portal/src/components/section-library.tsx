@@ -8,14 +8,13 @@ import TiltCard from "@/components/ui/tilt-card";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import {
   fetchLibraryCourses,
-  fetchLibraryMaterials,
   formatPortalError,
   mockAllowed,
   portalErrorRequestId,
 } from "@/lib/api/client";
-import type { CourseSummary, Material as ApiMaterial } from "@/lib/api/types";
-import { STATIC_MATERIALS } from "@/lib/library/mock";
-import { getMaterials, initGateway } from "@/lib/library/gateway";
+import type { CourseSummary } from "@/lib/api/types";
+import { STATIC_MATERIALS, type Material } from "@/lib/library/mock";
+import { loadLibraryMaterials } from "@/lib/library/gateway";
 import { ErrorBanner } from "@/components/data-state";
 
 const FEATURES = ["公开资料持续整理", "支持电子版教材分类", "按课程与类型检索"];
@@ -33,7 +32,7 @@ const CARD_DEFS = [
   { type: "textbook", code: "TB", title: "电子版教材", meta: "按课程归档 / 原文件下载", unit: "本" },
 ] as const;
 
-function buildCards(materials: ApiMaterial[], courses: CourseSummary[]): LibraryCard[] {
+function buildCards(materials: Material[], courses: CourseSummary[]): LibraryCard[] {
   const cards: LibraryCard[] = [];
   for (const def of CARD_DEFS) {
     const count = materials.filter((m) => m.type === def.type).length;
@@ -69,23 +68,17 @@ export default function SectionLibrary() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      // 直接读取真实资料与课程列表；课程不可用不阻塞资料统计。
-      const [materialsResp, coursesResp] = await Promise.all([
-        fetchLibraryMaterials(),
+      // 全量资料与资料详情的“相关资料”共用一次请求和缓存（#546）；课程不可用不阻塞资料统计。
+      const [materials, coursesResp] = await Promise.all([
+        loadLibraryMaterials(),
         fetchLibraryCourses().catch(() => null),
       ]);
-      setCards(buildCards(materialsResp.materials, coursesResp?.courses ?? []));
-      setTotalCount(materialsResp.materials.length);
+      setCards(buildCards(materials, coursesResp?.courses ?? []));
+      setTotalCount(materials.length);
       return;
     } catch (e) {
-      // 生产环境禁止静默回退 mock；只有允许 mock 的开发环境才走缓存/静态数据。
-      await initGateway();
-      const cached = getMaterials();
-      if (cached.length > 0) {
-        setCards(buildCards(cached, []));
-        setTotalCount(cached.length);
-        return;
-      }
+      // 生产环境禁止静默回退 mock；只有允许 mock 的开发环境才走静态数据。
+      // 失败后不在背后再请求一遍全量，重试交给用户点「重试」。
       if (mockAllowed) {
         setCards(buildCards(STATIC_MATERIALS, []));
         setTotalCount(STATIC_MATERIALS.length);

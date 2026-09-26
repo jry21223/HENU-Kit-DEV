@@ -30,6 +30,26 @@ describe("Food gateway cache", () => {
     vi.unstubAllGlobals();
   });
 
+  it("loads the board with the posts request alone, without waiting on venue reads", async () => {
+    const fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) =>
+      String(input) === "/api/v1/food/posts"
+        ? new Response(JSON.stringify({ posts: [post("old-post", "旧投稿")], request_id: "req_posts" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        : new Response(JSON.stringify({ campus: "minglun", venues: [], request_id: "req_venues" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { loadFoodPosts } = await import("./gateway");
+    await expect(loadFoodPosts()).resolves.toMatchObject({ error: null });
+
+    expect(fetch.mock.calls.map(([input]) => String(input))).toEqual(["/api/v1/food/posts"]);
+  });
+
   it("merges a successful publish that occurs while an older list request is in flight", async () => {
     let resolvePosts!: (response: Response) => void;
     const pendingPosts = new Promise<Response>((resolve) => {

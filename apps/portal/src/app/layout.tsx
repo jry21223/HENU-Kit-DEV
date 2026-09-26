@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import GatewayBootstrap from "@/components/gateway-bootstrap";
 import LangBotWidget from "@/components/langbot-widget";
 import ScrollMemory from "@/components/scroll-memory";
 import { siteMetadata, websiteStructuredData } from "@/lib/seo";
@@ -28,7 +27,6 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: structuredData }}
         />
-        <GatewayBootstrap />
         <ScrollMemory />
         {children}
         <LangBotWidget />

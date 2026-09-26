@@ -6,12 +6,7 @@
  * 生产环境禁止静默回退 STATIC_MATERIALS。
  */
 
-import {
-  fetchLibraryCourses,
-  fetchLibraryMaterials,
-  hasGateway,
-  mockAllowed,
-} from "@/lib/api/client";
+import { fetchLibraryMaterials, mockAllowed } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
 import {
   STATIC_MATERIALS,
@@ -19,9 +14,8 @@ import {
   type Material,
 } from "./mock";
 
-let gatewayLoaded = false;
-let availableIds = new Set<string>();
 let cachedMaterials: Material[] | null = null;
+let inflight: Promise<Material[]> | null = null;
 
 function toMaterial(m: ApiMaterial): Material {
   return {
@@ -45,44 +39,30 @@ function toMaterial(m: ApiMaterial): Material {
   };
 }
 
-export async function initGateway(): Promise<void> {
-  if (gatewayLoaded) return;
+/**
+ * 全量资料目录的共享读取（首页 01 区块、资料详情“相关资料”共用）。
+ *
+ * 进入对应页面时才请求，不在根布局预取（#546）；并发调用共用同一次请求，成功后在本次
+ * 页面会话内缓存。失败不缓存、原样抛出，由调用方经 formatPortalError 映射，并自行决定
+ * 能否回退 mock。
+ */
+export function loadLibraryMaterials(): Promise<Material[]> {
+  if (cachedMaterials) return Promise.resolve(cachedMaterials);
+  inflight ??= fetchLibraryMaterials()
+    .then((response) => rememberLibraryMaterials(response.materials))
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
 
-  if (!hasGateway) {
-    if (mockAllowed) {
-      cachedMaterials = STATIC_MATERIALS;
-      gatewayLoaded = true;
-    }
-    return;
-  }
-
-  try {
-    // Prefer full materials list (portal-api); courses used as availability hint.
-    const [materialsResp, coursesResp] = await Promise.all([
-      fetchLibraryMaterials().catch((e) => {
-        throw e;
-      }),
-      fetchLibraryCourses().catch(() => null),
-    ]);
-
-    cachedMaterials = materialsResp.materials.map(toMaterial);
-    if (coursesResp) {
-      availableIds = new Set(coursesResp.courses.map((c) => c.id));
-    } else {
-      availableIds = new Set(cachedMaterials.map((m) => m.id));
-    }
-    gatewayLoaded = true;
-  } catch {
-    // 失败提示由调用方按自己那次请求的错误经 formatPortalError 映射；这里只决定回退。
-    // Never silent-fallback to STATIC_MATERIALS in production
-    if (mockAllowed) {
-      cachedMaterials = STATIC_MATERIALS;
-      gatewayLoaded = true;
-    } else {
-      cachedMaterials = null;
-      gatewayLoaded = false;
-    }
-  }
+/**
+ * /library 列表每次进入都实时读取全量目录（统计必须是最新的）；读到后写入共享缓存，
+ * 从列表点进详情时“相关资料”不必再下载一遍。
+ */
+export function rememberLibraryMaterials(materials: ApiMaterial[]): Material[] {
+  cachedMaterials = materials.map(toMaterial);
+  return cachedMaterials;
 }
 
 /**
@@ -105,10 +85,6 @@ export function getMaterialOrFallback(id: string): Material | undefined {
   return undefined;
 }
 
-export function isLibraryReady(): boolean {
-  return gatewayLoaded || mockAllowed;
-}
-
 export function toggleFavViaGateway(
   id: string,
   currentFavs: string[]
@@ -116,8 +92,4 @@ export function toggleFavViaGateway(
   return currentFavs.includes(id)
     ? currentFavs.filter((f) => f !== id)
     : [...currentFavs, id];
-}
-
-export function getAvailableCourseIds(): Set<string> {
-  return availableIds;
 }

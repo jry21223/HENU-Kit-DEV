@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Material } from "@/lib/library/mock";
 import { MATERIAL_TYPES } from "@/lib/library/material-types";
 import { readableMaterialTitle } from "@/lib/library/material-title";
-import { getMaterials } from "@/lib/library/gateway";
+import { getMaterials, loadLibraryMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
 import { LibraryLoading, LibraryNotFound, LibraryUnavailable } from "@/components/library/material-states";
@@ -16,7 +16,23 @@ export default function ItemDetail({ id }: { id: string }) {
   const state = useMaterialDetail(id);
   useReveal();
   const [tocOpen, setTocOpen] = useState(false);
+  const [catalog, setCatalog] = useState<Material[]>(getMaterials);
   useDocumentTitle(state.loadState === "ready" ? readableMaterialTitle(state.material) : null, "library");
+
+  useEffect(() => {
+    let active = true;
+    // “相关资料”要用全量目录：进入详情时才读，首页或列表页已读过就直接复用共享缓存（#546）。
+    // 读取失败只是不展示相关资料，详情本身照常。
+    loadLibraryMaterials().then(
+      (materials) => {
+        if (active) setCatalog(materials);
+      },
+      () => {}
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (state.loadState !== "ready") {
     if (state.loadState === "loading") return <LibraryLoading />;
@@ -28,7 +44,7 @@ export default function ItemDetail({ id }: { id: string }) {
   const t = MATERIAL_TYPES[material.type];
   const title = readableMaterialTitle(material);
   const free = material.price === 0;
-  const related = getMaterials().filter(
+  const related = catalog.filter(
     (m) => m.id !== id && (m.subject === material.subject || m.type === material.type)
   ).slice(0, 3);
   const toc = tocOpen ? material.toc : material.toc.slice(0, 6);

@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/client";
 import type { Material as ApiMaterial } from "@/lib/api/types";
 import type { Material } from "@/lib/library/mock";
+import { rememberLibraryMaterials } from "@/lib/library/gateway";
 import { MATERIAL_TYPES, type MaterialType } from "@/lib/library/material-types";
 import MaterialCard from "@/components/library/material-card";
 import SubHero from "@/components/site-hero/sub-hero";
@@ -71,6 +72,8 @@ export default function LibraryHomePage() {
         throw new Error("资料库返回了不一致的目录统计，请稍后重试。");
       }
       setMaterials(resp.materials.map(toMaterial));
+      // 列表每次都实时读取；顺手更新共享目录，点进详情时“相关资料”不再下载一遍（#546）。
+      rememberLibraryMaterials(resp.materials);
       setStatistics({
         materialCount: resp.statistics.materialCount,
         downloadStarts: resp.statistics.downloadStarts,

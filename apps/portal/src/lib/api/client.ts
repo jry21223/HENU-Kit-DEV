@@ -36,7 +36,6 @@ import type {
   FavoriteWriteResponse,
   FoodPostDetailResponse,
   FoodPostListResponse,
-  FoodVenuesResponse,
   LibraryCoursesResponse,
   MaterialDetailResponse,
   MaterialListResponse,
@@ -515,14 +514,6 @@ export function libraryMaterialDownloadURL(id: string): string {
 }
 
 // ---- Food ----
-
-export async function fetchFoodVenues(
-  campus: string
-): Promise<FoodVenuesResponse | null> {
-  return apiFetch<FoodVenuesResponse>(
-    `/api/v1/food/venues?campus=${encodeURIComponent(campus)}`
-  );
-}
 
 export async function fetchFoodPosts(campus?: string): Promise<FoodPostListResponse> {
   const qs = campus ? `?campus=${encodeURIComponent(campus)}` : "";
