@@ -127,6 +127,8 @@ export default function SecurityPage() {
       </p>
       <h1 data-enter className="mt-3 font-display text-4xl font-bold tracking-tight">安全设置</h1>
 
+      <a href="/bind/qq" className="mt-6 inline-block underline">管理 HENU Bot 的 QQ 账号绑定</a>
+
       <section data-enter className="mt-8 max-w-md border border-ink/25 p-6">
         <p className="font-mono text-xs text-ink/60">修改密码</p>
         <p className="mt-3 font-mono text-xs leading-5 text-ink/60">

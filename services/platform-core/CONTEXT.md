@@ -40,6 +40,15 @@ accepted as release evidence.
 
 ## Language
 
+**QQ Bot Binding**:
+A one-to-one link between a Platform User and an application-scoped QQ sender,
+approved through the website and confirmed by that sender. It identifies the
+actor of permitted Bot operations; it is not a login or a product-role grant.
+
+**Binding Challenge**:
+A short-lived request awaiting website consent and a subsequent confirmation
+from the originating QQ conversation. Unlinking invalidates outstanding requests.
+
 **Account Center**:
 The sole user-facing boundary for registration, login, account recovery, and authentication-credential management across HENU Kit products.
 _Avoid_: Portal login, product registration

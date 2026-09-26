@@ -81,6 +81,9 @@ func New(flow *identity.Service, verificationFlow *verification.Service, continu
 	handler := &Handler{flow: flow, verification: verificationFlow, continuations: continuations, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, digestMail: digestMail, careerDigestClientID: careerDigestClientID, careerDigestKeys: careerDigestKeys, logger: logger}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
+	for _, action := range []string{"start", "authorize", "pending", "confirm", "status", "resolve", "unlink"} {
+		router.Post("/api/v1/qq-bindings/"+action, handler.qqBinding)
+	}
 	router.Get("/api/v1/healthz", handler.health)
 	router.Get("/api/v1/readyz", handler.ready)
 	router.Get("/login", handler.loginPage)

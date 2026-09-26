@@ -220,6 +220,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./bin/verify-henukit-local-release.sh",
     "./bin/food-sanitize-post-image",
     "./bin/import-legacy-portal-food-images.mjs",
+    "./bin/provision-qq-binding-client.sh",
     "./docker-compose.henukit.release.yml",
     "./getwork-node-deploy/install_node.sh",
     "./getwork-node-deploy/install_production_tunnel_account.sh",
@@ -252,6 +253,26 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "-rwxr-xr-x",
     "the root installer must not inherit Git archive's group-writable default",
   );
+  const qqProvisionerPath = "./bin/provision-qq-binding-client.sh";
+  const qqProvisionerSource = execFileSync(
+    "git",
+    ["show", `${releaseSha}:services/platform-core/scripts/provision-qq-binding-client.sh`],
+    { cwd: checkout, encoding: "buffer" },
+  );
+  const packagedQqProvisioner = execFileSync(
+    "tar",
+    ["-xOzf", runtimeArchive, qqProvisionerPath],
+    { encoding: "buffer" },
+  );
+  assert.deepEqual(packagedQqProvisioner, qqProvisionerSource);
+  const qqProvisionerMode = execFileSync(
+    "tar",
+    ["-tvzf", runtimeArchive, qqProvisionerPath],
+    { encoding: "utf8" },
+  )
+    .trim()
+    .split(/\s+/)[0];
+  assert.equal(qqProvisionerMode, "-r-xr-xr-x");
   assert.doesNotMatch(files, /convert-henukit-slides|import-henukit-materials|migrations\/study/);
   const materialsChecksums = execFileSync(
     "tar",
