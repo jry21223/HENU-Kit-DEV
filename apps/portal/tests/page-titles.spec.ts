@@ -26,8 +26,10 @@ const PAGES = [
   { path: "/campus/item/titles-missing", title: "单子详情 — 互助平台 | HENU Kit" },
   { path: "/career", title: "求职雷达 | HENU Kit" },
   { path: "/career/history", title: "扫描历史 — 求职雷达 | HENU Kit" },
-  { path: "/account/login", title: "登录 | HENU Kit" },
-  { path: "/account/recover", title: "找回密码 | HENU Kit" },
+  // 登录与找回密码是给未登录访客的：已登录的人打开登录页会被送回账户中心（#412），
+  // 所以这两页按访客检查，否则第二次检查标题时可能已经跳走。
+  { path: "/account/login", title: "登录 | HENU Kit", guest: true },
+  { path: "/account/recover", title: "找回密码 | HENU Kit", guest: true },
   { path: "/account", title: "账户中心 | HENU Kit" },
   { path: "/account/security", title: "安全设置 — 账户中心 | HENU Kit" },
   { path: "/account/wallet", title: "积分钱包 — 账户中心 | HENU Kit" },
@@ -42,10 +44,11 @@ const PAGES = [
 ];
 
 /**
- * 已登录（否则账户页和发布页会先跳去登录页），其余接口一律不可用：静态标题不依赖接口
- * 数据，详情页拿不到内容时停在失败态，标签页上仍是该类页面的名字。
+ * 默认已登录（否则账户页和发布页会先跳去登录页），其余接口一律不可用：静态标题不依赖接口
+ * 数据，详情页拿不到内容时停在失败态，标签页上仍是该类页面的名字。访客页（guest）的会话
+ * 接口返回 401。
  */
-async function mockGateway(page: Page) {
+async function mockGateway(page: Page, { guest = false }: { guest?: boolean } = {}) {
   await page.route("**/api/v1/**", (route) =>
     route.fulfill({
       status: 503,
@@ -57,14 +60,16 @@ async function mockGateway(page: Page) {
     })
   );
   await page.route("**/api/v1/session", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        user_id: "11111111-1111-4111-8111-111111111111",
-        display_name: "小河同学",
-        expires_at: "2030-01-01T00:00:00Z",
-      }),
-    })
+    guest
+      ? route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) })
+      : route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            user_id: "11111111-1111-4111-8111-111111111111",
+            display_name: "小河同学",
+            expires_at: "2030-01-01T00:00:00Z",
+          }),
+        })
   );
 }
 
@@ -74,9 +79,9 @@ test("no two pages share a title and every title follows the one site format", (
   expect(new Set(titles).size).toBe(titles.length);
 });
 
-for (const { path, title } of PAGES) {
+for (const { path, title, guest } of PAGES) {
   test(`${path} is titled "${title}"`, async ({ page }) => {
-    await mockGateway(page);
+    await mockGateway(page, { guest });
     await page.goto(path, { waitUntil: "domcontentloaded" });
     // 冷启动时路由要先编译；超时只用来盖住 dev 的编译时间。
     await expect(page).toHaveTitle(title, { timeout: 30_000 });
