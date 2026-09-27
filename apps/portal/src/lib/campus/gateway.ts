@@ -9,31 +9,19 @@ import {
   fetchCampusItems,
   hasGateway,
   mockAllowed,
-  PortalApiError,
 } from "@/lib/api/client";
 import type { CampusCategory, CampusItem, CampusMessage } from "@/lib/api/types";
 import { campusStore } from "@/lib/campus/mock";
 
 let gatewayItems: CampusItem[] | null = null;
 let gatewayCategories: CampusCategory[] | null = null;
-let lastError: string | null = null;
 let loaded = false;
-
-export function getCampusGatewayError(): string | null {
-  return lastError;
-}
 
 export async function initCampusGateway(): Promise<void> {
   if (loaded) return;
 
   if (!hasGateway) {
-    if (mockAllowed) {
-      loaded = true;
-      lastError = null;
-      return;
-    }
-    lastError =
-      "Gateway 未配置。生产环境禁止 mock；请设置 NEXT_PUBLIC_PORTAL_GATEWAY_URL。";
+    if (mockAllowed) loaded = true;
     return;
   }
 
@@ -45,14 +33,7 @@ export async function initCampusGateway(): Promise<void> {
     gatewayItems = itemsResp.items;
     gatewayCategories = catsResp?.categories ?? null;
     loaded = true;
-    lastError = null;
-  } catch (e) {
-    lastError =
-      e instanceof PortalApiError
-        ? e.message
-        : e instanceof Error
-          ? e.message
-          : "加载互助平台数据失败";
+  } catch {
     if (!mockAllowed) {
       gatewayItems = null;
       gatewayCategories = null;
@@ -61,6 +42,18 @@ export async function initCampusGateway(): Promise<void> {
       loaded = true;
     }
   }
+}
+
+/**
+ * /campus 列表实时读到的单子写入共享缓存：从列表点进详情时，详情接口失败仍可回退到
+ * 这条单子（#546 后不再由根布局预取）。
+ */
+export function rememberCampusItems(
+  items: CampusItem[],
+  categories: CampusCategory[] | null
+): void {
+  gatewayItems = items;
+  gatewayCategories = categories;
 }
 
 export function getGatewayItems(): CampusItem[] | null {
@@ -93,8 +86,4 @@ export function getCampusItemOrFallback(
 
 export function getGatewayCategories(): CampusCategory[] | null {
   return gatewayCategories;
-}
-
-export function isCampusReady(): boolean {
-  return loaded || mockAllowed;
 }

@@ -237,7 +237,8 @@ test("a free member sees the lifetime gate instead of the profile form", async (
 
   await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-career-profile-state="locked"]')).toBeVisible();
-  await expect(page.getByText("求职雷达需要 Lifetime VIP 会员")).toBeVisible();
+  await expect(page.getByText("求职雷达需要终身会员")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Lifetime VIP");
   await expect(page.locator('[data-account-career-profile-state="ready"]')).toHaveCount(0);
   const purchaseEntry = page.getByRole("link", { name: "前往会员权益开通" });
   await expect(purchaseEntry).toHaveAttribute("href", "/account/membership");
@@ -283,7 +284,7 @@ test("a failed profile read is a recoverable error, never a local profile", asyn
 
   await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-career-profile-state="error"]')).toBeVisible();
-  await expect(page.getByText("画像加载不出来时，不会以本地或会话数据替代真实画像。")).toBeVisible();
+  await expect(page.locator('[data-account-career-profile-state="error"]')).toContainText("服务暂时不可用，请稍后再试。");
   await expect(page.locator('[data-account-career-profile-state="ready"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: "重新加载" })).toHaveCSS("min-height", "44px");
 });
@@ -424,8 +425,12 @@ test("/career keeps free members off the scan entry and points at ¥9.9 membersh
 
   await page.goto("/career", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-career-state="free"]')).toBeVisible();
-  await expect(page.getByText("¥9.9 开通 Lifetime VIP →")).toBeVisible();
-  const buy = page.getByRole("link", { name: "¥9.9 开通 Lifetime VIP →" });
+  await expect(page.getByText("¥9.9 开通终身会员 →")).toBeVisible();
+  // 描述段说扫描什么，下面的要点不再逐字重复一遍（#549）。
+  await expect(page.locator('[data-career-state="free"]').getByText(/扫描已收录的官方招聘来源/)).toHaveCount(1);
+  await expect(page.locator('[data-career-state="free"]')).not.toContainText("永久");
+  await expect(page.locator("body")).not.toContainText("Lifetime VIP");
+  const buy = page.getByRole("link", { name: "¥9.9 开通终身会员 →" });
   await expect(buy).toHaveAttribute("href", "/account/membership");
   await expect(page.getByRole("button", { name: /开始扫描/ })).toHaveCount(0);
 });
@@ -492,7 +497,7 @@ test("career pages carry exactly one h1 and their own document title", async ({ 
   await expect(page.locator('[data-career-history-state="ready"]')).toBeVisible();
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("h1")).toHaveText("扫描历史");
-  await expect(page).toHaveTitle("扫描历史 — henukit 求职雷达");
+  await expect(page).toHaveTitle("扫描历史 — 求职雷达 | HENU Kit");
 });
 
 // 表盘只反映服务端确认的状态与推荐数：completed 时点亮 matched_count 个目标，

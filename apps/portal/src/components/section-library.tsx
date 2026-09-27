@@ -8,17 +8,13 @@ import TiltCard from "@/components/ui/tilt-card";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import {
   fetchLibraryCourses,
-  fetchLibraryMaterials,
   formatPortalError,
   mockAllowed,
+  portalErrorRequestId,
 } from "@/lib/api/client";
-import type { CourseSummary, Material as ApiMaterial } from "@/lib/api/types";
-import { STATIC_MATERIALS } from "@/lib/library/mock";
-import {
-  getLibraryGatewayError,
-  getMaterials,
-  initGateway,
-} from "@/lib/library/gateway";
+import type { CourseSummary } from "@/lib/api/types";
+import { STATIC_MATERIALS, type Material } from "@/lib/library/mock";
+import { loadLibraryMaterials } from "@/lib/library/gateway";
 import { ErrorBanner } from "@/components/data-state";
 
 const FEATURES = ["公开资料持续整理", "支持电子版教材分类", "按课程与类型检索"];
@@ -29,14 +25,14 @@ type LibraryCard = { id: string; code: string; title: string; meta: string; size
 const CARD_DEFS = [
   { type: "handout", code: "HO", title: "复习讲义", meta: "知识点讲义 / 原文件下载", unit: "份" },
   { type: "exam", code: "EX", title: "往年真题", meta: "按课程归档 / 原文件下载", unit: "套" },
-  { type: "slides", code: "SL", title: "课件", meta: "真实课程课件 / 原文件下载", unit: "份" },
+  { type: "slides", code: "SL", title: "课件", meta: "课程课件 / 原文件下载", unit: "份" },
   { type: "exercise", code: "PR", title: "题库练习", meta: "练习题与题库 / 原文件下载", unit: "份" },
   { type: "answer", code: "AN", title: "答案解析", meta: "答案与题解 / 原文件下载", unit: "份" },
   { type: "note", code: "NO", title: "笔记总结", meta: "公开学习笔记 / 原文件下载", unit: "份" },
   { type: "textbook", code: "TB", title: "电子版教材", meta: "按课程归档 / 原文件下载", unit: "本" },
 ] as const;
 
-function buildCards(materials: ApiMaterial[], courses: CourseSummary[]): LibraryCard[] {
+function buildCards(materials: Material[], courses: CourseSummary[]): LibraryCard[] {
   const cards: LibraryCard[] = [];
   for (const def of CARD_DEFS) {
     const count = materials.filter((m) => m.type === def.type).length;
@@ -55,7 +51,7 @@ function buildCards(materials: ApiMaterial[], courses: CourseSummary[]): Library
       id: "CU",
       code: "CU",
       title: "课程归档",
-      meta: "按专业整理 / 从入门到期末",
+      meta: "按科目浏览 / 原文件下载",
       size: `${courses.length} 门`,
     });
   }
@@ -67,41 +63,30 @@ export default function SectionLibrary() {
   const trackRef = useRef<HTMLDivElement>(null);
   const [cards, setCards] = useState<LibraryCard[] | null>(null);
   const [totalCount, setTotalCount] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      // 直接读取真实资料与课程列表；课程不可用不阻塞资料统计。
-      const [materialsResp, coursesResp] = await Promise.all([
-        fetchLibraryMaterials(),
+      // 全量资料与资料详情的“相关资料”共用一次请求和缓存（#546）；课程不可用不阻塞资料统计。
+      const [materials, coursesResp] = await Promise.all([
+        loadLibraryMaterials(),
         fetchLibraryCourses().catch(() => null),
       ]);
-      setCards(buildCards(materialsResp.materials, coursesResp?.courses ?? []));
-      setTotalCount(materialsResp.materials.length);
+      setCards(buildCards(materials, coursesResp?.courses ?? []));
+      setTotalCount(materials.length);
       return;
     } catch (e) {
-      // 生产环境禁止静默回退 mock；只有允许 mock 的开发环境才走缓存/静态数据。
-      try {
-        await initGateway();
-        const cached = getMaterials();
-        if (cached.length > 0) {
-          setCards(buildCards(cached, []));
-          setTotalCount(cached.length);
-          return;
-        }
-        if (mockAllowed) {
-          setCards(buildCards(STATIC_MATERIALS, []));
-          setTotalCount(STATIC_MATERIALS.length);
-          return;
-        }
-        throw new Error(
-          getLibraryGatewayError() || formatPortalError(e) || "资料库暂时加载不出来，请稍后刷新试试"
-        );
-      } catch (e2) {
-        setCards([]);
-        setError(e2 instanceof Error ? e2.message : "资料库暂时加载不出来，请稍后刷新试试");
+      // 生产环境禁止静默回退 mock；只有允许 mock 的开发环境才走静态数据。
+      // 失败后不在背后再请求一遍全量，重试交给用户点「重试」。
+      if (mockAllowed) {
+        setCards(buildCards(STATIC_MATERIALS, []));
+        setTotalCount(STATIC_MATERIALS.length);
+        return;
       }
+      setCards([]);
+      // 原始 message 可能是 "Not Found" 或带接口路径的英文，只展示映射后的中文提示。
+      setError({ message: formatPortalError(e), requestId: portalErrorRequestId(e) });
     }
   }, []);
 
@@ -160,7 +145,7 @@ export default function SectionLibrary() {
       ref={sectionRef}
       className="snap-screen relative border-t border-line bg-paper"
     >
-      <div className="mx-auto flex min-h-svh max-w-7xl flex-col justify-center px-5 py-24 md:px-10">
+      <div className="mx-auto flex max-w-site flex-col justify-center px-5 py-24 md:min-h-svh md:px-8">
         <div className="grid gap-8 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:items-end">
           <div>
             <SectionHeading index="01" en="LIBRARY" title="资料库" />
@@ -170,10 +155,10 @@ export default function SectionLibrary() {
             </p>
           </div>
           <div className="md:justify-self-end">
-            <ul className="space-y-2 font-mono text-xs tracking-wider text-ink/60">
+            <ul className="space-y-2 font-mono text-xs text-ink/60">
               {FEATURES.map((f) => (
                 <li key={f}>
-                  <span className="mr-2 text-accent">+</span>
+                  <span aria-hidden className="mr-2 text-accent-text">+</span>
                   {f}
                 </li>
               ))}
@@ -187,7 +172,7 @@ export default function SectionLibrary() {
         {/* 档案卡轨道：自动循环巡检；reduced-motion 时回退为手动横滚 */}
         <div className="lib-track-wrap relative mt-12 overflow-hidden">
           {error ? (
-            <ErrorBanner message={error} onRetry={load} />
+            <ErrorBanner message={error.message} requestId={error.requestId} onRetry={load} />
           ) : (
             <div
               ref={trackRef}
@@ -199,7 +184,7 @@ export default function SectionLibrary() {
                     <div key={i} className="shrink-0">
                       <div className="flex h-72 w-56 flex-col justify-between border border-ink/25 bg-paper p-5">
                         <div className="flex items-start justify-between">
-                          <span className="font-mono text-xs text-ink/30">--</span>
+                          <span aria-hidden className="font-mono text-xs text-ink/30">--</span>
                           <span aria-hidden className="font-mono text-xs text-ink/20">+</span>
                         </div>
                         <div>
@@ -214,13 +199,14 @@ export default function SectionLibrary() {
                     <div key={card.id} data-lib-card className="shrink-0">
                       <TiltCard>
                         <article className="flex h-72 w-56 flex-col justify-between border border-ink/25 bg-paper p-5">
-                          <div className="flex items-start justify-between">
-                            <span className="font-mono text-xs text-accent">{card.code}</span>
-                            <span aria-hidden className="font-mono text-xs text-ink/40">+</span>
+                          {/* 缩写只作装饰：卡片的主标记是下方的中文类型名。 */}
+                          <div className="flex items-start justify-between font-mono text-xs text-ink/30">
+                            <span aria-hidden>{card.code}</span>
+                            <span aria-hidden>+</span>
                           </div>
                           <div>
                             <h3 className="font-display text-2xl font-bold">{card.title}</h3>
-                            <p className="mt-3 border-t border-line pt-3 font-mono text-[10px] leading-5 tracking-wider text-ink/50">
+                            <p className="mt-3 border-t border-line pt-3 font-mono text-xs leading-5 text-ink/60">
                               {card.meta}
                               <br />
                               收录 {card.size}
@@ -232,7 +218,7 @@ export default function SectionLibrary() {
                   ))}
               {cards !== null && cards.length > 0 ? (
                 <div data-lib-card className="shrink-0">
-                  <div className="flex h-72 w-40 items-center justify-center border border-dashed border-ink/30 font-mono text-xs tracking-widest text-ink/40">
+                  <div className="flex h-72 w-40 items-center justify-center border border-dashed border-ink/30 font-mono text-xs text-ink/60">
                     持续收录中…
                   </div>
                 </div>
@@ -243,16 +229,15 @@ export default function SectionLibrary() {
 
         <div className="mt-8">
           <div className="mb-4 flex items-center justify-between">
-            <p className="font-mono text-[10px] tracking-[0.3em] text-ink/40">
-              AUTO-SCAN / 档案卡循环巡检中
+            <p className="font-mono text-xs text-ink/60">
+              <span className="tracking-[0.3em]">AUTO-SCAN</span> / 档案卡循环巡检中
             </p>
-            <p className="hidden font-mono text-[10px] tracking-[0.3em] text-ink/40 md:block">
-              {error
-                ? "DATA SOURCE OFFLINE"
-                : totalCount === null
-                  ? "LOADING…"
-                  : `${totalCount} FILES INDEXED`}
-            </p>
+            {/* 失败时只由上方 ErrorBanner 说明，这里不再叠一个英文状态。 */}
+            {error ? null : (
+              <p className="hidden font-mono text-xs tracking-[0.3em] text-ink/60 md:block">
+                {totalCount === null ? "LOADING…" : `${totalCount} FILES INDEXED`}
+              </p>
+            )}
           </div>
           <AmbientSvg variant="flow" className="text-ink/30" />
         </div>

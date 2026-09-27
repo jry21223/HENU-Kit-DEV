@@ -36,21 +36,23 @@ export default function ItemCard({ item }: { item: Item }) {
           <Img src={item.images[0]} alt={item.title} label={cat.code} className="h-full w-full border-0" />
         ) : (
           <div className="bg-blueprint absolute inset-0 flex items-center justify-center">
-            <span className="font-display text-4xl font-bold tracking-widest text-ink/25">
+            {/* 没有图时的占位图块：分类代号是装饰性的大字，分类名另给读屏。 */}
+            <span aria-hidden className="font-display text-4xl font-bold tracking-widest text-ink/25">
               {cat.code}
             </span>
+            <span className="sr-only">{cat.name}</span>
           </div>
         )}
         <span
           className={cn(
-            "absolute left-0 top-0 px-1.5 py-0.5 font-mono text-[10px] text-paper",
-            item.type === "help" ? "bg-accent" : "bg-ink"
+            "absolute left-0 top-0 px-1.5 py-0.5 font-mono text-xs",
+            item.type === "help" ? "bg-accent text-ink" : "bg-ink text-paper"
           )}
         >
           {item.type === "help" ? "求助" : "闲置"}
         </span>
         {statusLabel && (
-          <span className="absolute right-2 top-2 border border-ink/40 bg-paper px-1.5 py-0.5 font-mono text-[10px] text-ink/60">
+          <span className="absolute right-2 top-2 border border-ink/40 bg-paper px-1.5 py-0.5 font-mono text-xs text-ink/60">
             {statusLabel}
           </span>
         )}
@@ -58,26 +60,26 @@ export default function ItemCard({ item }: { item: Item }) {
       </div>
 
       <div className="p-4">
-        <h3 className="font-medium leading-snug transition-colors group-hover:text-accent">
+        <h3 className="font-medium leading-snug transition-colors group-hover:text-accent-text">
           {item.title}
         </h3>
         <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-ink/60">{item.desc}</p>
 
         <p className="mt-3 font-display text-2xl font-bold tabular-nums">
-          <span className="text-accent">¥</span>
+          <span className="text-accent-text">¥</span>
           {item.price}
-          <span className="ml-1.5 font-mono text-[10px] font-normal text-ink/50">
+          <span className="ml-1.5 font-mono text-xs font-normal text-ink/60">
             {item.type === "help" ? "赏金" : "一口价"}
           </span>
         </p>
 
-        <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 font-mono text-[10px] text-ink/50">
-          <span className="flex h-5 w-5 items-center justify-center border border-ink/40 font-display text-[10px] font-bold">
+        <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 font-mono text-xs text-ink/60">
+          <span className="flex h-5 w-5 items-center justify-center border border-ink/40 font-display text-xs font-bold">
             {item.seller.slice(0, 1)}
           </span>
           <span className="truncate">{item.seller}</span>
           <span className="ml-auto shrink-0">想要 {item.wants}</span>
-          <span className="shrink-0 text-ink/30">·</span>
+          <span aria-hidden className="shrink-0 text-ink/30">·</span>
           <span className="shrink-0">{item.place.split(" ·")[0]}</span>
         </div>
       </div>

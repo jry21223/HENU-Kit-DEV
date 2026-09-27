@@ -23,6 +23,23 @@ describe("authStore", () => {
     expect(authStore.get().ready).toBe(true);
   });
 
+  it("restoring the session reads only the session, never module data", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
+    const fetch = vi.fn().mockImplementation(
+      async () =>
+        new Response("{}", { status: 401, headers: { "Content-Type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("window", globalThis);
+
+    const { authStore } = await import("./store");
+    const unsubscribe = authStore.subscribe(() => {});
+    await vi.waitFor(() => expect(authStore.get().ready).toBe(true));
+    unsubscribe();
+
+    expect(fetch.mock.calls.map(([input]) => String(input))).toEqual(["/api/v1/session"]);
+  });
+
   it("clear drops the cached user without any network call", async () => {
     vi.stubEnv("NEXT_PUBLIC_PORTAL_ALLOW_MOCK", "1");
     const fetch = vi.fn();

@@ -45,7 +45,7 @@ test("owner statistics stay unknown until the complete catalog loads and ignore 
   await expect(page.getByRole("link", { name: /极限复习笔记/ })).toBeVisible();
   await expect(counter(page, "收录资料")).toHaveText("2");
   await expect(counter(page, "累计下载")).toHaveText("99");
-  await page.getByPlaceholder("搜索：真题 / 高数 / 课件").fill("计算机网络");
+  await page.getByLabel("搜索资料").fill("计算机网络");
   await expect(page.getByRole("link", { name: /极限复习笔记/ })).toHaveCount(0);
   await expect(counter(page, "收录资料")).toHaveText("2");
   await expect(counter(page, "累计下载")).toHaveText("99");
@@ -61,16 +61,19 @@ test("empty success is zero while a failed request stays unknown and retry recov
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(catalog([], 0)) });
   });
   await page.goto("/library", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("alert").filter({ hasText: "ERROR / 数据源不可用" })).toContainText("资料库暂时无法加载，请稍后重试。");
+  await expect(page.getByRole("alert").filter({ hasText: "资料库暂时无法加载，请稍后重试。" })).toBeVisible();
   await expect(counter(page, "收录资料")).toHaveText("—");
   await expect(counter(page, "累计下载")).toHaveText("—");
   shouldFail = false;
   await page.getByRole("button", { name: "重试" }).click();
-  await expect(page.getByText("资料库当前暂无公开资料 / EMPTY", { exact: true })).toBeVisible();
+  await expect(page.getByText("资料库当前暂无公开资料", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
   await expect(counter(page, "收录资料")).toHaveText("0");
   await expect(counter(page, "累计下载")).toHaveText("0");
-  await page.getByPlaceholder("搜索：真题 / 高数 / 课件").fill("高等数学");
-  await expect(page.getByText("无匹配资料 / EMPTY", { exact: true })).toBeVisible();
+  await page.getByLabel("搜索资料").fill("高等数学");
+  await expect(page.getByText("无匹配资料", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "清除筛选", exact: true }).click();
+  await expect(page.getByText("资料库当前暂无公开资料", { exact: true })).toBeVisible();
 });
 
 test("reduced motion reaches the same owner totals", async ({ page }) => {

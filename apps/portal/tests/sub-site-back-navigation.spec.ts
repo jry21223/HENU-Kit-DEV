@@ -390,7 +390,17 @@ test("列表的行晚到，返回箭头仍然把读者放回离开时的位置",
   const roomWhileWaiting = await page.evaluate(() =>
     Math.round(document.documentElement.scrollHeight - window.innerHeight)
   );
-  expect(roomWhileWaiting).toBeLessThan(40);
+  // 页头和页脚（主体声明与协议入口）不属于列表。加载时主体至少一屏高，页脚才不露在首屏里
+  // （#548），文档比视口多出的就是这两段：扣掉它们，列表区域此刻仍然滚不动。
+  const headerHeight = await page
+    .getByRole("banner")
+    .first()
+    .evaluate((header) => Math.round(header.getBoundingClientRect().height));
+  const footerHeight = await page
+    .getByRole("contentinfo")
+    .last()
+    .evaluate((footer) => Math.round(footer.getBoundingClientRect().height));
+  expect(roomWhileWaiting - headerHeight - footerHeight).toBeLessThan(40);
   expect(roomWhileWaiting).toBeLessThan(departedFrom);
 
   await expect(materialCards(page)).toHaveCount(LIBRARY_MATERIALS.length);

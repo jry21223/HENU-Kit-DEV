@@ -90,6 +90,9 @@ const nextConfig: NextConfig = {
       // land on the board instead of a 404.
       { source: "/food/leaderboard", destination: "/food", permanent: true },
       { source: "/food/campus/:campus", destination: "/food", permanent: true },
+      // Sample practice lists were local mock data and are gone; old list
+      // links land on the practice catalog.
+      { source: "/practice/lists/:id", destination: "/practice", permanent: true },
     ];
   },
 };

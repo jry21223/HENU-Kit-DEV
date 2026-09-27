@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import CampusNav from "@/components/campus/campus-nav";
+import SiteShell from "@/components/site-shell";
+import { moduleLayoutTitle } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "互助平台 — henukit",
+  title: moduleLayoutTitle("campus"),
 };
 
 export default function CampusLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-svh bg-paper text-ink">
-      <CampusNav />
-      {children}
-    </div>
+    <SiteShell header={<CampusNav />}>{children}</SiteShell>
   );
 }

@@ -42,7 +42,7 @@ export function isCareerLifetimeRequiredError(error: unknown): boolean {
 
 /** 命中 Lifetime 门时的引导文案，直接展示给用户。 */
 export function careerLifetimeRequiredMessage(): string {
-  return "求职雷达需要 Lifetime VIP 会员，开通后即可使用";
+  return "求职雷达需要终身会员，开通后即可使用";
 }
 
 export function careerSearchCreateErrorMessage(error: unknown): string {
@@ -60,7 +60,7 @@ export function careerSearchCreateErrorMessage(error: unknown): string {
 // ---- mock 最小占位 ----
 
 /** 空画像占位（仅 ALLOW_MOCK=1 且无 gateway 时生效）。 */
-export const EMPTY_CAREER_PROFILE: CareerProfile = {
+const EMPTY_CAREER_PROFILE: CareerProfile = {
   user_id: "",
   target_roles: "",
   tech_stack: "",
@@ -77,18 +77,10 @@ export const EMPTY_CAREER_PROFILE: CareerProfile = {
 let profileCache: CareerProfile | null = null;
 let searchesCache: CareerSearch[] | null = null;
 let lastError: unknown = null;
-let loaded = false;
-
-export async function initCareerGateway(): Promise<void> {
-  if (loaded) return;
-
-  await refreshCareerGateway();
-}
 
 async function refreshCareerGateway(): Promise<void> {
   if (!hasGateway) {
     if (mockAllowed) {
-      loaded = true;
       lastError = null;
       return;
     }
@@ -103,30 +95,14 @@ async function refreshCareerGateway(): Promise<void> {
     ]);
     profileCache = profileResp.profile;
     searchesCache = searchesResp.searches;
-    loaded = true;
     lastError = null;
   } catch (e) {
     lastError = e;
     if (!mockAllowed) {
       profileCache = null;
       searchesCache = null;
-      loaded = false;
-    } else {
-      loaded = true;
     }
   }
-}
-
-export function getCareerProfileData(): CareerProfile | null {
-  return profileCache;
-}
-
-export function getCareerSearches(): CareerSearch[] | null {
-  return searchesCache;
-}
-
-export function isCareerReady(): boolean {
-  return loaded || mockAllowed;
 }
 
 export interface CareerDataResult {
@@ -144,11 +120,12 @@ export interface CareerDataResult {
 export async function loadCareerData(): Promise<CareerDataResult> {
   // Career profile data is user-scoped and mutable. Re-read the no-store API
   // on every page entry so a profile saved in the account console (or another
-  // device) cannot be hidden behind the client bootstrap's earlier snapshot.
+  // device) cannot be hidden behind an earlier snapshot. Callers reach this only
+  // after the session and Lifetime gate, so guests never request career data.
   await refreshCareerGateway();
 
-  const profile = getCareerProfileData();
-  const searches = getCareerSearches();
+  const profile = profileCache;
+  const searches = searchesCache;
   if (profile && searches) {
     return { profile, searches, error: null };
   }
@@ -157,7 +134,7 @@ export async function loadCareerData(): Promise<CareerDataResult> {
     return { profile: EMPTY_CAREER_PROFILE, searches: [], error: null };
   }
 
-  // 走到这里时 initCareerGateway 必然已记录错误（无 gateway 或拉取失败），
+  // 走到这里时 refreshCareerGateway 必然已记录错误（无 gateway 或拉取失败），
   // ?? 仅为类型兜底；Lifetime 门单独成句，其余统一走 formatPortalError。
   const err = lastError ?? new Error("加载求职雷达数据失败");
   return {
@@ -233,7 +210,6 @@ export async function requestCareerProfileUpdate(
   }
   const response = await updateCareerProfile(profile);
   profileCache = response.profile;
-  loaded = true;
   lastError = null;
   return response;
 }

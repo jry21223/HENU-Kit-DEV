@@ -1,62 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import AccountEntry from "@/components/account/account-entry";
-import BackLink from "@/components/back-link";
+import SubSiteNav, { type SubSiteTab } from "@/components/sub-site-nav";
 import { LEVEL_LABELS } from "@/lib/navigation/parent-route";
-import { cn } from "@/lib/cn";
 
-const TABS = [
+// 书库只有一个标签，SubSiteNav 因此不渲染标签行；保留这一项，是为了日后加标签时
+// 不用再改页头结构。
+const TABS: SubSiteTab[] = [
   { href: "/library", index: "L-01", label: LEVEL_LABELS.library, match: (p: string) => p === "/library" || p.startsWith("/library/item") || p.startsWith("/library/read") },
 ];
 
 export default function LibraryNav() {
-  const pathname = usePathname();
-  return (
-    <header className="sticky top-0 z-40 border-b border-line bg-paper">
-      <div className="mx-auto flex min-h-14 max-w-[1440px] flex-wrap items-center px-5 md:flex-nowrap md:justify-between md:px-8">
-        <div className="flex h-14 w-full items-center justify-between md:h-auto md:w-auto md:justify-start md:gap-4">
-          <div className="flex items-baseline gap-4">
-          <BackLink />
-          <span className="font-display text-base font-bold tracking-tight">
-            LIBRARY<span className="text-accent">®</span>
-          </span>
-          </div>
-          <div className="md:hidden">
-            <AccountEntry compact />
-          </div>
-        </div>
-        <nav className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 py-2 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0 md:py-0">
-          {TABS.map((tab) => {
-            const active = tab.match(pathname);
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={cn(
-                  "group relative py-1 font-mono text-xs tracking-widest transition-colors",
-                  active ? "text-ink" : "text-ink/50 hover:text-ink"
-                )}
-              >
-                <span className={cn("mr-1", active ? "text-accent" : "text-ink/30")}>{tab.index}</span>
-                {tab.label}
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute inset-x-0 -bottom-0.5 h-px origin-left bg-accent transition-transform duration-300",
-                    active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
-                  )}
-                />
-              </Link>
-            );
-          })}
-          <span aria-hidden className="hidden h-4 w-px bg-ink/20 md:block" />
-          <span className="hidden md:block">
-            <AccountEntry compact />
-          </span>
-        </nav>
-      </div>
-    </header>
-  );
+  return <SubSiteNav brand="LIBRARY" tabs={TABS} />;
 }

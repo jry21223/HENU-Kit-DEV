@@ -69,16 +69,22 @@ export function MembershipCheckoutQR({ checkoutURL }: MembershipCheckoutQRProps)
       <div
         data-membership-checkout-qr="rendering"
         aria-live="polite"
-        className="flex aspect-square w-full max-w-[280px] items-center justify-center border border-line font-mono text-xs tracking-[0.2em] text-ink/50"
+        className="flex aspect-square w-full max-w-[280px] items-center justify-center border border-line font-mono text-xs tracking-[0.2em] text-ink/60"
       >
-        QR RENDERING<span className="animate-pulse text-accent">…</span>
+        QR RENDERING<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </div>
     );
   }
 
   return (
     <div data-membership-checkout-qr="ready" className="w-full max-w-[280px]">
-      <Img src={current.dataURL} alt="微信支付二维码" label="QR" className="w-full bg-white" />
+      <Img
+        src={current.dataURL}
+        alt="微信支付二维码"
+        label="QR"
+        loading="eager"
+        className="aspect-square w-full bg-white"
+      />
     </div>
   );
 }

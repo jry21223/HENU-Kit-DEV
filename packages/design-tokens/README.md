@@ -15,6 +15,8 @@
 
 具体相对路径由应用构建结构决定。正式接入时应通过 workspace package 或构建复制实现，避免生产环境依赖仓库相对路径。
 
+Portal（`apps/portal`）用 Tailwind v4，按构建复制的方式接入：`apps/portal/scripts/generate-theme.mjs` 从 `tokens.json` 生成颜色主题 `apps/portal/src/app/theme.css`，写的是算好的色值。Tailwind 只有拿到字面色值，才能给 `bg-accent/5` 这类透明度写法预先算出回退；改了这里的颜色后，在 Portal 运行 `pnpm --filter @henukit/portal generate:theme`，否则 Portal 的测试会失败。
+
 ```css
 .primary-button {
   min-height: var(--hk-touch-target);
@@ -28,10 +30,12 @@
 }
 ```
 
+当前消费方：只有 Portal，经上面的生成脚本读取 `tokens.json`。`apps/portal/src/app/globals.css` 的颜色只来自生成的 `theme.css`：不引入 `tokens.css`，也不引用 `--hk-*` 变量。
+
 ## 约束
 
 - 品牌主色是“强调橙”（`--hk-accent`），不是河南大学官方标准色。
-- 视觉基准是线上主站 `henukit.cn` 的工程图纸体系（纸白/墨色/强调橙）；Console 与主站共享同一 token 集，不发展独立主题。
+- 视觉基准是线上主站 `henukit.cn` 的工程图纸体系（纸白/墨色/强调橙）；面向学生的前端都应使用这一套 token，不发展独立主题。Console 是内部运营工具，不消费这里的 token（见 DESIGN_SYSTEM.md 第 21 节）。
 - 业务页不得复制 token 后长期分叉。
 - 新 token 必须有至少两个真实消费场景，或属于语义状态基线。
 - 破坏性重命名需要 Design System 主版本升级。

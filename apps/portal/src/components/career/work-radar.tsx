@@ -226,10 +226,10 @@ export default function WorkRadar({
           backgroundSize: compact ? "18px 18px" : "24px 24px",
         }}
       >
-        <div className={cn("mx-auto", compact ? "max-w-[34rem] p-4 md:p-6" : "max-w-[48rem] p-4 md:p-8")}>
-          <div className="mb-3 flex items-center justify-between font-mono text-[9px] tracking-[0.2em] text-ink/55 md:text-[10px]">
+        <div className={cn("@container mx-auto", compact ? "max-w-[34rem] p-4 md:p-6" : "max-w-[48rem] p-4 md:p-8")}>
+          <div className="mb-3 flex items-center justify-between font-mono text-xs tracking-[0.2em] text-ink/60">
             <span>WORK RADAR / WR-01</span>
-            <span className={!schematic && dialStatus === "failed" ? "text-accent" : undefined}>
+            <span className={!schematic && dialStatus === "failed" ? "text-accent-text" : undefined}>
               {headerLabel}
             </span>
           </div>
@@ -271,23 +271,27 @@ export default function WorkRadar({
               );
             })}
 
-            {ANGLES.map((angle) => {
-              const point = polarPoint(angle, 268);
-              return (
-                <text
-                  key={angle}
-                  x={point.x}
-                  y={point.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill="#161513"
-                  fontSize="13"
-                  fontFamily="monospace"
-                >
-                  {angle}
-                </text>
-              );
-            })}
+            {/* 刻度数字和目标编号是读屏跳过的装饰，字号随表盘缩放：表盘窄于 28rem 时不到 10px，
+                不显示（DESIGN_SYSTEM.md 第 4 节）。 */}
+            <g aria-hidden className="hidden @md:inline">
+              {ANGLES.map((angle) => {
+                const point = polarPoint(angle, 268);
+                return (
+                  <text
+                    key={angle}
+                    x={point.x}
+                    y={point.y}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#161513"
+                    fontSize="13"
+                    fontFamily="monospace"
+                  >
+                    {angle}
+                  </text>
+                );
+              })}
+            </g>
 
             <g ref={sweepRef} opacity={dialStatus === "idle" ? 0.32 : dialStatus === "failed" ? 0.42 : 1}>
               <path
@@ -339,7 +343,8 @@ export default function WorkRadar({
                   {selected ? (
                     <>
                       <path d={`M${target.x + 16} ${target.y - 2} h28`} stroke="#ff4d00" strokeWidth="1.5" />
-                      <text x={target.x + 50} y={target.y + 3} fill="#ff4d00" fontSize="14" fontFamily="monospace">01</text>
+                      {/* 编号是纸白雷达上的橙字，用 accent-text；环、扫描扇面这些图形保持强调橙。 */}
+                      <text aria-hidden x={target.x + 50} y={target.y + 3} className="hidden fill-accent-text @md:inline" fontSize="14" fontFamily="monospace">01</text>
                     </>
                   ) : null}
                 </g>
@@ -353,11 +358,11 @@ export default function WorkRadar({
           </svg>
 
           {compact || schematic ? null : (
-            <div className="mt-2 grid grid-cols-2 gap-x-8 gap-y-2 border-t border-ink/60 pt-4 font-mono text-[10px] tracking-[0.12em] text-ink/60 sm:grid-cols-4">
-              <p><span className="text-ink/35">STATUS</span><br /><strong className="font-normal text-ink">{STATUS_COPY[dialStatus]}</strong></p>
-              <p><span className="text-ink/35">SOURCES</span><br /><strong className="font-normal text-ink">{readout(sources)}</strong></p>
-              <p><span className="text-ink/35">JOBS FOUND</span><br /><strong className="font-normal text-ink">{readout(jobs)}</strong></p>
-              <p><span className="text-ink/35">MATCHED</span><br /><strong className="font-normal text-accent">{readout(matched)}</strong></p>
+            <div className="mt-2 grid grid-cols-2 gap-x-8 gap-y-2 border-t border-ink/60 pt-4 font-mono text-xs tracking-[0.12em] text-ink/60 sm:grid-cols-4">
+              <p>STATUS<br /><strong className="font-normal text-ink">{STATUS_COPY[dialStatus]}</strong></p>
+              <p>SOURCES<br /><strong className="font-normal text-ink">{readout(sources)}</strong></p>
+              <p>JOBS FOUND<br /><strong className="font-normal text-ink">{readout(jobs)}</strong></p>
+              <p>MATCHED<br /><strong className="font-normal text-accent-text">{readout(matched)}</strong></p>
             </div>
           )}
         </div>

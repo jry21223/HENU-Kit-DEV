@@ -1,0 +1,13 @@
+/* 由 scripts/generate-theme.mjs 从 packages/design-tokens/tokens.json 生成，不要手改。
+   改色值时改 tokens.json 与 tokens.css，再运行 pnpm --filter @henukit/portal generate:theme。 */
+@theme {
+  --color-paper: #f2f0ea;
+  --color-ink: #161513;
+  --color-accent: #ff4d00;
+  --color-accent-text: #bb3800;
+  --color-line: rgba(22, 21, 19, 0.14);
+  --color-line-dark: rgba(242, 240, 234, 0.16);
+  --color-easy: #3e7c4f;
+  --color-mid: #c79a2a;
+  --color-hard: #c2401f;
+}

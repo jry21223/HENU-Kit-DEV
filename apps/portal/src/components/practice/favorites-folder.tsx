@@ -7,6 +7,7 @@ import BackLink from "@/components/back-link";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import FavoritesLoginPrompt from "@/components/practice/favorites-login-prompt";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
+import { useDocumentTitle } from "@/components/use-document-title";
 import {
   createFavoritesSession,
   fetchBankFavorites,
@@ -37,26 +38,26 @@ function FavoriteRow({
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-ink/40">
+            <span className="font-mono text-xs text-ink/60">
               Q-{String(index + 1).padStart(2, "0")}
             </span>
             {item.available ? (
-              <span className="border border-ink/40 px-1.5 py-0.5 font-mono text-[10px] text-ink/70">
+              <span className="border border-ink/40 px-1.5 py-0.5 font-mono text-xs text-ink/70">
                 可用
               </span>
             ) : (
-              <span className="border border-accent/50 px-1.5 py-0.5 font-mono text-[10px] text-accent">
+              <span className="border border-accent/50 px-1.5 py-0.5 font-mono text-xs text-accent-text">
                 暂不可用
               </span>
             )}
           </div>
           <p className="mt-1.5 truncate font-mono text-xs text-ink/70">{item.question_id}</p>
           {item.available && item.question_version_id ? (
-            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/45">
+            <p className="mt-0.5 font-mono text-xs text-ink/60">
               内容版本 {item.question_version_id.slice(0, 8)}
             </p>
           ) : (
-            <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink/45">
+            <p className="mt-0.5 font-mono text-xs text-ink/60">
               题目内容暂不可用，保留收藏关系
             </p>
           )}
@@ -66,10 +67,10 @@ function FavoriteRow({
           onClick={onRemove}
           disabled={removing}
           className={cn(
-            "border px-3 py-1.5 font-mono text-xs tracking-widest transition-colors",
+            "min-h-11 border px-3 py-1.5 font-mono text-xs transition-colors",
             removing
               ? "cursor-not-allowed border-line text-ink/30"
-              : "border-ink/30 text-ink/70 hover:border-accent hover:text-accent"
+              : "border-ink/30 text-ink/70 hover:border-accent hover:text-accent-text"
           )}
         >
           {removing ? "移除中…" : "取消收藏"}
@@ -90,6 +91,8 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   const favoriteKey = useIdempotencyKey("practice-unfavorite");
   const sessionKeys = useIdempotencyKey("practice-favorites-session");
   const [bankName, setBankName] = useState("");
+  // 页头显示题库名时，标签页也写上它；没有题库名就保留静态标题“题库收藏夹”。
+  useDocumentTitle(bankName ? `${bankName} 收藏夹` : null, "practice");
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -172,11 +175,11 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
   const canStart = state.status === "ready" && availableCount > 0 && !starting;
 
   return (
-    <main className="mx-auto max-w-6xl px-5 py-12 md:px-8 md:py-16">
+    <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div data-block ref={heroRef} className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">FAV</span>
+            <span className="text-accent-text">FAV</span>
             <span className="mx-2">/</span>
             BANK {bankID.slice(0, 8)}
           </p>
@@ -197,21 +200,21 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
             onClick={() => void startSession()}
             disabled={!canStart}
             className={cn(
-              "border px-6 py-3 font-mono text-sm tracking-widest transition-colors",
+              "border px-6 py-3 font-mono text-sm transition-colors",
               canStart
-                ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent"
+                ? "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
                 : "cursor-not-allowed border-line text-ink/30"
             )}
           >
             {starting ? "正在发起…" : "发起收藏练习 →"}
           </button>
           {state.status === "ready" && items.length > 0 && availableCount === 0 && (
-            <p className="font-mono text-[10px] tracking-wider text-ink/45">
+            <p className="font-mono text-xs text-ink/60">
               没有可练习的收藏，练习按钮不可用
             </p>
           )}
           {startError && (
-            <p role="alert" className="font-mono text-[10px] leading-5 text-accent">
+            <p role="alert" className="font-mono text-xs leading-5 text-accent-text">
               {startError}
             </p>
           )}
@@ -242,10 +245,10 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
       {state.status === "ready" && (
         <section data-testid="practice-favorites-folder-list" data-block className="mt-10">
           {items.length === 0 ? (
-            <EmptyBlock label="这个题库还没有收藏题目" />
+            <EmptyBlock label="这个题库还没有收藏题目" action={{ label: "去题库", href: "/practice" }} />
           ) : (
             <>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-ink/40 pb-2 font-mono text-[10px] tracking-[0.25em] text-ink/40">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-ink/40 pb-2 font-mono text-xs text-ink/60">
                 <span>题目引用</span>
                 <span className="text-right">操作</span>
               </div>
@@ -261,14 +264,15 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
                 ))}
               </ul>
               {removeError && (
-                <p role="alert" className="mt-4 font-mono text-xs text-accent">
+                <p role="alert" className="mt-4 font-mono text-xs text-accent-text">
                   {removeError}
                 </p>
               )}
-              <p className="mt-4 font-mono text-[10px] leading-5 text-ink/45">
+              <p className="mt-4 font-mono text-xs leading-5 text-ink/60">
                 不可用的收藏会保留在这里，但不会进入收藏练习，也不展示题目内容。
               </p>
-              <BackLink className="mt-6 inline-block" />
+              {/* 点击区比文字上下各高出 14px：mt-2.5 让文字仍在原来 mt-6 的位置。 */}
+              <BackLink className="mt-2.5" />
             </>
           )}
         </section>

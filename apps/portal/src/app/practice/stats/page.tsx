@@ -27,12 +27,12 @@ function StatCards({
     <div data-block data-enter className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4">
       {cards.map((card, index) => (
         <div key={card.label} className="border border-ink/25 p-5">
-          <p className="font-mono text-[10px] tracking-[0.25em] text-ink/40">
-            {String(index + 1).padStart(2, "0")} / {card.label}
+          <p className="font-mono text-xs text-ink/60">
+            <span className="tracking-[0.25em]">{String(index + 1).padStart(2, "0")}</span> / {card.label}
           </p>
           <p className="mt-3 font-display text-4xl font-bold tabular-nums">
             {card.value}
-            <span className="ml-1 font-mono text-xs font-normal text-ink/50">
+            <span className="ml-1 font-mono text-xs font-normal text-ink/60">
               {card.unit}
             </span>
           </p>
@@ -47,10 +47,10 @@ export default function StatsPage() {
   const { state, retry } = usePersonalPracticeStats();
 
   return (
-    <main className="mx-auto max-w-[1440px] px-5 py-12 md:px-8 md:py-16">
+    <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div data-block data-enter>
         <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">STATS</span>
+          <span className="text-accent-text">STATS</span>
           <span className="mx-2">/</span>
           MY DATA
         </p>
@@ -58,13 +58,13 @@ export default function StatsPage() {
           数据面板
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
-          这里展示你的学习数据；没有真实数据时不展示示例图表或排行榜数字。
+          这里汇总你的答题记录：作答次数、正确率、连续学习天数和各题库的掌握度。
         </p>
       </div>
 
       {state.status === "disabled" && (
         <section data-testid="practice-stats-disabled" className="mt-10">
-          <EmptyBlock label="学习数据即将上线，敬请期待" />
+          <EmptyBlock label="学习数据即将上线，敬请期待" action={{ label: "去刷题", href: "/practice" }} />
         </section>
       )}
 
@@ -76,13 +76,13 @@ export default function StatsPage() {
 
       {state.status === "unauthenticated" && (
         <section data-testid="practice-stats-unauthenticated" className="mt-10 border border-ink/25 p-6">
-          <p className="font-mono text-xs tracking-[0.2em] text-ink/55">
-            SIGN IN REQUIRED / 请先登录后查看跨设备同步的学习状态
+          <p className="font-mono text-xs text-ink/60">
+            <span className="tracking-[0.2em]">SIGN IN REQUIRED</span> / 请先登录后查看跨设备同步的学习状态
           </p>
           <button
             type="button"
             onClick={() => redirectToLogin("/practice/stats")}
-            className="mt-5 border border-ink px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+            className="mt-5 inline-flex min-h-11 items-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
           >
             登录查看
           </button>
@@ -109,21 +109,24 @@ export default function StatsPage() {
 
           {state.status === "empty" ? (
             <section data-testid="practice-stats-empty" className="mt-12">
-              <EmptyBlock label="还没有学习记录，从第一题开始建立你的学习图谱" />
+              <EmptyBlock
+                label="还没有学习记录，从第一题开始建立你的学习图谱"
+                action={{ label: "去刷题", href: "/practice" }}
+              />
             </section>
           ) : (
             <section data-testid="practice-stats-success" data-block data-enter className="mt-12 border border-ink/25 p-5 md:p-7">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
-                    MASTERY / 题库掌握度
+                  <p className="font-mono text-xs text-ink/60">
+                    <span className="tracking-[0.25em]">MASTERY</span> / 题库掌握度
                   </p>
-                  <p className="mt-2 text-sm text-ink/55">
+                  <p className="mt-2 text-sm text-ink/60">
                     分值为当前题库中至少答对过一次的题目占比。
                   </p>
                 </div>
-                <p className="font-mono text-[10px] tracking-[0.2em] text-ink/45">
-                  {state.data.mastery.length} 个有作答事实的题库
+                <p className="font-mono text-xs text-ink/60">
+                  {state.data.mastery.length} 个练过的题库
                 </p>
               </div>
 
@@ -137,7 +140,7 @@ export default function StatsPage() {
                         <span
                           className={cn(
                             "shrink-0 tabular-nums",
-                            weak ? "text-accent" : "text-ink/60"
+                            weak ? "text-accent-text" : "text-ink/60"
                           )}
                         >
                           {subject.value}% · {subject.correct_questions}/

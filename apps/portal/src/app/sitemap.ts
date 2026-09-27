@@ -9,6 +9,8 @@ const PUBLIC_ROUTES = [
   { path: "/food", changeFrequency: "daily", priority: 0.8 },
   { path: "/campus", changeFrequency: "daily", priority: 0.8 },
   { path: "/career", changeFrequency: "weekly", priority: 0.7 },
+  { path: "/privacy", changeFrequency: "yearly", priority: 0.2 },
+  { path: "/terms", changeFrequency: "yearly", priority: 0.2 },
 ] as const;
 
 export default function sitemap(): MetadataRoute.Sitemap {

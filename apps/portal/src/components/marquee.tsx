@@ -4,6 +4,9 @@ import { useRef } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
 
+/** 汉字、中文标点和全角符号。含中文的条目不拉开字距，只有拉丁条目拉开（DESIGN_SYSTEM.md 第 4 节）。 */
+const CJK = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+
 /**
  * 无缝循环 marquee 条带。
  */
@@ -37,8 +40,8 @@ export default function Marquee({
     <div key={key} className="flex shrink-0 items-center">
       {items.map((item, i) => (
         <span key={`${key}-${i}`} className="flex items-center whitespace-nowrap">
-          <span className="px-6 font-mono text-sm tracking-[0.2em]">{item}</span>
-          <span aria-hidden className={cn("text-xs", dark ? "text-paper/70" : "text-paper/80")}>
+          <span className={cn("px-6 font-mono text-sm", !CJK.test(item) && "tracking-[0.2em]")}>{item}</span>
+          <span aria-hidden className={cn("text-xs", dark ? "text-paper/70" : "text-ink/80")}>
             +
           </span>
         </span>
@@ -50,7 +53,8 @@ export default function Marquee({
     <div
       className={cn(
         "overflow-hidden border-y py-3",
-        dark ? "border-line-dark bg-ink text-paper" : "border-ink/20 bg-accent text-paper",
+        // 橙底用墨色字（5.49:1）；纸白字在强调橙上只有 2.92:1。
+        dark ? "border-line-dark bg-ink text-paper" : "border-ink/20 bg-accent text-ink",
         className
       )}
     >

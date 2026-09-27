@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import LibraryNav from "@/components/library/library-nav";
+import SiteShell from "@/components/site-shell";
+import { moduleLayoutTitle } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "资料库 — henukit",
+  title: moduleLayoutTitle("library"),
 };
 
 export default function LibraryLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-svh bg-paper text-ink">
-      <LibraryNav />
-      {children}
-    </div>
+    <SiteShell header={<LibraryNav />}>{children}</SiteShell>
   );
 }

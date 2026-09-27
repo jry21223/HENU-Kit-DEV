@@ -36,7 +36,6 @@ import type {
   FavoriteWriteResponse,
   FoodPostDetailResponse,
   FoodPostListResponse,
-  FoodVenuesResponse,
   LibraryCoursesResponse,
   MaterialDetailResponse,
   MaterialListResponse,
@@ -516,14 +515,6 @@ export function libraryMaterialDownloadURL(id: string): string {
 
 // ---- Food ----
 
-export async function fetchFoodVenues(
-  campus: string
-): Promise<FoodVenuesResponse | null> {
-  return apiFetch<FoodVenuesResponse>(
-    `/api/v1/food/venues?campus=${encodeURIComponent(campus)}`
-  );
-}
-
 export async function fetchFoodPosts(campus?: string): Promise<FoodPostListResponse> {
   const qs = campus ? `?campus=${encodeURIComponent(campus)}` : "";
   return apiFetchRequired<FoodPostListResponse>(`/api/v1/food/posts${qs}`);
@@ -878,23 +869,35 @@ export async function createCareerResumeSuification(
   );
 }
 
-/** Human-readable error for UI banners. */
+/**
+ * Human-readable error for UI banners: what happened and what the user can do.
+ *
+ * Error messages carry diagnostics (API paths, status text, internal names)
+ * and never reach the screen; callers that need a specific outcome branch on
+ * status / errorCode first and show their own copy.
+ */
 export function formatPortalError(err: unknown): string {
-  if (err instanceof PortalConfigError) {
-    return err.message;
-  }
   if (err instanceof PortalUnauthorizedError) {
-    return "需要登录后才能加载数据，请先完成统一认证。";
+    return "需要先登录才能继续，请登录后再试。";
   }
   if (err instanceof PortalNetworkError) {
-    return "无法连接 Gateway，请检查网络或后端服务状态。";
+    return "网络连接失败，请检查网络后重试。";
   }
-  if (err instanceof PortalHttpError) {
-    return `服务暂时不可用，请稍后再试。`;
-  }
+  // Config, HTTP, non-JSON and empty responses, and client-side guards alike.
   if (err instanceof PortalApiError) {
-    return err.message;
+    return "服务暂时不可用，请稍后再试。";
   }
-  if (err instanceof Error) return "加载失败，请稍后重试。";
   return "加载失败，请稍后重试。";
+}
+
+/** Same shape the Gateway accepts and issues for X-Request-Id. */
+const REQUEST_ID_PATTERN = /^req_[A-Za-z0-9_-]{1,116}$/;
+
+/**
+ * The request id to show as 错误编号 so the user can quote it in a ticket;
+ * null when the failure carries none (or anything that is not a request id).
+ */
+export function portalErrorRequestId(err: unknown): string | null {
+  if (!(err instanceof PortalApiError) || !err.requestId) return null;
+  return REQUEST_ID_PATTERN.test(err.requestId) ? err.requestId : null;
 }

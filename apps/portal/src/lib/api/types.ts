@@ -311,13 +311,6 @@ export interface FoodPostDetailResponse {
 
 // ---- Practice ----
 
-export interface BankSummary {
-  id: string;
-  name: string;
-  subject: string;
-  question_count: number;
-}
-
 /** Browser input for one real QuizCraft session. The API selects questions. */
 export interface PortalPracticeSessionInput {
   bank_id: string;
@@ -444,7 +437,7 @@ export interface PortalPracticeAnswerResponse {
 
 /**
  * Dark-until-cutover QuizCraft catalog data. This intentionally stays
- * separate from the legacy Portal API BankSummary shape, which cannot carry
+ * separate from the legacy Portal API bank summary shape, which cannot carry
  * the immutable QuizCraft bank-version identifier required to start V2 work.
  */
 export type {
@@ -469,16 +462,6 @@ export interface QuizCraftRankingResponse {
       correct_answer_count: number;
     }>;
   };
-}
-
-export interface QuizListMeta {
-  id: string;
-  name: string;
-  creator: string;
-  tags: string[];
-  poolKey: string;
-  count: number;
-  completion: number;
 }
 
 // ---- Campus ----
@@ -654,7 +637,7 @@ export interface CareerProfileResponse {
 export type CareerExtractionStatus = "queued" | "running" | "completed" | "failed";
 
 /**
- * 简历提取任务。文件字节在任务完成或失败后删除，只保留提取字段；
+ * 简历提取任务。文件字节在任务完成或失败后删除，保留文件名、文件校验值和提取字段；
  * completed 时 extracted 为可回填表单的画像草稿。
  */
 export interface CareerResumeExtraction {

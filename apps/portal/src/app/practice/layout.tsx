@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import PracticeNav from "@/components/practice/practice-nav";
+import SiteShell from "@/components/site-shell";
 import TransitionProvider from "@/components/practice/transition/transition-provider";
+import { moduleLayoutTitle } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "刷题 — henukit",
+  title: moduleLayoutTitle("practice"),
 };
 
 export default function PracticeLayout({
@@ -12,9 +14,8 @@ export default function PracticeLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-svh bg-paper text-ink">
-      <PracticeNav />
+    <SiteShell header={<PracticeNav />}>
       <TransitionProvider>{children}</TransitionProvider>
-    </div>
+    </SiteShell>
   );
 }

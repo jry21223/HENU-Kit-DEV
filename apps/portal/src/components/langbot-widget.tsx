@@ -27,6 +27,11 @@ function noPendingBinding() {
   catch { return false; }
 }
 
+/**
+ * 配置 NEXT_PUBLIC_LANGBOT_WIDGET_URL 会在 /account 与 /bind 以外的页面加载第三方聊天脚本。
+ * 启用前先在隐私政策（src/app/(legal)/privacy/page.tsx）的第三方与 Cookie 部分写明它，
+ * 去留与加固见 #220。
+ */
 export default function LangBotWidget() {
   const pathname = usePathname();
   // SSR is fail closed; only inspect tab storage after hydration. The binding

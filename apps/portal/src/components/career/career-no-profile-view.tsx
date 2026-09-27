@@ -17,7 +17,7 @@ export default function CareerNoProfileView() {
     <section data-career-state="lifetime-no-profile" className="mt-10">
       <div className="max-w-2xl">
         <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          <span className="text-accent">R-01</span>
+          <span className="text-accent-text">R-01</span>
           <span className="mx-2">/</span>
           PROFILE REQUIRED
         </p>
@@ -25,25 +25,25 @@ export default function CareerNoProfileView() {
           先完成求职画像，再开始扫描
         </h1>
         <p data-enter className="mt-4 text-sm leading-7 text-ink/70">
-          求职雷达根据你的画像匹配受控官方招聘来源。目前画像尚未设置，
+          求职雷达根据你的画像，在已收录的官方招聘来源中匹配岗位。目前画像尚未设置，
           完成画像后即可发起首次扫描。
         </p>
-        <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
+        <ul className="mt-6 space-y-2 font-mono text-xs text-ink/60">
           {STEPS.map((s) => (
             <li key={s} data-enter>
-              <span className="mr-2 text-accent">+</span>
+              <span aria-hidden className="mr-2 text-accent-text">+</span>
               {s}
             </li>
           ))}
         </ul>
         <Link
           href="/account/profile"
-          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper"
+          className="mt-8 inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
         >
           去设置求职画像 →
         </Link>
-        <p className="mt-3 font-mono text-[10px] tracking-[0.15em] text-ink/40">
-          简历文件仅在识别任务期间临时保存，任务完成或失败后删除原文件字节；不会保存招聘站账号
+        <p className="mt-3 font-mono text-xs text-ink/60">
+          简历文件在识别完成或失败后即删除，保留文件名、文件校验值和识别出的内容；不会保存招聘站账号
         </p>
       </div>
     </section>

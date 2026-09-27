@@ -5,6 +5,12 @@
   --hk-accent: #ff4d00;
   --hk-accent-deep: #d84300;
   --hk-accent-soft: #ffe9de;
+  /* Semantic baseline for orange text of any size on light surfaces: at least
+     4.5:1 on paper, paper-raised, accent-soft, and a 5% accent or 5% ink tint
+     over paper. --hk-accent is 2.92:1 on paper, below even the 3:1 large-text
+     minimum, so it stays for fills and text on ink; --hk-accent-deep (3.9:1)
+     is not a text color. */
+  --hk-accent-text: #bb3800;
   --hk-paper: #f2f0ea;
   --hk-paper-raised: #ffffff;
   --hk-line: rgba(22, 21, 19, 0.14);

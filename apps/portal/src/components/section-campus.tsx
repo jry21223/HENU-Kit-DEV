@@ -9,32 +9,45 @@ const FEATURES = ["按类别浏览互助与闲置", "搜索你关注的信息"];
 
 /** 浏览 → 筛选 → 查看：当前开放的信息浏览流程。 */
 function FlowDiagram() {
+  // 图里的字随图缩放。图宽不到 28rem（手机）时节点文字放大，屏幕上仍不小于 12px；
+  // STEP 编号是读屏跳过的装饰，这时不显示（DESIGN_SYSTEM.md 第 4 节）。
+  const nodeText = "text-[18px] @md:text-[13px]";
   return (
-    <svg viewBox="0 0 480 140" fill="none" className="w-full max-w-lg">
-      {/* 连接线 */}
-      <path data-flow-line d="M70 70 H 200" stroke="#161513" strokeWidth="1.5" />
-      <path data-flow-line d="M280 70 H 410" stroke="#161513" strokeWidth="1.5" />
-      <path data-flow-arrow d="M196 65 L 204 70 L 196 75" stroke="#ff4d00" strokeWidth="1.5" />
-      <path data-flow-arrow d="M406 65 L 414 70 L 406 75" stroke="#ff4d00" strokeWidth="1.5" />
+    <div className="@container">
+      <svg viewBox="0 0 480 140" fill="none" className="w-full max-w-lg">
+        {/* 连接线 */}
+        <path data-flow-line d="M70 70 H 200" stroke="#161513" strokeWidth="1.5" />
+        <path data-flow-line d="M280 70 H 410" stroke="#161513" strokeWidth="1.5" />
+        <path data-flow-arrow d="M196 65 L 204 70 L 196 75" stroke="#ff4d00" strokeWidth="1.5" />
+        <path data-flow-arrow d="M406 65 L 414 70 L 406 75" stroke="#ff4d00" strokeWidth="1.5" />
 
-      {/* 节点 */}
-      <g data-flow-node>
-        <rect x="10" y="46" width="60" height="48" stroke="#161513" />
-        <text x="40" y="74" textAnchor="middle" fontSize="13" fill="#161513">浏览</text>
-      </g>
-      <g data-flow-node>
-        <rect x="204" y="46" width="76" height="48" stroke="#161513" />
-        <text x="242" y="74" textAnchor="middle" fontSize="13" fill="#161513">筛选</text>
-      </g>
-      <g data-flow-node>
-        <rect x="414" y="46" width="60" height="48" stroke="#161513" />
-        <text x="444" y="74" textAnchor="middle" fontSize="13" fill="#161513">查看</text>
-      </g>
+        {/* 节点 */}
+        <g data-flow-node>
+          <rect x="10" y="46" width="60" height="48" stroke="#161513" />
+          <text x="40" y="70" textAnchor="middle" dominantBaseline="central" className={nodeText} fill="#161513">
+            浏览
+          </text>
+        </g>
+        <g data-flow-node>
+          <rect x="204" y="46" width="76" height="48" stroke="#161513" />
+          <text x="242" y="70" textAnchor="middle" dominantBaseline="central" className={nodeText} fill="#161513">
+            筛选
+          </text>
+        </g>
+        <g data-flow-node>
+          <rect x="414" y="46" width="60" height="48" stroke="#161513" />
+          <text x="444" y="70" textAnchor="middle" dominantBaseline="central" className={nodeText} fill="#161513">
+            查看
+          </text>
+        </g>
 
-      <text x="40" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.5" fontFamily="monospace">STEP 1</text>
-      <text x="242" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.5" fontFamily="monospace">STEP 2</text>
-      <text x="444" y="120" textAnchor="middle" fontSize="9" fill="#161513" opacity="0.5" fontFamily="monospace">STEP 3</text>
-    </svg>
+        <g aria-hidden className="hidden @md:inline">
+          <text x="40" y="120" textAnchor="middle" fontSize="11" fill="#161513" opacity="0.6" fontFamily="monospace">STEP 1</text>
+          <text x="242" y="120" textAnchor="middle" fontSize="11" fill="#161513" opacity="0.6" fontFamily="monospace">STEP 2</text>
+          <text x="444" y="120" textAnchor="middle" fontSize="11" fill="#161513" opacity="0.6" fontFamily="monospace">STEP 3</text>
+        </g>
+      </svg>
+    </div>
   );
 }
 
@@ -116,17 +129,17 @@ export default function SectionCampus() {
 
   return (
     <section ref={sectionRef} className="snap-screen border-t border-line bg-paper">
-      <div className="mx-auto grid min-h-svh max-w-7xl items-center gap-12 px-5 py-24 md:grid-cols-2 md:px-10">
+      <div className="mx-auto grid max-w-site items-center gap-12 px-5 py-24 md:min-h-svh md:grid-cols-2 md:px-8">
         <div>
           <SectionHeading index="04" en="CAMPUS MUTUAL AID" title="互助平台" />
           <p className="mt-6 max-w-sm text-sm leading-7 text-ink/70">
             看看同校的互助需求与闲置信息，
             按类别查找你关注的内容。
           </p>
-          <ul className="mt-6 space-y-2 font-mono text-xs tracking-wider text-ink/60">
+          <ul className="mt-6 space-y-2 font-mono text-xs text-ink/60">
             {FEATURES.map((f) => (
               <li key={f}>
-                <span className="mr-2 text-accent">+</span>
+                <span aria-hidden className="mr-2 text-accent-text">+</span>
                 {f}
               </li>
             ))}
@@ -147,9 +160,9 @@ export default function SectionCampus() {
             data-order-card
             className="group w-full max-w-sm border border-dashed border-ink/25 bg-paper p-6"
           >
-            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-ink/50">
-              <span>CAMPUS AID</span>
-              <span className="border border-ink/30 px-2 py-0.5 text-ink/50">信息浏览</span>
+            <div className="flex items-center justify-between font-mono text-xs text-ink/60">
+              <span className="tracking-[0.25em]">CAMPUS AID</span>
+              <span className="border border-ink/30 px-2 py-0.5">信息浏览</span>
             </div>
             <h3 className="mt-5 font-display text-3xl font-bold">先看看校园所需</h3>
             <p className="mt-2 text-sm text-ink/60">

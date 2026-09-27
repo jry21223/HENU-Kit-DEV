@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import FavoritesFolder from "@/components/practice/favorites-folder";
+import { pageTitle } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "题库收藏夹 — henukit",
+  title: pageTitle("题库收藏夹", "practice"),
 };
 
 export default async function FavoritesFolderPage({

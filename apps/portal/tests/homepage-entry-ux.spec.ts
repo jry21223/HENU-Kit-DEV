@@ -40,7 +40,7 @@ test.describe("Homepage task entry", () => {
     ] as const) {
       await expect(page.locator("header").getByRole("link", { name: new RegExp(name) })).toHaveAttribute("href", route);
     }
-    await page.getByRole("button", { name: "打开菜单" }).click();
+    await page.getByRole("button", { name: "关闭菜单" }).click();
     await expect(page.getByText("发布、接单和结算暂未开放。", { exact: true })).toBeVisible();
     await expect(page.getByText(/实名认证|发单有人接|全覆盖|真实订单即将上线|互助接单/)).toHaveCount(0);
 
@@ -50,6 +50,27 @@ test.describe("Homepage task entry", () => {
     await expect(page.getByText("可浏览互助与闲置信息；发布、接单和结算暂未开放。", { exact: true })).toBeVisible();
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /发布、接单和结算暂未开放/);
     await expect(page.getByText(/发单有人接|实名认证|即将上线/)).toHaveCount(0);
+  });
+
+  test("Practice section describes only delivered capabilities", async ({ page }) => {
+    await page.goto("/");
+    // 首屏 marquee 等其他首页位置同样不宣传 AI 刷题 / 推题。
+    await expect(page.locator("main")).not.toContainText(/AI\s*(智能)?(刷题|推题)/);
+
+    const practice = page.locator("section").filter({ has: page.getByRole("heading", { level: 2, name: /智能刷题/ }) });
+    await expect(practice).toHaveCount(1);
+
+    // AI 推题尚未上线（#530）：不宣传推题、自动归因、每题讲解或按知识点的掌握度。
+    for (const claim of ["AI 按你的薄弱知识点推题", "按知识点智能推题", "错题自动归因", "每道错题都配", "知识点", "曲线", "每周更新"]) {
+      await expect(practice).not.toContainText(claim);
+    }
+    await expect(practice).not.toContainText(/\bAI\b/);
+
+    await expect(practice).toContainText("随机、难题、章节、收藏");
+    await expect(practice).toContainText("题库掌握度");
+    // 右侧演示对应答题页的解析区，明确标为示例，并说明解析来自题库、部分题目没有。
+    await expect(practice).toContainText("解析示例");
+    await expect(practice).toContainText("部分题目暂无解析");
   });
 });
 
@@ -70,13 +91,15 @@ test.describe("Campus browsing availability", () => {
 
     await page.goto("/campus");
     const itemsCounter = page.getByText("在架单子", { exact: true }).locator("..");
-    await expect(page.getByText("加载互助单 / LOADING", { exact: true })).toBeVisible();
+    await expect(page.getByText("加载互助单…", { exact: true })).toBeVisible();
     await expect(itemsCounter).toHaveAttribute("aria-busy", "true");
     await expect(itemsCounter).toContainText("加载中");
     await expect(itemsCounter).toContainText("—");
     releaseItems();
 
-    await expect(page.getByText("暂无互助或闲置信息 / EMPTY", { exact: true })).toBeVisible();
+    await expect(page.getByText("暂无互助或闲置信息", { exact: true })).toBeVisible();
+    // 没有筛选条件时，清除筛选帮不上忙，不出现。
+    await expect(page.getByRole("button", { name: "清除筛选" })).toHaveCount(0);
     await expect(itemsCounter).toHaveAttribute("aria-busy", "false");
     await expect(itemsCounter).toContainText("0");
     await expect(itemsCounter).not.toContainText("—");
@@ -103,7 +126,7 @@ test.describe("Campus browsing availability", () => {
     await expect(page.getByRole("main").getByRole("alert")).not.toContainText("internal gateway");
     await expect(itemsCounter).toContainText("暂不可用");
     await expect(itemsCounter).toContainText("—");
-    await expect(page.getByText(/\/ EMPTY/)).toHaveCount(0);
+    await expect(page.getByText(/暂无互助或闲置信息|无匹配单子/)).toHaveCount(0);
 
     unavailable = false;
     await page.getByRole("button", { name: "重试", exact: true }).click();
@@ -111,6 +134,6 @@ test.describe("Campus browsing availability", () => {
     await expect(itemsCounter).toContainText("1");
     await expect(itemsCounter).not.toContainText("—");
     await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
-    await expect(page.getByText(/\/ EMPTY/)).toHaveCount(0);
+    await expect(page.getByText(/暂无互助或闲置信息|无匹配单子/)).toHaveCount(0);
   });
 });

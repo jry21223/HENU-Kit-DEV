@@ -176,7 +176,7 @@ export default function CareerReadyView({
       <div className="grid gap-10 lg:grid-cols-5">
         <div className="lg:col-span-3">
           <p data-enter className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent">R-01</span>
+            <span className="text-accent-text">R-01</span>
             <span className="mx-2">/</span>
             READY TO SCAN
           </p>
@@ -186,19 +186,19 @@ export default function CareerReadyView({
 
           <dl data-enter className="mt-8 grid gap-x-10 gap-y-5 border-t border-line pt-6 sm:grid-cols-2">
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">目标岗位</dt>
+              <dt className="font-mono text-xs text-ink/60">目标岗位</dt>
               <dd className="mt-1.5 text-sm leading-6">{profile.target_roles ?? "—"}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">技术栈</dt>
+              <dt className="font-mono text-xs text-ink/60">技术栈</dt>
               <dd className="mt-1.5 text-sm leading-6">{profile.tech_stack || "—"}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">目标城市</dt>
+              <dt className="font-mono text-xs text-ink/60">目标城市</dt>
               <dd className="mt-1.5 text-sm leading-6">{profile.locations || "—"}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] tracking-[0.18em] text-ink/45">求职类型</dt>
+              <dt className="font-mono text-xs text-ink/60">求职类型</dt>
               <dd className="mt-1.5 text-sm leading-6">
                 {profile.job_type ? JOB_TYPE_LABELS[profile.job_type] : "不限"}
               </dd>
@@ -210,7 +210,7 @@ export default function CareerReadyView({
               type="button"
               disabled={scan.kind === "starting" || scan.kind === "restoring" || isPolling}
               onClick={() => void startScan()}
-              className="inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs tracking-widest transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center border border-ink px-6 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
             >
               {scan.kind === "restoring"
                 ? "正在恢复任务…"
@@ -222,7 +222,7 @@ export default function CareerReadyView({
             </button>
             <Link
               href="/account/profile"
-              className="inline-flex min-h-11 items-center border border-line px-4 py-2 font-mono text-xs tracking-widest transition-colors hover:border-ink"
+              className="inline-flex min-h-11 items-center border border-line px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
             >
               修改画像
             </Link>
@@ -254,23 +254,24 @@ export default function CareerReadyView({
           <WorkRadar compact status={radarStatus} matched={radarMatched} className="mb-6" />
 
           <div className="border border-line p-5">
-            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.22em] text-ink/50">
-              <span>SCAN HISTORY</span>
-              <Link href="/career/history" className="transition-colors hover:text-accent">
+            <div className="flex items-center justify-between font-mono text-xs text-ink/60">
+              <span className="tracking-[0.22em]">SCAN HISTORY</span>
+              {/* 一行小字只有 16px 高：上下各借 14px 撑满 44px 点击区，标题行高度不变。 */}
+              <Link href="/career/history" className="-my-3.5 inline-flex min-h-11 items-center transition-colors hover:text-accent-text">
                 全部历史 →
               </Link>
             </div>
             {displayedLatest ? (
               <div className="mt-4 border-t border-line pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-[11px] tracking-wider text-ink/70">
+                  <span className="font-mono text-xs text-ink/70">
                     最近一次
                   </span>
-                  <span className="border border-ink/30 px-2 py-0.5 font-mono text-[10px] tracking-widest text-ink/60">
+                  <span className="border border-ink/30 px-2 py-0.5 font-mono text-xs text-ink/60">
                     {careerSearchStatusLabel(displayedLatest.status)}
                   </span>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-ink/55">
+                <p className="mt-2 text-xs leading-5 text-ink/60">
                   {formatCareerSearchTime(displayedLatest.created_at)}
                   {careerDigestStatusLabel(displayedLatest)
                     ? ` · ${careerDigestStatusLabel(displayedLatest)}`
@@ -278,7 +279,7 @@ export default function CareerReadyView({
                 </p>
               </div>
             ) : (
-              <p className="mt-4 border-t border-line pt-4 text-sm leading-6 text-ink/55">
+              <p className="mt-4 border-t border-line pt-4 text-sm leading-6 text-ink/60">
                 还没有扫描记录，发起第一次扫描后在此查看历史。
               </p>
             )}
