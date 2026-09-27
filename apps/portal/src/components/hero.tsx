@@ -99,6 +99,7 @@ export default function Hero() {
           ease: "none",
         });
       });
+      return () => mm.revert();
     },
     { scope: sectionRef }
   );
