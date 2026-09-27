@@ -87,7 +87,7 @@ const SECTIONS: LegalSection[] = [
     content: (
       <ul>
         <li>
-          终身会员价格为 ¥9.9，一次付费；具体权益以<Link href="/account/membership">“账户中心 → 会员权益”</Link>页面的说明为准。
+          终身会员一次付费，价格以开通页面显示的金额为准；具体权益以<Link href="/account/membership">“账户中心 → 会员权益”</Link>页面的说明为准。
         </li>
         <li>“终身”指在 HENU Kit 提供相应服务的期间内持续有效，并不代表我们承诺本服务永久存续；如本服务终止，我们会提前公告。</li>
         <li>支付通过微信支付完成，是否支付成功以系统确认的结果为准。</li>

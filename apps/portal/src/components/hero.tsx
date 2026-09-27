@@ -6,6 +6,7 @@ import Link from "next/link";
 import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
 import Marquee from "@/components/marquee";
 import AmbientSvg from "@/components/ui/ambient-svg";
+import { SITE_STATEMENT_FULL } from "@/lib/site-legal";
 
 const Hero3D = dynamic(() => import("@/components/hero-3d"), { ssr: false });
 
@@ -196,7 +197,11 @@ export default function Hero() {
         </nav>
 
         <div data-hero-gridline className="enter-grow-x mt-8 h-px w-full max-w-md bg-line" style={{ animationDelay: "0.74s" }} />
-        <p className="mt-3 font-mono text-xs text-ink/60">
+        {/* 首页首屏的完整声明（DESIGN_SYSTEM §16）；其余页面只在页脚放短版。 */}
+        <p className="enter-fade mt-3 max-w-md text-xs leading-5 break-keep text-ink/60" style={{ animationDelay: "0.74s" }}>
+          {SITE_STATEMENT_FULL}
+        </p>
+        <p className="mt-2 font-mono text-xs text-ink/60">
           <span className="tracking-[0.3em]">SCROLL</span> / 向下滚动查看模块 01—05
         </p>
       </div>

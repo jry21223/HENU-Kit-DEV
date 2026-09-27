@@ -66,6 +66,32 @@ for (const doc of [
   });
 }
 
+/** DESIGN_SYSTEM §1 的完整声明；§16 要求首页首屏出现它，页脚只放短版。 */
+const FULL_STATEMENT = "HENU Kit 是由河南大学学生自主发起并维护的校园工具项目，非河南大学官方产品，不代表学校官方立场。";
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+]) {
+  test(`the home page states the full non-official statement on its first screen at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const statement = page.locator("main").getByText(FULL_STATEMENT, { exact: true });
+    await expect(statement).toBeVisible();
+    const box = await statement.boundingBox();
+    expect(box, "声明要在首屏里，不必滚动就能看到").not.toBeNull();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+  });
+}
+
+test("the user agreement does not fix a price the payment settings can change", async ({ page }) => {
+  await page.goto("/terms");
+  const main = page.locator("main");
+  // 付款金额由 Account Portfolio 的配置决定，协议写死价格会在改价后过时。
+  await expect(main).not.toContainText("¥");
+  await expect(main).toContainText("以开通页面显示的金额为准");
+});
+
 test("the privacy policy covers the HENU Bot QQ binding the site offers", async ({ page }) => {
   await page.goto("/privacy");
   const main = page.locator("main");

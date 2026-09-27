@@ -6,6 +6,10 @@
 /** 空间有限时使用的短版声明。 */
 export const SITE_DISCLAIMER_SHORT = "学生自主运营 · 非河南大学官方项目";
 
+/** 完整声明（DESIGN_SYSTEM §1）：首页首屏展示它（§16），其余地方用短版。 */
+export const SITE_STATEMENT_FULL =
+  "HENU Kit 是由河南大学学生自主发起并维护的校园工具项目，非河南大学官方产品，不代表学校官方立场。";
+
 /** 登录、支付等操作前再次说明主体时使用的一句话。 */
 export const SITE_OPERATOR_STATEMENT = "HENU Kit 由学生自主运营，非河南大学官方项目。";
 
@@ -23,4 +27,4 @@ export const LEGAL_LINKS = [
 ] as const;
 
 /** 隐私政策与用户协议的最近更新日期；内容有变更时一并更新。 */
-export const LEGAL_UPDATED_AT = "2026 年 9 月 26 日";
+export const LEGAL_UPDATED_AT = "2026 年 9 月 27 日";
