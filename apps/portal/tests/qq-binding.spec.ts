@@ -33,8 +33,9 @@ test("expired session offers login instead of repeating authorization", async ({
 
 /**
  * 网关错误页、WAF 挑战页或断网时，页面只说中文：发生了什么、可以怎么做；浏览器的原始报错
- * （Failed to fetch、JSON 解析失败）不上屏。绑定服务返回的错误按全站同一份放行名单处理（#554）：
- * 名单里的码原样展示中文 message，其余用页面自己的提示。
+ * （Failed to fetch、JSON 解析失败）不上屏。错误信封按放行名单处理（#554）：Gateway 自己的扁平信封
+ * 用全站名单，它转发的 Platform Core 绑定错误用绑定名单；名单里的码原样展示中文 message，其余用页面
+ * 自己的提示。
  */
 const SIGNED_IN = { user_id: "11111111-1111-4111-8111-111111111111", display_name: "小河" };
 const HTML_502 = "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n";

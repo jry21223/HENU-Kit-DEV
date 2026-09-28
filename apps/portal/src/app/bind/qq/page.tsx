@@ -8,10 +8,11 @@ const STORAGE_KEY = "henukit-qq-binding";
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 type Binding = { bound: boolean; display_name?: string };
-// Only these messages reach the screen: this page's own Chinese copy or an envelope
-// message the site-wide allowlist lets through (#554). Raw browser errors (fetch's
-// TypeError, a JSON SyntaxError from a gateway error page or WAF challenge) and unknown
-// codes are mapped to Chinese copy instead.
+// Only these messages reach the screen: this page's own Chinese copy, or an envelope
+// message whose code is allowlisted (#554) — the Gateway's own flat envelopes by the
+// site-wide list, the Platform Core binding errors it forwards by the binding list.
+// Raw browser errors (fetch's TypeError, a JSON SyntaxError from a gateway error page
+// or WAF challenge) and unknown codes are mapped to Chinese copy instead.
 class BindingNotice extends Error {}
 class BindingLoginRequired extends BindingNotice {}
 const NETWORK_FAILED = "网络连接失败，请检查网络后重试。";

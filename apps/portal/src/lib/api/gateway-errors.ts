@@ -61,7 +61,7 @@ export const GATEWAY_USER_MESSAGE_CODES: ReadonlySet<string> = new Set([
 
 const OAUTH_NAVIGATION = "登录跳转和 OAuth 回调是浏览器整页导航，Portal 不解析这些响应。";
 const PORTAL_IDEMPOTENCY_KEY = "幂等键由 Portal 生成，用户无从检查；按服务不可用处理。";
-const GENERIC_NOT_FOUND = "只说“内容不存在或已下架”，没说可以怎么做；用 Portal 的 404 提示。";
+const GENERIC_NOT_FOUND = "通用的“不存在”，多用于只说“内容不存在或已下架”、没有下一步的地方；用 Portal 的 404 提示。";
 
 /** Gateway 写出、但有意不原样展示的码，以及原因。 */
 export const GATEWAY_WITHHELD_CODES: Readonly<Record<string, string>> = {
