@@ -13,6 +13,8 @@ export type {
 
 export interface ErrorEnvelope {
   error: string | { code: string; message: string };
+  /** Gateway envelopes: the user-facing text for `error` (see gateway-errors.ts). */
+  message?: string;
   detail?: string;
   request_id?: string;
 }
@@ -234,6 +236,17 @@ export interface MaterialListResponse {
     materialCount: number;
     downloadStarts: number;
     countingSince: string | null;
+    asOf: string;
+  };
+  request_id: string;
+}
+
+/** 首页资料库区块只读各类型数量（#555）：与 /library 目录同一口径，不含目录本身。 */
+export interface LibraryMaterialCountsResponse {
+  counts: {
+    releaseId: string | null;
+    materialCount: number;
+    byType: Record<MaterialType, number>;
     asOf: string;
   };
   request_id: string;

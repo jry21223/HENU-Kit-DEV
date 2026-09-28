@@ -11,7 +11,7 @@ export default function MaterialCard({ material }: { material: Material }) {
   const t = MATERIAL_TYPES[material.type];
 
   return (
-    <Link href={`/library/item/${material.id}`} className="group block min-w-0 border border-ink/25 bg-paper transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">
+    <Link href={`/library/item/${material.id}`} className="group block min-w-0 border border-ink/25 bg-paper transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
       {/* 封面 */}
       <div className="bg-blueprint relative flex h-36 flex-col justify-between border-b border-line p-3">
         {/* 类型代号只作装饰：卡片下方写着中文类型名。 */}

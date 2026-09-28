@@ -56,7 +56,7 @@ test("Account Center announces field errors and ties them to their inputs", asyn
   await page.goto("/account/login", { waitUntil: "networkidle" });
 
   // 验证码登录，什么都没填就提交：两条错误都作为 alert 读出，并挂在各自的输入框上。
-  await page.getByRole("button", { name: "登 录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   const email = page.getByLabel("学校邮箱");
   const code = page.getByLabel("邮箱验证码");
   // Next 自带的路由播报也是 role="alert"，只看正文里的提示。
@@ -70,7 +70,7 @@ test("Account Center announces field errors and ties them to their inputs", asyn
   // 密码登录的字段错误同样挂在密码框上；改对的字段不再标为无效。
   await page.getByRole("button", { name: "密码登录" }).click();
   await email.fill("student");
-  await page.getByRole("button", { name: "登 录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   const password = page.getByLabel("密码 / PASSWORD");
   await expect(alerts).toHaveText(["密码至少 10 个字符"]);
   await expect(password).toHaveAttribute("aria-invalid", "true");
@@ -164,7 +164,7 @@ test("Account Center resumes a trusted Portal OAuth continuation after password 
   await page.getByRole("button", { name: "密码登录" }).click();
   await page.getByLabel("学校邮箱").fill("student");
   await page.getByLabel("密码 / PASSWORD").fill("correct horse battery staple");
-  await page.getByRole("button", { name: "登 录" }).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
 
   await expect(page.getByText("OAuth resumed")).toBeVisible();
   expect(resumeCalls).toBe(1);
@@ -318,7 +318,7 @@ test("OAuth continuation Account Center remains operable at 360px with reduced m
     waitUntil: "networkidle",
   });
   await expect(page.getByText("登录后继续前往 HENU Kit")).toBeVisible();
-  await expect(page.getByRole("button", { name: "登 录" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "登录", exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
   ).toBe(true);

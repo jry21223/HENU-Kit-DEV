@@ -23,7 +23,7 @@
   --hk-warning: #c79a2a;
   --hk-danger: #c2401f;
   --hk-info: #175cd3;
-  --hk-focus-ring: #ff4d00;
+  --hk-focus-ring: #d84300;
 
   /* Typography — Space Grotesk display + IBM Plex Mono labels + PingFang SC body. */
   --hk-font-display: var(--font-space-grotesk, "Space Grotesk"), "PingFang SC", "Microsoft YaHei", sans-serif;

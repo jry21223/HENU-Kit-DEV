@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"henukit.dev/portal-gateway/internal/config"
+	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/session"
 )
 
@@ -380,6 +381,41 @@ func TestCareerCreateSearchRequiresSessionAndLifetime(t *testing.T) {
 	if !strings.Contains(free.Body.String(), "lifetime_required") {
 		t.Fatalf("free create missing lifetime_required code: %s", free.Body.String())
 	}
+	// Portal shows this message as written (#554), so it uses the product's
+	// name for the plan.
+	assertLifetimeGateMessage(t, free.Body.Bytes())
+}
+
+// assertLifetimeGateMessage: Portal shows the lifetime_required message as
+// written (#554), so it names the plan the way the product does and says what
+// to do next.
+func assertLifetimeGateMessage(t *testing.T, body []byte) {
+	t.Helper()
+	var gate contract.ErrorEnvelope
+	if err := json.Unmarshal(body, &gate); err != nil || gate.Error != "lifetime_required" || gate.Message != "求职雷达需要终身会员，开通后即可使用" {
+		t.Fatalf("lifetime gate = %+v (%v), want lifetime_required 求职雷达需要终身会员，开通后即可使用", gate, err)
+	}
+}
+
+func TestCareerCreateSearchTreatsAMissingMembershipAsFree(t *testing.T) {
+	career := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("upstream contacted without a lifetime membership")
+	}))
+	defer career.Close()
+	mem := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":"NOT_FOUND","message":"membership not found"},"request_id":"req_mem"}`))
+	}))
+	defer mem.Close()
+
+	handler := newCareerHandler(t, career.URL, mem.URL)
+	missing := httptest.NewRecorder()
+	handler.Router().ServeHTTP(missing, careerRequest(t, handler, true, careerSessionFreeUserID, http.MethodPost, "/api/v1/career/searches", `{"profile":{"target_roles":"x"}}`, "idem_career_create"))
+	if missing.Code != http.StatusForbidden {
+		t.Fatalf("create without a membership record = %d, want 403: %s", missing.Code, missing.Body.String())
+	}
+	assertLifetimeGateMessage(t, missing.Body.Bytes())
 }
 
 func TestCareerCreateSearchFailsClosedWhenMembershipUnavailable(t *testing.T) {

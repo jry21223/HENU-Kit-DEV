@@ -21,7 +21,7 @@ export default function ItemDetail({ id }: { id: string }) {
 
   useEffect(() => {
     let active = true;
-    // “相关资料”要用全量目录：进入详情时才读，首页或列表页已读过就直接复用共享缓存（#546）。
+    // “相关资料”要用全量目录：进入详情时才读，列表页已读过就直接复用共享缓存（#546）。
     // 读取失败只是不展示相关资料，详情本身照常。
     loadLibraryMaterials().then(
       (materials) => {
@@ -37,7 +37,7 @@ export default function ItemDetail({ id }: { id: string }) {
   if (state.loadState !== "ready") {
     if (state.loadState === "loading") return <LibraryLoading />;
     if (state.loadState === "not-found") return <LibraryNotFound />;
-    return <LibraryUnavailable message={state.error} onRetry={state.retry} />;
+    return <LibraryUnavailable message={state.error} requestId={state.requestId} onRetry={state.retry} />;
   }
   const { material } = state;
 

@@ -275,7 +275,7 @@ export default function TicketsPage() {
                   resetCreateKeyOnEdit();
                   setTitle(event.target.value);
                 }}
-                className="mt-2 w-full border-b border-ink/30 bg-transparent px-0 py-2 text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-ink"
+                className="min-h-11 mt-2 w-full border-b border-ink/30 bg-transparent px-0 py-2 text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-ink"
                 placeholder="简要说明你遇到的问题"
               />
             </label>
@@ -287,7 +287,7 @@ export default function TicketsPage() {
                   resetCreateKeyOnEdit();
                   setCategory(event.target.value as (typeof CATEGORY_OPTIONS)[number]["value"]);
                 }}
-                className="mt-2 w-full border-b border-ink/30 bg-paper px-0 py-2 text-sm outline-none transition-colors focus:border-ink"
+                className="min-h-11 mt-2 w-full border-b border-ink/30 bg-paper px-0 py-2 text-sm outline-none transition-colors focus:border-ink"
               >
                 {CATEGORY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>

@@ -61,3 +61,17 @@ test("390px leaderboard period toggles are at least 44×44", async ({ page }) =>
   await expect(page.getByRole("button", { name: "本周" })).toBeVisible();
   await expectTouchTargets(page, "/practice/leaderboard (V2 reads on)");
 });
+
+test("a leaderboard that cannot be read shows its error number (#554)", async ({ page }) => {
+  await page.route("**/api/v1/rankings/overall?period=*", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "quizcraft_ranking_unavailable", message: "排行榜暂时加载不出来，请稍后再试", request_id: "req_ranking_down" },
+    })
+  );
+  await page.goto("/practice/leaderboard", { waitUntil: "domcontentloaded" });
+
+  const alert = page.locator("main").getByRole("alert");
+  await expect(alert).toContainText("排行榜暂时加载不出来，请稍后再试");
+  await expect(alert).toContainText("错误编号：req_ranking_down");
+});

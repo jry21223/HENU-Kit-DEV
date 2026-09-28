@@ -33,6 +33,12 @@ Start aggregates. It accepts no browser catalog filters, never sums advisory
 card fields into a global fact, and fails the whole response rather than mixing
 an owner catalog with mock or stale statistics.
 
+Issue #555 adds `GET /api/v1/library/material-counts` for the Portal home page:
+the same signed owner credential reads only the active public-free catalog's
+per-type totals, not the catalog. Gateway requires every material type, totals
+that add up and stay within the 500-row catalog bound, and no browser filter;
+anything else fails the whole response.
+
 ADR-0019 adds exactly one Account Portfolio membership-order command: an
 authenticated Portal Session user may create their own order with an empty
 browser-owned payload and a required idempotency key. Portal Gateway binds the
@@ -87,7 +93,7 @@ and never falls back to Portal API or mock data.
 - **Portal Gateway → Product services**: Signed read-only proxying normally carries `X-Actor-User-Id` and `X-Request-Id`; ADR-0027's exact anonymous Library download command deliberately carries no invented actor.
 - **Portal Gateway → Account Portfolio**: Signed authenticated account reads, the ADR-0017 self-service ticket/notification commands, and ADR-0019's self-order creation command only; the Gateway owns neither account balances nor a fallback response.
 - **Portal Gateway → QuizCraft Practice Core**: ADR-0018's two default-off commands only, using a credential distinct from catalog reads; QuizCraft remains the owner of session selection, scoring, attempts, and the anonymous identity cookie.
-- **Portal Gateway → Library**: ADR-0027's dedicated signed download-start command only; Library owns active eligibility, signing, ledger persistence, and aggregates.
+- **Portal Gateway → Library**: ADR-0027's dedicated signed download-start command, plus the anonymous signed catalog (#334) and type-count (#555) reads; Library owns active eligibility, signing, ledger persistence, and aggregates.
 - **Portal Gateway → Food**: The Food Post boundary only: public post/image/venue reads with the read credential, the signed-in actor's create command with the create credential. Food owns post data, the daily cap, idempotency replay, and image bytes; the Gateway owns neither food facts nor a fallback response.
 - **Portal Gateway → Career**: Signed Career Profile reads/writes plus ADR-0040's exact transient Suification command. Career owns the profile, provider call, rate limit, and replay state; Gateway only binds the verified actor and forwards the required idempotency key.
 - **Portal frontend → Portal Gateway**: Same-origin API calls with session cookie (`credentials: "same-origin"`).

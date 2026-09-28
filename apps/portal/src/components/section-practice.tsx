@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
+import { gsap, useGSAP, FINE_MOTION, isOnScreen } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import AmbientSvg from "@/components/ui/ambient-svg";
@@ -15,47 +15,79 @@ const TYPE_TEXT =
 // 只写已上线的能力；AI 推题上线（#530）后再补充相关介绍。
 const FEATURES = ["按科目搜索题库", "随机、难题、章节、收藏四种练习", "掌握度按题库计算，随作答更新"];
 
+/** 打字机与面板淡入：只在模块水合时还不在视口里时创建（#557）。 */
+function playOnScroll(text: HTMLParagraphElement | null) {
+  // 打字机：滚动进入时逐字输出（动画启用时先清空面板）
+  if (text) text.textContent = "";
+  const counter = { value: 0 };
+  gsap.to(counter, {
+    value: TYPE_TEXT.length,
+    duration: 4,
+    ease: "none",
+    scrollTrigger: {
+      trigger: text,
+      start: "top 60%",
+      toggleActions: "restart none none restart",
+    },
+    onUpdate() {
+      if (text) text.textContent = TYPE_TEXT.slice(0, Math.round(counter.value));
+    },
+  });
+
+  // 面板整体淡入
+  gsap.from("[data-terminal]", {
+    y: 40,
+    opacity: 0,
+    duration: 0.9,
+    ease: "power3.out",
+    scrollTrigger: {
+      trigger: "[data-terminal]",
+      start: "top 60%",
+      toggleActions: "play none none reverse",
+    },
+  });
+}
+
 export default function SectionPractice() {
   const sectionRef = useRef<HTMLElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
   const { state, retry } = usePersonalPracticeStats();
 
-  // 进度条只在真实作答事实就绪后渲染；动画在数据到达后重建。
+  // 进度条只在真实作答事实就绪后渲染；数据到达后只给它们补上生长动画。
   const masteryBars =
     state.status === "ready" || state.status === "empty"
       ? state.data.mastery.slice(0, 3)
       : [];
   const barsReady =
     state.status === "ready" || state.status === "empty";
-
+  // 面板淡入与打字机：每次挂载只建一次（#557）。挂载时模块已经在视口里（从中间位置加载），
+  // 解析文字和面板是服务端画好的，不清空也不重播。这个钩子没有依赖：数据到达不会让它重来，
+  // 严格模式下开发版演的那遍卸载再挂载会撤销它、再建一次。
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
-        // 打字机：滚动进入时逐字输出（动画启用时先清空面板）
-        if (textRef.current) textRef.current.textContent = "";
-        const counter = { value: 0 };
-        gsap.to(counter, {
-          value: TYPE_TEXT.length,
-          duration: 4,
-          ease: "none",
-          scrollTrigger: {
-            trigger: textRef.current,
-            start: "top 60%",
-            toggleActions: "restart none none restart",
-          },
-          onUpdate() {
-            if (textRef.current)
-              textRef.current.textContent = TYPE_TEXT.slice(
-                0,
-                Math.round(counter.value)
-              );
-          },
-        });
+        if (isOnScreen(sectionRef.current)) return;
+        const text = textRef.current;
+        playOnScroll(text);
+        // 撤销（卸载，或读者改成减少动态）时补回全文：清空是直接写的 textContent，GSAP 撤销不管它。
+        return () => {
+          if (text) text.textContent = TYPE_TEXT;
+        };
+      });
+      return () => mm.revert();
+    },
+    { scope: sectionRef }
+  );
 
-        // 掌握度进度条：从 0 生长。
-        // 注意 trigger 用 section 而非 bar 自身——整屏模块中位于底部的元素，
-        // 其 "top 60%" 触发线会在模块切换过渡途中被穿过，导致进入/离开动画观感颠倒。
+  // 掌握度进度条：数据到了才渲染，此前没画过，从 0 生长。只有它跟着数据重建（先撤销上一次），
+  // 面板和打字机不跟着重来：再叠一个面板的 from() 会把已经藏起来的面板当成终点，面板就再也不出现。
+  // 注意 trigger 用 section 而非 bar 自身——整屏模块中位于底部的元素，
+  // 其 "top 60%" 触发线会在模块切换过渡途中被穿过，导致进入/离开动画观感颠倒。
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(FINE_MOTION, () => {
         gsap.utils.toArray<HTMLElement>("[data-bar]").forEach((bar) => {
           gsap.from(bar, {
             scaleX: 0,
@@ -69,23 +101,10 @@ export default function SectionPractice() {
             },
           });
         });
-
-        // 面板整体淡入
-        gsap.from("[data-terminal]", {
-          y: 40,
-          opacity: 0,
-          duration: 0.9,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: "[data-terminal]",
-            start: "top 60%",
-            toggleActions: "play none none reverse",
-          },
-        });
       });
       return () => mm.revert();
     },
-    { scope: sectionRef, dependencies: [barsReady] }
+    { scope: sectionRef, dependencies: [barsReady], revertOnUpdate: true }
   );
 
   function renderMastery() {
@@ -234,6 +253,7 @@ export default function SectionPractice() {
             </p>
             <p
               ref={textRef}
+              data-typewriter
               className="min-h-40 whitespace-pre-line font-mono text-[13px] leading-7 text-paper/85"
             >
               {TYPE_TEXT}

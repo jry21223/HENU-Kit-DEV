@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"henukit.dev/portal-gateway/internal/config"
+	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/practice"
 	"henukit.dev/portal-gateway/internal/session"
 )
@@ -54,6 +55,12 @@ func TestRouterKeepsQuizCraftLegacyPracticeReadsFailClosed(t *testing.T) {
 		}
 		if strings.Contains(strings.ToLower(recorder.Body.String()), "mock") || strings.Contains(recorder.Body.String(), `"banks":[]`) {
 			t.Fatalf("legacy practice read %s substituted a success response: %s", path, recorder.Body.String())
+		}
+		// Only a stale page calls these reads, so the message speaks to that page's
+		// reader in plain words (#554); today's Portal shows its own 404 copy for "not found".
+		var gone contract.ErrorEnvelope
+		if err := json.Unmarshal(recorder.Body.Bytes(), &gone); err != nil || gone.Message != "页面版本已过期，请刷新页面后重试。" {
+			t.Fatalf("legacy practice read %s message = %q (%v)", path, gone.Message, err)
 		}
 	}
 

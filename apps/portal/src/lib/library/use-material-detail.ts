@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchLibraryMaterialDetail, formatPortalError, PortalHttpError } from "@/lib/api/client";
+import { fetchLibraryMaterialDetail, formatPortalError, portalErrorRequestId, PortalHttpError } from "@/lib/api/client";
 import type { Material } from "@/lib/library/mock";
 
 /**
@@ -12,7 +12,7 @@ export type MaterialDetailState =
   | { loadState: "loading"; material: null; error: null }
   | { loadState: "ready"; material: Material; error: null }
   | { loadState: "not-found"; material: null; error: null }
-  | { loadState: "error"; material: null; error: string; retry: () => void };
+  | { loadState: "error"; material: null; error: string; requestId: string | null; retry: () => void };
 
 /**
  * 资料详情统一从 Library owner 加载。owner 失败必须保持失败态，不能用缓存或 mock
@@ -53,6 +53,7 @@ export function useMaterialDetail(id: string): MaterialDetailState {
         error: loadError instanceof PortalHttpError
           ? "资料详情暂时无法加载，请稍后重试。"
           : formatPortalError(loadError),
+        requestId: portalErrorRequestId(loadError),
         retry,
       });
     }

@@ -67,7 +67,7 @@ describe("Career client", () => {
           new Response(
             JSON.stringify({
               error: "lifetime_required",
-              message: "求职雷达需要 Lifetime VIP 会员",
+              message: "求职雷达需要终身会员，开通后即可使用",
               request_id: "req_gate_read",
             }),
             { status: 403, headers: { "Content-Type": "application/json" } }
@@ -192,7 +192,7 @@ describe("Career gateway", () => {
         new Response(
           JSON.stringify({
             error: "lifetime_required",
-            message: "求职雷达需要 Lifetime VIP 会员",
+            message: "求职雷达需要终身会员，开通后即可使用",
             request_id: "req_gate_read",
           }),
           { status: 403, headers: { "Content-Type": "application/json" } }

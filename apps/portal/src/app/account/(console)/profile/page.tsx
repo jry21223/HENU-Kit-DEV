@@ -567,7 +567,7 @@ export default function CareerProfilePage() {
                       id="career-job-type"
                       value={form.job_type}
                       onChange={(e) => setField({ job_type: e.target.value as CareerJobType })}
-                      className="w-full border-b border-ink/30 bg-paper py-2 font-mono text-sm outline-none focus:border-ink"
+                      className="min-h-11 w-full border-b border-ink/30 bg-paper py-2 font-mono text-sm outline-none focus:border-ink"
                     >
                       {JOB_TYPE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -592,7 +592,7 @@ export default function CareerProfilePage() {
                       }}
                       maxLength={4}
                       placeholder="例如 2027"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                      className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                   </div>
                 </div>
@@ -688,23 +688,26 @@ export default function CareerProfilePage() {
                   ) : null}
                 </div>
 
-                <div className="flex items-start gap-3 border border-line px-4 py-4">
+                {/* 整行都是它的标签：点说明文字也能勾选，点击区是这一整块（DESIGN_SYSTEM §13，#557）。 */}
+                <label className="flex cursor-pointer items-start gap-3 border border-line px-4 py-4">
                   <input
                     id="career-email-notification"
                     type="checkbox"
                     checked={form.email_notification_enabled}
                     onChange={(e) => setField({ email_notification_enabled: e.target.checked })}
+                    aria-labelledby="career-email-notification-label"
+                    aria-describedby="career-email-notification-help"
                     className="mt-1 size-4 shrink-0 accent-ink"
                   />
-                  <div>
-                    <label htmlFor="career-email-notification" className="block font-mono text-xs text-ink/60">
+                  <span>
+                    <span id="career-email-notification-label" className="block font-mono text-xs text-ink/60">
                       扫描结果邮件通知
-                    </label>
-                    <p className="mt-1 text-sm leading-6 text-ink/60">
+                    </span>
+                    <span id="career-email-notification-help" className="mt-1 block text-sm leading-6 text-ink/60">
                       开启后，求职雷达扫描完成时向当前账户邮箱发送结果简报；关闭后仅站内查看。
-                    </p>
-                  </div>
-                </div>
+                    </span>
+                  </span>
+                </label>
               </div>
             </div>
 

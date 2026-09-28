@@ -130,7 +130,7 @@ function AccountOverviewContent({
                 key={card.mono}
                 href={card.href}
                 data-enter
-                className="group block border border-ink/25 p-5 transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                className="group block border border-ink/25 p-5 transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
               >
                 <p className="font-mono text-xs text-ink/60">
                   <span className="tracking-[0.25em]">{card.mono}</span> / {card.label}

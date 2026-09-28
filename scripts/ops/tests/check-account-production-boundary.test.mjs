@@ -5,17 +5,23 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const checker = fileURLToPath(
   new URL("../check-account-production-boundary.mjs", import.meta.url),
 );
 const releaseSha = "a".repeat(40);
+const fixtureRoots = [];
+
+after(() => {
+  for (const root of fixtureRoots) rmSync(root, { recursive: true, force: true });
+});
 
 function write(root, path, contents) {
   const destination = join(root, path);
@@ -25,6 +31,7 @@ function write(root, path, contents) {
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "account-production-boundary-"));
+  fixtureRoots.push(root);
   write(
     root,
     "apps/portal/src/app/account/(console)/layout.tsx",
@@ -34,11 +41,6 @@ function fixture() {
     root,
     "apps/portal/src/components/account/account-console-session.tsx",
     'export const boundary = "portal-session";\n',
-  );
-  write(
-    root,
-    "apps/portal/src/lib/auth/mock.ts",
-    'export const EMAIL_DEMO_CODE = "local-only";\n',
   );
   write(root, "apps/portal/src/lib/api/client.ts", "export const fetchSession = async () => ({});\n");
   write(root, "services/portal-gateway/internal/accountportfolio/client.go", "package accountportfolio\n");
@@ -129,6 +131,7 @@ test("production boundary rejects a mock reached through an indirect Account imp
 
 test("production boundary rejects an Account console import from a mock data source", () => {
   const root = fixture();
+  write(root, "apps/portal/src/lib/auth/mock.ts", "export const accountStore = {};\n");
   write(
     root,
     "apps/portal/src/app/account/(console)/wallet/page.tsx",
@@ -141,4 +144,45 @@ test("production boundary rejects an Account console import from a mock data sou
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /wallet\/page\.tsx.*mock data source/i);
+});
+
+test("production boundary does not require the retired auth mock helper", () => {
+  // The fixture above has no apps/portal/src/lib/auth/mock.ts (#558).
+  const root = fixture();
+  write(root, "apps/portal/src/lib/auth/display-name.ts", "export const displayName = (name) => name.trim();\n");
+
+  const result = spawnSync(process.execPath, [checker, "--repo-root", root], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
+for (const helper of ["mock.ts", "legacy-dashboard.ts"]) {
+  test(`production boundary rejects an Account Portfolio fixture in auth helper ${helper}`, () => {
+    const root = fixture();
+    write(root, `apps/portal/src/lib/auth/${helper}`, "export const MEMBERSHIP_PLANS = [];\n");
+
+    const result = spawnSync(process.execPath, [checker, "--repo-root", root], {
+      encoding: "utf8",
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, new RegExp(`lib/auth/${helper.replace(".", "\\.")} contains an Account Portfolio fixture`));
+  });
+}
+
+test("production boundary ignores fixture names inside auth helper tests", () => {
+  const root = fixture();
+  write(
+    root,
+    "apps/portal/src/lib/auth/store.test.ts",
+    'expect(source).not.toMatch(/accountStore/);\n',
+  );
+
+  const result = spawnSync(process.execPath, [checker, "--repo-root", root], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
 });

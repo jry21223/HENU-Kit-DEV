@@ -48,26 +48,35 @@ const BURST_GAP_MS = 600;
  *
  * 固定长度的突发靠不住：合成事件的实际间隔随机器漂（实测 14–75ms），尾巴落在补间结束之前
  * 还是之后也跟着漂；铺满窗口则把「补间结束之后、窗口合上之前」这一段整个包住。
+ *
+ * 刻度在页面里派发（#553）：原先每一记都要经过一次测试进程到浏览器的 CDP 往返，两个 worker
+ * 抢 CPU 时这一来一回能拖到 600ms 以上，一次突发被拆成了两次手势，用例的前提不成立（实测
+ * 637–745ms）。页面里的定时器每 16ms 派发一记，间隔只受页面自己的主线程影响，真实滚轮也是
+ * 这样。合成的 WheelEvent 不是 isTrusted，但 Observer 不看这个（`Observer.js` 的 `_onWheel`），
+ * 页面本来也拦下原生滚动、自己走补间，所以判定走的是同一条路。返回派发实际用了多久（页面时基）。
  */
 async function burstAcrossWindow(page: Page, windowMs: number, from = 40, to = 5) {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 500, y: 400, button: "none" });
-  const started = Date.now();
-  for (;;) {
-    const elapsed = Date.now() - started;
-    if (elapsed >= windowMs) break;
-    const delta = Math.max(to, Math.round(from * Math.pow(to / from, elapsed / windowMs)));
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseWheel",
-      x: 500,
-      y: 400,
-      deltaX: 0,
-      deltaY: delta,
-      button: "none",
-    });
-  }
-  await cdp.detach();
-  return Date.now() - started;
+  return page.evaluate(
+    ({ windowMs, from, to }) =>
+      new Promise<number>((resolve) => {
+        const target = document.elementFromPoint(500, 400) ?? document.body;
+        const started = performance.now();
+        const tick = () => {
+          const elapsed = performance.now() - started;
+          if (elapsed >= windowMs) {
+            resolve(Math.round(elapsed));
+            return;
+          }
+          const deltaY = Math.max(to, Math.round(from * Math.pow(to / from, elapsed / windowMs)));
+          target.dispatchEvent(
+            new WheelEvent("wheel", { deltaY, clientX: 500, clientY: 400, bubbles: true, cancelable: true })
+          );
+          setTimeout(tick, 16);
+        };
+        tick();
+      }),
+    { windowMs, from, to }
+  );
 }
 
 /**
@@ -184,7 +193,7 @@ test.describe("一次滚轮突发只走一屏", () => {
 
   test("触控板惯性尾巴不连跳两屏", async ({ page }) => {
     // 一次轻扫的量级：deltaY 40 → 5，序列**铺满大半个跨度窗口**（目标 2500ms，留 1000ms 的
-    // 余量给派发本身的开销——每个 tick 一次 CDP 往返，机器一忙整个循环会拖长），所以它一定
+    // 余量给机器忙时拖长的页面定时器），所以它一定
     // 覆盖「补间结束之后、窗口合上之前」那一段——#510 的缺陷正是发生在这里（实测改造前：
     // 读者从第 0 屏被推到第 3 屏）。
     //
@@ -262,8 +271,8 @@ test.describe("一次滚轮突发只走一屏", () => {
     // 用键盘先起一屏（PageDown），在它的补间期间一直滚，然后看两件事（都在页面里量，不猜
     // 补间多长——负载高时它会从 1.1s 拖到 2s 上下）：
     //   1. 落点是「PageDown 那一屏 + 滚轮那一屏」= 第 2 屏，一屏不多；
-    //   2. 从键盘那一屏落定，到滚轮那一屏**开始**动，间隔要短——读者那一下没被吞掉，补间一
-    //      释放就该落地（实测：合成刻度每 200ms 一记，落定后下一记就走）。
+    //   2. 从键盘那一屏落定，到滚轮那一屏**开始**动，只隔头几记滚轮——读者那一下没被吞掉，补间
+    //      一释放就该落地（实测：刻度每 150ms 一记，落定后下一记就走）。
     // 只留第 1 条的话，「动画期间把突发花掉、直到窗口重开才动」的实现也能蒙混过去。
     test.slow();
     await openHomepage(page);
@@ -272,8 +281,13 @@ test.describe("一次滚轮突发只走一屏", () => {
 
     const tops = await moduleTops(page);
     await page.evaluate(() => {
-      const w = window as unknown as { __raf?: Array<[number, number]> };
+      const w = window as unknown as { __raf?: Array<[number, number]>; __wheel?: number[] };
       w.__raf = [];
+      w.__wheel = [];
+      window.addEventListener("wheel", () => w.__wheel?.push(Math.round(performance.now())), {
+        capture: true,
+        passive: true,
+      });
       const loop = () => {
         w.__raf?.push([Math.round(performance.now()), Math.round(window.scrollY)]);
         requestAnimationFrame(loop);
@@ -281,48 +295,60 @@ test.describe("一次滚轮突发只走一屏", () => {
       requestAnimationFrame(loop);
     });
 
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 500, y: 400, button: "none" });
     await page.keyboard.press("PageDown");
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseWheel",
-      x: 500,
-      y: 400,
-      deltaX: 0,
-      deltaY: 40,
-      button: "none",
-    });
-    // 每 200ms 再补一记，直到页面越过第 1 屏（滚轮那一屏真的开始走了），最多 24 记。
-    for (let i = 0; i < 24; i += 1) {
-      const moved = await page.evaluate((target) => window.scrollY > target + 1, tops[1]);
-      if (moved) break;
-      await page.waitForTimeout(200);
-      await cdp.send("Input.dispatchMouseEvent", {
-        type: "mouseWheel",
-        x: 500,
-        y: 400,
-        deltaX: 0,
-        deltaY: 40,
-        button: "none",
-      });
-    }
-    await cdp.detach();
+    // 在它的补间期间开始、一直滚：刻度在页面里每 150ms 派发一记（#553），直到页面越过第 1 屏
+    // （滚轮那一屏真的开始走了），最多 40 记（6s，盖过 3500ms 的跨度窗口）。原先由测试进程每
+    // 200ms 补一记，加上每轮查一次位置的往返，实测间隔 530–750ms：超过 600ms 的静默界，每一记
+    // 都成了新的一次手势，这条用例要区分的「一直在滚」根本没发生。
+    await page.evaluate(
+      (target) =>
+        new Promise<void>((resolve) => {
+          const at = document.elementFromPoint(500, 400) ?? document.body;
+          let sent = 0;
+          const tick = () => {
+            if (window.scrollY > target + 1 || sent >= 40) {
+              resolve();
+              return;
+            }
+            at.dispatchEvent(
+              new WheelEvent("wheel", { deltaY: 40, clientX: 500, clientY: 400, bubbles: true, cancelable: true })
+            );
+            sent += 1;
+            setTimeout(tick, 150);
+          };
+          tick();
+        }),
+      tops[1]
+    );
 
     // 1. 一个窗口只走一屏：第 2 屏，之后不许再动。
     await expectLandedOn(page, 2);
 
-    // 2. 补间一释放就落地。
-    const delayMs = await page.evaluate(
+    const { ticksBeforeStep, maxGap } = await page.evaluate(
       (target) => {
-        const raf = (window as unknown as { __raf?: Array<[number, number]> }).__raf ?? [];
+        const w = window as unknown as { __raf?: Array<[number, number]>; __wheel?: number[] };
+        const raf = w.__raf ?? [];
         const landed = raf.find(([, y]) => y >= target - 1);
-        if (!landed) return Number.POSITIVE_INFINITY;
-        const stepped = raf.find(([t, y]) => t > landed[0] && y > target + 1);
-        return stepped ? stepped[0] - landed[0] : Number.POSITIVE_INFINITY;
+        const stepped = landed && raf.find(([t, y]) => t > landed[0] && y > target + 1);
+        if (!landed || !stepped) return { ticksBeforeStep: Number.POSITIVE_INFINITY, maxGap: Number.POSITIVE_INFINITY };
+        const ticks = (w.__wheel ?? []).filter((at) => at <= stepped[0]);
+        return {
+          ticksBeforeStep: ticks.filter((at) => at > landed[0]).length,
+          maxGap: ticks.slice(1).reduce((max, at, i) => Math.max(max, at - ticks[i]), 0),
+        };
       },
       tops[1]
     );
-    expect(delayMs).toBeLessThan(1000);
+    // 前提：从第一记到滚轮那一屏起跳，一直在滚（间隔都小于静默界）。否则每一记都是新的一次
+    // 手势，下面那条界区分不出「突发在动画期间被花掉」的实现。
+    expect(maxGap).toBeLessThan(BURST_GAP_MS);
+
+    // 2. 补间一释放就落地：落定之后，页面最多再收到几记滚轮，滚轮那一屏就开始动。数刻度而不是
+    //    毫秒（#553）：机器忙时补间和定时器都会拖长，按毫秒量会把环境的慢算到被测行为头上（原先
+    //    实测 1015–1129ms 对 1000ms 的界）。落定帧之后补间还剩一小段亚像素的尾巴，那里到的一记
+    //    仍会被挡，所以允许到 3 记；「动画期间把突发花掉、直到跨度窗口（3500ms）合上才动」的实现
+    //    要等十几记，这条界能把它区分出来。
+    expect(ticksBeforeStep).toBeLessThanOrEqual(3);
   });
 
 });

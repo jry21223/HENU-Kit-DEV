@@ -14,6 +14,7 @@ import {
   hasGatewayConfigured,
   requireGateway,
 } from "./env";
+import { gatewayUserMessage } from "./gateway-errors";
 import type {
   AccountCreateTicketInput,
   AccountMembershipOrderResponse,
@@ -37,6 +38,7 @@ import type {
   FoodPostDetailResponse,
   FoodPostListResponse,
   LibraryCoursesResponse,
+  LibraryMaterialCountsResponse,
   MaterialDetailResponse,
   MaterialListResponse,
   NoticeListResponse,
@@ -108,13 +110,16 @@ export class PortalNetworkError extends PortalApiError {
 
 export class PortalHttpError extends PortalApiError {
   readonly errorCode?: string;
+  /** The error envelope's user-facing message; formatPortalError decides whether to show it. */
+  readonly serverMessage?: string;
 
   constructor(
     path: string,
     status: number,
     message: string,
     requestId?: string,
-    errorCode?: string
+    errorCode?: string,
+    serverMessage?: string
   ) {
     super(message, {
       code: "PORTAL_HTTP_ERROR",
@@ -124,6 +129,7 @@ export class PortalHttpError extends PortalApiError {
     });
     this.name = "PortalHttpError";
     this.errorCode = errorCode;
+    this.serverMessage = serverMessage;
   }
 }
 
@@ -146,9 +152,10 @@ export class PortalForbiddenError extends PortalHttpError {
     path: string,
     message: string,
     requestId?: string,
-    errorCode?: string
+    errorCode?: string,
+    serverMessage?: string
   ) {
-    super(path, 403, message, requestId);
+    super(path, 403, message, requestId, undefined, serverMessage);
     this.name = "PortalForbiddenError";
     this.errorCode = errorCode;
     (this as { code: string }).code = "PORTAL_FORBIDDEN";
@@ -180,7 +187,7 @@ function baseUrlOrEmpty(): string {
 
 async function parseErrorBody(
   res: Response
-): Promise<{ message: string; requestId?: string; errorCode?: string }> {
+): Promise<{ message: string; requestId?: string; errorCode?: string; serverMessage?: string }> {
   const headerRequestId = res.headers.get("X-Request-Id")?.trim() || undefined;
   try {
     const body = (await res.json()) as ErrorEnvelope;
@@ -195,6 +202,11 @@ async function parseErrorBody(
       message,
       requestId: body.request_id || headerRequestId,
       errorCode,
+      // Only a flat envelope can carry a message written for users. The
+      // Gateway writes its own errors flat and the allowlist names only its
+      // codes, so portal-api's flat not_found stays withheld; a nested
+      // {code, message} is an upstream body passed through.
+      serverMessage: typeof raw === "string" ? body.message : undefined,
     };
   } catch {
     return { message: res.statusText || `HTTP ${res.status}`, requestId: headerRequestId };
@@ -246,13 +258,13 @@ async function apiFetch<T>(
   }
 
   if (res.status === 403) {
-    const { message, requestId, errorCode } = await parseErrorBody(res);
-    throw new PortalForbiddenError(path, message, requestId, errorCode);
+    const { message, requestId, errorCode, serverMessage } = await parseErrorBody(res);
+    throw new PortalForbiddenError(path, message, requestId, errorCode, serverMessage);
   }
 
   if (!res.ok) {
-    const { message, requestId, errorCode } = await parseErrorBody(res);
-    throw new PortalHttpError(path, res.status, message, requestId, errorCode);
+    const { message, requestId, errorCode, serverMessage } = await parseErrorBody(res);
+    throw new PortalHttpError(path, res.status, message, requestId, errorCode, serverMessage);
   }
 
   try {
@@ -497,6 +509,11 @@ export async function fetchLibraryMaterials(params?: {
   return apiFetchRequired<MaterialListResponse>(
     `/api/v1/library/materials${query ? `?${query}` : ""}`
   );
+}
+
+/** 各类型资料数量（#555）：首页资料库区块只需要这些数字，不下载完整目录。 */
+export async function fetchLibraryMaterialCounts(): Promise<LibraryMaterialCountsResponse> {
+  return apiFetchRequired<LibraryMaterialCountsResponse>("/api/v1/library/material-counts");
 }
 
 export async function fetchLibraryMaterialDetail(
@@ -873,8 +890,10 @@ export async function createCareerResumeSuification(
  * Human-readable error for UI banners: what happened and what the user can do.
  *
  * Error messages carry diagnostics (API paths, status text, internal names)
- * and never reach the screen; callers that need a specific outcome branch on
- * status / errorCode first and show their own copy.
+ * and never reach the screen. The one server text that may is the Gateway's
+ * own envelope message for a code in the gateway-errors.ts allowlist (#554);
+ * callers that need a specific outcome branch on status / errorCode first and
+ * show their own copy.
  */
 export function formatPortalError(err: unknown): string {
   if (err instanceof PortalUnauthorizedError) {
@@ -882,6 +901,18 @@ export function formatPortalError(err: unknown): string {
   }
   if (err instanceof PortalNetworkError) {
     return "网络连接失败，请检查网络后重试。";
+  }
+  if (err instanceof PortalHttpError) {
+    const serverMessage = gatewayUserMessage(err.errorCode, err.serverMessage);
+    if (serverMessage) return serverMessage;
+    // Only an API error envelope says "forbidden" or "gone"; a proxy or WAF
+    // HTML page with the same status is the service being unavailable.
+    if (err.errorCode !== undefined && err.status === 403) {
+      return "你没有权限进行这个操作。如有疑问，请到账户中心提交工单。";
+    }
+    if (err.errorCode !== undefined && err.status === 404) {
+      return "内容不存在或已下架，请返回上一页重新选择。";
+    }
   }
   // Config, HTTP, non-JSON and empty responses, and client-side guards alike.
   if (err instanceof PortalApiError) {

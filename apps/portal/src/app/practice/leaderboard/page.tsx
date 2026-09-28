@@ -6,6 +6,7 @@ import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import {
   fetchQuizCraftOverallRanking,
   formatPortalError,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type {
   QuizCraftRankingPeriod,
@@ -18,7 +19,7 @@ type State =
   | { status: "disabled" }
   | { status: "loading" }
   | { status: "ready"; data: QuizCraftRankingResponse["data"] }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; requestId: string | null };
 
 const periods: Array<{ value: QuizCraftRankingPeriod; label: string }> = [
   { value: "weekly", label: "本周" },
@@ -51,7 +52,7 @@ export default function LeaderboardPage() {
       },
       (error: unknown) => {
         if (!cancelled) {
-          setState({ status: "error", message: formatPortalError(error) });
+          setState({ status: "error", message: formatPortalError(error), requestId: portalErrorRequestId(error) });
         }
       }
     );
@@ -106,6 +107,7 @@ export default function LeaderboardPage() {
           {state.status === "error" && (
             <ErrorBanner
               message={state.message}
+              requestId={state.requestId}
               onRetry={() => {
                 setState({ status: "loading" });
                 setRetry((value) => value + 1);

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -130,6 +130,55 @@ describe("design-tokens 的文字配色（#536）", () => {
       .filter((colour): colour is Rgba => colour !== null)
       .map(colourKey);
     expect([...new Set(cssColours)].sort()).toEqual([...new Set(jsonColours(TOKENS_JSON))].sort());
+  });
+});
+
+describe("焦点环（#557）", () => {
+  // WCAG 2.1 1.4.11：焦点指示与相邻颜色至少 3:1。焦点框画在控件外（outline-offset）时，
+  // 相邻的是页面底色：纸白、白色卡片，或墨色区块。强调橙在纸白上只有 2.92:1。
+  const SURFACES: Array<[string, () => Rgba]> = [
+    ["纸白", () => token("surface", "paper")],
+    ["白色卡片", () => token("surface", "raised")],
+    ["墨色底", () => token("text", "primary")],
+  ];
+
+  it.each(SURFACES)("焦点环在%s上不低于 3:1", (_label, background) => {
+    expect(contrast(token("semantic", "focus_ring"), background())).toBeGreaterThanOrEqual(3);
+  });
+
+  it("tokens.css 的 --hk-focus-ring 就是 tokens.json 的 focus_ring", () => {
+    // 上面那条按色值集合比，焦点色和强调橙都还以别的名字在，写错成旧的橙色也发现不了。
+    const ring = TOKENS_JSON.color.semantic.focus_ring.$value.toLowerCase();
+    expect(TOKENS_CSS.match(/--hk-focus-ring:\s*([^;]+);/)?.[1].trim().toLowerCase()).toBe(ring);
+  });
+
+  it("焦点环有自己的 Tailwind 颜色 focus-ring", () => {
+    const theme = readFileSync(path.resolve(__dirname, "theme.css"), "utf8");
+    const ring = TOKENS_JSON.color.semantic.focus_ring.$value.toLowerCase();
+    expect(theme).toContain(`--color-focus-ring: ${ring};`);
+  });
+
+  it("焦点描边、焦点框和输入框聚焦时的下划线都不用强调橙", () => {
+    const sourceRoot = path.resolve(__dirname, "..");
+    const sourceFiles = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const file = path.join(dir, entry.name);
+        if (entry.isDirectory()) return sourceFiles(file);
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [file] : [];
+      });
+    const offenders: string[] = [];
+    for (const file of sourceFiles(sourceRoot)) {
+      for (const literal of readFileSync(file, "utf8").match(/"[^"\n]*"|`[^`]*`/g) ?? []) {
+        // 出错的输入框本身就是橙色下划线（border-accent），聚焦时保持出错的样子，不算焦点指示。
+        const errorState = /(^|[\s"`])border-accent(?=[\s"`])/.test(literal);
+        const orange = literal.match(/\b(?:focus|focus-visible|focus-within):(?:outline|ring|border)-accent\b(?!-)/g) ?? [];
+        for (const cls of orange) {
+          if (cls.endsWith("border-accent") && errorState) continue;
+          offenders.push(`${path.relative(sourceRoot, file)}: ${cls}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
 

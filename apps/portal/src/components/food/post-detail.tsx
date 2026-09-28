@@ -6,6 +6,7 @@ import {
   fetchFoodPost,
   formatPortalError,
   mockAllowed,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type { FoodComment, FoodPost } from "@/lib/api/types";
 import { buildFoodVenueDetail } from "@/lib/food/detail";
@@ -29,10 +30,12 @@ export default function PostDetail({ id }: { id: string }) {
   const [comments, setComments] = useState<FoodComment[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadState("loading");
     setError(null);
+    setErrorRequestId(null);
     try {
       const response = await fetchFoodPost(id);
       if (response.post.hidden) {
@@ -73,6 +76,7 @@ export default function PostDetail({ id }: { id: string }) {
       setPost(null);
       setComments([]);
       setError(message || "美食详情暂时加载不出来，请稍后刷新试试。");
+      setErrorRequestId(portalErrorRequestId(cause));
       setLoadState("error");
     }
   }, [id]);
@@ -101,6 +105,7 @@ export default function PostDetail({ id }: { id: string }) {
       <main className="mx-auto max-w-site px-5 py-12 md:px-8">
         <ErrorBanner
           message={error ?? "美食详情暂时加载不出来，请稍后刷新试试。"}
+          requestId={errorRequestId}
           onRetry={() => void load()}
         />
       </main>

@@ -26,7 +26,7 @@ type EmptyAction =
   | { label: string; onClick: () => void };
 
 const emptyActionClass =
-  "mt-5 inline-flex min-h-11 min-w-11 items-center justify-center border border-ink px-4 font-mono text-xs text-ink transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+  "mt-5 inline-flex min-h-11 min-w-11 items-center justify-center border border-ink px-4 font-mono text-xs text-ink transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring";
 
 /**
  * 真实为空：label 说明为什么没有内容，action 给出一个可执行的下一步（不算在播报里）。

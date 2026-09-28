@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +27,21 @@ import (
 // less than 2.5 MiB for 500 rows; 4 MiB leaves bounded envelope overhead.
 const maxCatalogBodyBytes = 4 << 20
 
+// A type-count envelope is a few hundred bytes; anything near this bound is
+// not a counts response.
+const maxTypeCountsBodyBytes = 64 << 10
+
+// The catalog is bounded to 500 rows at activation, so no count can exceed it.
+const maxPublicMaterials = 500
+
 const PublicOSSHost = "henukit.oss-cn-beijing.aliyuncs.com"
+
+var publicMaterialTypes = []string{"handout", "exam", "slides", "exercise", "answer", "note", "textbook"}
+
+// PublicMaterialTypes returns the material types the public catalog knows.
+func PublicMaterialTypes() []string {
+	return slices.Clone(publicMaterialTypes)
+}
 
 var (
 	materialIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -57,6 +72,15 @@ type Catalog struct {
 	DownloadStarts int64            `json:"download_starts"`
 	CountingSince  *time.Time
 	AsOf           time.Time
+}
+
+// TypeCounts are the active public catalog's per-type totals, read without
+// listing the catalog. ByType names every public material type.
+type TypeCounts struct {
+	ReleaseID     *string
+	MaterialCount int64
+	ByType        map[string]int64
+	AsOf          time.Time
 }
 
 type Grant struct {
@@ -265,7 +289,7 @@ func (c *Client) Catalog(ctx context.Context, requestID string) (Catalog, error)
 		return Catalog{}, ErrInvalid
 	}
 	asOf, err := time.Parse(time.RFC3339, envelope.Data.AsOf)
-	if err != nil || envelope.Data.MaterialCount < 0 || envelope.Data.DownloadStarts < 0 || envelope.Data.MaterialCount != int64(len(envelope.Data.Materials)) || len(envelope.Data.Materials) > 500 {
+	if err != nil || envelope.Data.MaterialCount < 0 || envelope.Data.DownloadStarts < 0 || envelope.Data.MaterialCount != int64(len(envelope.Data.Materials)) || len(envelope.Data.Materials) > maxPublicMaterials {
 		return Catalog{}, ErrInvalid
 	}
 	var countingSince *time.Time
@@ -300,9 +324,84 @@ func (c *Client) Catalog(ctx context.Context, requestID string) (Catalog, error)
 	}, nil
 }
 
+// TypeCounts reads the active public catalog's per-type totals. The owner must
+// give an integer for every known type and nothing else, and the totals must
+// add up; anything else is an invalid owner response, never a partial count.
+func (c *Client) TypeCounts(ctx context.Context, requestID string) (TypeCounts, error) {
+	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" {
+		return TypeCounts{}, ErrBadRequest
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/public-materials/type-counts", nil)
+	if err != nil {
+		return TypeCounts{}, ErrUnavailable
+	}
+	request.Header.Set("X-Request-Id", requestID)
+	if err := c.signer.Sign(request); err != nil {
+		return TypeCounts{}, ErrUnavailable
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return TypeCounts{}, ErrUnavailable
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		return TypeCounts{}, ErrUnavailable
+	}
+
+	var envelope struct {
+		Data struct {
+			ReleaseID     *string           `json:"release_id"`
+			MaterialCount *int64            `json:"material_count"`
+			TypeCounts    map[string]*int64 `json:"type_counts"`
+			AsOf          string            `json:"as_of"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxTypeCountsBodyBytes+1))
+	if err != nil || len(body) > maxTypeCountsBodyBytes {
+		return TypeCounts{}, ErrInvalid
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil || strings.TrimSpace(envelope.RequestID) == "" {
+		return TypeCounts{}, ErrInvalid
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return TypeCounts{}, ErrInvalid
+	}
+	asOf, err := time.Parse(time.RFC3339, envelope.Data.AsOf)
+	materialCount := envelope.Data.MaterialCount
+	if err != nil || materialCount == nil || *materialCount < 0 || *materialCount > maxPublicMaterials || len(envelope.Data.TypeCounts) != len(publicMaterialTypes) {
+		return TypeCounts{}, ErrInvalid
+	}
+	if envelope.Data.ReleaseID == nil {
+		if *materialCount != 0 {
+			return TypeCounts{}, ErrInvalid
+		}
+	} else if !releaseIDPattern.MatchString(*envelope.Data.ReleaseID) {
+		return TypeCounts{}, ErrInvalid
+	}
+	byType := make(map[string]int64, len(publicMaterialTypes))
+	var total int64
+	for _, materialType := range publicMaterialTypes {
+		// The per-type bound also keeps the sum below from overflowing.
+		count := envelope.Data.TypeCounts[materialType]
+		if count == nil || *count < 0 || *count > maxPublicMaterials {
+			return TypeCounts{}, ErrInvalid
+		}
+		byType[materialType] = *count
+		total += *count
+	}
+	if total != *materialCount {
+		return TypeCounts{}, ErrInvalid
+	}
+	return TypeCounts{ReleaseID: envelope.Data.ReleaseID, MaterialCount: total, ByType: byType, AsOf: asOf}, nil
+}
+
 func validPublicMaterial(material PublicMaterial) bool {
-	allowedTypes := map[string]bool{"handout": true, "exam": true, "slides": true, "exercise": true, "answer": true, "note": true, "textbook": true}
-	if !ownerUUIDPattern.MatchString(material.ID) || !allowedTypes[material.Type] || material.FileSize < 0 || material.Downloads < 0 || !material.DownloadAvailable {
+	if !ownerUUIDPattern.MatchString(material.ID) || !slices.Contains(publicMaterialTypes, material.Type) || material.FileSize < 0 || material.Downloads < 0 || !material.DownloadAvailable {
 		return false
 	}
 	for _, value := range []string{material.Subject, material.Title, material.Role, material.FileName} {

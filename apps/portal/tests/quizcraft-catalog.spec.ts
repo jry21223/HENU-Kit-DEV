@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
 import { contrastViolations, revealTextBackgrounds } from "./support/color-contrast";
 import { expectTouchTargets } from "./support/touch-targets";
 import { typographyViolations } from "./support/typography";
@@ -122,12 +123,24 @@ test("controlled QuizCraft catalog keeps an upstream failure honest", async ({ p
 
   await page.goto("/practice", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByText("题库暂时加载不出来，请检查网络后重试。")).toBeVisible();
+  await expect(page.getByText("题库暂时加载不出来，请稍后重试。")).toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toContainText("错误编号：req_catalog_failure");
   // 失败只由提示条说一次，题库区不再叠一句空状态（#549）。
   await expect(page.getByText(/内容暂时加载不出来/)).toHaveCount(0);
   await expect(page.getByText("示例题库", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(0);
   expect(catalogRequests).toBeGreaterThan(0);
+});
+
+test("controlled QuizCraft catalog only asks to check the network when the network failed (#554)", async ({ page }) => {
+  await page.route("**/api/v1/practice/catalog", (route) => route.abort("internetdisconnected"));
+
+  await page.goto("/practice", { waitUntil: "domcontentloaded" });
+
+  const alert = page.locator("main").getByRole("alert");
+  await expect(alert).toContainText("题库暂时加载不出来，请检查网络后重试。");
+  // 请求没到服务端，就没有错误编号。
+  await expect(alert).not.toContainText("错误编号");
 });
 
 test("390px catalog cards keep every control at least 44×44 (#543)", async ({ page }) => {
@@ -195,17 +208,6 @@ test("390×844 first screen shows the search box and the first bank (#542)", asy
   await expect(page.getByRole("heading", { name: "计算机基础", exact: true })).toBeInViewport({ ratio: 1 });
 });
 
-/** 未登录；题库目录以外的接口不可用，页面其余部分落在各自的失败或空状态。 */
-async function mockSignedOutGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_catalog_contrast_unavailable" },
-    })
-  );
-  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, json: {} }));
-}
-
 /** 目录里一套可练习、一套暂不可用的题库。 */
 async function mockCatalogBanks(page: Page) {
   await page.route("**/api/v1/practice/catalog", (route) =>
@@ -237,7 +239,7 @@ async function mockCatalogBanks(page: Page) {
 
 // 搜不到题库时给「清除搜索」（#545）：清空搜索、题库回来，按钮随空状态消失后焦点交给搜索区。
 test("a search with no matching bank offers to clear it and brings the catalog back", async ({ page }) => {
-  await mockSignedOutGateway(page);
+  await mockGuestGateway(page);
   await mockCatalogBanks(page);
 
   await page.goto("/practice", { waitUntil: "domcontentloaded" });
@@ -272,7 +274,7 @@ for (const viewport of [
     test.use({ viewport: { width: viewport.width, height: viewport.height }, contextOptions: { reducedMotion: "reduce" } });
 
     test("可练习与暂不可用的题库卡片，文字对比度都达到 AA", async ({ page }) => {
-      await mockSignedOutGateway(page);
+      await mockGuestGateway(page);
       await mockCatalogBanks(page);
 
       await page.goto("/practice", { waitUntil: "domcontentloaded" });
@@ -285,7 +287,7 @@ for (const viewport of [
     });
 
     test("题库读不到时的失败提示，文字对比度达到 AA", async ({ page }) => {
-      await mockSignedOutGateway(page);
+      await mockGuestGateway(page);
       await page.route("**/api/v1/practice/catalog", (route) =>
         route.fulfill({
           status: 503,
@@ -295,14 +297,14 @@ for (const viewport of [
 
       await page.goto("/practice", { waitUntil: "domcontentloaded" });
       await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1);
-      await expect(page.getByText("题库暂时加载不出来，请检查网络后重试。")).toBeVisible();
+      await expect(page.getByText("题库暂时加载不出来，请稍后重试。")).toBeVisible();
 
       await revealTextBackgrounds(page);
       expect(await contrastViolations(page), "/practice（加载失败）：以下文字的对比度低于 WCAG AA").toEqual([]);
     });
 
     test("题库卡片的文字不小于 12px，中文不加宽字距", async ({ page }) => {
-      await mockSignedOutGateway(page);
+      await mockGuestGateway(page);
       await mockCatalogBanks(page);
 
       await page.goto("/practice", { waitUntil: "domcontentloaded" });

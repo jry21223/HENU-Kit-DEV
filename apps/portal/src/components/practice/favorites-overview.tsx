@@ -75,6 +75,7 @@ export default function FavoritesOverview() {
         <section data-testid="practice-favorites-error" className="mt-8">
           <ErrorBanner
             message={state.message}
+            requestId={state.requestId}
             onRetry={() => retry()}
           />
         </section>

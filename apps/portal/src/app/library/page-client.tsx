@@ -166,7 +166,7 @@ export default function LibraryHomePage() {
           role="search"
           aria-label="资料搜索与筛选"
           tabIndex={-1}
-          className="space-y-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+          className="space-y-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring"
         >
           <div className="flex max-w-3xl items-end gap-3">
             <div className="min-w-0 flex-1">
@@ -177,7 +177,7 @@ export default function LibraryHomePage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="如：真题 / 高数 / 课件"
-                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-accent"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-focus-ring"
               />
             </div>
             <div className="max-w-[45%]">
@@ -205,7 +205,7 @@ export default function LibraryHomePage() {
                 onClick={() => setType(t)}
                 aria-pressed={type === t}
                 className={cn(
-                  "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                  "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
                   type === t ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
                 )}
               >

@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { waitForHydration } from "./support/readability-routes";
+import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 
 /**
  * 读屏软件读得出名字和状态：
@@ -10,35 +12,31 @@ import { expect, test, type Page } from "@playwright/test";
  * 排行榜周期切换只在 V2 读取开启时出现，它的组名由 practice-leaderboard-live.spec.ts 检查。
  */
 
-async function waitForHydration(page: Page) {
-  await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
-}
-
-/** 接口一律不可用；signedIn 时会话有效，否则未登录。 */
-async function mockGateway(page: Page, { signedIn = false } = {}) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_names_unavailable" },
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    signedIn
-      ? route.fulfill({
-          json: {
-            user_id: "11111111-1111-4111-8111-111111111111",
-            display_name: "小河同学",
-            expires_at: "2030-01-01T00:00:00Z",
-          },
-        })
-      : route.fulfill({ status: 401, json: {} })
-  );
-}
-
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
+test("账户中心在读会话和会话读取失败时，正文也在唯一的 main 地标里", async ({ page }) => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await mockGuestGateway(page);
+  await page.route("**/api/v1/session", async (route) => {
+    await gate;
+    await route.fulfill({ status: 503, json: { error: "portal_session_unavailable", request_id: "req_names_session_down" } });
+  });
+  await page.goto("/account", { waitUntil: "domcontentloaded" });
+
+  const main = page.getByRole("main");
+  await expect(main).toHaveCount(1);
+  await expect(main).toHaveAttribute("data-account-session-state", "loading");
+
+  release();
+  await expect(main.locator('[data-account-session-state="error"]')).toBeVisible();
+  await expect(main).toHaveCount(1);
+});
+
 test("资料库、互助和题库的搜索框由看得见的标签命名", async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
 
   await page.goto("/campus");
   await waitForHydration(page);
@@ -65,7 +63,7 @@ test("资料库、互助和题库的搜索框由看得见的标签命名", async
 });
 
 test("互助发布表单的每个字段都读得出自己的标签，分类是一组有名字的按钮", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
   await page.goto("/campus/publish");
   await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "发布单子" })).toBeVisible();
@@ -92,7 +90,7 @@ test("互助发布表单的每个字段都读得出自己的标签，分类是�
 });
 
 test("安全设置的每个输入框都读得出自己的标签", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
   await page.goto("/account/security");
   await waitForHydration(page);
 
@@ -104,7 +102,7 @@ test("安全设置的每个输入框都读得出自己的标签", async ({ page 
 });
 
 test("子站页头用 aria-current 标出当前标签", async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
   const nav = page.locator("header nav");
 
   await page.goto("/practice/stats");
@@ -125,7 +123,7 @@ test("子站页头用 aria-current 标出当前标签", async ({ page }) => {
 });
 
 test("账户中心菜单用 aria-current 标出当前页", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
   await page.goto("/account/security");
   await waitForHydration(page);
 
@@ -135,7 +133,7 @@ test("账户中心菜单用 aria-current 标出当前页", async ({ page }) => {
 });
 
 test("资料目录的展开按钮报告开合", async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
   const material = {
     id: "names-material", type: "note", subject: "高等数学", title: "极限复习笔记", author: "资料库收录",
     intro: "", toc: ["第一节", "第二节", "第三节", "第四节", "第五节", "第六节", "第七节", "第八节"],
@@ -155,7 +153,7 @@ test("资料目录的展开按钮报告开合", async ({ page }) => {
 });
 
 test("已登录时，子站页头的账户入口读出完整昵称", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
 
   // 手机上账户入口在页头第一行；桌面上有多个标签的子站把它放在标签行末尾。
   for (const { width, route } of [
@@ -168,4 +166,64 @@ test("已登录时，子站页头的账户入口读出完整昵称", async ({ pa
     await expect(page.locator("header").getByRole("link", { name: "小河同学的账户概览", exact: true }), `${width}px ${route}`)
       .toBeVisible();
   }
+});
+
+test("登录 / 注册是一组标签页，方向键在两个标签间切换，提交按钮不夹空格（#557）", async ({ page }) => {
+  await mockGuestGateway(page);
+  await page.goto("/account/login");
+  await waitForHydration(page);
+
+  const tabs = page.getByRole("tablist", { name: "登录或注册" });
+  const signIn = tabs.getByRole("tab", { name: "登录" });
+  const register = tabs.getByRole("tab", { name: "注册" });
+  await expect(signIn).toHaveAttribute("aria-selected", "true");
+  await expect(register).toHaveAttribute("aria-selected", "false");
+  // 只有选中的标签在 Tab 键顺序里。
+  await expect(signIn).toHaveAttribute("tabindex", "0");
+  await expect(register).toHaveAttribute("tabindex", "-1");
+
+  const panel = page.getByRole("tabpanel", { name: "登录" });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: "登录", exact: true })).toHaveAttribute("type", "submit");
+
+  await signIn.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(register).toBeFocused();
+  await expect(register).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { level: 1, name: "注册" })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "注册" }).getByRole("button", { name: "注册", exact: true })).toBeVisible();
+
+  await page.keyboard.press("Home");
+  await expect(signIn).toBeFocused();
+  await expect(signIn).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowLeft");
+  await expect(register).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(register).toBeFocused();
+
+  // 落回已选中的标签（End、再点一下）不算切换：刚出的字段错误都还在。
+  await page.getByRole("tabpanel", { name: "注册" }).getByRole("button", { name: "注册", exact: true }).click();
+  // Next 自带的路由播报也是 role="alert"，只看正文里的提示。
+  const alerts = page.locator("main").getByRole("alert");
+  await expect(alerts.first()).toBeVisible();
+  const shown = await alerts.allTextContents();
+  await register.focus();
+  await page.keyboard.press("End");
+  await register.click();
+  await expect(register).toHaveAttribute("aria-selected", "true");
+  await expect(alerts).toHaveText(shown);
+
+  // 登录方式是一对开关按钮，读得出哪一个按下了。
+  await signIn.click();
+  const codeMode = page.getByRole("button", { name: "验证码登录" });
+  await expect(codeMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "密码登录" })).toHaveAttribute("aria-pressed", "false");
+
+  // 再点已按下的那一个也不算切换：刚出的字段错误都还在。
+  await page.getByRole("tabpanel", { name: "登录" }).getByRole("button", { name: "登录", exact: true }).click();
+  await expect(alerts.first()).toBeVisible();
+  const loginErrors = await alerts.allTextContents();
+  await codeMode.click();
+  await expect(codeMode).toHaveAttribute("aria-pressed", "true");
+  await expect(alerts).toHaveText(loginErrors);
 });

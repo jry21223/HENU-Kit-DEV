@@ -14,7 +14,7 @@ import { useFoodPosts } from "@/lib/food/use-food-posts";
 import { INSET_FOCUS_RING, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 
 export default function FoodBoardPage() {
-  const { posts, loadState, error, load } = useFoodPosts();
+  const { posts, loadState, error, requestId, load } = useFoodPosts();
   const [campus, setCampus] = useState<CampusKey | "all">("all");
 
   useReveal([campus, loadState]);
@@ -117,7 +117,7 @@ export default function FoodBoardPage() {
             这里列表下面还有榜单说明，要连它一起推到首屏以下，所以放在榜单区。 */}
         <div className="min-h-svh">
           {loadState === "error" && error && (
-            <ErrorBanner message={error} onRetry={() => void load()} className="mt-8" />
+            <ErrorBanner message={error} requestId={requestId} onRetry={() => void load()} className="mt-8" />
           )}
 
           {loadState === "loading" ? (

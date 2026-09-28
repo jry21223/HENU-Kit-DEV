@@ -5,6 +5,7 @@ import {
   fetchCampusCategories,
   fetchCampusItems,
   mockAllowed,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type { CampusCategory, CampusItem } from "@/lib/api/types";
 import {
@@ -58,7 +59,7 @@ export default function MarketPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [categories, setCategories] = useState<Category[]>(CATEGORIES);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
   const [type, setType] = useState<ItemType | "all">("all");
@@ -77,7 +78,8 @@ export default function MarketPage() {
       setCategories(toCategories(catsResp?.categories ?? null));
       rememberCampusItems(itemsResp.items, catsResp?.categories ?? null);
       setLoadState("ready");
-    } catch {
+    } catch (loadError) {
+      const failure = { message: "互助信息暂时无法加载，请重试。", requestId: portalErrorRequestId(loadError) };
       try {
         await initCampusGateway();
         const cached = getGatewayItems();
@@ -96,7 +98,7 @@ export default function MarketPage() {
           return;
         }
         setItems([]);
-        setError("互助信息暂时无法加载，请重试。");
+        setError(failure);
         setLoadState("error");
       } catch {
         if (mockAllowed) {
@@ -105,7 +107,7 @@ export default function MarketPage() {
           setLoadState("ready");
           return;
         }
-        setError("互助信息暂时无法加载，请重试。");
+        setError(failure);
         setLoadState("error");
       }
     }
@@ -155,7 +157,7 @@ export default function MarketPage() {
 
       <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">
         {loadState === "error" && error && (
-          <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
+          <ErrorBanner message={error.message} requestId={error.requestId} onRetry={() => void load()} className="mb-6" />
         )}
 
         <div
@@ -164,7 +166,7 @@ export default function MarketPage() {
           role="search"
           aria-label="互助搜索与筛选"
           tabIndex={-1}
-          className="flex flex-wrap items-center gap-x-6 gap-y-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+          className="flex flex-wrap items-center gap-x-6 gap-y-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring"
         >
           <div className="flex items-center gap-2">
             <label htmlFor="campus-query" className="mr-1 font-mono text-xs text-ink/70">
@@ -175,7 +177,7 @@ export default function MarketPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="如：快递 / 键盘 / 占座"
-              className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-accent"
+              className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-focus-ring"
             />
           </div>
           {/* 两组筛选都以“全部”开头：各带一个看得见的组名，免得分不清。 */}

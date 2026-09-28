@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { gsap, useGSAP, FINE_MOTION, ScrollTrigger } from "@/lib/gsap";
+import { gsap, useGSAP, FINE_MOTION, ScrollTrigger, isOnScreen } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 
@@ -62,10 +62,6 @@ export default function SectionCampus() {
         const paths = gsap.utils.toArray<SVGPathElement>(
           "[data-flow-line], [data-flow-arrow]"
         );
-        paths.forEach((p) => {
-          const len = p.getTotalLength();
-          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
-        });
 
         let flowing = false;
         const startFlow = () => {
@@ -82,6 +78,17 @@ export default function SectionCampus() {
           });
         };
 
+        // 从中间位置加载、模块已经在视口里：线、节点和卡片是服务端画好的，
+        // 直接进入虚线流动，不再藏起来重播描线和入场（#557）。
+        if (isOnScreen(sectionRef.current)) {
+          startFlow();
+          return;
+        }
+
+        paths.forEach((p) => {
+          const len = p.getTotalLength();
+          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+        });
         const draw = gsap.timeline({ paused: true, onComplete: startFlow });
         paths.forEach((p, i) => {
           draw.to(

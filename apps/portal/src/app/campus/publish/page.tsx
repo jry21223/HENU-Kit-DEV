@@ -119,7 +119,7 @@ function PublishForm() {
                 aria-pressed={category === c.key}
                 onClick={() => setCategory(c.key)}
                 className={cn(
-                  "border px-3 py-1.5 font-mono text-xs transition-colors",
+                  "min-h-11 border px-3 py-1.5 font-mono text-xs transition-colors",
                   category === c.key ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
                 )}
               >
@@ -136,7 +136,7 @@ function PublishForm() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={type === "help" ? "如：代取中通快递 3 件到 6 号楼" : "如：九成新机械键盘"}
-            className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
+            className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
           />
         </div>
 
@@ -158,15 +158,16 @@ function PublishForm() {
           </p>
           <div className="flex flex-wrap items-start gap-3">
             {images.map((src, i) => (
-              <div key={i} className="relative">
+              <div key={i} className="flex w-28 flex-col">
                 <Img src={src} alt={`图 ${i + 1}`} label={`FIG.${i + 1}`} className="h-20 w-28" />
+                {/* 删除是缩略图下方整行 44px 高的文字按钮，不压在图上（DESIGN_SYSTEM §13，#557）。 */}
                 <button
                   type="button"
                   onClick={() => setImages((imgs) => imgs.filter((_, j) => j !== i))}
-                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs hover:border-accent hover:text-accent-text"
+                  className="flex min-h-11 w-full items-center justify-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
                   aria-label={`删除图 ${i + 1}`}
                 >
-                  ×
+                  删除
                 </button>
               </div>
             ))}
@@ -195,7 +196,7 @@ function PublishForm() {
               onChange={(e) => setPrice(e.target.value)}
               inputMode="numeric"
               placeholder="3"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+              className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           <div>
@@ -205,7 +206,7 @@ function PublishForm() {
               value={place}
               onChange={(e) => setPlace(e.target.value)}
               placeholder="明伦校区 · 西门"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+              className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           {type === "help" && (
@@ -216,7 +217,7 @@ function PublishForm() {
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
                 placeholder="今天 18:00 前"
-                className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
               />
             </div>
           )}

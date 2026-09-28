@@ -155,6 +155,27 @@ func TestPersonalPracticeStatsTreatsCoreServiceAuthenticationRejectionAsUnavaila
 	}
 }
 
+// Portal shows "practice access denied"'s message as written (#554), so it
+// points at the support ticket instead of an unnamed administrator.
+func TestPersonalPracticeStatsDeniedByPlatformCorePointsToASupportTicket(t *testing.T) {
+	platform := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusForbidden)
+	}))
+	defer platform.Close()
+	core := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("QuizCraft read after Platform Core denied access")
+	}))
+	defer core.Close()
+
+	handler := newPersonalStatsHandler(t, platform.URL, core.URL, "http://127.0.0.1:9")
+	denied := getPersonalStats(t, handler, sessionCookie(t, handler, personalStatsUserID))
+	var envelope contract.ErrorEnvelope
+	if err := json.Unmarshal(denied.Body.Bytes(), &envelope); err != nil || denied.Code != http.StatusForbidden ||
+		envelope.Error != "practice access denied" || envelope.Message != "暂无练习权限。如有疑问，请到账户中心提交工单。" {
+		t.Fatalf("denied stats = %d %+v (%v)", denied.Code, envelope, err)
+	}
+}
+
 func TestPersonalPracticeStatsFailsHonestlyForNoSessionOrCoreFailure(t *testing.T) {
 	platform := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/authorization/check" {

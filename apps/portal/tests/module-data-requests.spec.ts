@@ -1,9 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
+import { libraryCountsFor } from "./support/library-counts";
 
 /**
  * 模块数据按路由按需加载（#546）：根布局不再在每个页面预取资料库、美食、互助、求职
- * 四个模块。记录页面发出的 /api/v1/* 请求：登录页不请求任何模块数据；首页对资料全量
- * 最多请求一次（加载成功或失败都一样）；未登录访问任何页面都不请求求职数据。
+ * 四个模块。记录页面发出的 /api/v1/* 请求：登录页不请求任何模块数据；首页资料库区块
+ * 只读各类型数量、最多一次，从不下载资料全量目录（#555，加载成功或失败都一样）；
+ * 未登录访问任何页面都不请求求职数据。
  * 资料详情的“相关资料”在进入详情时才读全量目录；从列表进入时复用列表刚读到的目录。
  * 互助详情接口失败时，仍能回退到列表刚读到的那条单子。
  */
@@ -11,6 +14,7 @@ import { expect, test, type Page } from "@playwright/test";
 const MODULE_DATA = /^\/api\/v1\/(library|food|campus|career)\//;
 const CAREER = /^\/api\/v1\/career\//;
 const MATERIALS = "/api/v1/library/materials";
+const MATERIAL_COUNTS = "/api/v1/library/material-counts";
 
 const NOTE = {
   id: "11111111-1111-4111-8111-111111111111", type: "note", subject: "高等数学",
@@ -21,12 +25,17 @@ const EXAM = {
   ...NOTE,
   id: "22222222-2222-4222-8222-222222222222", type: "exam", title: "高数期末真题",
 };
+const SECOND_NOTE = {
+  ...NOTE,
+  id: "33333333-3333-4333-8333-333333333333", subject: "线性代数", title: "矩阵复习笔记",
+};
 
+// 三份资料、两个类型：首页的“N FILES INDEXED”是资料数，不是卡片数。
 const CATALOG = {
-  materials: [NOTE, EXAM],
+  materials: [NOTE, EXAM, SECOND_NOTE],
   statistics: {
     releaseId: "0123456789abcdef0123456789abcdef01234567-0123456789abcdef",
-    materialCount: 2,
+    materialCount: 3,
     downloadStarts: 12,
     countingSince: "2026-08-11T00:00:00Z",
     asOf: "2026-08-11T01:00:00Z",
@@ -34,22 +43,8 @@ const CATALOG = {
   request_id: "req_requests_catalog",
 };
 
-/** 未登录，其余接口一律不可用；只统计请求，不关心页面拿到了什么。 */
-async function mockGuestGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" },
-        request_id: "req_requests_unavailable",
-      }),
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
-  );
-}
+/** 与 CATALOG 同一份目录的分类计数。 */
+const COUNTS = libraryCountsFor(CATALOG.materials, "req_requests_counts");
 
 /** 记录页面发出的每一个 /api/v1/* 请求路径（不含查询串）。 */
 function recordApiRequests(page: Page): string[] {
@@ -81,25 +76,39 @@ test("/account/login requests no module data", async ({ page }) => {
   expect(requests.filter((path) => MODULE_DATA.test(path))).toEqual([]);
 });
 
-test("home reads the full catalog once when it loads", async ({ page }) => {
+test("home reads only the type counts, once, when they load", async ({ page }) => {
   await page.route("**/api/v1/library/materials", (route) => route.fulfill({ json: CATALOG }));
+  await page.route("**/api/v1/library/material-counts", (route) => route.fulfill({ json: COUNTS }));
   const requests = recordApiRequests(page);
   await page.goto("/");
   const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "资料库", level: 2 }) });
-  await expect(section.getByRole("heading", { name: "笔记总结" })).toBeVisible();
+  await expect(section.getByRole("article").filter({ hasText: "笔记总结" })).toContainText("收录 2 份");
+  await expect(section.getByRole("article").filter({ hasText: "往年真题" })).toContainText("收录 1 套");
+  await expect(section.getByRole("heading", { name: "复习讲义" })).toHaveCount(0);
+  await expect(section.getByText("3 FILES INDEXED")).toBeVisible();
   await settle(page);
 
-  expect(requests.filter((path) => path === MATERIALS)).toHaveLength(1);
+  expect(requests.filter((path) => path === MATERIAL_COUNTS)).toHaveLength(1);
+  expect(requests.filter((path) => path === MATERIALS)).toEqual([]);
 });
 
-test("home reads the full catalog once when it fails", async ({ page }) => {
+test("home reads the type counts once when they fail, and never the full catalog, even on retry", async ({ page }) => {
+  await page.route("**/api/v1/library/materials", (route) => route.fulfill({ json: CATALOG }));
   const requests = recordApiRequests(page);
   await page.goto("/");
   const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "资料库", level: 2 }) });
   await expect(section.getByRole("alert")).toBeVisible();
   await settle(page);
 
-  expect(requests.filter((path) => path === MATERIALS)).toHaveLength(1);
+  expect(requests.filter((path) => path === MATERIAL_COUNTS)).toHaveLength(1);
+  expect(requests.filter((path) => path === MATERIALS)).toEqual([]);
+
+  // 重试只再读一次计数，失败也不改去下载全量目录。
+  await section.getByRole("button", { name: "重试" }).click();
+  await expect(section.getByRole("alert")).toBeVisible();
+  await settle(page);
+  expect(requests.filter((path) => path === MATERIAL_COUNTS)).toHaveLength(2);
+  expect(requests.filter((path) => path === MATERIALS)).toEqual([]);
 });
 
 test.describe("library detail related materials", () => {

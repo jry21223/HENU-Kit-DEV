@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const accountConsole = new URL("../../app/account/(console)/", import.meta.url);
@@ -46,11 +46,18 @@ test("account navigation exposes only delivered Account Portfolio capabilities",
   assert.doesNotMatch(layout, /href: "\/account\/deals"/);
 });
 
-test("legacy auth helpers retain no account dashboard fixtures", async () => {
-  const authMock = await readFile(new URL("../../lib/auth/mock.ts", import.meta.url), "utf8");
-
-  assert.doesNotMatch(
-    authMock,
-    /\b(accountStore|AccountData|MEMBERSHIP_PLANS|FREE_MEMBERSHIP|TicketMsg|unreadNotices)\b/
+test("auth helpers retain no account dashboard fixtures", async () => {
+  const authHelpers = new URL("../../lib/auth/", import.meta.url);
+  const helpers = (await readdir(authHelpers, { recursive: true })).filter(
+    (name) => /\.[cm]?[jt]sx?$/.test(name) && !/\.test\.[cm]?[jt]sx?$/.test(name)
   );
+  assert.ok(helpers.length > 0);
+
+  for (const name of helpers) {
+    assert.doesNotMatch(
+      await readFile(new URL(name, authHelpers), "utf8"),
+      /\b(accountStore|AccountData|MEMBERSHIP_PLANS|FREE_MEMBERSHIP|TicketMsg|unreadNotices)\b/,
+      name
+    );
+  }
 });

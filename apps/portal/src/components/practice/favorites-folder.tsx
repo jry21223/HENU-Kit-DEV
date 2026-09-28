@@ -237,6 +237,7 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
         <section data-testid="practice-favorites-folder-error" className="mt-10">
           <ErrorBanner
             message={state.message}
+            requestId={state.requestId}
             onRetry={() => retry()}
           />
         </section>

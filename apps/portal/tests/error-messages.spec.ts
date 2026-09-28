@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { libraryCountsFor } from "./support/library-counts";
 
 /**
  * 资料库接口返回 HTML 错误页（反向代理 404、WAF 挑战页）时，首页 01 与 /library
@@ -28,18 +29,22 @@ const CATALOG = {
   request_id: "req_library_ok",
 };
 
-/** Fails the catalog read with an HTML page until recover() is called. */
+/**
+ * Fails the library reads with an HTML page until recover() is called: the
+ * catalog that /library lists and the type counts the home block shows (#555).
+ */
 async function breakLibraryCatalog(page: Page, status: number) {
   let broken = true;
-  await page.route("**/api/v1/library/materials", (route) =>
+  const fail = (route: Route, recovered: unknown) =>
     broken
       ? route.fulfill({
           status,
           headers: { "Content-Type": "text/html", "X-Request-Id": "req_edge404" },
           body: HTML_404,
         })
-      : route.fulfill({ json: CATALOG })
-  );
+      : route.fulfill({ json: recovered });
+  await page.route("**/api/v1/library/materials", (route) => fail(route, CATALOG));
+  await page.route("**/api/v1/library/material-counts", (route) => fail(route, libraryCountsFor(CATALOG.materials)));
   return () => {
     broken = false;
   };
@@ -103,6 +108,7 @@ test("/food says a failed ranking load once, in the error banner only (#549)", a
   const alert = page.locator("main").getByRole("alert");
   await expect(alert).toHaveCount(1);
   await expect(alert.getByRole("button", { name: "重试" })).toBeVisible();
+  await expect(alert).toContainText("错误编号：req_food_down");
   // 与 /library、/campus 一致：失败只由提示条说明，列表区不再叠一句空状态。
   await expect(page.getByText(/榜单暂时加载不出来/)).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText(LEAKS);
@@ -139,17 +145,20 @@ const CAMPUS_FAILURES = [
   {
     name: "is unavailable",
     message: "服务暂时不可用，请稍后再试。",
+    requestId: "req_campus_down",
     fail: (route: Route) =>
       route.fulfill({ status: 503, json: { error: "upstream_unavailable", request_id: "req_campus_down" } }),
   },
   {
     name: "comes back as an HTML page",
     message: "服务暂时不可用，请稍后再试。",
+    requestId: null,
     fail: (route: Route) => route.fulfill({ status: 200, contentType: "text/html", body: HTML_404 }),
   },
   {
     name: "cannot be reached",
     message: "网络连接失败，请检查网络后重试。",
+    requestId: null,
     fail: (route: Route) => route.abort("internetdisconnected"),
   },
 ];
@@ -168,6 +177,8 @@ for (const failure of CAMPUS_FAILURES) {
     const main = page.locator("main");
     const alert = main.getByRole("alert");
     await expect(alert).toContainText(failure.message);
+    if (failure.requestId) await expect(alert).toContainText(`错误编号：${failure.requestId}`);
+    else await expect(alert).not.toContainText("错误编号");
     // 暂时读不到不等于单子不存在。
     await expect(main).not.toContainText(/404|NOT FOUND|不存在或已下架/);
     await expect(main).not.toContainText(LEAKS);
@@ -177,5 +188,60 @@ for (const failure of CAMPUS_FAILURES) {
     await alert.getByRole("button", { name: "重试" }).click();
     await expect(main.getByRole("heading", { level: 1, name: CAMPUS_ITEM.title })).toBeVisible();
     await expect(main.getByRole("alert")).toHaveCount(0);
+  });
+}
+
+/**
+ * 每个出错提示条在有请求编号时都显示错误编号（#554），方便用户提工单时附上；
+ * Gateway 自己的中文提示原样展示，其余仍是各页面自己的中文兜底。
+ */
+const UNAVAILABLE_PAGES = [
+  {
+    name: "a food post",
+    path: "/food/post/post-unavailable",
+    endpoint: "**/api/v1/food/posts/post-unavailable",
+    body: { error: "food_service_unavailable", message: "服务暂时不可用，请稍后再来", request_id: "req_food_post_down" },
+    message: "服务暂时不可用，请稍后再来",
+  },
+  {
+    name: "the campus list",
+    path: "/campus",
+    endpoint: "**/api/v1/campus/items",
+    body: { error: "upstream_unavailable", request_id: "req_campus_list_down" },
+    message: "互助信息暂时无法加载，请重试。",
+  },
+  {
+    name: "a library material",
+    path: `/library/item/${MATERIAL.id}`,
+    endpoint: `**/api/v1/library/materials/${MATERIAL.id}`,
+    body: { error: "LIBRARY_TEMPORARILY_UNAVAILABLE", message: "资料库暂时无法加载，请稍后重试。", request_id: "req_material_down" },
+    message: "资料详情暂时无法加载，请稍后重试。",
+  },
+  {
+    name: "the favorites overview",
+    path: "/practice/favorites",
+    endpoint: "**/api/v1/practice/favorites",
+    body: { error: "practice favorites are temporarily unavailable", message: "收藏暂时不可用，请稍后再试", request_id: "req_favorites_down" },
+    message: "收藏暂时不可用，请稍后再试",
+  },
+  {
+    name: "a favorites folder",
+    path: "/practice/favorites/bank-down",
+    endpoint: "**/api/v1/practice/banks/bank-down/favorites",
+    body: { error: "practice favorites are temporarily unavailable", message: "收藏暂时不可用，请稍后再试", request_id: "req_folder_down" },
+    message: "收藏暂时不可用，请稍后再试",
+  },
+];
+
+for (const failure of UNAVAILABLE_PAGES) {
+  test(`${failure.name} that cannot be read shows its error number (#554)`, async ({ page }) => {
+    await page.route(failure.endpoint, (route) => route.fulfill({ status: 503, json: failure.body }));
+    await page.goto(failure.path);
+    await expect(page.locator("html")).toHaveAttribute("data-scroll-memory", "ready");
+
+    const alert = page.locator("main").getByRole("alert");
+    await expect(alert).toContainText(failure.message);
+    await expect(alert).toContainText(`错误编号：${failure.body.request_id}`);
+    await expect(page.locator("main")).not.toContainText(LEAKS);
   });
 }

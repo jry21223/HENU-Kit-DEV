@@ -100,6 +100,34 @@ jobs:
       - name: Verify Library owner download behavior
         run: pnpm --filter @henukit/portal test:e2e:library-download
 
+  # The QuizCraft catalog and QQ binding groups each start their own dev
+  # server; Practice uses the default one. All three run here, beside
+  # portal-responsive, so that job stays within its 20-minute limit (#553).
+  portal-practice-and-binding:
+    name: portal-practice-and-binding
+    needs: validate-release-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.9.0 --activate
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install Portal and Console browser-test dependencies
+        run: pnpm install --frozen-lockfile --filter @henukit/portal... --filter @henukit/console...
+      - name: Install Chromium
+        run: pnpm --filter @henukit/portal exec playwright install --with-deps chromium
+      - name: Verify the production QuizCraft catalog on /practice
+        run: pnpm --filter @henukit/portal test:e2e:quizcraft-catalog
+      - name: Verify Practice session, swipe, and transition behavior
+        run: pnpm --filter @henukit/portal test:e2e:practice
+      - name: Verify QQ binding authorization
+        run: pnpm --filter @henukit/portal test:e2e:qq-binding
+
   oauth-continuation:
     name: oauth-continuation
     needs: validate-release-contract

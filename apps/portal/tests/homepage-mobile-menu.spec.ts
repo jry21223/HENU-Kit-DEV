@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
 
 /**
  * 首页手机菜单（#541）：按钮名随开合在「打开菜单 / 关闭菜单」之间切换，并用
@@ -6,23 +7,6 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  * 页面不滚动（矮屏上面板自己滚）、Tab 只在菜单里循环、读屏软件也进不到遮罩下面的页面；
  * 账户行整行可点，已登录时昵称完整显示。
  */
-
-/** 未登录，其余接口一律不可用：菜单不依赖接口数据。 */
-async function mockGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" },
-        request_id: "req_menu_unavailable",
-      }),
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
-  );
-}
 
 /** 打开首页并等客户端外壳水合完成：水合前点按钮不会有反应。 */
 async function openHomepage(page: Page) {
@@ -79,7 +63,7 @@ async function wheelAndSettle(page: Page, deltaY: number) {
 test.use({ viewport: { width: 390, height: 800 }, contextOptions: { reducedMotion: "reduce" } });
 
 test.beforeEach(async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
 });
 
 test("按钮名随开合切换，并指向菜单面板", async ({ page }) => {

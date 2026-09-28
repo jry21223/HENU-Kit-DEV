@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SIGNED_IN_SESSION } from "./support/gateway";
 import { tabThroughScroller } from "./support/focus-rings";
 import { mockGatewayWithContent, waitForHydration } from "./support/readability-routes";
 
@@ -10,14 +11,8 @@ import { mockGatewayWithContent, waitForHydration } from "./support/readability-
 
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
-const SIGNED_IN = {
-  user_id: "11111111-1111-4111-8111-111111111111",
-  display_name: "小河同学",
-  expires_at: "2030-01-01T00:00:00Z",
-};
-
 async function signIn(page: Page) {
-  await page.route("**/api/v1/session", (route) => route.fulfill({ json: SIGNED_IN }));
+  await page.route("**/api/v1/session", (route) => route.fulfill({ json: SIGNED_IN_SESSION }));
 }
 
 // 手机上面板放得下时不滚，矮屏（横屏手机）上面板自己滚：两种都要看得见整圈焦点框。

@@ -131,6 +131,29 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /api/v1/library/material-counts:
+    get:
+      operationId: getPublicLibraryMaterialCounts
+      summary: Count the Library-owned active public catalog by material type
+      description: >
+        Returns how many materials of each type the active public-free catalog
+        holds, from one Library owner snapshot, without the catalog itself. The
+        Portal home page's library block reads this instead of downloading the
+        complete catalog. Browser filters are not accepted.
+      security: []
+      responses:
+        "200":
+          description: Per-type counts, including an honest all-zero success when no release is active
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicLibraryMaterialCountsResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /api/v1/library/materials/{material_id}:
     get:
       operationId: getPublicLibraryMaterial
@@ -1435,6 +1458,38 @@ components:
       properties:
         material: { $ref: "#/components/schemas/PublicLibraryMaterial" }
         request_id: { type: string }
+
+    PublicLibraryMaterialCountsResponse:
+      type: object
+      additionalProperties: false
+      required: [counts, request_id]
+      properties:
+        counts: { $ref: "#/components/schemas/PublicLibraryMaterialCounts" }
+        request_id: { type: string }
+
+    PublicLibraryMaterialCounts:
+      type: object
+      additionalProperties: false
+      required: [releaseId, materialCount, byType, asOf]
+      properties:
+        releaseId:
+          type: [string, "null"]
+          pattern: '^[a-f0-9]{40}-[a-f0-9]{16}$'
+        materialCount: { type: integer, format: int64, minimum: 0, maximum: 500 }
+        byType:
+          type: object
+          additionalProperties: false
+          description: Every material type, zero when the active catalog has none of it; the values sum to materialCount.
+          required: [handout, exam, slides, exercise, answer, note, textbook]
+          properties:
+            handout: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            exam: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            slides: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            exercise: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            answer: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            note: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            textbook: { type: integer, format: int64, minimum: 0, maximum: 500 }
+        asOf: { type: string, format: date-time }
 
     PublicLibraryStatistics:
       type: object

@@ -9,6 +9,9 @@ import { expect, type Page } from "@playwright/test";
  *   （如登录页同意告知里的《用户协议》），高度受那一行文字约束。被放过的链接由调用方逐个写明，
  *   不在预期里的也算失败；
  * - 读屏隐藏的装饰元素：自身或祖先带 aria-hidden="true"。
+ *
+ * 复选框和单选框点包住它的 <label> 也能勾选，按那个 label 量（WCAG 2.5.8 把标签算进点击目标）。
+ * 检查范围 within 必须在页面上存在，否则什么都没量到也不算通过。
  */
 
 export const MIN_TARGET = 44;
@@ -22,7 +25,7 @@ type Target = { control: string; width: number; height: number };
 async function measureTargets(
   page: Page,
   within: string
-): Promise<{ undersized: Target[]; inSentence: string[] }> {
+): Promise<{ roots: number; undersized: Target[]; inSentence: string[] }> {
   return page.evaluate(
     ({ min, within }) => {
       const isInSentence = (element: Element) => {
@@ -45,9 +48,12 @@ async function measureTargets(
 
       const undersized: { control: string; width: number; height: number }[] = [];
       const inSentence: string[] = [];
-      for (const root of document.querySelectorAll(within)) {
+      const roots = document.querySelectorAll(within);
+      for (const root of roots) {
         for (const element of root.querySelectorAll("a[href], button, input, select")) {
-          const box = element.getBoundingClientRect();
+          const toggle =
+            element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio");
+          const box = ((toggle && element.closest("label")) || element).getBoundingClientRect();
           const style = getComputedStyle(element);
           if (box.width === 0 || box.height === 0 || style.visibility === "hidden") continue;
           if (element.closest("[aria-hidden='true']")) continue;
@@ -64,7 +70,7 @@ async function measureTargets(
           });
         }
       }
-      return { undersized, inSentence };
+      return { roots: roots.length, undersized, inSentence };
     },
     { min: MIN_TARGET, within }
   );
@@ -79,6 +85,7 @@ export async function expectTouchTargets(
   { inSentence = [] as string[], within = "body" } = {}
 ) {
   const measured = await measureTargets(page, within);
+  expect(measured.roots, `${what}：检查范围 ${within} 在页面上不存在`).toBeGreaterThan(0);
   expect(measured.undersized, `${what}：以下控件小于 ${MIN_TARGET}×${MIN_TARGET}`).toEqual([]);
   expect(measured.inSentence, `${what}：按句中链接放过的控件`).toEqual(inSentence);
 }

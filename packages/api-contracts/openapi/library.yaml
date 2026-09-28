@@ -141,6 +141,34 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/public-materials/type-counts:
+    get:
+      tags: [Library]
+      operationId: getPublicMaterialTypeCounts
+      summary: Count the active public-free catalog by material type
+      description: Returns, from one database snapshot, how many materials of each canonical type the active public-free release holds, without listing them. The Portal home page's library block reads it instead of the complete catalog. No browser filter is accepted or applied.
+      security:
+        - downloadServiceBasic: []
+          downloadServiceSignature: []
+      parameters:
+        - $ref: "#/components/parameters/DownloadServiceID"
+        - $ref: "#/components/parameters/DownloadKeyID"
+        - $ref: "#/components/parameters/ServiceTimestamp"
+        - $ref: "#/components/parameters/ServiceNonce"
+      responses:
+        "200":
+          description: Per-type counts of the active catalog, or an explicit all-zero success when no release is active
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties: { data: { $ref: "#/components/schemas/PublicMaterialTypeCounts" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/v1/public-materials/{material_id}/download-starts:
     post:
       tags: [Library]
@@ -301,6 +329,29 @@ components:
         material_count: { type: integer, minimum: 0, maximum: 500 }
         download_starts: { type: integer, format: int64, minimum: 0 }
         counting_since: { type: [string, "null"], format: date-time }
+        as_of: { type: string, format: date-time }
+    PublicMaterialTypeCounts:
+      type: object
+      additionalProperties: false
+      required: [release_id, material_count, type_counts, as_of]
+      properties:
+        release_id:
+          type: [string, "null"]
+          pattern: '^[a-f0-9]{40}-[a-f0-9]{16}$'
+        material_count: { type: integer, minimum: 0, maximum: 500 }
+        type_counts:
+          type: object
+          additionalProperties: false
+          description: Every canonical material type, zero when the active release has none of it; the values sum to material_count.
+          required: [handout, exam, slides, exercise, answer, note, textbook]
+          properties:
+            handout: { type: integer, minimum: 0, maximum: 500 }
+            exam: { type: integer, minimum: 0, maximum: 500 }
+            slides: { type: integer, minimum: 0, maximum: 500 }
+            exercise: { type: integer, minimum: 0, maximum: 500 }
+            answer: { type: integer, minimum: 0, maximum: 500 }
+            note: { type: integer, minimum: 0, maximum: 500 }
+            textbook: { type: integer, minimum: 0, maximum: 500 }
         as_of: { type: string, format: date-time }
     PublicCatalogMaterial:
       type: object

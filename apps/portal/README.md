@@ -35,6 +35,27 @@ npm run dev
 | `npm run lint` | ESLint 检查（必须通过） |
 | `npm run start` | 生产服务器 |
 
+## 端到端测试
+
+浏览器测试按组运行（`pnpm --filter @henukit/portal <脚本>`）。部署流水线（`.github/workflows/deploy-henukit.yml`）用两个作业并行跑：
+
+| 脚本 | 内容 | CI 作业 |
+|---|---|---|
+| `test:e2e:responsive` | 响应式、可读性、点击区、标题、错误与空状态等 | `portal-responsive` |
+| `test:e2e:navigation` | 首页整屏滚动、手势与返回位置 | `portal-responsive` |
+| `test:e2e:stats` | QuizCraft V2 读取开启时的学习统计、排行榜，以及首页刷题模块在数据晚到时的入场（3101 端口） | `portal-responsive` |
+| `test:e2e:food` | 美食榜、详情与投稿（单 worker） | `portal-responsive` |
+| `test:e2e:account` | 账户中心 | `portal-responsive` |
+| `test:e2e:library-download` | 资料下载 | `portal-responsive` |
+| `test:e2e:quizcraft-catalog` | 生产配置开启题库目录时的 /practice（3002 端口） | `portal-practice-and-binding` |
+| `test:e2e:practice` | 答题会话、滑动切题与页面过渡 | `portal-practice-and-binding` |
+| `test:e2e:qq-binding` | QQ 绑定授权页（3197 端口） | `portal-practice-and-binding` |
+
+题库目录和 QQ 绑定各起自己的 dev server（3002、3197 端口），刷题组用默认的那个；这三组放在单独的作业里、与 `portal-responsive` 并行，`portal-responsive` 因此保持在 20 分钟限时之内（[#553](https://github.com/jry21223/HENU-Kit-DEV/issues/553)）。`test:e2e:oauth-continuation` 由 `oauth-continuation` 作业跑。
+
+- 访客与已登录的网关 mock 在 `tests/support/gateway.ts`，有内容时的页面数据和 `waitForHydration` 在 `tests/support/readability-routes.ts`，逐帧入场采样在 `tests/support/entrance.ts`，用到的 spec 都引用这一份；账户中心、QQ 绑定这类按自己的接口流程 mock 会话的 spec 除外。
+- 断言不按测试进程感受到的耗时下结论：两个 worker 抢 CPU 时，测试进程到浏览器的一来一回会拖长。滚轮突发在页面里派发，“落定后马上走下一屏”数的是刻度而不是毫秒；等页面长到滚得动再滚动。
+
 ## SEO / GEO 基础设施
 
 - `/robots.txt` 允许普通搜索与回答型搜索爬虫访问公开 HTML，仅阻止 API 抓取；账户、写入、个性化和阅读器路由通过 `X-Robots-Tag: noindex, nofollow` 禁止索引。
@@ -156,18 +177,24 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 ### 数据按需加载
 - 根布局不预取任何模块数据：每个页面只在进入时请求自己要用的数据，登录页不请求资料库、美食、互助或求职数据（[#546](https://github.com/jry21223/HENU-Kit-DEV/issues/546)）。
-- 全量资料目录经 `loadLibraryMaterials`（`src/lib/library/gateway.ts`）共享：首页资料库区块与资料详情的“相关资料”共用同一次请求，本次页面会话内缓存；失败不缓存，也不在背后重试：首页区块由用户点“重试”，详情页只是不展示“相关资料”，详情本身照常。`/library` 列表每次进入都实时读取（收录与下载统计要最新），读到后写入这份缓存，从列表点进详情不再下载一遍。
+- 首页资料库区块只读各类型数量（`GET /api/v1/library/material-counts`，#555），不下载完整目录；数量与 `/library` 目录按同一口径统计（同一个已激活版本里公开的资料）。失败不在背后重试，由用户点“重试”。
+- 全量资料目录经 `loadLibraryMaterials`（`src/lib/library/gateway.ts`）供资料详情的“相关资料”使用，本次页面会话内缓存；失败不缓存，也不在背后重试：详情页只是不展示“相关资料”，详情本身照常。`/library` 列表每次进入都实时读取（收录与下载统计要最新），读到后写入这份缓存，从列表点进详情不再下载一遍。
 - 互助列表读到的单子同样写入共享缓存，从列表点进详情时，详情读取失败可回退到列表里的这条单子。
 - 求职数据只在已登录后、进入求职雷达或账户的求职资料页时读取（`/career` 先确认会员）；未登录访问任何页面都不请求。
 - `tests/module-data-requests.spec.ts` 记录各页面发出的 `/api/v1/*` 请求来检查以上约定。
 
 ### 数据加载失败
-- 接口失败时，页面只展示中文提示：说明发生了什么、可以怎么做，不展示接口路径、HTTP 状态文本或内部组件名。提示统一由 `formatPortalError`（`src/lib/api/client.ts`）按错误类别映射：网络失败、需要登录、服务不可用（含非 JSON 响应，例如网关错误页或 WAF 挑战页）。错误对象的原始 message 只用于排查，不上屏。
+- 接口失败时，页面只展示中文提示：说明发生了什么、可以怎么做，不展示接口路径、HTTP 状态文本或内部组件名。提示统一由 `formatPortalError`（`src/lib/api/client.ts`）按顺序决定（#554）：
+  - 网络失败、需要登录（401）用 Portal 自己的提示。Gateway 对从没登录过的访客也回“登录已过期”，所以 401 不用它的文案。
+  - Gateway 自己写出的扁平错误信封（`{error: "码", message: "中文"}`），码在放行名单（`src/lib/api/gateway-errors.ts`）里、且 `message` 是中文时，原样展示 `message`。上游经 Gateway 原样转发的嵌套信封（Food、Career 的 `{error: {code, message}}`）一律不展示；portal-api 经 Gateway 转发的扁平信封（如 `not_found`）的码不在名单里，也不展示。
+  - 有意不放行的 Gateway 码写在 `GATEWAY_WITHHELD_CODES` 里并注明原因：只说“内容不存在或已下架”而没有下一步的通用 404、Portal 自己生成的幂等键出错、浏览器整页导航才会遇到的登录跳转与 OAuth 回调错误。`gateway-errors.test.ts` 扫描 Gateway 源码里以字面量写出的错误码，每个码都要在名单或不放行清单里，清单里也不能留着源码里已经没有的码；用变量传的码扫不到，改 Gateway 时要一并更新名单。
+  - 其余 API 错误信封：403 说“你没有权限进行这个操作。如有疑问，请到账户中心提交工单。”，404 说“内容不存在或已下架，请返回上一页重新选择。”。
+  - 其他情况（上游透传或不认识的码、5xx、非 JSON 响应，例如网关错误页或 WAF 挑战页）说“服务暂时不可用，请稍后再试。”。错误对象的原始 message 只用于排查，不上屏。
 - 需要特定提示的流程（每日投稿上限、终身会员门、支付通道未开放、工单版本冲突等）先按 status / errorCode 分支，再用自己的文案，不再叠一句通用提示：支付通道未开放时只说通道尚未开放、这次没有创建订单也不会扣款，以及开放后可回到本页开通。
-- QQ 绑定页（`/bind/qq`）自己发请求、不经过 `formatPortalError`，同样只展示中文、原始报错不上屏：断网时显示“网络连接失败，请检查网络后重试。”，回来的不是绑定服务的 JSON（网关错误页、WAF 挑战页）时显示“绑定服务暂时不可用，请稍后重试。”（读登录状态时为“登录状态暂时无法读取，请稍后刷新重试。”）；绑定服务自己返回的中文 `error.message` 原样展示。
+- QQ 绑定页（`/bind/qq`）自己发请求、不经过 `formatPortalError`，同样只展示中文、原始报错不上屏：断网时显示“网络连接失败，请检查网络后重试。”，回来的不是绑定服务的 JSON（网关错误页、WAF 挑战页）时显示“绑定服务暂时不可用，请稍后重试。”（读登录状态时为“登录状态暂时无法读取，请稍后刷新重试。”）；错误信封按同一套规则处理（`envelopeUserMessage`）：扁平信封用 Gateway 的放行名单，嵌套信封只放行 Gateway 在绑定接口（authorize、status、unlink）上按契约转发的 Platform Core 绑定错误码（`BINDING_USER_MESSAGE_CODES`），名单外的码仍显示“绑定服务暂时不可用，请稍后重试。”。
 - 列表加载失败时只由 `ErrorBanner` 说一次，列表区不再叠一句空状态，筛选行的英文进度标签（美食榜的 `SYNCING`）也不再挂着（资料库、互助、美食榜、题库一致）。
 - 详情页分清“不存在”和“暂时读不到”（资料、美食、互助单详情一致）：接口回 404 时只显示 404 页，不叠一句错误；服务不可用、回来的不是 JSON 或断网时显示 `ErrorBanner` 与“重试”，不说内容不存在。互助单详情先回退到列表缓存里的这条单子，回退不到才进入这两种状态。
-- `ErrorBanner` 只展示一条主信息和“重试”。有请求编号时（`portalErrorRequestId`）显示为“错误编号”，方便用户提交工单时附上；目前首页资料库区块和 `/library` 会传入请求编号。
+- `ErrorBanner` 只展示一条主信息和“重试”。有请求编号时（`portalErrorRequestId`）显示为“错误编号”，方便用户提交工单时附上；所有使用 `ErrorBanner` 的页面都会传入请求编号（#554）。
 
 ### 空状态
 - 加载中（`LoadingBlock`）、真实为空（`EmptyBlock`）、加载失败（`ErrorBanner`）分别呈现，中文文案后面不追加 ` / EMPTY`、` / LOADING` 这类英文后缀；资料详情和互助单详情的加载中同样只写“加载中…”。单独使用的英文等宽状态标签（如账户控制台的 `AUTH CHECK…`）属于图纸风格的视觉语言，照常保留。
@@ -192,11 +219,12 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 | `--color-easy` | `semantic.success` | `#3E7C4F` | 难度 < 4.0 |
 | `--color-mid` | `semantic.warning` | `#C79A2A` | 难度 4.0–6.9 |
 | `--color-hard` | `semantic.danger` | `#C2401F` | 难度 ≥ 7.0 |
+| `--color-focus-ring` | `semantic.focus_ring` | `#D84300` | 焦点指示（`outline-focus-ring`、`ring-focus-ring`、搜索框的 `focus:border-focus-ring`），不用强调橙 |
 | `--container-site` | — | `1440px` | 内容框宽度（`max-w-site`），首页、子站页头与正文共用 |
 
-强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `theme.css` 与 `tokens.json` 一致、`globals.css` 不另写 token 里已有的色值、透明度写法在生产构建里有算好的回退、选中文字是橙底墨色字；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
+强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `theme.css` 与 `tokens.json` 一致、`globals.css` 不另写 token 里已有的色值、透明度写法在生产构建里有算好的回退、选中文字是橙底墨色字、焦点色在纸白、白色卡片和墨色底上不低于 3:1、源码里没有强调橙的焦点类名；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
 
-灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，部署流水线目前不跑这一组）。两处共用 `tests/support/color-contrast.ts`。
+灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，CI 作业 `portal-practice-and-binding`）。两处共用 `tests/support/color-contrast.ts`。
 
 字号不小于 12px（`text-xs`），小于 12px 的只留给加了 `aria-hidden` 的纯装饰拉丁标签（最小 10px）。宽字距只加在拉丁 / 等宽文本上，中文用 `tracking-normal`；中英混排的标签把拉丁部分拆进单独的 span，只给它加字距，如 `<span className="tracking-widest">01</span>资料库`。规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 第 4 节。`src/app/typography.test.ts` 按源码检查写死的字号类和文字；`tests/typography.spec.ts` 在首页、五个子站首页和登录页上按计算样式检查，1440 与 390 下都应为 0；题库目录开启时的 /practice 由 `tests/quizcraft-catalog.spec.ts` 检查。`tests/typography.spec.ts` 与 `tests/color-contrast.spec.ts` 打开同一组页面、用同一份网关 mock，都来自 `tests/support/readability-routes.ts`。
 
@@ -208,7 +236,7 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 - 页面间导航：形变过渡系统（共享元素形变 + 塌缩/展开）。
 - `prefers-reduced-motion`：瞬时导航，循环/揭示动画静止。
 - 首屏入场只让内容越来越可见，服务端已画出的内容不在水合后隐藏重播（[#537](https://github.com/jry21223/HENU-Kit-DEV/issues/537)）。首页、子站与题库 Hero 用 `globals.css` 的 `enter-*` CSS keyframes，首帧即开始播放、不等水合，脚本没加载也停在可见态；不要对服务端已画出的内容用 GSAP `from()`。`[data-enter]` 内容块由 `useReveal` 揭示：水合时已画出的块直接显示，之后只揭示客户端新挂上的块。慢 CPU 下由 `tests/first-screen-entrance.spec.ts` 逐帧检查。
-- 滚动入场：统一 `start: "top 60%"`。
+- 滚动入场：统一 `start: "top 60%"`。首页下方模块的 `gsap.from()` 入场在挂载时建，挂载时已经在视口里就不建（`isOnScreen`，`src/lib/gsap.ts`）：从中间位置加载时，已经画出的内容不被藏起来重播；数据到达后也不重建，只给新出现的内容（如刷题模块的掌握度条）做入场（[#557](https://github.com/jry21223/HENU-Kit-DEV/issues/557)）。
 - mock 数据为固定数据，图片使用 picsum 种子外链，SSR 与客户端输出一致；生产构建不预渲染任何 mock 页面（`npm run build` 会检查）。
 - 图片统一用 `components/ui/img.tsx`：默认懒加载、异步解码，首屏关键图由调用方传 `loading="eager"`（主图再加 `fetchPriority="high"`）；调用方用固定宽高或 `aspect-ratio` 占位，加载时不挤动版面（[#548](https://github.com/jry21223/HENU-Kit-DEV/issues/548)，见 `docs/product/DESIGN_SYSTEM.md` §13）。
 
