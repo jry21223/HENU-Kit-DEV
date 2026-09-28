@@ -90,6 +90,7 @@ HENU Kit 是面向河南大学学生的统一校园工具系统，由学生自�
 | `--hk-warning` | `#C79A2A` | 警告状态 |
 | `--hk-danger` | `#C2401F` | 危险/错误状态 |
 | `--hk-info` | `#175CD3` | 信息状态 |
+| `--hk-focus-ring` | `#D84300` | 焦点指示：焦点描边、焦点框、搜索框聚焦时的下划线；纸白、白色卡片、墨色底上都不低于 3:1（见第 13 节） |
 
 ### 文字配色
 
@@ -285,13 +286,13 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
   - 纯文字链接和文字按钮（返回上一级、账户入口、导航与子站标签、页脚链接、资料目录的“展开全部”、答题页的纠错入口）用内边距或 `min-h-11` 撑满点击区；所在的行放不下时配等量负外边距，视觉尺寸和行高不变。标签的下划线挂在文字上，不随点击区下移。桌面导航在平板上同样靠手指点，也按这条做。返回上一级用 `BackLink`，它默认就撑到 44px 高，正文里的回退入口只补间距和边框。
   - 有边框或底色的控件（筛选、切换、按钮、输入框）本身做到 44px 高，看到的范围就是能点的范围。
   - 按 WCAG 2.5.8，只有句中的行内链接（如同意告知里的《用户协议》）和装饰元素例外。`apps/portal/tests/touch-targets.spec.ts` 在 390px 下检查首页、五个子站（含终身会员的求职雷达）、登录页和找回密码页，资料、美食、互助单详情的不存在与暂时读不到状态，资料详情的目录展开与收起，美食详情，资料库书架、未开放的排行榜、收藏夹（未登录时、有收藏的题库收藏夹）和已登录的“我的交易”；首页页头另在 768 / 1024px 下检查。只在开关打开时才出现的控件，由跑这个开关的 spec 检查：题库目录开启时的 /practice 由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查；QuizCraft V2 读取开启（生产配置）时，首页 02 模块的“登录查看”“重试”、/practice/stats 的“登录查看”和排行榜的周期切换由 `apps/portal/tests/personal-stats.spec.ts` 与 `practice-leaderboard-live.spec.ts`（脚本 `test:e2e:stats`）检查。QQ 绑定页由 `apps/portal/tests/qq-binding.spec.ts` 检查，这个 spec 要用 `playwright.qq-binding.config.ts` 单独运行，目前不在部署流水线里。检查逻辑在 `apps/portal/tests/support/touch-targets.ts`。
-  - 下划线输入框和下拉框（账户中心各表单、两个发布页）用 `min-h-11` 撑到 44px 高。发布页图片右上角的删除 × 看到的仍是 20 × 20 的小方块，点击区是以它为中心的 44 × 44；点击区伸出图片 20px，图片之间因此留 20px，点击区不压到相邻的图片或上传按钮（#557）。两个发布页（已登录、有一张图）在 390 与 1440px 下、账户中心的求职画像、新建工单与安全设置表单，也由 `apps/portal/tests/touch-targets.spec.ts` 检查。
+  - 下划线输入框和下拉框（账户中心各表单、两个发布页）用 `min-h-11` 撑到 44px 高。发布页每张缩略图下方是一行与缩略图等宽、44px 高的“删除”文字按钮，不压在图上，也碰不到图片说明、相邻的图和上传格（#557）。复选框按包住它的整行 `<label>` 算点击区，如求职画像的“扫描结果邮件通知”。两个发布页（已登录、有一张图）在 390 与 1440px 下、账户中心的求职画像与新建工单表单和安全设置页，也由 `apps/portal/tests/touch-targets.spec.ts` 检查，发布页另查删除按钮不压到旁边的内容。
   - 首页页头在 768px 起就显示桌面导航，五个模块标签要一行放下：`md` 到 `lg` 之间收窄标签间距、收起“KEEP IN TOUCH”，标签不换行。由 `apps/portal/tests/responsive.spec.ts` 在 768 / 820 / 900 / 1024px 下检查。
 - 手机首屏先给内容，装饰让位：
   - 子站首页（资料库、互助、刷题）在 `lg` 以下压缩标题区、隐藏右侧装饰插图，390 × 844 下第一屏能看到搜索框和至少一条内容（或加载占位）。插图隐藏后，同屏文字不再提到它。互助和刷题由 `apps/portal/tests/responsive.spec.ts` 检查，题库目录开启时的刷题另由 `apps/portal/tests/quizcraft-catalog.spec.ts` 检查，资料库的搜索与筛选由 `apps/portal/tests/library-discovery-ux.spec.ts` 检查。
   - 首页模块只在 `md` 及以上占满一屏，与吸附滚动同时启用；手机上是普通滚动，模块按内容高度排列，不留整屏空白。由 `apps/portal/tests/responsive.spec.ts` 检查。
 - 正文与背景至少 WCAG AA，配色规则见第 3 节“文字配色”。
-- 焦点状态不得移除。自定的焦点描边（`focus-visible:outline-*`、`ring-*`）和输入框聚焦时的下划线用焦点色 `focus-ring`（design-tokens 的 `focus_ring`，#D84300），它在纸白、白色卡片和墨色底上都不低于 3:1（WCAG 2.1 1.4.11）；强调橙在纸白上只有 2.92:1，不用作焦点指示。出错的输入框本身是橙色下划线，聚焦时保持出错的样子。由 `apps/portal/src/app/design-tokens.test.ts` 检查色值和源码里的焦点类名（#557）。
+- 焦点状态不得移除。焦点指示不用强调橙，它在纸白上只有 2.92:1。原先用强调橙的焦点描边、焦点框（`focus-visible:outline-*`、`ring-*`）和搜索框聚焦时的下划线改用焦点色 `focus-ring`（design-tokens 的 `focus_ring`，#D84300），它在纸白、白色卡片和墨色底上都不低于 3:1（WCAG 2.1 1.4.11）；本来就用墨色的焦点指示不变。出错的输入框本身是橙色下划线，聚焦时保持出错的样子。由 `apps/portal/src/app/design-tokens.test.ts` 检查色值和源码里的焦点类名（#557）。
 - 焦点框不能被滚动容器裁掉一截。滚动容器里贴边的控件（子站标签行、首页手机菜单、美食五档榜单导览、账户中心菜单）把焦点框画在自己里面（墨色 2px、向内 2px），键盘聚焦的控件整个滑进容器的可见范围：浏览器聚焦时只要控件露出一截就不再滚动。做法在 `apps/portal/src/lib/navigation/scroller-focus.ts`；子站标签行由 `apps/portal/tests/sub-site-nav.spec.ts` 检查，其余三处由 `apps/portal/tests/focus-rings.spec.ts` 检查。
 - 图片有有意义的 alt，装饰图使用空 alt。
 - 图片加载不挤动版面，也不一次下载整页（[#548](https://github.com/jry21223/HENU-Kit-DEV/issues/548)）：
@@ -303,7 +304,7 @@ font-family: "IBM Plex Mono", "PingFang SC", "Microsoft YaHei", monospace;
 - 动画短而克制，尊重减少动态设置。
   - 装饰性的循环动画（跑马灯、刻度盘、首屏眉标旁旋转的 ®）只在动效开启时播放，减少动态设置下停着不动，® 照常显示；® 由 `apps/portal/tests/first-screen-entrance.spec.ts` 检查。
   - 首屏入场只能让内容越来越可见：服务端已经画出的标题和内容块不在水合后被隐藏再重播，LCP 元素首绘之后不再被隐藏。首页、子站与题库 Hero 用首帧即开始播放的 CSS 动画，脚本没加载也停在可见态；减少动态设置下直接静态展示。慢 CPU 下由 `apps/portal/tests/first-screen-entrance.spec.ts` 逐帧检查。
-  - 首页下方模块的滚动入场（`gsap.from()` 加 ScrollTrigger）一创建就把内容设成隐藏态，只能用在水合时还不在视口里的模块上。页面从中间位置加载（刷新后浏览器恢复滚动位置）时，已经在视口里的模块不再创建入场，互助模块的流程线直接进入流动、刷题模块的解析文字不清空（`isOnScreen`，`apps/portal/src/lib/gsap.ts`；#557）。停在互助、刷题模块和页脚时刷新，由 `first-screen-entrance.spec.ts` 逐帧检查。资料库卡片和美食榜行是数据到了才渲染的，入场不会藏起已经画出的内容。
+  - 首页下方模块的滚动入场（`gsap.from()` 加 ScrollTrigger）一创建就把内容设成隐藏态，只能用在水合时还不在视口里的模块上。页面从中间位置加载（刷新后浏览器恢复滚动位置）时，已经在视口里的模块不再创建入场，互助模块的流程线直接进入流动、刷题模块的解析文字不清空（`isOnScreen`，`apps/portal/src/lib/gsap.ts`；#557）。入场只在模块第一次创建时决定一次：刷题模块在数据到达后重跑，只给新出现的掌握度进度条做生长，不再重放打字机和面板。停在互助、刷题模块和页脚时刷新，由 `first-screen-entrance.spec.ts` 逐帧检查互助的卡片、节点和流程线，刷题的面板和解析文字，页脚的巨型字和底栏。资料库卡片和美食榜行是数据到了才渲染的，入场不会藏起已经画出的内容。
 - 不依赖 Hover 完成核心任务。
 
 ## 14. 统一账户和隐私界面

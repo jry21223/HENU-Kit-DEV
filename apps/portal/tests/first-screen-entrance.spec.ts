@@ -9,12 +9,12 @@ import { routeLibraryCounts } from "./support/library-counts";
  * 晚，这个空档长到肉眼可见（实测 390×844、4× 降速：847ms 可见，2180ms 被清零）。
  *
  * 这里在导航前装一个逐帧采样器（addInitScript 先于页面任何脚本运行），从首帧开始记录
- * 被测元素的 opacity / scaleX，断言每个元素一旦显露就不再往回退。元素按「选择器 + 文字
+ * 被测元素的 opacity / scaleX / 文字长度 / 描线进度，断言每个元素一旦显露就不再往回退。元素按「选择器 + 文字
  * + 同文字里的第几个」追踪而不是按对象身份：水合失败时 React 会换掉整棵 DOM，CSS 动画随新
  * 节点从头播放——对用户同样是一次重播，按身份追踪会把它当成一个新元素放过去。
  */
 
-type Measure = "opacity" | "scaleX" | "textLength";
+type Measure = "opacity" | "scaleX" | "textLength" | "stroke";
 
 interface Probe {
   selector: string;
@@ -51,6 +51,14 @@ async function recordFromFirstFrame(page: Page, probes: Probe[]) {
     const read = (element: Element, measure: Measure) => {
       if (measure === "textLength") return (element.textContent ?? "").length;
       const style = getComputedStyle(element);
+      if (measure === "stroke") {
+        // SVG 线画出来了多少：描线动画用一段与整条线等长的虚线、偏移一整条来藏线；
+        // 实线和流动的短虚线都算画全了。
+        const dashes = style.strokeDasharray.split(/[\s,]+/).map(parseFloat).filter((n) => !Number.isNaN(n));
+        const length = (element as SVGGeometryElement).getTotalLength();
+        if (dashes.length === 0 || dashes[0] < length - 0.5) return 1;
+        return Math.max(0, 1 - Math.abs(parseFloat(style.strokeDashoffset) || 0) / length);
+      }
       if (measure === "opacity") return Number(style.opacity);
       return style.transform === "none" ? 1 : new DOMMatrixReadOnly(style.transform).a;
     };
@@ -370,6 +378,7 @@ test.describe("首页从中间位置加载", () => {
       probes: [
         { selector: "[data-order-card]", measure: "opacity", reveal: "up" },
         { selector: "[data-flow-node]", measure: "opacity", reveal: "up" },
+        { selector: "[data-flow-line], [data-flow-arrow]", measure: "stroke", reveal: "up" },
       ] as Probe[],
     },
     {
@@ -383,7 +392,10 @@ test.describe("首页从中间位置加载", () => {
     {
       name: "页脚",
       section: "footer:has([data-footer-bottom])",
-      probes: [{ selector: "[data-footer-bottom]", measure: "opacity", reveal: "up" }] as Probe[],
+      probes: [
+        { selector: "[data-footer-giant]", measure: "opacity", reveal: "up" },
+        { selector: "[data-footer-bottom]", measure: "opacity", reveal: "up" },
+      ] as Probe[],
     },
   ];
 

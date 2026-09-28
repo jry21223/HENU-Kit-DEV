@@ -379,6 +379,26 @@ async function signInWithUnavailableGateway(page: Page) {
   );
 }
 
+/** 删除图片的按钮只占缩略图下方那一行：不压在缩略图、上传格或图片说明上（#557）。 */
+async function expectImageDeleteClearOfNeighbours(page: Page) {
+  const remove = await page.getByRole("button", { name: "删除图 1" }).boundingBox();
+  expect(remove).not.toBeNull();
+  for (const [name, locator] of [
+    ["缩略图", page.getByRole("img", { name: "图 1" })],
+    ["上传格", page.getByText("+ 上传")],
+    ["图片说明", page.getByText(/≤2MB，可选/)],
+  ] as const) {
+    const box = await locator.boundingBox();
+    expect(box, `${name}不在页面上`).not.toBeNull();
+    const overlaps =
+      remove!.x < box!.x + box!.width &&
+      box!.x < remove!.x + remove!.width &&
+      remove!.y < box!.y + box!.height &&
+      box!.y < remove!.y + remove!.height;
+    expect(overlaps, `“删除图 1”压到了${name}`).toBe(false);
+  }
+}
+
 for (const width of [390, 1440]) {
   test(`${width}px 两个发布页：输入框、校区与分类切换、侧栏按钮、删除菜品和删除图片都不小于 44×44（#557）`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -390,12 +410,14 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole("button", { name: "删除图 1" })).toBeVisible();
     await expect(page.getByRole("button", { name: "删除菜品 1" })).toBeVisible();
     await expectTouchTargets(page, "/food/publish（已登录，有图）");
+    await expectImageDeleteClearOfNeighbours(page);
 
     await page.goto("/campus/publish");
     await waitForHydration(page);
     await page.locator('input[type="file"]').setInputFiles({ name: "item.png", mimeType: "image/png", buffer: TINY_PNG });
     await expect(page.getByRole("button", { name: "删除图 1" })).toBeVisible();
     await expectTouchTargets(page, "/campus/publish（已登录，有图）");
+    await expectImageDeleteClearOfNeighbours(page);
   });
 }
 
@@ -437,5 +459,6 @@ test("账户中心的表单：求职画像、新建工单和安全设置的输�
   await page.goto("/account/security");
   await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "安全设置" })).toBeVisible();
-  await expectTouchTargets(page, "/account/security（表单）", { within: "main form" });
+  // 安全设置没有 form，改密码和会话管理都直接放在正文里。
+  await expectTouchTargets(page, "/account/security（正文）", { within: "main" });
 });

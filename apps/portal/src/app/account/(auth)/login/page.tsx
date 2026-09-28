@@ -146,6 +146,8 @@ function LoginForm() {
   const [csrf, setCsrf] = useState("");
 
   function selectTab(next: AuthTab) {
+    // 再点已选中的标签、或按 Home / End 落回它自己：不算切换，已填的提示和错误都留着。
+    if (next === tab) return;
     setTab(next);
     setCsrf("");
     if (next === "register") setMode("code");

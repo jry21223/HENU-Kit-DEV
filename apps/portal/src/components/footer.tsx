@@ -88,6 +88,7 @@ export default function Footer() {
         <div className="flex flex-1 items-center">
           <p
             ref={giantRef}
+            data-footer-giant
             aria-hidden
             className="text-outline font-display text-[clamp(3rem,11vw,10rem)] leading-none font-bold whitespace-nowrap select-none"
           >

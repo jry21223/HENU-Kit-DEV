@@ -156,23 +156,18 @@ function PublishForm() {
           <p className="mb-1 font-mono text-xs text-ink/60">
             图片（{images.length}/3，≤2MB，可选）
           </p>
-          <div className="flex flex-wrap items-start gap-5">
+          <div className="flex flex-wrap items-start gap-3">
             {images.map((src, i) => (
-              <div key={i} className="relative">
+              <div key={i} className="flex w-28 flex-col">
                 <Img src={src} alt={`图 ${i + 1}`} label={`FIG.${i + 1}`} className="h-20 w-28" />
-                {/* 看到的 × 仍是 20×20 的小方块；点击区是以它为中心的 44×44（DESIGN_SYSTEM §13）。 */}
+                {/* 删除是缩略图下方整行 44px 高的文字按钮，不压在图上（DESIGN_SYSTEM §13，#557）。 */}
                 <button
                   type="button"
                   onClick={() => setImages((imgs) => imgs.filter((_, j) => j !== i))}
-                  className="group absolute -right-5 -top-5 flex h-11 w-11 items-center justify-center"
+                  className="flex min-h-11 w-full items-center justify-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
                   aria-label={`删除图 ${i + 1}`}
                 >
-                  <span
-                    aria-hidden
-                    className="flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs group-hover:border-accent group-hover:text-accent-text"
-                  >
-                    ×
-                  </span>
+                  删除
                 </button>
               </div>
             ))}

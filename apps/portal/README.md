@@ -198,9 +198,10 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 | `--color-easy` | `semantic.success` | `#3E7C4F` | 难度 < 4.0 |
 | `--color-mid` | `semantic.warning` | `#C79A2A` | 难度 4.0–6.9 |
 | `--color-hard` | `semantic.danger` | `#C2401F` | 难度 ≥ 7.0 |
+| `--color-focus-ring` | `semantic.focus_ring` | `#D84300` | 焦点指示（`outline-focus-ring`、`ring-focus-ring`、搜索框的 `focus:border-focus-ring`），不用强调橙 |
 | `--container-site` | — | `1440px` | 内容框宽度（`max-w-site`），首页、子站页头与正文共用 |
 
-强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `theme.css` 与 `tokens.json` 一致、`globals.css` 不另写 token 里已有的色值、透明度写法在生产构建里有算好的回退、选中文字是橙底墨色字；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
+强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `theme.css` 与 `tokens.json` 一致、`globals.css` 不另写 token 里已有的色值、透明度写法在生产构建里有算好的回退、选中文字是橙底墨色字、焦点色在纸白、白色卡片和墨色底上不低于 3:1、源码里没有强调橙的焦点类名；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
 
 灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，部署流水线目前不跑这一组）。两处共用 `tests/support/color-contrast.ts`。
 
@@ -214,7 +215,7 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 - 页面间导航：形变过渡系统（共享元素形变 + 塌缩/展开）。
 - `prefers-reduced-motion`：瞬时导航，循环/揭示动画静止。
 - 首屏入场只让内容越来越可见，服务端已画出的内容不在水合后隐藏重播（[#537](https://github.com/jry21223/HENU-Kit-DEV/issues/537)）。首页、子站与题库 Hero 用 `globals.css` 的 `enter-*` CSS keyframes，首帧即开始播放、不等水合，脚本没加载也停在可见态；不要对服务端已画出的内容用 GSAP `from()`。`[data-enter]` 内容块由 `useReveal` 揭示：水合时已画出的块直接显示，之后只揭示客户端新挂上的块。慢 CPU 下由 `tests/first-screen-entrance.spec.ts` 逐帧检查。
-- 滚动入场：统一 `start: "top 60%"`。
+- 滚动入场：统一 `start: "top 60%"`。首页下方模块的 `gsap.from()` 入场只在模块第一次创建、且还不在视口里时才建（`isOnScreen`，`src/lib/gsap.ts`）：从中间位置加载时，已经画出的内容不被藏起来重播（[#557](https://github.com/jry21223/HENU-Kit-DEV/issues/557)）。
 - mock 数据为固定数据，图片使用 picsum 种子外链，SSR 与客户端输出一致；生产构建不预渲染任何 mock 页面（`npm run build` 会检查）。
 - 图片统一用 `components/ui/img.tsx`：默认懒加载、异步解码，首屏关键图由调用方传 `loading="eager"`（主图再加 `fetchPriority="high"`）；调用方用固定宽高或 `aspect-ratio` 占位，加载时不挤动版面（[#548](https://github.com/jry21223/HENU-Kit-DEV/issues/548)，见 `docs/product/DESIGN_SYSTEM.md` §13）。
 

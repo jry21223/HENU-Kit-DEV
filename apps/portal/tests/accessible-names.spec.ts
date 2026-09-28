@@ -203,6 +203,18 @@ test("登录 / 注册是一组标签页，方向键在两个标签间切换，�
   await page.keyboard.press("End");
   await expect(register).toBeFocused();
 
+  // 落回已选中的标签（End、再点一下）不算切换：刚出的字段错误都还在。
+  await page.getByRole("tabpanel", { name: "注册" }).getByRole("button", { name: "注册", exact: true }).click();
+  // Next 自带的路由播报也是 role="alert"，只看正文里的提示。
+  const alerts = page.locator("main").getByRole("alert");
+  await expect(alerts.first()).toBeVisible();
+  const shown = await alerts.allTextContents();
+  await register.focus();
+  await page.keyboard.press("End");
+  await register.click();
+  await expect(register).toHaveAttribute("aria-selected", "true");
+  await expect(alerts).toHaveText(shown);
+
   // 登录方式是一对开关按钮，读得出哪一个按下了。
   await signIn.click();
   await expect(page.getByRole("button", { name: "验证码登录" })).toHaveAttribute("aria-pressed", "true");

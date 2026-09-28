@@ -223,7 +223,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
               </nav>
             </aside>
 
-            <div className="min-w-0 flex-1 px-5 py-10 md:px-8">{children}</div>
+            <main className="min-w-0 flex-1 px-5 py-10 md:px-8">{children}</main>
           </div>
         </AccountConsoleSessionProvider>
       ) : null}

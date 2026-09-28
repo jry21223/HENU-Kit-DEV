@@ -131,26 +131,37 @@ test.describe("Portal mobile layout", () => {
 });
 
 test.describe("home header on tablets (#557)", () => {
-  for (const width of [768, 820, 900, 1024]) {
-    test(`${width}px keeps each desktop nav label on one line`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 });
-      await page.route("**/api/v1/**", (route) => route.fulfill({ status: 401, json: { error: "not authenticated" } }));
-      await page.goto("/", { waitUntil: "domcontentloaded" });
-      await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
+  for (const signedIn of [false, true]) {
+    for (const width of [768, 820, 900, 1024]) {
+      test(`${width}px keeps each desktop nav label on one line${signedIn ? " when signed in" : ""}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.route("**/api/v1/**", (route) => route.fulfill({ status: 401, json: { error: "not authenticated" } }));
+        if (signedIn) {
+          // 登录后账户入口是头像加最宽 80px 的昵称，比“登录/注册”宽约 60px。
+          await page.route("**/api/v1/session", (route) =>
+            route.fulfill({
+              json: { user_id: "11111111-1111-4111-8111-111111111111", display_name: "河南大学计算机学院同学", expires_at: "2030-01-01T00:00:00Z" },
+            })
+          );
+        }
+        await page.goto("/", { waitUntil: "domcontentloaded" });
+        await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
+        if (signedIn) await expect(page.locator('header a[aria-label$="的账户概览"]:visible')).toHaveCount(1);
 
-      for (const href of ["/library", "/practice", "/food", "/campus", "/career"]) {
-        const label = page.locator(`header nav a[href="${href}"] > span`).first();
-        await expect(label).toBeVisible();
-        const box = await label.boundingBox();
-        // 一行是 16px 行高加上下 4px 内边距；折成两行时是 40px。
-        expect(box?.height, `${await label.textContent()} 折行了`).toBeLessThan(32);
-      }
-      const header = await page.locator("header > div").evaluate((row) => ({
-        scroll: row.scrollWidth,
-        client: row.clientWidth,
-      }));
-      expect(header.scroll).toBeLessThanOrEqual(header.client + 1);
-      await expectNoPageOverflow(page);
-    });
+        for (const href of ["/library", "/practice", "/food", "/campus", "/career"]) {
+          const label = page.locator(`header nav a[href="${href}"] > span`).first();
+          await expect(label).toBeVisible();
+          const box = await label.boundingBox();
+          // 一行是 16px 行高加上下 4px 内边距；折成两行时是 40px。
+          expect(box?.height, `${await label.textContent()} 折行了`).toBeLessThan(32);
+        }
+        const header = await page.locator("header > div").evaluate((row) => ({
+          scroll: row.scrollWidth,
+          client: row.clientWidth,
+        }));
+        expect(header.scroll).toBeLessThanOrEqual(header.client + 1);
+        await expectNoPageOverflow(page);
+      });
+    }
   }
 });

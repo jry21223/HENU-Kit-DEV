@@ -15,52 +15,65 @@ const TYPE_TEXT =
 // 只写已上线的能力；AI 推题上线（#530）后再补充相关介绍。
 const FEATURES = ["按科目搜索题库", "随机、难题、章节、收藏四种练习", "掌握度按题库计算，随作答更新"];
 
+/** 打字机与面板淡入：只在模块水合时还不在视口里时创建（#557）。 */
+function playOnScroll(text: HTMLParagraphElement | null) {
+  // 打字机：滚动进入时逐字输出（动画启用时先清空面板）
+  if (text) text.textContent = "";
+  const counter = { value: 0 };
+  gsap.to(counter, {
+    value: TYPE_TEXT.length,
+    duration: 4,
+    ease: "none",
+    scrollTrigger: {
+      trigger: text,
+      start: "top 60%",
+      toggleActions: "restart none none restart",
+    },
+    onUpdate() {
+      if (text) text.textContent = TYPE_TEXT.slice(0, Math.round(counter.value));
+    },
+  });
+
+  // 面板整体淡入
+  gsap.from("[data-terminal]", {
+    y: 40,
+    opacity: 0,
+    duration: 0.9,
+    ease: "power3.out",
+    scrollTrigger: {
+      trigger: "[data-terminal]",
+      start: "top 60%",
+      toggleActions: "play none none reverse",
+    },
+  });
+}
+
 export default function SectionPractice() {
   const sectionRef = useRef<HTMLElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
   const { state, retry } = usePersonalPracticeStats();
 
-  // 进度条只在真实作答事实就绪后渲染；动画在数据到达后重建。
+  // 进度条只在真实作答事实就绪后渲染；数据到达后只给它们补上生长动画。
   const masteryBars =
     state.status === "ready" || state.status === "empty"
       ? state.data.mastery.slice(0, 3)
       : [];
   const barsReady =
     state.status === "ready" || state.status === "empty";
+  // 入场只在第一次创建时决定一次（#557）。那时模块已经在视口里（从中间位置加载），解析文字和
+  // 面板是服务端画好的，不清空也不重播。数据到达后的重跑只给新出现的进度条做生长，不再动打字机和面板。
+  const entrance = useRef<"animated" | "static" | null>(null);
 
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
-        // 从中间位置加载、模块已经在视口里：解析文字、进度条和面板是服务端画好的，
-        // 不清空也不重播（#557）。上一轮打字可能停在半截，补回全文。
-        if (isOnScreen(sectionRef.current)) {
-          if (textRef.current) textRef.current.textContent = TYPE_TEXT;
-          return;
+        if (entrance.current === null) {
+          entrance.current = isOnScreen(sectionRef.current) ? "static" : "animated";
+          if (entrance.current === "animated") playOnScroll(textRef.current);
         }
 
-        // 打字机：滚动进入时逐字输出（动画启用时先清空面板）
-        if (textRef.current) textRef.current.textContent = "";
-        const counter = { value: 0 };
-        gsap.to(counter, {
-          value: TYPE_TEXT.length,
-          duration: 4,
-          ease: "none",
-          scrollTrigger: {
-            trigger: textRef.current,
-            start: "top 60%",
-            toggleActions: "restart none none restart",
-          },
-          onUpdate() {
-            if (textRef.current)
-              textRef.current.textContent = TYPE_TEXT.slice(
-                0,
-                Math.round(counter.value)
-              );
-          },
-        });
-
-        // 掌握度进度条：从 0 生长。
+        // 掌握度进度条：数据到了才渲染，此前没画过，从 0 生长。
         // 注意 trigger 用 section 而非 bar 自身——整屏模块中位于底部的元素，
         // 其 "top 60%" 触发线会在模块切换过渡途中被穿过，导致进入/离开动画观感颠倒。
         gsap.utils.toArray<HTMLElement>("[data-bar]").forEach((bar) => {
@@ -75,19 +88,6 @@ export default function SectionPractice() {
               toggleActions: "play none none reverse",
             },
           });
-        });
-
-        // 面板整体淡入
-        gsap.from("[data-terminal]", {
-          y: 40,
-          opacity: 0,
-          duration: 0.9,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: "[data-terminal]",
-            start: "top 60%",
-            toggleActions: "play none none reverse",
-          },
         });
       });
       return () => mm.revert();

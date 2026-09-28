@@ -146,6 +146,12 @@ describe("焦点环（#557）", () => {
     expect(contrast(token("semantic", "focus_ring"), background())).toBeGreaterThanOrEqual(3);
   });
 
+  it("tokens.css 的 --hk-focus-ring 就是 tokens.json 的 focus_ring", () => {
+    // 上面那条按色值集合比，焦点色和强调橙都还以别的名字在，写错成旧的橙色也发现不了。
+    const ring = TOKENS_JSON.color.semantic.focus_ring.$value.toLowerCase();
+    expect(TOKENS_CSS.match(/--hk-focus-ring:\s*([^;]+);/)?.[1].trim().toLowerCase()).toBe(ring);
+  });
+
   it("焦点环有自己的 Tailwind 颜色 focus-ring", () => {
     const theme = readFileSync(path.resolve(__dirname, "theme.css"), "utf8");
     const ring = TOKENS_JSON.color.semantic.focus_ring.$value.toLowerCase();

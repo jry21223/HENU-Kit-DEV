@@ -544,28 +544,23 @@ export default function FoodPublishPage() {
               <p className="font-mono text-xs text-ink/60">
                 图片（{images.length}/{MAX_IMAGES}，单张 ≤2MB，可选）
               </p>
-              <div className="mt-4 flex flex-wrap items-start gap-5">
+              <div className="mt-4 flex flex-wrap items-start gap-3">
                 {images.map((image, index) => (
-                  <div key={index} className="relative">
+                  <div key={index} className="flex w-28 flex-col">
                     <Img
                       src={image.preview}
                       alt={`图 ${index + 1}`}
                       label={`FIG.${index + 1}`}
                       className="h-20 w-28"
                     />
-                    {/* 看到的 × 仍是 20×20 的小方块；点击区是以它为中心的 44×44（DESIGN_SYSTEM §13）。 */}
+                    {/* 删除是缩略图下方整行 44px 高的文字按钮，不压在图上（DESIGN_SYSTEM §13，#557）。 */}
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="group absolute -right-5 -top-5 flex h-11 w-11 items-center justify-center"
+                      className="flex min-h-11 w-full items-center justify-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
                       aria-label={`删除图 ${index + 1}`}
                     >
-                      <span
-                        aria-hidden
-                        className="flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs group-hover:border-accent group-hover:text-accent-text"
-                      >
-                        ×
-                      </span>
+                      删除
                     </button>
                   </div>
                 ))}
