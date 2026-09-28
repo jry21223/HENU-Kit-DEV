@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { mockGuestGateway, mockSignedInGateway, SIGNED_IN_SESSION } from "./support/gateway";
 import type { Locator, Page } from "@playwright/test";
 
 const MODULE_ROUTES = ["/campus", "/career", "/food", "/library", "/practice"] as const;
@@ -135,15 +136,10 @@ test.describe("home header on tablets (#557)", () => {
     for (const width of [768, 820, 900, 1024]) {
       test(`${width}px keeps each desktop nav label on one line${signedIn ? " when signed in" : ""}`, async ({ page }) => {
         await page.setViewportSize({ width, height: 900 });
-        await page.route("**/api/v1/**", (route) => route.fulfill({ status: 401, json: { error: "not authenticated" } }));
-        if (signedIn) {
-          // 登录后账户入口是头像加最宽 80px 的昵称，比“登录/注册”宽约 60px。
-          await page.route("**/api/v1/session", (route) =>
-            route.fulfill({
-              json: { user_id: "11111111-1111-4111-8111-111111111111", display_name: "河南大学计算机学院同学", expires_at: "2030-01-01T00:00:00Z" },
-            })
-          );
-        }
+        // 登录后账户入口是头像加最宽 80px 的昵称，比“登录/注册”宽约 60px。
+        await (signedIn
+          ? mockSignedInGateway(page, { ...SIGNED_IN_SESSION, display_name: "河南大学计算机学院同学" })
+          : mockGuestGateway(page));
         await page.goto("/", { waitUntil: "domcontentloaded" });
         await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
         if (signedIn) await expect(page.locator('header a[aria-label$="的账户概览"]:visible')).toHaveCount(1);

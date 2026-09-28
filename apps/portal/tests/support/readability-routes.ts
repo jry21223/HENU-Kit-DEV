@@ -1,9 +1,11 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./gateway";
 import { routeLibraryCounts } from "./library-counts";
 
 /**
- * 可读性检查（#536）共用的页面和网关 mock：tests/color-contrast.spec.ts 查文字对比度，
- * tests/typography.spec.ts 查字号与中文字距，两处打开同一组页面、看同样的内容。
+ * 有内容时的页面和网关 mock（#536、#553）：tests/color-contrast.spec.ts 查文字对比度，
+ * tests/typography.spec.ts 查字号与中文字距，两处打开同一组页面、看同样的内容；
+ * focus-rings、touch-targets、ui-polish 也用这份内容。
  *
  * 网关按有内容的回应 mock，列表、筛选、卡片和档位标签都渲染出来。
  */
@@ -11,7 +13,7 @@ import { routeLibraryCounts } from "./library-counts";
 /** 加载失败的投稿照片：列表里换成回退图块，图块上的小字也要检查。 */
 const BROKEN_PHOTO = "/readability-broken-photo.jpg";
 
-const FOOD_POSTS = [
+export const FOOD_POSTS = [
   { id: "hang-1", campus: "minglun", tags: ["夜市", "夯"], shop: { name: "鼓楼夜市" }, images: [BROKEN_PHOTO] },
   { id: "top-1", campus: "jinming", tags: ["夜市", "顶级"], shop: { name: "西司夜市" } },
   { id: "elite-1", campus: "minglun", tags: ["老字号", "人上人"], shop: { name: "第一楼" } },
@@ -30,7 +32,7 @@ const FOOD_POSTS = [
   ...post,
 }));
 
-const CAMPUS_ITEMS = [
+export const CAMPUS_ITEMS = [
   {
     id: "campus-express", type: "help", category: "express", title: "代取快递到南门", desc: "两件小包裹",
     price: 3, seller: "同学甲", credit: 0, dealsDone: 0, wants: 0, place: "明伦校区", status: "open", time: "2026-09-20",
@@ -41,7 +43,7 @@ const CAMPUS_ITEMS = [
   },
 ];
 
-const LIBRARY_MATERIALS = [
+export const LIBRARY_MATERIALS = [
   {
     id: "library-limits", type: "note", subject: "高等数学",
     title: "极限复习笔记", author: "资料库收录", intro: "", toc: [], pages: [],
@@ -54,17 +56,17 @@ const LIBRARY_MATERIALS = [
   },
 ];
 
-/** 未登录；美食、互助、资料库给出有内容的回应，其余接口不可用。 */
-export async function mockGatewayWithContent(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_readability_unavailable" },
-    })
-  );
-  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, json: {} }));
+/**
+ * 未登录；美食、互助、资料库给出有内容的回应，其余接口不可用。美食榜可以换成 spec 自己的一组
+ * （如榜单对齐要两家同档的店）。
+ */
+export async function mockGatewayWithContent(
+  page: Page,
+  { foodPosts = FOOD_POSTS }: { foodPosts?: ReadonlyArray<object> } = {}
+) {
+  await mockGuestGateway(page, "req_readability_unavailable");
   await page.route("**/api/v1/food/posts", (route) =>
-    route.fulfill({ json: { posts: FOOD_POSTS, request_id: "req_readability_food" } })
+    route.fulfill({ json: { posts: foodPosts, request_id: "req_readability_food" } })
   );
   await page.route("**/api/v1/campus/items", (route) =>
     route.fulfill({ json: { items: CAMPUS_ITEMS, request_id: "req_readability_campus" } })

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 
 /**
  * 全站只有一种标题格式（#544）：`页面名 — 模块名 | HENU Kit`；模块首页和不属于任何模块的
@@ -43,45 +44,17 @@ const PAGES = [
   { path: "/this-page-does-not-exist", title: "页面不存在 | HENU Kit" },
 ];
 
-/**
- * 默认已登录（否则账户页和发布页会先跳去登录页），其余接口一律不可用：静态标题不依赖接口
- * 数据，详情页拿不到内容时停在失败态，标签页上仍是该类页面的名字。访客页（guest）的会话
- * 接口返回 401。
- */
-async function mockGateway(page: Page, { guest = false }: { guest?: boolean } = {}) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" },
-        request_id: "req_titles_unavailable",
-      }),
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    guest
-      ? route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({}) })
-      : route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify({
-            user_id: "11111111-1111-4111-8111-111111111111",
-            display_name: "小河同学",
-            expires_at: "2030-01-01T00:00:00Z",
-          }),
-        })
-  );
-}
-
 test("no two pages share a title and every title follows the one site format", () => {
   const titles = PAGES.map((entry) => entry.title);
   for (const title of titles) expect(title).toMatch(TITLE_FORMAT);
   expect(new Set(titles).size).toBe(titles.length);
 });
 
+// 默认已登录（否则账户页和发布页会先跳去登录页），其余接口一律不可用：静态标题不依赖接口数据，
+// 详情页拿不到内容时停在失败态，标签页上仍是该类页面的名字。访客页（guest）未登录。
 for (const { path, title, guest } of PAGES) {
   test(`${path} is titled "${title}"`, async ({ page }) => {
-    await mockGateway(page, { guest });
+    await (guest ? mockGuestGateway(page) : mockSignedInGateway(page));
     await page.goto(path, { waitUntil: "domcontentloaded" });
     // 冷启动时路由要先编译；超时只用来盖住 dev 的编译时间。
     await expect(page).toHaveTitle(title, { timeout: 30_000 });
@@ -182,7 +155,7 @@ const DETAILS = [
 
 for (const detail of DETAILS) {
   test(`${detail.path} names its content in the title once it loads`, async ({ page }) => {
-    await mockGateway(page);
+    await mockSignedInGateway(page);
     await page.route(detail.endpoint, (route) =>
       route.fulfill({ contentType: "application/json", body: JSON.stringify(detail.body) })
     );
@@ -230,7 +203,7 @@ test("a content name with irregular spacing is titled as the tab shows it, witho
     });
   });
   const post = { ...FOOD_POST, id: "titles-post-spaced", shop: { name: " 鼓楼  夜市 " } };
-  await mockGateway(page);
+  await mockSignedInGateway(page);
   await page.route(`**/api/v1/food/posts/${post.id}`, (route) =>
     route.fulfill({ json: { post, comments: [], request_id: "req_titles_spaced" } })
   );
@@ -258,7 +231,7 @@ const NEXT_MATERIAL = {
 };
 
 test("moving on to another item of the same kind drops the previous item's name", async ({ page }) => {
-  await mockGateway(page);
+  await mockSignedInGateway(page);
   await page.route("**/api/v1/library/materials", (route) =>
     route.fulfill({
       contentType: "application/json",

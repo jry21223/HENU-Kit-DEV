@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
 import { routeLibraryCounts } from "./support/library-counts";
 
 /**
@@ -241,16 +242,7 @@ test.describe("首屏入场不重播（慢 CPU）", () => {
       { selector: "main [data-enter]", measure: "opacity", reveal: "up" },
     ];
     // 未登录，题库与学习数据都不可用：Hero 的文案不依赖接口数据。
-    await page.route("**/api/v1/**", (route) =>
-      route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_entrance" }),
-      })
-    );
-    await page.route("**/api/v1/session", (route) =>
-      route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
-    );
+    await mockGuestGateway(page);
     await recordFromFirstFrame(page, probes);
     await throttleCPU(page);
     await page.goto("/practice", { waitUntil: "commit" });
@@ -401,10 +393,7 @@ test.describe("首页从中间位置加载", () => {
 
   for (const homeModule of MODULES) {
     test(`停在${homeModule.name}时刷新，已经画出的内容不会先消失再出现`, async ({ page }) => {
-      await page.route("**/api/v1/**", (route) =>
-        route.fulfill({ status: 503, json: { error: "upstream_unavailable", request_id: "req_mid_page" } })
-      );
-      await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, json: {} }));
+      await mockGuestGateway(page);
       await page.goto("/");
       await page.waitForSelector("html[data-scroll-memory='ready']", { state: "attached", timeout: 90_000 });
       const top = await page.locator(homeModule.section).first().evaluate((section) => section.getBoundingClientRect().top + window.scrollY);

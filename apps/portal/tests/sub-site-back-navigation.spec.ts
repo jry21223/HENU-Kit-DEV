@@ -463,7 +463,8 @@ test("再次进入更深的页面时从顶部开始，不继承它自己的位�
   expect(await scrollY(page)).toBeLessThan(40);
   expect(departedFrom).toBeGreaterThan(1400);
 
-  // 在条目页留下一个位置（这条路径因此有了记忆）。
+  // 在条目页留下一个位置（这条路径因此有了记忆）。详情是挂载后才渲染的，先等它长到滚得动。
+  await waitForRoomToScroll(page, 900);
   await scrollTo(page, 900);
   const leftAtVenue = await scrollY(page);
   expect(leftAtVenue).toBeGreaterThan(800);

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
 import { expectTouchTargets } from "./support/touch-targets";
 
 const successPayload = {
@@ -145,16 +146,7 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
   test("390px sign-in and retry buttons for personal stats are at least 44×44 (#543)", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     let statsStatus = 401;
-    await page.route("**/api/v1/**", (route) =>
-      route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" } }),
-      })
-    );
-    await page.route("**/api/v1/session", (route) =>
-      route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
-    );
+    await mockGuestGateway(page);
     await page.route("**/api/v1/practice/stats*", (route) =>
       route.fulfill({
         status: statsStatus,

@@ -15,6 +15,9 @@ const careerWorkflow = readFileSync(
 const rootPackage = JSON.parse(
   readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
 );
+const portalPackage = JSON.parse(
+  readFileSync(new URL("../../../apps/portal/package.json", import.meta.url), "utf8"),
+);
 const portalDockerfile = readFileSync(
   new URL("../../../apps/portal/Dockerfile", import.meta.url),
   "utf8",
@@ -220,6 +223,15 @@ test("release artifacts are blocked on the cumulative cross-product OAuth journe
   assert.match(runtimePackager, /oauth-continuation-release-gate\.sh/);
   assert.match(runtimePackager, /git -C "\$repo_root" -c tar\.umask=0022 archive --format=tar "\$release_sha"/);
   assert.match(runtimePackager, /release-gates\/oauth-continuation\.env/);
+});
+
+test("CI runs the QuizCraft catalog, Practice and QQ binding browser groups beside portal-responsive", () => {
+  for (const group of ["quizcraft-catalog", "practice", "qq-binding"]) {
+    assert.match(workflow, new RegExp(`pnpm --filter @henukit/portal test:e2e:${group}\\n`));
+  }
+  assert.match(workflow, /\n  portal-practice-and-binding:\n[\s\S]*?timeout-minutes: 20\n/);
+  assert.match(portalPackage.scripts["test:e2e:qq-binding"], /--config playwright\.qq-binding\.config\.ts/);
+  assert.match(portalPackage.scripts["test:e2e:practice"], /tests\/practice-transition\.spec\.ts/);
 });
 
 test("CI runs the enabled QuizCraft V2 ranking behavior spec", () => {

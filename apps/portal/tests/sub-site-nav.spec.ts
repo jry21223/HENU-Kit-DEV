@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
 import { tabThroughScroller } from "./support/focus-rings";
 
 /**
@@ -45,23 +46,6 @@ const WIDE_VIEWPORTS = [1440, 1920] as const;
 /** 内容框 1440px 居中，md 起左右各留 32px：宽屏下左缘应在这里。 */
 const frameLeft = (width: number) => Math.max(0, (width - 1440) / 2) + 32;
 
-/** 未登录，其余接口一律不可用：页头和正文标题不依赖接口数据。 */
-async function mockGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" },
-        request_id: "req_nav_unavailable",
-      }),
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
-  );
-}
-
 const backLink = (page: Page) => page.locator("header [data-back-link]").first();
 
 async function leftEdge(locator: Locator): Promise<number> {
@@ -73,7 +57,7 @@ async function leftEdge(locator: Locator): Promise<number> {
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
 test.beforeEach(async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
 });
 
 for (const width of WIDE_VIEWPORTS) {

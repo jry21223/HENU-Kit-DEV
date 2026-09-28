@@ -1,14 +1,10 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { routeLibraryCounts } from "./support/library-counts";
+import { expect, test, type Locator } from "@playwright/test";
+import { mockGatewayWithContent, waitForHydration } from "./support/readability-routes";
 
 /**
  * UI 细节打磨（#549）：首页榜单对齐、档案卡缩写只作装饰、互助筛选分组、求职雷达标题
  * 不拆词且首屏不重复、验证码占位文字不加宽字距、登录卡不重复邮箱后缀。
  */
-
-async function waitForHydration(page: Page) {
-  await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
-}
 
 /** 标题里每个字所在行的顶边（px）：顶边相同的字排在同一行。 */
 async function charLineTops(heading: Locator): Promise<Record<string, number>> {
@@ -28,6 +24,7 @@ async function charLineTops(heading: Locator): Promise<Record<string, number>> {
   });
 }
 
+// 首页榜单对齐要两家同档的店，美食榜用这一组；互助和资料库用共享的内容。
 const FOOD_POSTS = [
   { id: "hang-1", tags: ["夜市", "夯"], shop: { name: "鼓楼夜市" } },
   { id: "hang-2", tags: ["夜市", "夯"], shop: { name: "西司夜市" } },
@@ -48,61 +45,10 @@ const FOOD_POSTS = [
   ...post,
 }));
 
-const LIBRARY_MATERIALS = [
-  {
-    id: "library-limits", type: "note", subject: "高等数学",
-    title: "极限复习笔记", author: "资料库收录", intro: "", toc: [], pages: [],
-    price: 0, previewPages: 0, downloads: 12, downloadAvailable: true, fileSize: 4096,
-  },
-];
-
-const CAMPUS_ITEMS = [
-  {
-    id: "campus-express", type: "help", category: "express", title: "代取快递到南门", desc: "两件小包裹",
-    price: 3, seller: "同学甲", credit: 0, dealsDone: 0, wants: 0, place: "明伦校区", status: "open", time: "2026-09-20",
-  },
-];
-
-/** 未登录；美食、资料库、互助给出内容，其余接口不可用。 */
-async function mockGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_polish_unavailable" },
-    })
-  );
-  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, json: {} }));
-  await page.route("**/api/v1/food/posts", (route) =>
-    route.fulfill({ json: { posts: FOOD_POSTS, request_id: "req_polish_food" } })
-  );
-  await page.route("**/api/v1/campus/items", (route) =>
-    route.fulfill({ json: { items: CAMPUS_ITEMS, request_id: "req_polish_campus" } })
-  );
-  await page.route("**/api/v1/campus/categories", (route) =>
-    route.fulfill({ json: { categories: [], request_id: "req_polish_categories" } })
-  );
-  await routeLibraryCounts(page, LIBRARY_MATERIALS);
-  await page.route("**/api/v1/library/materials", (route) =>
-    route.fulfill({
-      json: {
-        materials: LIBRARY_MATERIALS,
-        statistics: {
-          releaseId: "0123456789abcdef0123456789abcdef01234567-0123456789abcdef",
-          materialCount: LIBRARY_MATERIALS.length,
-          downloadStarts: 12,
-          countingSince: "2026-08-11T00:00:00Z",
-          asOf: "2026-08-11T01:00:00Z",
-        },
-        request_id: "req_polish_library",
-      },
-    })
-  );
-}
-
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
 test.beforeEach(async ({ page }) => {
-  await mockGateway(page);
+  await mockGatewayWithContent(page, { foodPosts: FOOD_POSTS });
 });
 
 test("home 03 ranking lines every shop name up on one left edge", async ({ page }) => {

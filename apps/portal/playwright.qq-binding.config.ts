@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests", testMatch: "qq-binding.spec.ts", workers: 1,
+  forbidOnly: !!process.env.CI, retries: process.env.CI ? 2 : 0, reporter: process.env.CI ? "github" : "list",
   use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:3197", trace: "retain-on-failure" },
   webServer: {
     command: "pnpm exec next dev -p 3197 --hostname 127.0.0.1",

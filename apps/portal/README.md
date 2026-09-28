@@ -35,6 +35,27 @@ npm run dev
 | `npm run lint` | ESLint 检查（必须通过） |
 | `npm run start` | 生产服务器 |
 
+## 端到端测试
+
+浏览器测试按组运行（`pnpm --filter @henukit/portal <脚本>`）。部署流水线（`.github/workflows/deploy-henukit.yml`）用两个作业并行跑：
+
+| 脚本 | 内容 | CI 作业 |
+|---|---|---|
+| `test:e2e:responsive` | 响应式、可读性、点击区、标题、错误与空状态等 | `portal-responsive` |
+| `test:e2e:navigation` | 首页整屏滚动、手势与返回位置 | `portal-responsive` |
+| `test:e2e:stats` | QuizCraft V2 读取开启时的学习统计与排行榜（3101 端口） | `portal-responsive` |
+| `test:e2e:food` | 美食榜、详情与投稿（单 worker） | `portal-responsive` |
+| `test:e2e:account` | 账户中心 | `portal-responsive` |
+| `test:e2e:library-download` | 资料下载 | `portal-responsive` |
+| `test:e2e:quizcraft-catalog` | 生产配置开启题库目录时的 /practice（3002 端口） | `portal-practice-and-binding` |
+| `test:e2e:practice` | 答题会话、滑动切题与页面过渡 | `portal-practice-and-binding` |
+| `test:e2e:qq-binding` | QQ 绑定授权页（3197 端口） | `portal-practice-and-binding` |
+
+后三组各要自己的 dev server 或开关，单独成一个作业，`portal-responsive` 因此保持在 20 分钟限时之内（[#553](https://github.com/jry21223/HENU-Kit-DEV/issues/553)）。`test:e2e:oauth-continuation` 由 `oauth-continuation` 作业跑。
+
+- 访客与已登录的网关 mock 在 `tests/support/gateway.ts`，有内容时的页面数据在 `tests/support/readability-routes.ts`，各 spec 引用同一份。
+- 断言不按测试进程感受到的耗时下结论：两个 worker 抢 CPU 时，测试进程到浏览器的一来一回会拖长。滚轮突发在页面里派发，“落定后马上走下一屏”数的是刻度而不是毫秒；等页面长到滚得动再滚动。
+
 ## SEO / GEO 基础设施
 
 - `/robots.txt` 允许普通搜索与回答型搜索爬虫访问公开 HTML，仅阻止 API 抓取；账户、写入、个性化和阅读器路由通过 `X-Robots-Tag: noindex, nofollow` 禁止索引。
@@ -203,7 +224,7 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 
 强调橙色块上的文字用墨色，不用纸白；规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 的“文字配色”。`src/app/design-tokens.test.ts` 按 `tokens.json` 检查文字配色的对比度，并检查 `theme.css` 与 `tokens.json` 一致、`globals.css` 不另写 token 里已有的色值、透明度写法在生产构建里有算好的回退、选中文字是橙底墨色字、焦点色在纸白、白色卡片和墨色底上不低于 3:1、源码里没有强调橙的焦点类名；`tests/readability.spec.ts` 检查首页跑马灯是橙底墨色字。
 
-灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，部署流水线目前不跑这一组）。两处共用 `tests/support/color-contrast.ts`。
+灰字（`text-ink/NN`）下限 `ink/60`，叠在 5% 色块上（`hover:bg-ink/5`、`bg-accent/5`、首页半透明页头）下限 `ink/65`；墨色底上的纸白字下限 `paper/50`；占位文字同样按这条线。大字（≥24px，或 ≥18.66px 粗体）只要 3:1，首页美食榜的名次用 `ink/50`。更浅的颜色只留给加了 `aria-hidden` 的纯装饰，禁用态控件不受限制。`tests/color-contrast.spec.ts` 用 axe（`@axe-core/playwright`）的 `color-contrast` 规则扫首页每一屏、五个子站首页和登录页，1440 与 390 下都应为 0；扫描前去掉工程图纸网格和读屏隐藏的装饰，文字按真正压着的底色检查。同一个 spec 还在 1440 下悬停磁吸按钮、墨色主按钮、五档导览格子和榜单链接后再扫一次。它跑在题库目录关闭的默认 dev server 上；目录开启时的 /practice（题库卡片与加载失败提示）由 `tests/quizcraft-catalog.spec.ts` 检查（脚本 `test:e2e:quizcraft-catalog`，CI 作业 `portal-practice-and-binding`）。两处共用 `tests/support/color-contrast.ts`。
 
 字号不小于 12px（`text-xs`），小于 12px 的只留给加了 `aria-hidden` 的纯装饰拉丁标签（最小 10px）。宽字距只加在拉丁 / 等宽文本上，中文用 `tracking-normal`；中英混排的标签把拉丁部分拆进单独的 span，只给它加字距，如 `<span className="tracking-widest">01</span>资料库`。规则见 [`DESIGN_SYSTEM.md`](../../docs/product/DESIGN_SYSTEM.md) 第 4 节。`src/app/typography.test.ts` 按源码检查写死的字号类和文字；`tests/typography.spec.ts` 在首页、五个子站首页和登录页上按计算样式检查，1440 与 390 下都应为 0；题库目录开启时的 /practice 由 `tests/quizcraft-catalog.spec.ts` 检查。`tests/typography.spec.ts` 与 `tests/color-contrast.spec.ts` 打开同一组页面、用同一份网关 mock，都来自 `tests/support/readability-routes.ts`。
 

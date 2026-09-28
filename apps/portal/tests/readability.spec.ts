@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
 
 /**
  * 可读性基线（#536）：Portal 的颜色来自 packages/design-tokens，文字与底色的对比度
@@ -17,20 +18,10 @@ function computed(hex: string) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-async function mockGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_readability" },
-    })
-  );
-  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, json: {} }));
-}
-
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
 test.beforeEach(async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
 });
 
 test("home marquee sets ink text on the orange band", async ({ page }) => {

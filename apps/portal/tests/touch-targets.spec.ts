@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectTouchTargets } from "./support/touch-targets";
-import { routeLibraryCounts } from "./support/library-counts";
+import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
+import { FOOD_POSTS, LIBRARY_MATERIALS, mockGatewayWithContent, waitForHydration } from "./support/readability-routes";
 
 /**
  * 触控目标不小于 44×44px（DESIGN_SYSTEM §11、§13；#543）。在 390px 手机上，下列页面里
@@ -9,95 +10,6 @@ import { routeLibraryCounts } from "./support/library-counts";
 
 /** 登录与注册前的同意告知（LegalConsent）：两个协议链接在句子中间。 */
 const CONSENT_LINKS = ["<a> 《用户协议》", "<a> 《隐私政策》"];
-
-async function waitForHydration(page: Page) {
-  await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
-}
-
-const FOOD_POSTS = [
-  { id: "hang-1", campus: "minglun", tags: ["夜市", "夯"], shop: { name: "鼓楼夜市" } },
-  { id: "top-1", campus: "jinming", tags: ["夜市", "顶级"], shop: { name: "西司夜市" } },
-  { id: "elite-1", campus: "minglun", tags: ["老字号", "人上人"], shop: { name: "第一楼" } },
-  { id: "npc-1", campus: "longzihu", tags: ["校内", "NPC"], shop: { name: "龙子湖食堂" } },
-  { id: "bad-1", campus: "longzihu", tags: ["待复核", "拉完了"], shop: { name: "待复核餐饮圈" } },
-].map((post) => ({
-  title: post.shop.name,
-  excerpt: "学生视角的一句评价。",
-  blocks: [{ type: "p", text: "正文。" }],
-  author: "学生编辑部",
-  likes: 10,
-  stars: 5,
-  time: "07-16",
-  hidden: false,
-  images: [],
-  ...post,
-}));
-
-const CAMPUS_ITEMS = [
-  {
-    id: "campus-express", type: "help", category: "express", title: "代取快递到南门", desc: "两件小包裹",
-    price: 3, seller: "同学甲", credit: 0, dealsDone: 0, wants: 0, place: "明伦校区", status: "open", time: "2026-09-20",
-  },
-  {
-    id: "campus-bookcase", type: "sell", category: "flea", title: "九成新书架", desc: "宿舍搬家出",
-    price: 20, seller: "同学乙", credit: 0, dealsDone: 0, wants: 0, place: "金明校区", status: "open", time: "2026-09-21",
-  },
-];
-
-const LIBRARY_MATERIALS = [
-  {
-    id: "library-limits", type: "note", subject: "高等数学",
-    title: "极限复习笔记", author: "资料库收录", intro: "", toc: [], pages: [],
-    price: 0, previewPages: 0, downloads: 12, downloadAvailable: true, fileSize: 4096,
-  },
-];
-
-/** 未登录，接口一律不可用：页面落在各自的出错状态。 */
-async function mockUnavailableGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" },
-        request_id: "req_targets_unavailable",
-      }),
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
-  );
-}
-
-/** 美食、互助、资料库给出有内容的回应，让列表和筛选里的控件都渲染出来；其余接口不可用。 */
-async function mockGatewayWithContent(page: Page) {
-  await mockUnavailableGateway(page);
-  await page.route("**/api/v1/food/posts", (route) =>
-    route.fulfill({ json: { posts: FOOD_POSTS, request_id: "req_targets_food" } })
-  );
-  await page.route("**/api/v1/campus/items", (route) =>
-    route.fulfill({ json: { items: CAMPUS_ITEMS, request_id: "req_targets_campus" } })
-  );
-  await page.route("**/api/v1/campus/categories", (route) =>
-    route.fulfill({ json: { categories: [], request_id: "req_targets_categories" } })
-  );
-  await routeLibraryCounts(page, LIBRARY_MATERIALS);
-  await page.route("**/api/v1/library/materials", (route) =>
-    route.fulfill({
-      json: {
-        materials: LIBRARY_MATERIALS,
-        statistics: {
-          releaseId: "0123456789abcdef0123456789abcdef01234567-0123456789abcdef",
-          materialCount: LIBRARY_MATERIALS.length,
-          downloadStarts: 12,
-          countingSince: "2026-08-11T00:00:00Z",
-          asOf: "2026-08-11T01:00:00Z",
-        },
-        request_id: "req_targets_library",
-      },
-    })
-  );
-}
 
 test.use({ viewport: { width: 390, height: 844 }, contextOptions: { reducedMotion: "reduce" } });
 
@@ -137,7 +49,7 @@ test.describe("有内容时", () => {
 });
 
 test("首页榜单加载失败时，重新加载按钮不小于 44×44", async ({ page }) => {
-  await mockUnavailableGateway(page);
+  await mockGuestGateway(page);
   await page.goto("/");
   await waitForHydration(page);
   await expect(page.getByText("榜单暂时加载不出来，请稍后刷新试试。")).toBeVisible();
@@ -151,7 +63,7 @@ for (const detail of [
   { name: "互助单详情", path: "/campus/item/targets-item", endpoint: "**/api/v1/campus/items/targets-item" },
 ]) {
   test(`${detail.name}不存在或暂时读不到时，返回链接和重试按钮不小于 44×44`, async ({ page }) => {
-    await mockUnavailableGateway(page);
+    await mockGuestGateway(page);
     let status = 404;
     await page.route(detail.endpoint, (route) =>
       route.fulfill({
@@ -183,7 +95,7 @@ for (const inner of [
   { route: `/food/post/${FOOD_POSTS[0].id}`, ready: (page: Page) => page.getByRole("link", { name: "投稿一家好店 →" }) },
 ] as const) {
   test(`${inner.route}：正文里的按钮和返回链接不小于 44×44`, async ({ page }) => {
-    await mockUnavailableGateway(page);
+    await mockGuestGateway(page);
     // 收藏读接口对未登录的人回 401，页面换成登录引导。
     await page.route("**/api/v1/practice/favorites", (route) =>
       route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
@@ -200,7 +112,7 @@ for (const inner of [
 
 // 目录超过六节才出现的「展开全部 N 节 +」是文字按钮：点击区同样撑到 44px 高，展开后的「收起」也一样。
 test("资料详情：目录的展开和收起按钮不小于 44×44", async ({ page }) => {
-  await mockUnavailableGateway(page);
+  await mockGuestGateway(page);
   const material = {
     ...LIBRARY_MATERIALS[0],
     id: "targets-toc",
@@ -222,7 +134,7 @@ test("资料详情：目录的展开和收起按钮不小于 44×44", async ({ p
 });
 
 test("已登录时，「我的交易」的返回按钮和题库收藏夹的取消收藏、返回链接不小于 44×44", async ({ page }) => {
-  await mockUnavailableGateway(page);
+  await mockGuestGateway(page);
   await page.route("**/api/v1/session", (route) =>
     route.fulfill({
       json: { user_id: "11111111-1111-4111-8111-111111111111", display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" },
@@ -293,7 +205,7 @@ test("终身会员的 /career：扫描历史入口和岗位链接不小于 44×4
       ],
     },
   };
-  await mockUnavailableGateway(page);
+  await mockGuestGateway(page);
   await page.route("**/api/v1/session", (route) =>
     route.fulfill({
       json: { user_id: userID, display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" },
@@ -338,7 +250,7 @@ for (const width of [768, 1024]) {
 
 test.describe("登录页", () => {
   test.beforeEach(async ({ page }) => {
-    await mockUnavailableGateway(page);
+    await mockGuestGateway(page);
   });
 
   test("登录注册切换、登录方式、发送验证码和找回入口都不小于 44×44", async ({ page }) => {
@@ -370,15 +282,6 @@ const TINY_PNG = Buffer.from(
   "base64"
 );
 
-async function signInWithUnavailableGateway(page: Page) {
-  await mockUnavailableGateway(page);
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({
-      json: { user_id: "11111111-1111-4111-8111-111111111111", display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" },
-    })
-  );
-}
-
 /** 删除图片的按钮只占缩略图下方那一行：不压在缩略图、上传格或图片说明上（#557）。 */
 async function expectImageDeleteClearOfNeighbours(page: Page) {
   const remove = await page.getByRole("button", { name: "删除图 1" }).boundingBox();
@@ -402,7 +305,7 @@ async function expectImageDeleteClearOfNeighbours(page: Page) {
 for (const width of [390, 1440]) {
   test(`${width}px 两个发布页：输入框、校区与分类切换、侧栏按钮、删除菜品和删除图片都不小于 44×44（#557）`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await signInWithUnavailableGateway(page);
+    await mockSignedInGateway(page);
 
     await page.goto("/food/publish");
     await waitForHydration(page);
@@ -422,7 +325,7 @@ for (const width of [390, 1440]) {
 }
 
 test("账户中心的表单：求职画像、新建工单和安全设置的输入框不小于 44×44（#557）", async ({ page }) => {
-  await signInWithUnavailableGateway(page);
+  await mockSignedInGateway(page);
   await page.route("**/api/v1/career/profile", (route) =>
     route.fulfill({
       json: {

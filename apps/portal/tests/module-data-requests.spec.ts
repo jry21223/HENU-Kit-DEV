@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
 import { libraryCountsFor } from "./support/library-counts";
 
 /**
@@ -44,23 +45,6 @@ const CATALOG = {
 
 /** 与 CATALOG 同一份目录的分类计数。 */
 const COUNTS = libraryCountsFor(CATALOG.materials, "req_requests_counts");
-
-/** 未登录，其余接口一律不可用；只统计请求，不关心页面拿到了什么。 */
-async function mockGuestGateway(page: Page) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" },
-        request_id: "req_requests_unavailable",
-      }),
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: "{}" })
-  );
-}
 
 /** 记录页面发出的每一个 /api/v1/* 请求路径（不含查询串）。 */
 function recordApiRequests(page: Page): string[] {

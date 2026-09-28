@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 
 /**
  * 读屏软件读得出名字和状态：
@@ -14,31 +15,10 @@ async function waitForHydration(page: Page) {
   await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
 }
 
-/** 接口一律不可用；signedIn 时会话有效，否则未登录。 */
-async function mockGateway(page: Page, { signedIn = false } = {}) {
-  await page.route("**/api/v1/**", (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" }, request_id: "req_names_unavailable" },
-    })
-  );
-  await page.route("**/api/v1/session", (route) =>
-    signedIn
-      ? route.fulfill({
-          json: {
-            user_id: "11111111-1111-4111-8111-111111111111",
-            display_name: "小河同学",
-            expires_at: "2030-01-01T00:00:00Z",
-          },
-        })
-      : route.fulfill({ status: 401, json: {} })
-  );
-}
-
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
 test("资料库、互助和题库的搜索框由看得见的标签命名", async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
 
   await page.goto("/campus");
   await waitForHydration(page);
@@ -65,7 +45,7 @@ test("资料库、互助和题库的搜索框由看得见的标签命名", async
 });
 
 test("互助发布表单的每个字段都读得出自己的标签，分类是一组有名字的按钮", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
   await page.goto("/campus/publish");
   await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "发布单子" })).toBeVisible();
@@ -92,7 +72,7 @@ test("互助发布表单的每个字段都读得出自己的标签，分类是�
 });
 
 test("安全设置的每个输入框都读得出自己的标签", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
   await page.goto("/account/security");
   await waitForHydration(page);
 
@@ -104,7 +84,7 @@ test("安全设置的每个输入框都读得出自己的标签", async ({ page 
 });
 
 test("子站页头用 aria-current 标出当前标签", async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
   const nav = page.locator("header nav");
 
   await page.goto("/practice/stats");
@@ -125,7 +105,7 @@ test("子站页头用 aria-current 标出当前标签", async ({ page }) => {
 });
 
 test("账户中心菜单用 aria-current 标出当前页", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
   await page.goto("/account/security");
   await waitForHydration(page);
 
@@ -135,7 +115,7 @@ test("账户中心菜单用 aria-current 标出当前页", async ({ page }) => {
 });
 
 test("资料目录的展开按钮报告开合", async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
   const material = {
     id: "names-material", type: "note", subject: "高等数学", title: "极限复习笔记", author: "资料库收录",
     intro: "", toc: ["第一节", "第二节", "第三节", "第四节", "第五节", "第六节", "第七节", "第八节"],
@@ -155,7 +135,7 @@ test("资料目录的展开按钮报告开合", async ({ page }) => {
 });
 
 test("已登录时，子站页头的账户入口读出完整昵称", async ({ page }) => {
-  await mockGateway(page, { signedIn: true });
+  await mockSignedInGateway(page);
 
   // 手机上账户入口在页头第一行；桌面上有多个标签的子站把它放在标签行末尾。
   for (const { width, route } of [
@@ -171,7 +151,7 @@ test("已登录时，子站页头的账户入口读出完整昵称", async ({ pa
 });
 
 test("登录 / 注册是一组标签页，方向键在两个标签间切换，提交按钮不夹空格（#557）", async ({ page }) => {
-  await mockGateway(page);
+  await mockGuestGateway(page);
   await page.goto("/account/login");
   await waitForHydration(page);
 
