@@ -122,13 +122,24 @@ test("controlled QuizCraft catalog keeps an upstream failure honest", async ({ p
 
   await page.goto("/practice", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByText("题库暂时加载不出来，请检查网络后重试。")).toBeVisible();
+  await expect(page.getByText("题库暂时加载不出来，请稍后重试。")).toBeVisible();
   await expect(page.locator("main").getByRole("alert")).toContainText("错误编号：req_catalog_failure");
   // 失败只由提示条说一次，题库区不再叠一句空状态（#549）。
   await expect(page.getByText(/内容暂时加载不出来/)).toHaveCount(0);
   await expect(page.getByText("示例题库", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(0);
   expect(catalogRequests).toBeGreaterThan(0);
+});
+
+test("controlled QuizCraft catalog only asks to check the network when the network failed (#554)", async ({ page }) => {
+  await page.route("**/api/v1/practice/catalog", (route) => route.abort("internetdisconnected"));
+
+  await page.goto("/practice", { waitUntil: "domcontentloaded" });
+
+  const alert = page.locator("main").getByRole("alert");
+  await expect(alert).toContainText("题库暂时加载不出来，请检查网络后重试。");
+  // 请求没到服务端，就没有错误编号。
+  await expect(alert).not.toContainText("错误编号");
 });
 
 test("390px catalog cards keep every control at least 44×44 (#543)", async ({ page }) => {
@@ -296,7 +307,7 @@ for (const viewport of [
 
       await page.goto("/practice", { waitUntil: "domcontentloaded" });
       await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1);
-      await expect(page.getByText("题库暂时加载不出来，请检查网络后重试。")).toBeVisible();
+      await expect(page.getByText("题库暂时加载不出来，请稍后重试。")).toBeVisible();
 
       await revealTextBackgrounds(page);
       expect(await contrastViolations(page), "/practice（加载失败）：以下文字的对比度低于 WCAG AA").toEqual([]);

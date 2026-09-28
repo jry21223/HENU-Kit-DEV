@@ -183,7 +183,7 @@ describe("resolveCareerView", () => {
         jsonResponse(
           {
             error: "lifetime_required",
-            message: "求职雷达需要终身会员",
+            message: "求职雷达需要终身会员，开通后即可使用",
             request_id: "req_gate",
           },
           403
@@ -192,7 +192,7 @@ describe("resolveCareerView", () => {
         jsonResponse(
           {
             error: "lifetime_required",
-            message: "求职雷达需要终身会员",
+            message: "求职雷达需要终身会员，开通后即可使用",
             request_id: "req_gate",
           },
           403

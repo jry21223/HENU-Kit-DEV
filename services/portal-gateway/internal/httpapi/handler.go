@@ -944,7 +944,7 @@ func (h *Handler) writePracticeCommandFailure(w http.ResponseWriter, r *http.Req
 	case errors.Is(err, practice.ErrPracticeCommandBadRequest):
 		writeJSON(w, http.StatusBadRequest, contract.ErrorEnvelope{Error: "practice_command_invalid", Message: "请求内容不完整，请检查后重试", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, practice.ErrPracticeCommandForbidden):
-		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "practice_session_forbidden", Message: "暂无练习权限，请联系管理员", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "practice_session_forbidden", Message: "暂无练习权限。如有疑问，请到账户中心提交工单。", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, practice.ErrPracticeCommandNotFound):
 		writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{Error: "practice_session_not_found", Message: "练习记录不存在，请刷新后重试", RequestID: requestIDOf(w, r)})
 	case errors.Is(err, practice.ErrPracticeCommandConflict):
@@ -1162,7 +1162,7 @@ func (h *Handler) writePracticeReadPermissionError(w http.ResponseWriter, r *htt
 	case errors.Is(err, platformcore.ErrUnauthorized):
 		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 	case errors.Is(err, platformcore.ErrForbidden):
-		writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限，请联系管理员")
+		writeError(w, r, http.StatusForbidden, "practice access denied", "暂无练习权限。如有疑问，请到账户中心提交工单。")
 	default:
 		writeError(w, r, http.StatusServiceUnavailable, "practice authorization is temporarily unavailable", "服务暂时不可用，请稍后再来")
 	}
@@ -1237,7 +1237,7 @@ func (h *Handler) foodPostDetail(w http.ResponseWriter, r *http.Request) {
 // and error body pass through unchanged, like every other Food Post read.
 func (h *Handler) foodPostImage(w http.ResponseWriter, r *http.Request) {
 	if h.foodPosts == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "美食榜暂时不可用，请稍后再试")
 		return
 	}
 	image, err := h.foodPosts.PostImage(r.Context(), requestIDOf(w, r), chi.URLParam(r, "post_id"), chi.URLParam(r, "position"))
@@ -1268,7 +1268,7 @@ func (h *Handler) foodVenues(w http.ResponseWriter, r *http.Request) {
 // an honest 503 and a Food failure is never replaced by the legacy wildcard.
 func (h *Handler) foodPostsRead(w http.ResponseWriter, r *http.Request, read func(ctx context.Context, requestID string) (json.RawMessage, error)) {
 	if h.foodPosts == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "美食榜暂时不可用，请稍后再试")
 		return
 	}
 	data, err := read(r.Context(), requestIDOf(w, r))
@@ -1295,7 +1295,7 @@ func (h *Handler) writeFoodPostsFailure(w http.ResponseWriter, r *http.Request, 
 		w.WriteHeader(upstream.StatusCode)
 		_, _ = w.Write(upstream.Body)
 	case errors.Is(err, foodposts.ErrUnconfigured):
-		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "美食榜暂时不可用，请稍后再试")
 	case errors.Is(err, foodposts.ErrBadRequest):
 		writeError(w, r, http.StatusBadRequest, "food_post_invalid", "请求内容不完整，请检查后重试")
 	default:
@@ -1490,7 +1490,7 @@ func (h *Handler) requireLifetime(w http.ResponseWriter, r *http.Request, actorU
 	if err != nil {
 		if errors.Is(err, accountportfolio.ErrUnauthorized) || errors.Is(err, accountportfolio.ErrNotFound) {
 			// No valid membership for this actor: not a Lifetime member.
-			writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要终身会员", RequestID: requestIDOf(w, r)})
+			writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要终身会员，开通后即可使用", RequestID: requestIDOf(w, r)})
 			return false
 		}
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_unavailable", Message: "会员服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
@@ -1506,7 +1506,7 @@ func (h *Handler) requireLifetime(w http.ResponseWriter, r *http.Request, actorU
 		return false
 	}
 	if !membership.Lifetime {
-		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要终身会员", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要终身会员，开通后即可使用", RequestID: requestIDOf(w, r)})
 		return false
 	}
 	return true

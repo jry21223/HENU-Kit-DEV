@@ -201,7 +201,9 @@ async function parseErrorBody(
       message,
       requestId: body.request_id || headerRequestId,
       errorCode,
-      serverMessage: typeof raw === "string" ? body.message : raw?.message,
+      // Only the Gateway's own flat envelope carries a message written for
+      // users; a nested {code, message} is an upstream body passed through.
+      serverMessage: typeof raw === "string" ? body.message : undefined,
     };
   } catch {
     return { message: res.statusText || `HTTP ${res.status}`, requestId: headerRequestId };
@@ -880,8 +882,10 @@ export async function createCareerResumeSuification(
  * Human-readable error for UI banners: what happened and what the user can do.
  *
  * Error messages carry diagnostics (API paths, status text, internal names)
- * and never reach the screen; callers that need a specific outcome branch on
- * status / errorCode first and show their own copy.
+ * and never reach the screen. The one server text that may is the Gateway's
+ * own envelope message for a code in the gateway-errors.ts allowlist (#554);
+ * callers that need a specific outcome branch on status / errorCode first and
+ * show their own copy.
  */
 export function formatPortalError(err: unknown): string {
   if (err instanceof PortalUnauthorizedError) {

@@ -141,13 +141,13 @@ describe("formatPortalError with a Gateway error envelope", () => {
   it("shows a Gateway permission message instead of calling a 403 temporary", async () => {
     const { error, message } = await failWith(403, {
       error: "practice access denied",
-      message: "暂无练习权限，请联系管理员",
+      message: "暂无练习权限。如有疑问，请到账户中心提交工单。",
       request_id: "req_forbidden",
     });
 
     const { PortalForbiddenError } = await import("./client");
     expect(error).toBeInstanceOf(PortalForbiddenError);
-    expect(message).toBe("暂无练习权限，请联系管理员");
+    expect(message).toBe("暂无练习权限。如有疑问，请到账户中心提交工单。");
   });
 
   it("points a 403 without a message the Portal can show to a support ticket", async () => {
@@ -169,6 +169,22 @@ describe("formatPortalError with a Gateway error envelope", () => {
     });
 
     expect(message).toBe("服务暂时不可用，请稍后再试。");
+  });
+
+  it("does not show an upstream body the Gateway passes through, even with an allowlisted code", async () => {
+    // Food、Career 的错误体经 Gateway 原样转发，是嵌套信封；它们也用 INVALID_REQUEST 这类码。
+    const { message } = await failWith(400, {
+      error: { code: "INVALID_REQUEST", message: "请求体无效：price 必须是整数" },
+      request_id: "req_upstream_invalid",
+    });
+
+    expect(message).toBe("服务暂时不可用，请稍后再试。");
+  });
+
+  it("gives the Portal's 404 copy for the Gateway's generic not-found message", async () => {
+    const { message } = await failWith(404, { error: "not found", message: "内容不存在或已下架", request_id: "req_gone" });
+
+    expect(message).toBe("内容不存在或已下架，请返回上一页重新选择。");
   });
 
   it("does not show an allowlisted code's message unless it is Chinese", async () => {

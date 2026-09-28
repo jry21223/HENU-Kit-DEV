@@ -50,7 +50,7 @@ describe("getCareerProfile", () => {
     const fetch = vi.fn().mockImplementation(() =>
       Promise.resolve(
         jsonResponse(
-          { error: "lifetime_required", message: "求职雷达需要终身会员", request_id: "req_career_gate" },
+          { error: "lifetime_required", message: "求职雷达需要终身会员，开通后即可使用", request_id: "req_career_gate" },
           403
         )
       )

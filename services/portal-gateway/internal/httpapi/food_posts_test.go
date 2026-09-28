@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"henukit.dev/portal-gateway/internal/config"
+	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/session"
 )
 
@@ -316,6 +317,16 @@ func TestFoodPostRoutesFailClosedWhenUnconfigured(t *testing.T) {
 			handler.Router().ServeHTTP(response, request)
 			if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "food_posts_unavailable") {
 				t.Fatalf("%s unconfigured status/body = %d: %s", route.name, response.Code, response.Body.String())
+			}
+			// Portal shows the message as written (#554): readers of the ranking
+			// are not told the submission service is down.
+			want := "美食榜暂时不可用，请稍后再试"
+			if route.method == http.MethodPost {
+				want = "投稿服务暂时不可用，请稍后再试"
+			}
+			var envelope contract.ErrorEnvelope
+			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil || envelope.Message != want {
+				t.Fatalf("%s unconfigured message = %q (%v), want %q", route.name, envelope.Message, err, want)
 			}
 		})
 	}

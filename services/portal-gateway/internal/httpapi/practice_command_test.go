@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/portal-gateway/internal/config"
+	"henukit.dev/portal-gateway/internal/contract"
 	"henukit.dev/portal-gateway/internal/session"
 )
 
@@ -111,6 +112,27 @@ func TestPracticeSessionCommandFailsClosedWhenCoreIsUnavailable(t *testing.T) {
 
 	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), `"questions"`) || strings.Contains(strings.ToLower(response.Body.String()), "mock") {
 		t.Fatalf("Core failure was not fail-closed: %d %s", response.Code, response.Body.String())
+	}
+}
+
+// Portal shows practice_session_forbidden's message as written (#554), so it
+// points at the support ticket instead of an unnamed administrator.
+func TestPracticeSessionCommandForbiddenPointsToASupportTicket(t *testing.T) {
+	core := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusForbidden)
+		_, _ = writer.Write([]byte(`{"request_id":"req_core_forbidden","error":{"code":"forbidden","message":"denied"}}`))
+	}))
+	defer core.Close()
+
+	handler := newPracticeCommandHandler(t, core.URL)
+	request := authenticatedPracticeCommandRequest(t, handler, http.MethodPost, "/api/v1/practice/sessions", `{"bank_id":"33333333-3333-4333-8333-333333333333","bank_version_id":"44444444-4444-4444-8444-444444444444","mode":"random"}`, "practice-session-forbidden-0001")
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, request)
+
+	var envelope contract.ErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil || response.Code != http.StatusForbidden ||
+		envelope.Error != "practice_session_forbidden" || envelope.Message != "暂无练习权限。如有疑问，请到账户中心提交工单。" {
+		t.Fatalf("forbidden command = %d %+v (%v)", response.Code, envelope, err)
 	}
 }
 

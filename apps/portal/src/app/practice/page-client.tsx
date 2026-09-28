@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchQuizCraftCatalog,
+  PortalNetworkError,
   portalErrorRequestId,
 } from "@/lib/api/client";
 import { quizCraftCatalogEnabled } from "@/lib/api/env";
@@ -91,7 +92,14 @@ export default function PracticeBankPage() {
       // The flag is a real-data cutover seam. Never replace a failed Core
       // read with legacy Portal API, cached, or local mock catalog data.
       setQuizCraftBanks([]);
-      setError({ message: "题库暂时加载不出来，请检查网络后重试。", requestId: portalErrorRequestId(loadError) });
+      // 只有断网才让用户查网络；服务端答复了（带错误编号）就是服务那边的问题。
+      setError({
+        message:
+          loadError instanceof PortalNetworkError
+            ? "题库暂时加载不出来，请检查网络后重试。"
+            : "题库暂时加载不出来，请稍后重试。",
+        requestId: portalErrorRequestId(loadError),
+      });
       setLoadState("error");
     }
   }, []);
