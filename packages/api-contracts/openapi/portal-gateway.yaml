@@ -1475,20 +1475,20 @@ components:
         releaseId:
           type: [string, "null"]
           pattern: '^[a-f0-9]{40}-[a-f0-9]{16}$'
-        materialCount: { type: integer, format: int64, minimum: 0 }
+        materialCount: { type: integer, format: int64, minimum: 0, maximum: 500 }
         byType:
           type: object
           additionalProperties: false
           description: Every material type, zero when the active catalog has none of it; the values sum to materialCount.
           required: [handout, exam, slides, exercise, answer, note, textbook]
           properties:
-            handout: { type: integer, format: int64, minimum: 0 }
-            exam: { type: integer, format: int64, minimum: 0 }
-            slides: { type: integer, format: int64, minimum: 0 }
-            exercise: { type: integer, format: int64, minimum: 0 }
-            answer: { type: integer, format: int64, minimum: 0 }
-            note: { type: integer, format: int64, minimum: 0 }
-            textbook: { type: integer, format: int64, minimum: 0 }
+            handout: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            exam: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            slides: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            exercise: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            answer: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            note: { type: integer, format: int64, minimum: 0, maximum: 500 }
+            textbook: { type: integer, format: int64, minimum: 0, maximum: 500 }
         asOf: { type: string, format: date-time }
 
     PublicLibraryStatistics:

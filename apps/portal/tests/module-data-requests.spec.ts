@@ -24,12 +24,17 @@ const EXAM = {
   ...NOTE,
   id: "22222222-2222-4222-8222-222222222222", type: "exam", title: "高数期末真题",
 };
+const SECOND_NOTE = {
+  ...NOTE,
+  id: "33333333-3333-4333-8333-333333333333", subject: "线性代数", title: "矩阵复习笔记",
+};
 
+// 三份资料、两个类型：首页的“N FILES INDEXED”是资料数，不是卡片数。
 const CATALOG = {
-  materials: [NOTE, EXAM],
+  materials: [NOTE, EXAM, SECOND_NOTE],
   statistics: {
     releaseId: "0123456789abcdef0123456789abcdef01234567-0123456789abcdef",
-    materialCount: 2,
+    materialCount: 3,
     downloadStarts: 12,
     countingSince: "2026-08-11T00:00:00Z",
     asOf: "2026-08-11T01:00:00Z",
@@ -93,17 +98,17 @@ test("home reads only the type counts, once, when they load", async ({ page }) =
   const requests = recordApiRequests(page);
   await page.goto("/");
   const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "资料库", level: 2 }) });
-  await expect(section.getByRole("article").filter({ hasText: "笔记总结" })).toContainText("收录 1 份");
+  await expect(section.getByRole("article").filter({ hasText: "笔记总结" })).toContainText("收录 2 份");
   await expect(section.getByRole("article").filter({ hasText: "往年真题" })).toContainText("收录 1 套");
   await expect(section.getByRole("heading", { name: "复习讲义" })).toHaveCount(0);
-  await expect(section.getByText("2 FILES INDEXED")).toBeVisible();
+  await expect(section.getByText("3 FILES INDEXED")).toBeVisible();
   await settle(page);
 
   expect(requests.filter((path) => path === MATERIAL_COUNTS)).toHaveLength(1);
   expect(requests.filter((path) => path === MATERIALS)).toEqual([]);
 });
 
-test("home reads the type counts once when they fail, and never the full catalog", async ({ page }) => {
+test("home reads the type counts once when they fail, and never the full catalog, even on retry", async ({ page }) => {
   await page.route("**/api/v1/library/materials", (route) => route.fulfill({ json: CATALOG }));
   const requests = recordApiRequests(page);
   await page.goto("/");
@@ -112,6 +117,13 @@ test("home reads the type counts once when they fail, and never the full catalog
   await settle(page);
 
   expect(requests.filter((path) => path === MATERIAL_COUNTS)).toHaveLength(1);
+  expect(requests.filter((path) => path === MATERIALS)).toEqual([]);
+
+  // 重试只再读一次计数，失败也不改去下载全量目录。
+  await section.getByRole("button", { name: "重试" }).click();
+  await expect(section.getByRole("alert")).toBeVisible();
+  await settle(page);
+  expect(requests.filter((path) => path === MATERIAL_COUNTS)).toHaveLength(2);
   expect(requests.filter((path) => path === MATERIALS)).toEqual([]);
 });
 

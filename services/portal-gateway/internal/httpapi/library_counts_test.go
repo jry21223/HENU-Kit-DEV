@@ -86,52 +86,79 @@ func TestLibraryMaterialCountsReturnsOwnerTypeCountsWithoutTheCatalog(t *testing
 	}
 }
 
+// No active release and an active release with nothing public are both honest
+// zero successes, never an error.
 func TestLibraryMaterialCountsPreservesExplicitEmptyOwnerSuccess(t *testing.T) {
-	owner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(ownerTypeCounts(nil, 0, allTypes(0, 0, 0, 0, 0, 0, 0)))
-	}))
-	defer owner.Close()
+	for _, releaseID := range []any{nil, countsReleaseID} {
+		owner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewEncoder(w).Encode(ownerTypeCounts(releaseID, 0, allTypes(0, 0, 0, 0, 0, 0, 0)))
+		}))
 
-	handler := newLibraryDownloadHandler(t, owner.URL, "http://portal-api.invalid")
-	response := httptest.NewRecorder()
-	handler.Router().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/library/material-counts", nil))
-	var body struct {
-		Counts struct {
-			ReleaseID     *string          `json:"releaseId"`
-			MaterialCount int64            `json:"materialCount"`
-			ByType        map[string]int64 `json:"byType"`
-		} `json:"counts"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != http.StatusOK {
-		t.Fatalf("empty counts = %d %s (%v)", response.Code, response.Body.String(), err)
-	}
-	if body.Counts.ReleaseID != nil || body.Counts.MaterialCount != 0 || len(body.Counts.ByType) != 7 {
-		t.Fatalf("empty counts = %#v", body.Counts)
+		handler := newLibraryDownloadHandler(t, owner.URL, "http://portal-api.invalid")
+		response := httptest.NewRecorder()
+		handler.Router().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/library/material-counts", nil))
+		owner.Close()
+		var body struct {
+			Counts struct {
+				ReleaseID     *string          `json:"releaseId"`
+				MaterialCount int64            `json:"materialCount"`
+				ByType        map[string]int64 `json:"byType"`
+			} `json:"counts"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("empty counts for release %v = %d %s (%v)", releaseID, response.Code, response.Body.String(), err)
+		}
+		if (releaseID == nil) != (body.Counts.ReleaseID == nil) || body.Counts.MaterialCount != 0 || len(body.Counts.ByType) != 7 {
+			t.Fatalf("empty counts for release %v = %#v", releaseID, body.Counts)
+		}
 	}
 }
 
 func TestLibraryMaterialCountsRejectsInvalidOwnerFacts(t *testing.T) {
+	valid := ownerTypeCounts(countsReleaseID, 1, allTypes(1, 0, 0, 0, 0, 0, 0))
+	validJSON, err := json.Marshal(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withData := func(field string, value any) map[string]any {
+		data := map[string]any{"release_id": countsReleaseID, "material_count": 1, "type_counts": allTypes(1, 0, 0, 0, 0, 0, 0), "as_of": "2026-08-11T01:00:00Z"}
+		data[field] = value
+		return map[string]any{"data": data, "request_id": "req_library_owner_counts"}
+	}
+	const quarter = int64(1) << 62
 	for _, tc := range []struct {
 		name   string
 		status int
 		body   any
+		raw    string
 	}{
 		{name: "owner failure", status: http.StatusServiceUnavailable, body: map[string]any{"error": map[string]any{"code": "DEPENDENCY_UNAVAILABLE", "message": "down"}, "request_id": "req_owner_down"}},
 		{name: "missing type", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 1, map[string]any{"handout": 1, "exam": 0, "slides": 0, "exercise": 0, "answer": 0, "note": 0})},
 		{name: "unknown type", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 1, map[string]any{"handout": 1, "exam": 0, "slides": 0, "exercise": 0, "answer": 0, "note": 0, "textbook": 0, "mock": 0})},
+		{name: "null count", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 0, map[string]any{"handout": nil, "exam": 0, "slides": 0, "exercise": 0, "answer": 0, "note": 0, "textbook": 0})},
+		{name: "null total", status: http.StatusOK, body: withData("material_count", nil)},
+		{name: "missing total", status: http.StatusOK, raw: strings.Replace(string(validJSON), `"material_count":1,`, "", 1)},
 		{name: "negative count", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 0, allTypes(1, -1, 0, 0, 0, 0, 0))},
 		{name: "counts do not add up", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 5, allTypes(1, 1, 0, 0, 0, 0, 0))},
-		{name: "counts beyond the catalog bound", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 501, allTypes(501, 0, 0, 0, 0, 0, 0))},
+		{name: "one type beyond the catalog bound", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 501, allTypes(501, 0, 0, 0, 0, 0, 0))},
+		{name: "total beyond the catalog bound", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 501, allTypes(300, 201, 0, 0, 0, 0, 0))},
+		{name: "counts that overflow to the total", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 0, map[string]any{"handout": quarter, "exam": quarter, "slides": quarter, "exercise": quarter, "answer": 0, "note": 0, "textbook": 0})},
 		{name: "materials without a release", status: http.StatusOK, body: ownerTypeCounts(nil, 1, allTypes(1, 0, 0, 0, 0, 0, 0))},
 		{name: "malformed release", status: http.StatusOK, body: ownerTypeCounts("release-1", 1, allTypes(1, 0, 0, 0, 0, 0, 0))},
-		{name: "unknown field", status: http.StatusOK, body: map[string]any{"data": map[string]any{"release_id": countsReleaseID, "material_count": 1, "type_counts": allTypes(1, 0, 0, 0, 0, 0, 0), "as_of": "2026-08-11T01:00:00Z", "materials": []any{}}, "request_id": "req_extra"}},
-		{name: "missing request id", status: http.StatusOK, body: map[string]any{"data": map[string]any{"release_id": countsReleaseID, "material_count": 1, "type_counts": allTypes(1, 0, 0, 0, 0, 0, 0), "as_of": "2026-08-11T01:00:00Z"}}},
-		{name: "malformed as_of", status: http.StatusOK, body: map[string]any{"data": map[string]any{"release_id": countsReleaseID, "material_count": 1, "type_counts": allTypes(1, 0, 0, 0, 0, 0, 0), "as_of": "yesterday"}, "request_id": "req_bad_time"}},
+		{name: "unknown field", status: http.StatusOK, body: withData("materials", []any{})},
+		{name: "missing request id", status: http.StatusOK, body: map[string]any{"data": valid["data"]}},
+		{name: "malformed as_of", status: http.StatusOK, body: withData("as_of", "yesterday")},
+		{name: "trailing data", status: http.StatusOK, raw: string(validJSON) + `{"request_id":"req_second"}`},
+		{name: "body beyond the size bound", status: http.StatusOK, body: map[string]any{"data": valid["data"], "request_id": "req_" + strings.Repeat("r", 64<<10)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			owner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tc.status)
+				if tc.raw != "" {
+					_, _ = w.Write([]byte(tc.raw))
+					return
+				}
 				_ = json.NewEncoder(w).Encode(tc.body)
 			}))
 			defer owner.Close()
@@ -214,7 +241,7 @@ func sortedCopy(values []string) []string {
 func TestLibraryMaterialCountsMatchTheirContracts(t *testing.T) {
 	owner := countsContractSchemas(t, "library.yaml")
 	portal := countsContractSchemas(t, "portal-gateway.yaml")
-	types := sortedCopy(librarydownload.PublicMaterialTypes)
+	types := sortedCopy(librarydownload.PublicMaterialTypes())
 	for name, got := range map[string][]string{
 		"library.yaml PublicCatalogMaterial.type":                       owner["PublicCatalogMaterial"].Properties["type"].Enum,
 		"library.yaml PublicMaterialTypeCounts.type_counts":             owner["PublicMaterialTypeCounts"].Properties["type_counts"].Required,

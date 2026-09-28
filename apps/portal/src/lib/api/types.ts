@@ -241,7 +241,7 @@ export interface MaterialListResponse {
   request_id: string;
 }
 
-/** 首页资料库区块只读各类型数量（#555）：与 /library 目录同一份快照，不含目录本身。 */
+/** 首页资料库区块只读各类型数量（#555）：与 /library 目录同一口径，不含目录本身。 */
 export interface LibraryMaterialCountsResponse {
   counts: {
     releaseId: string | null;

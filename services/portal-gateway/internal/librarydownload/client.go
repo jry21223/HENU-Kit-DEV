@@ -36,8 +36,12 @@ const maxPublicMaterials = 500
 
 const PublicOSSHost = "henukit.oss-cn-beijing.aliyuncs.com"
 
-// PublicMaterialTypes are the material types the public catalog knows.
-var PublicMaterialTypes = []string{"handout", "exam", "slides", "exercise", "answer", "note", "textbook"}
+var publicMaterialTypes = []string{"handout", "exam", "slides", "exercise", "answer", "note", "textbook"}
+
+// PublicMaterialTypes returns the material types the public catalog knows.
+func PublicMaterialTypes() []string {
+	return slices.Clone(publicMaterialTypes)
+}
 
 var (
 	materialIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -71,7 +75,7 @@ type Catalog struct {
 }
 
 // TypeCounts are the active public catalog's per-type totals, read without
-// listing the catalog. ByType names every PublicMaterialTypes entry.
+// listing the catalog. ByType names every public material type.
 type TypeCounts struct {
 	ReleaseID     *string
 	MaterialCount int64
@@ -321,8 +325,8 @@ func (c *Client) Catalog(ctx context.Context, requestID string) (Catalog, error)
 }
 
 // TypeCounts reads the active public catalog's per-type totals. The owner must
-// name every known type exactly once and the totals must add up; anything else
-// is an invalid owner response, never a partial count.
+// give an integer for every known type and nothing else, and the totals must
+// add up; anything else is an invalid owner response, never a partial count.
 func (c *Client) TypeCounts(ctx context.Context, requestID string) (TypeCounts, error) {
 	if c == nil || c.signer == nil || c.httpClient == nil || strings.TrimSpace(requestID) == "" {
 		return TypeCounts{}, ErrBadRequest
@@ -347,10 +351,10 @@ func (c *Client) TypeCounts(ctx context.Context, requestID string) (TypeCounts, 
 
 	var envelope struct {
 		Data struct {
-			ReleaseID     *string          `json:"release_id"`
-			MaterialCount int64            `json:"material_count"`
-			TypeCounts    map[string]int64 `json:"type_counts"`
-			AsOf          string           `json:"as_of"`
+			ReleaseID     *string           `json:"release_id"`
+			MaterialCount *int64            `json:"material_count"`
+			TypeCounts    map[string]*int64 `json:"type_counts"`
+			AsOf          string            `json:"as_of"`
 		} `json:"data"`
 		RequestID string `json:"request_id"`
 	}
@@ -368,34 +372,36 @@ func (c *Client) TypeCounts(ctx context.Context, requestID string) (TypeCounts, 
 		return TypeCounts{}, ErrInvalid
 	}
 	asOf, err := time.Parse(time.RFC3339, envelope.Data.AsOf)
-	if err != nil || envelope.Data.MaterialCount < 0 || envelope.Data.MaterialCount > maxPublicMaterials || len(envelope.Data.TypeCounts) != len(PublicMaterialTypes) {
+	materialCount := envelope.Data.MaterialCount
+	if err != nil || materialCount == nil || *materialCount < 0 || *materialCount > maxPublicMaterials || len(envelope.Data.TypeCounts) != len(publicMaterialTypes) {
 		return TypeCounts{}, ErrInvalid
 	}
 	if envelope.Data.ReleaseID == nil {
-		if envelope.Data.MaterialCount != 0 {
+		if *materialCount != 0 {
 			return TypeCounts{}, ErrInvalid
 		}
 	} else if !releaseIDPattern.MatchString(*envelope.Data.ReleaseID) {
 		return TypeCounts{}, ErrInvalid
 	}
-	byType := make(map[string]int64, len(PublicMaterialTypes))
+	byType := make(map[string]int64, len(publicMaterialTypes))
 	var total int64
-	for _, materialType := range PublicMaterialTypes {
-		count, named := envelope.Data.TypeCounts[materialType]
-		if !named || count < 0 || count > maxPublicMaterials {
+	for _, materialType := range publicMaterialTypes {
+		// The per-type bound also keeps the sum below from overflowing.
+		count := envelope.Data.TypeCounts[materialType]
+		if count == nil || *count < 0 || *count > maxPublicMaterials {
 			return TypeCounts{}, ErrInvalid
 		}
-		byType[materialType] = count
-		total += count
+		byType[materialType] = *count
+		total += *count
 	}
-	if total != envelope.Data.MaterialCount {
+	if total != *materialCount {
 		return TypeCounts{}, ErrInvalid
 	}
 	return TypeCounts{ReleaseID: envelope.Data.ReleaseID, MaterialCount: total, ByType: byType, AsOf: asOf}, nil
 }
 
 func validPublicMaterial(material PublicMaterial) bool {
-	if !ownerUUIDPattern.MatchString(material.ID) || !slices.Contains(PublicMaterialTypes, material.Type) || material.FileSize < 0 || material.Downloads < 0 || !material.DownloadAvailable {
+	if !ownerUUIDPattern.MatchString(material.ID) || !slices.Contains(publicMaterialTypes, material.Type) || material.FileSize < 0 || material.Downloads < 0 || !material.DownloadAvailable {
 		return false
 	}
 	for _, value := range []string{material.Subject, material.Title, material.Role, material.FileName} {
