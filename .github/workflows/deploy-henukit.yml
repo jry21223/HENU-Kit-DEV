@@ -100,8 +100,9 @@ jobs:
       - name: Verify Library owner download behavior
         run: pnpm --filter @henukit/portal test:e2e:library-download
 
-  # The three browser groups each need their own dev server or flags, so they
-  # run beside portal-responsive instead of lengthening it (#553).
+  # The QuizCraft catalog and QQ binding groups each start their own dev
+  # server; Practice uses the default one. All three run here, beside
+  # portal-responsive, so that job stays within its 20-minute limit (#553).
   portal-practice-and-binding:
     name: portal-practice-and-binding
     needs: validate-release-contract

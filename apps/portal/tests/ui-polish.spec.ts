@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { SIGNED_IN_SESSION } from "./support/gateway";
 import { mockGatewayWithContent, waitForHydration } from "./support/readability-routes";
 
 /**
@@ -118,15 +119,7 @@ test("career headline keeps 招聘 on one line at 390px and states each point on
 
 test("free-member career headlines keep 终身会员权益 on one line at 390px", async ({ page }) => {
   // 已登录的免费会员：/career 与 /career/history 都显示“……属于终身会员权益”的说明。
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({
-      json: {
-        user_id: "11111111-1111-4111-8111-111111111111",
-        display_name: "小河同学",
-        expires_at: "2030-01-01T00:00:00Z",
-      },
-    })
-  );
+  await page.route("**/api/v1/session", (route) => route.fulfill({ json: SIGNED_IN_SESSION }));
   await page.route("**/api/v1/account/membership", (route) =>
     route.fulfill({ json: { data: { plan: "free", lifetime: false }, request_id: "req_polish_membership" } })
   );

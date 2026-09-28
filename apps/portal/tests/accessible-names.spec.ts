@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { waitForHydration } from "./support/readability-routes";
 import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 
 /**
@@ -10,10 +11,6 @@ import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
  * - 已登录时页头的账户入口读出完整昵称，而不只是头像块上的一个字。
  * 排行榜周期切换只在 V2 读取开启时出现，它的组名由 practice-leaderboard-live.spec.ts 检查。
  */
-
-async function waitForHydration(page: Page) {
-  await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
-}
 
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
@@ -197,6 +194,15 @@ test("登录 / 注册是一组标签页，方向键在两个标签间切换，�
 
   // 登录方式是一对开关按钮，读得出哪一个按下了。
   await signIn.click();
-  await expect(page.getByRole("button", { name: "验证码登录" })).toHaveAttribute("aria-pressed", "true");
+  const codeMode = page.getByRole("button", { name: "验证码登录" });
+  await expect(codeMode).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "密码登录" })).toHaveAttribute("aria-pressed", "false");
+
+  // 再点已按下的那一个也不算切换：刚出的字段错误都还在。
+  await page.getByRole("tabpanel", { name: "登录" }).getByRole("button", { name: "登录", exact: true }).click();
+  await expect(alerts.first()).toBeVisible();
+  const loginErrors = await alerts.allTextContents();
+  await codeMode.click();
+  await expect(codeMode).toHaveAttribute("aria-pressed", "true");
+  await expect(alerts).toHaveText(loginErrors);
 });

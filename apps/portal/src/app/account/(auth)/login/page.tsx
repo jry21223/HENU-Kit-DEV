@@ -596,6 +596,8 @@ function LoginForm() {
                   type="button"
                   aria-pressed={mode === m}
                   onClick={() => {
+                    // 与标签页一样：再点已按下的那一个不算切换，刚出的提示和错误都留着。
+                    if (m === mode) return;
                     setMode(m);
                     setErrors({});
                     setInfo("");

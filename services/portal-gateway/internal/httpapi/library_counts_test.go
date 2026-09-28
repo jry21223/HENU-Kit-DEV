@@ -120,6 +120,12 @@ func TestLibraryMaterialCountsRejectsInvalidOwnerFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A total read as 0 would still add up against all-zero type counts, so
+	// these prove a null or missing total is rejected rather than defaulted.
+	zeroJSON, err := json.Marshal(ownerTypeCounts(countsReleaseID, 0, allTypes(0, 0, 0, 0, 0, 0, 0)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	withData := func(field string, value any) map[string]any {
 		data := map[string]any{"release_id": countsReleaseID, "material_count": 1, "type_counts": allTypes(1, 0, 0, 0, 0, 0, 0), "as_of": "2026-08-11T01:00:00Z"}
 		data[field] = value
@@ -136,11 +142,10 @@ func TestLibraryMaterialCountsRejectsInvalidOwnerFacts(t *testing.T) {
 		{name: "missing type", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 1, map[string]any{"handout": 1, "exam": 0, "slides": 0, "exercise": 0, "answer": 0, "note": 0})},
 		{name: "unknown type", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 1, map[string]any{"handout": 1, "exam": 0, "slides": 0, "exercise": 0, "answer": 0, "note": 0, "textbook": 0, "mock": 0})},
 		{name: "null count", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 0, map[string]any{"handout": nil, "exam": 0, "slides": 0, "exercise": 0, "answer": 0, "note": 0, "textbook": 0})},
-		{name: "null total", status: http.StatusOK, body: withData("material_count", nil)},
-		{name: "missing total", status: http.StatusOK, raw: strings.Replace(string(validJSON), `"material_count":1,`, "", 1)},
+		{name: "null total", status: http.StatusOK, raw: strings.Replace(string(zeroJSON), `"material_count":0,`, `"material_count":null,`, 1)},
+		{name: "missing total", status: http.StatusOK, raw: strings.Replace(string(zeroJSON), `"material_count":0,`, "", 1)},
 		{name: "negative count", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 0, allTypes(1, -1, 0, 0, 0, 0, 0))},
 		{name: "counts do not add up", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 5, allTypes(1, 1, 0, 0, 0, 0, 0))},
-		{name: "one type beyond the catalog bound", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 501, allTypes(501, 0, 0, 0, 0, 0, 0))},
 		{name: "total beyond the catalog bound", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 501, allTypes(300, 201, 0, 0, 0, 0, 0))},
 		{name: "counts that overflow to the total", status: http.StatusOK, body: ownerTypeCounts(countsReleaseID, 0, map[string]any{"handout": quarter, "exam": quarter, "slides": quarter, "exercise": quarter, "answer": 0, "note": 0, "textbook": 0})},
 		{name: "materials without a release", status: http.StatusOK, body: ownerTypeCounts(nil, 1, allTypes(1, 0, 0, 0, 0, 0, 0))},

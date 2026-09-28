@@ -60,22 +60,34 @@ export default function SectionPractice() {
       : [];
   const barsReady =
     state.status === "ready" || state.status === "empty";
-  // 入场只在第一次创建时决定一次（#557）。那时模块已经在视口里（从中间位置加载），解析文字和
-  // 面板是服务端画好的，不清空也不重播。数据到达后的重跑只给新出现的进度条做生长，不再动打字机和面板。
-  const entrance = useRef<"animated" | "static" | null>(null);
-
+  // 面板淡入与打字机：每次挂载只建一次（#557）。挂载时模块已经在视口里（从中间位置加载），
+  // 解析文字和面板是服务端画好的，不清空也不重播。这个钩子没有依赖：数据到达不会让它重来，
+  // 严格模式下开发版演的那遍卸载再挂载会撤销它、再建一次。
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
-        if (entrance.current === null) {
-          entrance.current = isOnScreen(sectionRef.current) ? "static" : "animated";
-          if (entrance.current === "animated") playOnScroll(textRef.current);
-        }
+        if (isOnScreen(sectionRef.current)) return;
+        const text = textRef.current;
+        playOnScroll(text);
+        // 撤销（卸载，或读者改成减少动态）时补回全文：清空是直接写的 textContent，GSAP 撤销不管它。
+        return () => {
+          if (text) text.textContent = TYPE_TEXT;
+        };
+      });
+      return () => mm.revert();
+    },
+    { scope: sectionRef }
+  );
 
-        // 掌握度进度条：数据到了才渲染，此前没画过，从 0 生长。
-        // 注意 trigger 用 section 而非 bar 自身——整屏模块中位于底部的元素，
-        // 其 "top 60%" 触发线会在模块切换过渡途中被穿过，导致进入/离开动画观感颠倒。
+  // 掌握度进度条：数据到了才渲染，此前没画过，从 0 生长。只有它跟着数据重建（先撤销上一次），
+  // 面板和打字机不跟着重来：再叠一个面板的 from() 会把已经藏起来的面板当成终点，面板就再也不出现。
+  // 注意 trigger 用 section 而非 bar 自身——整屏模块中位于底部的元素，
+  // 其 "top 60%" 触发线会在模块切换过渡途中被穿过，导致进入/离开动画观感颠倒。
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(FINE_MOTION, () => {
         gsap.utils.toArray<HTMLElement>("[data-bar]").forEach((bar) => {
           gsap.from(bar, {
             scaleX: 0,
@@ -92,7 +104,7 @@ export default function SectionPractice() {
       });
       return () => mm.revert();
     },
-    { scope: sectionRef, dependencies: [barsReady] }
+    { scope: sectionRef, dependencies: [barsReady], revertOnUpdate: true }
   );
 
   function renderMastery() {

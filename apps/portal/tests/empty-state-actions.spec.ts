@@ -1,14 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { waitForHydration } from "./support/readability-routes";
 
 /**
  * 空状态给出可执行的下一步（#545）：没有内容时说明原因，并提供一个动作——
  * 去别处（去题库、去刷题、回首页）或就地改条件（清除筛选、清除搜索）。清除筛选要让列表回来，
  * 筛选控件也回到「全部」。
  */
-
-async function waitForHydration(page: Page) {
-  await expect(page.locator("html")).toHaveAttribute("data-scroll-memory", "ready");
-}
 
 test("an empty favorites overview links to the bank catalog", async ({ page }) => {
   await page.route("**/api/v1/practice/favorites", (route) =>

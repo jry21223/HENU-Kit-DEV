@@ -43,7 +43,7 @@ npm run dev
 |---|---|---|
 | `test:e2e:responsive` | 响应式、可读性、点击区、标题、错误与空状态等 | `portal-responsive` |
 | `test:e2e:navigation` | 首页整屏滚动、手势与返回位置 | `portal-responsive` |
-| `test:e2e:stats` | QuizCraft V2 读取开启时的学习统计与排行榜（3101 端口） | `portal-responsive` |
+| `test:e2e:stats` | QuizCraft V2 读取开启时的学习统计、排行榜，以及首页刷题模块在数据晚到时的入场（3101 端口） | `portal-responsive` |
 | `test:e2e:food` | 美食榜、详情与投稿（单 worker） | `portal-responsive` |
 | `test:e2e:account` | 账户中心 | `portal-responsive` |
 | `test:e2e:library-download` | 资料下载 | `portal-responsive` |
@@ -51,9 +51,9 @@ npm run dev
 | `test:e2e:practice` | 答题会话、滑动切题与页面过渡 | `portal-practice-and-binding` |
 | `test:e2e:qq-binding` | QQ 绑定授权页（3197 端口） | `portal-practice-and-binding` |
 
-后三组各要自己的 dev server 或开关，单独成一个作业，`portal-responsive` 因此保持在 20 分钟限时之内（[#553](https://github.com/jry21223/HENU-Kit-DEV/issues/553)）。`test:e2e:oauth-continuation` 由 `oauth-continuation` 作业跑。
+题库目录和 QQ 绑定各起自己的 dev server（3002、3197 端口），刷题组用默认的那个；这三组放在单独的作业里、与 `portal-responsive` 并行，`portal-responsive` 因此保持在 20 分钟限时之内（[#553](https://github.com/jry21223/HENU-Kit-DEV/issues/553)）。`test:e2e:oauth-continuation` 由 `oauth-continuation` 作业跑。
 
-- 访客与已登录的网关 mock 在 `tests/support/gateway.ts`，有内容时的页面数据在 `tests/support/readability-routes.ts`，各 spec 引用同一份。
+- 访客与已登录的网关 mock 在 `tests/support/gateway.ts`，有内容时的页面数据和 `waitForHydration` 在 `tests/support/readability-routes.ts`，逐帧入场采样在 `tests/support/entrance.ts`，用到的 spec 都引用这一份；账户中心、QQ 绑定这类按自己的接口流程 mock 会话的 spec 除外。
 - 断言不按测试进程感受到的耗时下结论：两个 worker 抢 CPU 时，测试进程到浏览器的一来一回会拖长。滚轮突发在页面里派发，“落定后马上走下一屏”数的是刻度而不是毫秒；等页面长到滚得动再滚动。
 
 ## SEO / GEO 基础设施

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectTouchTargets } from "./support/touch-targets";
-import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
+import { mockGuestGateway, mockSignedInGateway, SIGNED_IN_SESSION } from "./support/gateway";
 import { FOOD_POSTS, LIBRARY_MATERIALS, mockGatewayWithContent, waitForHydration } from "./support/readability-routes";
 
 /**
@@ -134,12 +134,7 @@ test("资料详情：目录的展开和收起按钮不小于 44×44", async ({ p
 });
 
 test("已登录时，「我的交易」的返回按钮和题库收藏夹的取消收藏、返回链接不小于 44×44", async ({ page }) => {
-  await mockGuestGateway(page);
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({
-      json: { user_id: "11111111-1111-4111-8111-111111111111", display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" },
-    })
-  );
+  await mockSignedInGateway(page);
   await page.route("**/api/v1/practice/banks/targets-bank/favorites", (route) =>
     route.fulfill({
       json: {
@@ -205,12 +200,7 @@ test("终身会员的 /career：扫描历史入口和岗位链接不小于 44×4
       ],
     },
   };
-  await mockGuestGateway(page);
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({
-      json: { user_id: userID, display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" },
-    })
-  );
+  await mockSignedInGateway(page, { ...SIGNED_IN_SESSION, user_id: userID });
   await page.route("**/api/v1/account/membership", (route) =>
     route.fulfill({ json: { data: { plan: "lifetime", lifetime: true }, request_id: "req_targets_membership" } })
   );

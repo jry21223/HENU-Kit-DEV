@@ -225,11 +225,26 @@ test("release artifacts are blocked on the cumulative cross-product OAuth journe
   assert.match(runtimePackager, /release-gates\/oauth-continuation\.env/);
 });
 
+/** One job's block, from its header to the next job header. */
+function workflowJob(name) {
+  const header = `\n  ${name}:\n`;
+  const start = workflow.indexOf(header);
+  assert.notEqual(start, -1, `${name} job is missing`);
+  const body = workflow.slice(start + 1);
+  const next = body.slice(1).search(/\n  [a-z0-9-]+:\n/);
+  return next === -1 ? body : body.slice(0, next + 1);
+}
+
 test("CI runs the QuizCraft catalog, Practice and QQ binding browser groups beside portal-responsive", () => {
+  const job = workflowJob("portal-practice-and-binding");
+  const responsive = workflowJob("portal-responsive");
+  assert.match(job, /\n    needs: validate-release-contract\n/);
+  assert.match(job, /\n    timeout-minutes: 20\n/);
   for (const group of ["quizcraft-catalog", "practice", "qq-binding"]) {
-    assert.match(workflow, new RegExp(`pnpm --filter @henukit/portal test:e2e:${group}\\n`));
+    const step = new RegExp(`\\n        run: pnpm --filter @henukit/portal test:e2e:${group}\\n`);
+    assert.match(job, step);
+    assert.doesNotMatch(responsive, step);
   }
-  assert.match(workflow, /\n  portal-practice-and-binding:\n[\s\S]*?timeout-minutes: 20\n/);
   assert.match(portalPackage.scripts["test:e2e:qq-binding"], /--config playwright\.qq-binding\.config\.ts/);
   assert.match(portalPackage.scripts["test:e2e:practice"], /tests\/practice-transition\.spec\.ts/);
 });
