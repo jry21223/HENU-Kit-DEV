@@ -243,7 +243,8 @@ test("CI runs the QuizCraft catalog, Practice and QQ binding browser groups besi
   for (const group of ["quizcraft-catalog", "practice", "qq-binding"]) {
     const step = new RegExp(`\\n        run: pnpm --filter @henukit/portal test:e2e:${group}\\n`);
     assert.match(job, step);
-    assert.doesNotMatch(responsive, step);
+    // Named or unnamed, the group must not run in portal-responsive.
+    assert.doesNotMatch(responsive, new RegExp(`test:e2e:${group}\\n`));
   }
   assert.match(portalPackage.scripts["test:e2e:qq-binding"], /--config playwright\.qq-binding\.config\.ts/);
   assert.match(portalPackage.scripts["test:e2e:practice"], /tests\/practice-transition\.spec\.ts/);

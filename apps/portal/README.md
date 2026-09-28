@@ -236,7 +236,7 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 - 页面间导航：形变过渡系统（共享元素形变 + 塌缩/展开）。
 - `prefers-reduced-motion`：瞬时导航，循环/揭示动画静止。
 - 首屏入场只让内容越来越可见，服务端已画出的内容不在水合后隐藏重播（[#537](https://github.com/jry21223/HENU-Kit-DEV/issues/537)）。首页、子站与题库 Hero 用 `globals.css` 的 `enter-*` CSS keyframes，首帧即开始播放、不等水合，脚本没加载也停在可见态；不要对服务端已画出的内容用 GSAP `from()`。`[data-enter]` 内容块由 `useReveal` 揭示：水合时已画出的块直接显示，之后只揭示客户端新挂上的块。慢 CPU 下由 `tests/first-screen-entrance.spec.ts` 逐帧检查。
-- 滚动入场：统一 `start: "top 60%"`。首页下方模块的 `gsap.from()` 入场只在模块第一次创建、且还不在视口里时才建（`isOnScreen`，`src/lib/gsap.ts`）：从中间位置加载时，已经画出的内容不被藏起来重播（[#557](https://github.com/jry21223/HENU-Kit-DEV/issues/557)）。
+- 滚动入场：统一 `start: "top 60%"`。首页下方模块的 `gsap.from()` 入场在挂载时建，挂载时已经在视口里就不建（`isOnScreen`，`src/lib/gsap.ts`）：从中间位置加载时，已经画出的内容不被藏起来重播；数据到达后也不重建，只给新出现的内容（如刷题模块的掌握度条）做入场（[#557](https://github.com/jry21223/HENU-Kit-DEV/issues/557)）。
 - mock 数据为固定数据，图片使用 picsum 种子外链，SSR 与客户端输出一致；生产构建不预渲染任何 mock 页面（`npm run build` 会检查）。
 - 图片统一用 `components/ui/img.tsx`：默认懒加载、异步解码，首屏关键图由调用方传 `loading="eager"`（主图再加 `fetchPriority="high"`）；调用方用固定宽高或 `aspect-ratio` 占位，加载时不挤动版面（[#548](https://github.com/jry21223/HENU-Kit-DEV/issues/548)，见 `docs/product/DESIGN_SYSTEM.md` §13）。
 

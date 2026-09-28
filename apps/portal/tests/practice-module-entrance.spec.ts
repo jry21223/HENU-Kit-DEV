@@ -1,6 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { waitForHydration } from "./support/readability-routes";
-import { collect, recordFromFirstFrame, relapses, settle, type Probe } from "./support/entrance";
+import {
+  collect,
+  recordFromFirstFrame,
+  relapses,
+  sampledBeforeHydration,
+  settle,
+  throttleCPU,
+  type Probe,
+} from "./support/entrance";
 import { mockGuestGateway } from "./support/gateway";
 
 /**
@@ -148,6 +156,8 @@ test("停在刷题模块时刷新、数据后到：已经画出的面板和解�
   await scrollToPractice(page);
 
   await recordFromFirstFrame(page, probes);
+  // 与 first-screen-entrance 的中间位置用例一样降速，保证采到水合之前的帧。
+  await throttleCPU(page);
   await page.reload({ waitUntil: "commit" });
   await waitForHydration(page);
   release();
@@ -162,6 +172,7 @@ test("停在刷题模块时刷新、数据后到：已经画出的面板和解�
   expect(restored, "刷新后停在刷题模块").toBe(true);
 
   const series = await collect(page);
+  expect(sampledBeforeHydration(series), "采到了水合之前的帧").toBe(true);
   expect(series.some((entry) => entry.label.startsWith("[data-bar]")), "采到了数据到达后才出现的掌握度条").toBe(true);
   expect(relapses(series, probes)).toEqual([]);
   await expect(practice(page).locator("[data-typewriter]")).toContainText(TYPED_TO_THE_END);
