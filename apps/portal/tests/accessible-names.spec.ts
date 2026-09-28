@@ -14,6 +14,27 @@ import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
+test("账户中心在读会话和会话读取失败时，正文也在唯一的 main 地标里", async ({ page }) => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await mockGuestGateway(page);
+  await page.route("**/api/v1/session", async (route) => {
+    await gate;
+    await route.fulfill({ status: 503, json: { error: "portal_session_unavailable", request_id: "req_names_session_down" } });
+  });
+  await page.goto("/account", { waitUntil: "domcontentloaded" });
+
+  const main = page.getByRole("main");
+  await expect(main).toHaveCount(1);
+  await expect(main).toHaveAttribute("data-account-session-state", "loading");
+
+  release();
+  await expect(main.locator('[data-account-session-state="error"]')).toBeVisible();
+  await expect(main).toHaveCount(1);
+});
+
 test("资料库、互助和题库的搜索框由看得见的标签命名", async ({ page }) => {
   await mockGuestGateway(page);
 

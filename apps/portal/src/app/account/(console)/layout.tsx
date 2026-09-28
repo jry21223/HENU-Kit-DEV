@@ -34,13 +34,14 @@ type SessionState =
   | { kind: "anonymous" }
   | { kind: "error"; message: string };
 
+// 读会话、会话读取失败、已登录三种状态各自只渲染一个 main，读屏在任何时候都能直接跳到正文。
 function LoadingBlock() {
   return (
-    <div data-account-session-state="loading" className="flex min-h-[60vh] items-center justify-center">
+    <main data-account-session-state="loading" className="flex min-h-[60vh] items-center justify-center">
       <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
         AUTH CHECK<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </p>
-    </div>
+    </main>
   );
 }
 
@@ -160,18 +161,20 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
       {sessionState.kind === "loading" || sessionState.kind === "anonymous" ? <LoadingBlock /> : null}
 
       {sessionState.kind === "error" ? (
-        <section data-account-session-state="error" role="alert" className="mx-auto mt-10 max-w-2xl border border-accent px-5 py-6">
-          <p className="font-mono text-xs text-accent-text">账户服务暂不可用</p>
-          <p className="mt-3 text-sm leading-6 text-ink/65">{sessionState.message}</p>
-          <p className="mt-3 text-sm leading-6 text-ink/60">账户信息暂时加载不出来，请稍后重新加载。</p>
-          <button
-            type="button"
-            onClick={loadSession}
-            className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
-          >
-            重新加载
-          </button>
-        </section>
+        <main>
+          <section data-account-session-state="error" role="alert" className="mx-auto mt-10 max-w-2xl border border-accent px-5 py-6">
+            <p className="font-mono text-xs text-accent-text">账户服务暂不可用</p>
+            <p className="mt-3 text-sm leading-6 text-ink/65">{sessionState.message}</p>
+            <p className="mt-3 text-sm leading-6 text-ink/60">账户信息暂时加载不出来，请稍后重新加载。</p>
+            <button
+              type="button"
+              onClick={loadSession}
+              className="mt-5 inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
+            >
+              重新加载
+            </button>
+          </section>
+        </main>
       ) : null}
 
       {sessionState.kind === "authenticated" ? (
