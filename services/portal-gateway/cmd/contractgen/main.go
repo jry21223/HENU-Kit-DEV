@@ -123,6 +123,7 @@ func main() {
 func validateLibraryCatalogFacade(paths map[string]pathItem) {
 	for route, responseRef := range map[string]string{
 		"/api/v1/library/materials":               "#/components/schemas/PublicLibraryCatalogResponse",
+		"/api/v1/library/material-counts":         "#/components/schemas/PublicLibraryMaterialCountsResponse",
 		"/api/v1/library/materials/{material_id}": "#/components/schemas/PublicLibraryMaterialResponse",
 	} {
 		operation := paths[route].Get

@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { routeLibraryCounts } from "./library-counts";
 
 /**
  * 可读性检查（#536）共用的页面和网关 mock：tests/color-contrast.spec.ts 查文字对比度，
@@ -72,6 +73,7 @@ export async function mockGatewayWithContent(page: Page) {
     route.fulfill({ json: { categories: [], request_id: "req_readability_categories" } })
   );
   await page.route(`**${BROKEN_PHOTO}`, (route) => route.fulfill({ status: 404 }));
+  await routeLibraryCounts(page, LIBRARY_MATERIALS);
   await page.route("**/api/v1/library/materials", (route) =>
     route.fulfill({
       json: {

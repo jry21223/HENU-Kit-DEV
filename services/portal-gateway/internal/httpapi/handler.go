@@ -262,6 +262,7 @@ func (h *Handler) Router() chi.Router {
 	// The complete owner snapshot shadows Portal API's legacy mock catalog. It
 	// carries no browser filters so the global facts remain filter-independent.
 	r.Get("/api/v1/library/materials", h.libraryCatalog)
+	r.Get("/api/v1/library/material-counts", h.libraryMaterialCounts)
 	r.Get("/api/v1/library/materials/{material_id}", h.libraryMaterial)
 
 	// Product data — proxy to portal-api (public, no auth required)
@@ -358,6 +359,37 @@ func (h *Handler) libraryCatalog(w http.ResponseWriter, r *http.Request) {
 			"downloadStarts": catalog.DownloadStarts,
 			"countingSince":  countingSince,
 			"asOf":           catalog.AsOf.UTC().Format(time.RFC3339),
+		},
+		"request_id": requestIDOf(w, r),
+	})
+}
+
+// libraryMaterialCounts serves the home page's per-type totals (#555) without
+// the catalog. Like the catalog it takes no browser filter and fails closed.
+func (h *Handler) libraryMaterialCounts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.RawQuery != "" {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "资料库筛选请在页面内完成。")
+		return
+	}
+	if h.libraryDownloads == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "LIBRARY_TEMPORARILY_UNAVAILABLE", "资料库暂时无法加载，请稍后重试。")
+		return
+	}
+	counts, err := h.libraryDownloads.TypeCounts(r.Context(), requestIDOf(w, r))
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "LIBRARY_TEMPORARILY_UNAVAILABLE", "资料库暂时无法加载，请稍后重试。")
+		return
+	}
+	releaseID := any(nil)
+	if counts.ReleaseID != nil {
+		releaseID = *counts.ReleaseID
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"counts": map[string]any{
+			"releaseId": releaseID, "materialCount": counts.MaterialCount,
+			"byType": counts.ByType,
+			"asOf":   counts.AsOf.UTC().Format(time.RFC3339),
 		},
 		"request_id": requestIDOf(w, r),
 	})

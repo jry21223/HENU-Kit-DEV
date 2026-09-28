@@ -93,3 +93,80 @@ func (h *service) publicMaterialCatalog(w http.ResponseWriter, r *http.Request) 
 		"download_starts": total, "counting_since": sinceValue, "as_of": h.now().UTC().Format(time.RFC3339),
 	})
 }
+
+// canonicalMaterialTypes are the seven types the public catalog knows
+// (migration 000005); type counts always name every one of them.
+var canonicalMaterialTypes = []string{"handout", "exam", "slides", "exercise", "answer", "note", "textbook"}
+
+// publicMaterialTypeCounts counts the active public-free release by material
+// type without listing it (#555): the Portal home page's library block needs
+// only these numbers, not the complete catalog.
+func (h *service) publicMaterialTypeCounts(w http.ResponseWriter, r *http.Request) {
+	tx, err := h.database.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "public material type counts are temporarily unavailable")
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
+	var releaseID string
+	err = tx.QueryRow(r.Context(), `SELECT release_id FROM library_public_releases WHERE state='active' AND activation_digest IS NOT NULL`).Scan(&releaseID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "public material type counts are temporarily unavailable")
+		return
+	}
+
+	counts := make(map[string]int64, len(canonicalMaterialTypes))
+	for _, materialType := range canonicalMaterialTypes {
+		counts[materialType] = 0
+	}
+	var total int64
+	if releaseID != "" {
+		rows, queryErr := tx.Query(r.Context(), `
+			SELECT m.material_type,count(*)
+			FROM library_public_material_snapshots m
+			WHERE m.release_id=$1 AND m.status='published' AND m.access_level='public_free'
+			GROUP BY m.material_type`, releaseID)
+		if queryErr != nil {
+			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "public material type counts are temporarily unavailable")
+			return
+		}
+		for rows.Next() {
+			var materialType string
+			var count int64
+			if err := rows.Scan(&materialType, &count); err != nil {
+				rows.Close()
+				writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "public material type counts are temporarily unavailable")
+				return
+			}
+			// The column constraint allows only canonical types; anything else
+			// is a snapshot the contract cannot describe, so fail closed.
+			if _, canonical := counts[materialType]; !canonical {
+				rows.Close()
+				writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "public material type counts are temporarily unavailable")
+				return
+			}
+			counts[materialType] = count
+			total += count
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "public material type counts are temporarily unavailable")
+			return
+		}
+		rows.Close()
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "public material type counts are temporarily unavailable")
+		return
+	}
+
+	var releaseValue any
+	if releaseID != "" {
+		releaseValue = releaseID
+	}
+	writeData(w, r, http.StatusOK, map[string]any{
+		"release_id": releaseValue, "material_count": total, "type_counts": counts,
+		"as_of": h.now().UTC().Format(time.RFC3339),
+	})
+}

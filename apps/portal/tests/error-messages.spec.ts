@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { libraryCountsFor } from "./support/library-counts";
 
 /**
  * 资料库接口返回 HTML 错误页（反向代理 404、WAF 挑战页）时，首页 01 与 /library
@@ -28,18 +29,22 @@ const CATALOG = {
   request_id: "req_library_ok",
 };
 
-/** Fails the catalog read with an HTML page until recover() is called. */
+/**
+ * Fails the library reads with an HTML page until recover() is called: the
+ * catalog that /library lists and the type counts the home block shows (#555).
+ */
 async function breakLibraryCatalog(page: Page, status: number) {
   let broken = true;
-  await page.route("**/api/v1/library/materials", (route) =>
+  const fail = (route: Route, recovered: unknown) =>
     broken
       ? route.fulfill({
           status,
           headers: { "Content-Type": "text/html", "X-Request-Id": "req_edge404" },
           body: HTML_404,
         })
-      : route.fulfill({ json: CATALOG })
-  );
+      : route.fulfill({ json: recovered });
+  await page.route("**/api/v1/library/materials", (route) => fail(route, CATALOG));
+  await page.route("**/api/v1/library/material-counts", (route) => fail(route, libraryCountsFor(CATALOG.materials)));
   return () => {
     broken = false;
   };

@@ -8,13 +8,13 @@ import TiltCard from "@/components/ui/tilt-card";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import {
   fetchLibraryCourses,
+  fetchLibraryMaterialCounts,
   formatPortalError,
   mockAllowed,
   portalErrorRequestId,
 } from "@/lib/api/client";
-import type { CourseSummary } from "@/lib/api/types";
-import { STATIC_MATERIALS, type Material } from "@/lib/library/mock";
-import { loadLibraryMaterials } from "@/lib/library/gateway";
+import type { CourseSummary, MaterialType } from "@/lib/api/types";
+import { STATIC_MATERIALS } from "@/lib/library/mock";
 import { ErrorBanner } from "@/components/data-state";
 
 const FEATURES = ["公开资料持续整理", "支持电子版教材分类", "按课程与类型检索"];
@@ -32,10 +32,12 @@ const CARD_DEFS = [
   { type: "textbook", code: "TB", title: "电子版教材", meta: "按课程归档 / 原文件下载", unit: "本" },
 ] as const;
 
-function buildCards(materials: Material[], courses: CourseSummary[]): LibraryCard[] {
+type TypeCounts = Record<MaterialType, number>;
+
+function buildCards(byType: TypeCounts, courses: CourseSummary[]): LibraryCard[] {
   const cards: LibraryCard[] = [];
   for (const def of CARD_DEFS) {
-    const count = materials.filter((m) => m.type === def.type).length;
+    const count = byType[def.type];
     if (count > 0) {
       cards.push({
         id: def.type,
@@ -58,6 +60,13 @@ function buildCards(materials: Material[], courses: CourseSummary[]): LibraryCar
   return cards;
 }
 
+/** 开发环境的静态资料按同一口径计数。 */
+function countByType(materials: ReadonlyArray<{ type: string }>): TypeCounts {
+  return Object.fromEntries(
+    CARD_DEFS.map((def) => [def.type, materials.filter((m) => m.type === def.type).length])
+  ) as TypeCounts;
+}
+
 export default function SectionLibrary() {
   const sectionRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -68,19 +77,19 @@ export default function SectionLibrary() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      // 全量资料与资料详情的“相关资料”共用一次请求和缓存（#546）；课程不可用不阻塞资料统计。
-      const [materials, coursesResp] = await Promise.all([
-        loadLibraryMaterials(),
+      // 首页只要各类型数量，不下载完整目录（#555）；课程不可用不阻塞资料统计。
+      const [{ counts }, coursesResp] = await Promise.all([
+        fetchLibraryMaterialCounts(),
         fetchLibraryCourses().catch(() => null),
       ]);
-      setCards(buildCards(materials, coursesResp?.courses ?? []));
-      setTotalCount(materials.length);
+      setCards(buildCards(counts.byType, coursesResp?.courses ?? []));
+      setTotalCount(counts.materialCount);
       return;
     } catch (e) {
       // 生产环境禁止静默回退 mock；只有允许 mock 的开发环境才走静态数据。
-      // 失败后不在背后再请求一遍全量，重试交给用户点「重试」。
+      // 失败后不在背后自动重试，重试交给用户点「重试」。
       if (mockAllowed) {
-        setCards(buildCards(STATIC_MATERIALS, []));
+        setCards(buildCards(countByType(STATIC_MATERIALS), []));
         setTotalCount(STATIC_MATERIALS.length);
         return;
       }

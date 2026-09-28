@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectTouchTargets } from "./support/touch-targets";
+import { routeLibraryCounts } from "./support/library-counts";
 
 /**
  * 触控目标不小于 44×44px（DESIGN_SYSTEM §11、§13；#543）。在 390px 手机上，下列页面里
@@ -80,6 +81,7 @@ async function mockGatewayWithContent(page: Page) {
   await page.route("**/api/v1/campus/categories", (route) =>
     route.fulfill({ json: { categories: [], request_id: "req_targets_categories" } })
   );
+  await routeLibraryCounts(page, LIBRARY_MATERIALS);
   await page.route("**/api/v1/library/materials", (route) =>
     route.fulfill({
       json: {

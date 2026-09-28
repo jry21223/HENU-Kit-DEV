@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { routeLibraryCounts } from "./support/library-counts";
 
 /**
  * UI 细节打磨（#549）：首页榜单对齐、档案卡缩写只作装饰、互助筛选分组、求职雷达标题
@@ -80,6 +81,7 @@ async function mockGateway(page: Page) {
   await page.route("**/api/v1/campus/categories", (route) =>
     route.fulfill({ json: { categories: [], request_id: "req_polish_categories" } })
   );
+  await routeLibraryCounts(page, LIBRARY_MATERIALS);
   await page.route("**/api/v1/library/materials", (route) =>
     route.fulfill({
       json: {

@@ -38,6 +38,7 @@ import type {
   FoodPostDetailResponse,
   FoodPostListResponse,
   LibraryCoursesResponse,
+  LibraryMaterialCountsResponse,
   MaterialDetailResponse,
   MaterialListResponse,
   NoticeListResponse,
@@ -508,6 +509,11 @@ export async function fetchLibraryMaterials(params?: {
   return apiFetchRequired<MaterialListResponse>(
     `/api/v1/library/materials${query ? `?${query}` : ""}`
   );
+}
+
+/** 各类型资料数量（#555）：首页资料库区块只需要这些数字，不下载完整目录。 */
+export async function fetchLibraryMaterialCounts(): Promise<LibraryMaterialCountsResponse> {
+  return apiFetchRequired<LibraryMaterialCountsResponse>("/api/v1/library/material-counts");
 }
 
 export async function fetchLibraryMaterialDetail(

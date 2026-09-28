@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { routeLibraryCounts } from "./support/library-counts";
 
 /**
  * 首屏入场只能单调地变可见（#537）。
@@ -124,19 +125,20 @@ function sampledBeforeHydration(series: Series[]) {
 
 const MOBILE = { width: 390, height: 844 };
 
-/** 资料库目录里放一份资料，页面走到「数据已到达」的状态。 */
+const ENTRANCE_MATERIAL = {
+  id: "library-entrance", type: "note", subject: "高等数学",
+  title: "极限复习笔记", author: "资料库收录", intro: "", toc: [], pages: [],
+  price: 0, previewPages: 0, downloads: 1, downloadAvailable: true, fileSize: 1024,
+};
+
+/** 资料库目录里放一份资料，页面走到「数据已到达」的状态；首页区块读同一份目录的计数。 */
 async function mockLibraryCatalog(page: Page) {
+  await routeLibraryCounts(page, [ENTRANCE_MATERIAL]);
   await page.route("**/api/v1/library/materials", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        materials: [
-          {
-            id: "library-entrance", type: "note", subject: "高等数学",
-            title: "极限复习笔记", author: "资料库收录", intro: "", toc: [], pages: [],
-            price: 0, previewPages: 0, downloads: 1, downloadAvailable: true, fileSize: 1024,
-          },
-        ],
+        materials: [ENTRANCE_MATERIAL],
         statistics: {
           releaseId: "0123456789abcdef0123456789abcdef01234567-0123456789abcdef",
           materialCount: 1,

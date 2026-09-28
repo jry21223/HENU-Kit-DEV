@@ -70,6 +70,11 @@ production download and rollback evidence.
 ADR-0029 makes the complete verified owner catalog and its unfiltered aggregate
 read atomic. Its activation command remains unwired to a public HTTP route;
 passing local tests is not production activation evidence.
+The type-count read (`GET /api/v1/public-materials/type-counts`, #555) counts
+the same active public-free rows as the catalog in one repeatable snapshot
+without listing them. It always names every canonical material type, answers an
+explicit all-zero success when no release is active, and fails closed on a type
+the contract does not know.
 ADR-0031 keeps every activated material download-only: activation rejects any
 derived preview asset, and Library snapshots contain no online-preview field.
 
