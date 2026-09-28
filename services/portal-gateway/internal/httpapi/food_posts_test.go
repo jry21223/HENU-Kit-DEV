@@ -335,6 +335,34 @@ func TestFoodPostRoutesFailClosedWhenUnconfigured(t *testing.T) {
 	}
 }
 
+// Reads and creates use separate credentials; a Gateway that can read the
+// ranking but not submit to it must not tell a poster the ranking is down.
+func TestFoodPostCreateWithoutItsCredentialNamesTheSubmissionService(t *testing.T) {
+	food := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("Food contacted without a create credential")
+	}))
+	defer food.Close()
+	handler, err := New(config.Config{
+		SessionKey:   []byte("0123456789abcdef0123456789abcdef"),
+		FoodPostsURL: food.URL,
+		FoodPostReadAuth: config.ServiceAuth{
+			ClientID: "food-post-read", ClientSecret: foodPostsSecret, KeyID: "read-key",
+		},
+		PortalAPIURL: unreachablePortalAPIURL(),
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := foodPostsRequest(t, handler, true, http.MethodPost, "/api/v1/food/posts", `{"venue_name":"x","campus":"jinming","tier":"hang","review_text":"y"}`, "idem_food_read_only")
+	response := httptest.NewRecorder()
+	handler.Router().ServeHTTP(response, request)
+	var envelope contract.ErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil || response.Code != http.StatusServiceUnavailable || envelope.Error != "food_posts_unavailable" || envelope.Message != "投稿服务暂时不可用，请稍后再试" {
+		t.Fatalf("create without its credential = %d %s (%v)", response.Code, response.Body.String(), err)
+	}
+}
+
 func TestFoodPostDailyCapErrorPassesThroughVerbatim(t *testing.T) {
 	const upstreamBody = `{"error":{"code":"DAILY_POST_CAP_REACHED","message":"今天已经投满 3 条，明天再来吧"},"request_id":"req_food_cap"}`
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

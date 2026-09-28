@@ -164,7 +164,7 @@ md 以下，首页导航收进右上角的菜单按钮（`src/components/navbar.
 ### 数据加载失败
 - 接口失败时，页面只展示中文提示：说明发生了什么、可以怎么做，不展示接口路径、HTTP 状态文本或内部组件名。提示统一由 `formatPortalError`（`src/lib/api/client.ts`）按顺序决定（#554）：
   - 网络失败、需要登录（401）用 Portal 自己的提示。Gateway 对从没登录过的访客也回“登录已过期”，所以 401 不用它的文案。
-  - Gateway 自己写出的扁平错误信封（`{error: "码", message: "中文"}`），码在放行名单（`src/lib/api/gateway-errors.ts`）里、且 `message` 是中文时，原样展示 `message`。上游经 Gateway 原样转发的嵌套信封（Food、Career 的 `{error: {code, message}}`）一律不展示。
+  - Gateway 自己写出的扁平错误信封（`{error: "码", message: "中文"}`），码在放行名单（`src/lib/api/gateway-errors.ts`）里、且 `message` 是中文时，原样展示 `message`。上游经 Gateway 原样转发的嵌套信封（Food、Career 的 `{error: {code, message}}`）一律不展示；portal-api 经 Gateway 转发的扁平信封（如 `not_found`）的码不在名单里，也不展示。
   - 有意不放行的 Gateway 码写在 `GATEWAY_WITHHELD_CODES` 里并注明原因：只说“内容不存在或已下架”而没有下一步的通用 404、Portal 自己生成的幂等键出错、浏览器整页导航才会遇到的登录跳转与 OAuth 回调错误。`gateway-errors.test.ts` 扫描 Gateway 源码里以字面量写出的错误码，每个码都要在名单或不放行清单里，清单里也不能留着源码里已经没有的码；用变量传的码扫不到，改 Gateway 时要一并更新名单。
   - 其余 API 错误信封：403 说“你没有权限进行这个操作。如有疑问，请到账户中心提交工单。”，404 说“内容不存在或已下架，请返回上一页重新选择。”。
   - 其他情况（上游透传或不认识的码、5xx、非 JSON 响应，例如网关错误页或 WAF 挑战页）说“服务暂时不可用，请稍后再试。”。错误对象的原始 message 只用于排查，不上屏。

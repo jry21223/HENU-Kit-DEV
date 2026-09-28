@@ -1182,7 +1182,7 @@ func (h *Handler) createFoodPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.foodPosts == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "投稿服务暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", foodPostCreateUnavailable)
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
@@ -1201,7 +1201,7 @@ func (h *Handler) createFoodPost(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := h.foodPosts.CreatePost(r.Context(), value.UserID, value.DisplayName, requestIDOf(w, r), idempotencyKey, raw)
 	if err != nil {
-		h.writeFoodPostsFailure(w, r, err)
+		h.writeFoodPostsFailure(w, r, err, foodPostCreateUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1237,12 +1237,12 @@ func (h *Handler) foodPostDetail(w http.ResponseWriter, r *http.Request) {
 // and error body pass through unchanged, like every other Food Post read.
 func (h *Handler) foodPostImage(w http.ResponseWriter, r *http.Request) {
 	if h.foodPosts == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "美食榜暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", foodPostsReadUnavailable)
 		return
 	}
 	image, err := h.foodPosts.PostImage(r.Context(), requestIDOf(w, r), chi.URLParam(r, "post_id"), chi.URLParam(r, "position"))
 	if err != nil {
-		h.writeFoodPostsFailure(w, r, err)
+		h.writeFoodPostsFailure(w, r, err, foodPostsReadUnavailable)
 		return
 	}
 	if image.ContentType != "" {
@@ -1268,12 +1268,12 @@ func (h *Handler) foodVenues(w http.ResponseWriter, r *http.Request) {
 // an honest 503 and a Food failure is never replaced by the legacy wildcard.
 func (h *Handler) foodPostsRead(w http.ResponseWriter, r *http.Request, read func(ctx context.Context, requestID string) (json.RawMessage, error)) {
 	if h.foodPosts == nil {
-		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "美食榜暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", foodPostsReadUnavailable)
 		return
 	}
 	data, err := read(r.Context(), requestIDOf(w, r))
 	if err != nil {
-		h.writeFoodPostsFailure(w, r, err)
+		h.writeFoodPostsFailure(w, r, err, foodPostsReadUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1281,9 +1281,16 @@ func (h *Handler) foodPostsRead(w http.ResponseWriter, r *http.Request, read fun
 	_, _ = w.Write(data)
 }
 
+// Reads and creates hold separate Food credentials, so each names the service
+// the user was actually using when it is not configured.
+const (
+	foodPostsReadUnavailable  = "美食榜暂时不可用，请稍后再试"
+	foodPostCreateUnavailable = "投稿服务暂时不可用，请稍后再试"
+)
+
 // writeFoodPostsFailure forwards a Food non-2xx verbatim and otherwise writes
 // an honest Gateway error. It never falls back to the Portal API proxy.
-func (h *Handler) writeFoodPostsFailure(w http.ResponseWriter, r *http.Request, err error) {
+func (h *Handler) writeFoodPostsFailure(w http.ResponseWriter, r *http.Request, err error, unavailable string) {
 	var upstream *foodposts.UpstreamError
 	switch {
 	case errors.As(err, &upstream):
@@ -1295,7 +1302,7 @@ func (h *Handler) writeFoodPostsFailure(w http.ResponseWriter, r *http.Request, 
 		w.WriteHeader(upstream.StatusCode)
 		_, _ = w.Write(upstream.Body)
 	case errors.Is(err, foodposts.ErrUnconfigured):
-		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", "美食榜暂时不可用，请稍后再试")
+		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", unavailable)
 	case errors.Is(err, foodposts.ErrBadRequest):
 		writeError(w, r, http.StatusBadRequest, "food_post_invalid", "请求内容不完整，请检查后重试")
 	default:

@@ -201,8 +201,10 @@ async function parseErrorBody(
       message,
       requestId: body.request_id || headerRequestId,
       errorCode,
-      // Only the Gateway's own flat envelope carries a message written for
-      // users; a nested {code, message} is an upstream body passed through.
+      // Only a flat envelope can carry a message written for users. The
+      // Gateway writes its own errors flat and the allowlist names only its
+      // codes, so portal-api's flat not_found stays withheld; a nested
+      // {code, message} is an upstream body passed through.
       serverMessage: typeof raw === "string" ? body.message : undefined,
     };
   } catch {
