@@ -89,6 +89,11 @@ __pycache__/
 bin/
 *.test
 .tools/
+# `go build ./...` inside a cmd package drops the binary beside its source.
+# Named explicitly, like quizcraftcontractgen above: a glob over services/*/cmd
+# either misses the packages whose binary name has no distinguishing shape or
+# swallows files those packages may add later.
+services/library/cmd/activate-public-release/activate-public-release
 
 # LangBot sales-agent plugin (moved from the pre-monorepo root plugin location).
 integrations/langbot-sales-agent/
