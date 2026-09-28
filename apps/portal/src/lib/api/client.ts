@@ -14,6 +14,7 @@ import {
   hasGatewayConfigured,
   requireGateway,
 } from "./env";
+import { gatewayUserMessage } from "./gateway-errors";
 import type {
   AccountCreateTicketInput,
   AccountMembershipOrderResponse,
@@ -108,13 +109,16 @@ export class PortalNetworkError extends PortalApiError {
 
 export class PortalHttpError extends PortalApiError {
   readonly errorCode?: string;
+  /** The error envelope's user-facing message; formatPortalError decides whether to show it. */
+  readonly serverMessage?: string;
 
   constructor(
     path: string,
     status: number,
     message: string,
     requestId?: string,
-    errorCode?: string
+    errorCode?: string,
+    serverMessage?: string
   ) {
     super(message, {
       code: "PORTAL_HTTP_ERROR",
@@ -124,6 +128,7 @@ export class PortalHttpError extends PortalApiError {
     });
     this.name = "PortalHttpError";
     this.errorCode = errorCode;
+    this.serverMessage = serverMessage;
   }
 }
 
@@ -146,9 +151,10 @@ export class PortalForbiddenError extends PortalHttpError {
     path: string,
     message: string,
     requestId?: string,
-    errorCode?: string
+    errorCode?: string,
+    serverMessage?: string
   ) {
-    super(path, 403, message, requestId);
+    super(path, 403, message, requestId, undefined, serverMessage);
     this.name = "PortalForbiddenError";
     this.errorCode = errorCode;
     (this as { code: string }).code = "PORTAL_FORBIDDEN";
@@ -180,7 +186,7 @@ function baseUrlOrEmpty(): string {
 
 async function parseErrorBody(
   res: Response
-): Promise<{ message: string; requestId?: string; errorCode?: string }> {
+): Promise<{ message: string; requestId?: string; errorCode?: string; serverMessage?: string }> {
   const headerRequestId = res.headers.get("X-Request-Id")?.trim() || undefined;
   try {
     const body = (await res.json()) as ErrorEnvelope;
@@ -195,6 +201,7 @@ async function parseErrorBody(
       message,
       requestId: body.request_id || headerRequestId,
       errorCode,
+      serverMessage: typeof raw === "string" ? body.message : raw?.message,
     };
   } catch {
     return { message: res.statusText || `HTTP ${res.status}`, requestId: headerRequestId };
@@ -246,13 +253,13 @@ async function apiFetch<T>(
   }
 
   if (res.status === 403) {
-    const { message, requestId, errorCode } = await parseErrorBody(res);
-    throw new PortalForbiddenError(path, message, requestId, errorCode);
+    const { message, requestId, errorCode, serverMessage } = await parseErrorBody(res);
+    throw new PortalForbiddenError(path, message, requestId, errorCode, serverMessage);
   }
 
   if (!res.ok) {
-    const { message, requestId, errorCode } = await parseErrorBody(res);
-    throw new PortalHttpError(path, res.status, message, requestId, errorCode);
+    const { message, requestId, errorCode, serverMessage } = await parseErrorBody(res);
+    throw new PortalHttpError(path, res.status, message, requestId, errorCode, serverMessage);
   }
 
   try {
@@ -882,6 +889,18 @@ export function formatPortalError(err: unknown): string {
   }
   if (err instanceof PortalNetworkError) {
     return "网络连接失败，请检查网络后重试。";
+  }
+  if (err instanceof PortalHttpError) {
+    const serverMessage = gatewayUserMessage(err.errorCode, err.serverMessage);
+    if (serverMessage) return serverMessage;
+    // Only an API error envelope says "forbidden" or "gone"; a proxy or WAF
+    // HTML page with the same status is the service being unavailable.
+    if (err.errorCode !== undefined && err.status === 403) {
+      return "你没有权限进行这个操作。如有疑问，请到账户中心提交工单。";
+    }
+    if (err.errorCode !== undefined && err.status === 404) {
+      return "内容不存在或已下架，请返回上一页重新选择。";
+    }
   }
   // Config, HTTP, non-JSON and empty responses, and client-side guards alike.
   if (err instanceof PortalApiError) {

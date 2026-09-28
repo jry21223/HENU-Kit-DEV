@@ -16,14 +16,17 @@ export function useFoodPosts() {
   const [posts, setPosts] = useState<FoodPost[]>([]);
   const [loadState, setLoadState] = useState<FoodLoadState>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadState("loading");
     setError(null);
-    const { posts: loadedPosts, error: loadError } = await loadFoodPosts();
+    setRequestId(null);
+    const { posts: loadedPosts, error: loadError, requestId: loadRequestId } = await loadFoodPosts();
     if (loadError) {
       setPosts([]);
       setError(loadError);
+      setRequestId(loadRequestId);
       setLoadState("error");
       return;
     }
@@ -37,5 +40,5 @@ export function useFoodPosts() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  return { posts, loadState, error, load };
+  return { posts, loadState, error, requestId, load };
 }

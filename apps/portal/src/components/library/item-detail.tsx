@@ -37,7 +37,7 @@ export default function ItemDetail({ id }: { id: string }) {
   if (state.loadState !== "ready") {
     if (state.loadState === "loading") return <LibraryLoading />;
     if (state.loadState === "not-found") return <LibraryNotFound />;
-    return <LibraryUnavailable message={state.error} onRetry={state.retry} />;
+    return <LibraryUnavailable message={state.error} requestId={state.requestId} onRetry={state.retry} />;
   }
   const { material } = state;
 

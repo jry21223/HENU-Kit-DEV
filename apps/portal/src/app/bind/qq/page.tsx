@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { envelopeUserMessage } from "@/lib/api/gateway-errors";
 
 const STORAGE_KEY = "henukit-qq-binding";
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 type Binding = { bound: boolean; display_name?: string };
-// Only these messages reach the screen: this page's own Chinese copy or the binding
-// service's envelope message. Raw browser errors (fetch's TypeError, a JSON SyntaxError
-// from a gateway error page or WAF challenge) are mapped to Chinese copy instead.
+// Only these messages reach the screen: this page's own Chinese copy or an envelope
+// message the site-wide allowlist lets through (#554). Raw browser errors (fetch's
+// TypeError, a JSON SyntaxError from a gateway error page or WAF challenge) and unknown
+// codes are mapped to Chinese copy instead.
 class BindingNotice extends Error {}
 class BindingLoginRequired extends BindingNotice {}
 const NETWORK_FAILED = "网络连接失败，请检查网络后重试。";
@@ -33,7 +35,7 @@ async function bindingRequest(action: "status" | "authorize" | "unlink", token =
   const envelope = await response.json().catch(() => null);
   if (!response.ok) {
     if (response.status === 401 || (response.status === 403 && envelope?.error?.code === "BINDING_FORBIDDEN")) throw new BindingLoginRequired("登录已失效，请重新登录 HENU KIT。");
-    throw new BindingNotice(typeof envelope?.error?.message === "string" ? envelope.error.message : BINDING_UNAVAILABLE);
+    throw new BindingNotice(envelopeUserMessage(envelope) ?? BINDING_UNAVAILABLE);
   }
   if (envelope === null) throw new BindingNotice(BINDING_UNAVAILABLE);
   return envelope.data;

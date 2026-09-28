@@ -100,6 +100,107 @@ describe("formatPortalError", () => {
   });
 });
 
+/**
+ * Gateway 错误信封里的 message 是写给用户的中文：放行名单里的码原样展示（#554）。
+ * 上游透传、不认识的码仍用 Portal 的中文兜底；403、404 的兜底说清楚可以怎么做。
+ */
+describe("formatPortalError with a Gateway error envelope", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
+    vi.stubEnv("NODE_ENV", "test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  async function failWith(status: number, body: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
+      )
+    );
+    const client = await import("./client");
+    const error = await client.fetchPersonalPracticeStats().catch((cause: unknown) => cause);
+    return { error, message: client.formatPortalError(error) };
+  }
+
+  it("shows the message of an allowlisted Gateway code as the Gateway wrote it", async () => {
+    const { message } = await failWith(503, {
+      error: "practice statistics are temporarily unavailable",
+      message: "学习统计暂时不可用，请稍后再试",
+      request_id: "req_stats_down",
+    });
+
+    expect(message).toBe("学习统计暂时不可用，请稍后再试");
+  });
+
+  it("shows a Gateway permission message instead of calling a 403 temporary", async () => {
+    const { error, message } = await failWith(403, {
+      error: "practice access denied",
+      message: "暂无练习权限，请联系管理员",
+      request_id: "req_forbidden",
+    });
+
+    const { PortalForbiddenError } = await import("./client");
+    expect(error).toBeInstanceOf(PortalForbiddenError);
+    expect(message).toBe("暂无练习权限，请联系管理员");
+  });
+
+  it("points a 403 without a message the Portal can show to a support ticket", async () => {
+    const { message } = await failWith(403, { error: "upstream_forbidden", message: "forbidden", request_id: "req_forbidden" });
+
+    expect(message).toBe("你没有权限进行这个操作。如有疑问，请到账户中心提交工单。");
+  });
+
+  it("sends the user back from a 404 without a message the Portal can show", async () => {
+    const { message } = await failWith(404, { error: "not_found", request_id: "req_gone" });
+
+    expect(message).toBe("内容不存在或已下架，请返回上一页重新选择。");
+  });
+
+  it("keeps upstream errors the Gateway only passes through on the Portal's own copy", async () => {
+    const { message } = await failWith(503, {
+      error: { code: "DEPENDENCY_UNAVAILABLE", message: "unavailable" },
+      request_id: "req_upstream",
+    });
+
+    expect(message).toBe("服务暂时不可用，请稍后再试。");
+  });
+
+  it("does not show an allowlisted code's message unless it is Chinese", async () => {
+    const { message } = await failWith(503, { error: "proxy_error", message: "dial tcp 10.0.0.7:8080: connection refused" });
+
+    expectUserFacingChinese(message);
+    expect(message).toBe("服务暂时不可用，请稍后再试。");
+  });
+
+  it("treats an HTML 404 or 403 page as the service being unavailable, not as missing content", async () => {
+    const { formatPortalError, PortalForbiddenError, PortalHttpError } = await import("./client");
+
+    expect(formatPortalError(new PortalHttpError("/api/v1/library/materials", 404, "Not Found"))).toBe(
+      "服务暂时不可用，请稍后再试。"
+    );
+    expect(formatPortalError(new PortalForbiddenError("/api/v1/library/materials", "Forbidden"))).toBe(
+      "服务暂时不可用，请稍后再试。"
+    );
+  });
+
+  it("keeps the Portal's own sign-in copy for a 401 the Gateway calls an expired login", async () => {
+    // Gateway 对从没登录过的访客也回“登录已过期”，这句不上屏。
+    const { message } = await failWith(401, {
+      error: "not authenticated",
+      message: "登录已过期，请重新登录",
+      request_id: "req_guest",
+    });
+
+    expect(message).toBe("需要先登录才能继续，请登录后再试。");
+  });
+});
+
 describe("portalErrorRequestId", () => {
   beforeEach(() => {
     vi.resetModules();

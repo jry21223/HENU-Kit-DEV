@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchQuizCraftCatalog,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import { quizCraftCatalogEnabled } from "@/lib/api/env";
 import type { QuizCraftCatalogBank } from "@/lib/api/types";
@@ -66,7 +67,7 @@ export default function PracticeBankPage() {
 
   const [quizCraftBanks, setQuizCraftBanks] = useState<QuizCraftCatalogBank[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
 
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLDivElement>(null);
@@ -86,11 +87,11 @@ export default function PracticeBankPage() {
       const response = await fetchQuizCraftCatalog();
       setQuizCraftBanks(response.banks);
       setLoadState("ready");
-    } catch {
+    } catch (loadError) {
       // The flag is a real-data cutover seam. Never replace a failed Core
       // read with legacy Portal API, cached, or local mock catalog data.
       setQuizCraftBanks([]);
-      setError("题库暂时加载不出来，请检查网络后重试。");
+      setError({ message: "题库暂时加载不出来，请检查网络后重试。", requestId: portalErrorRequestId(loadError) });
       setLoadState("error");
     }
   }, []);
@@ -135,7 +136,7 @@ export default function PracticeBankPage() {
 
       <div className="mx-auto max-w-site px-5 pt-6 md:px-8">
         {loadState === "error" && error && (
-          <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
+          <ErrorBanner message={error.message} requestId={error.requestId} onRetry={() => void load()} className="mb-6" />
         )}
       </div>
 

@@ -30,7 +30,7 @@ export default function ItemDetail({ id }: { id: string }) {
     if (state.loadState === "error") {
       return (
         <main className="mx-auto max-w-3xl px-5 py-24 md:px-8">
-          <ErrorBanner message={state.error} onRetry={state.retry} />
+          <ErrorBanner message={state.error} requestId={state.requestId} onRetry={state.retry} />
           <DetailStateBackLink />
         </main>
       );

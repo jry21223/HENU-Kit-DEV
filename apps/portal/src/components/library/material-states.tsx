@@ -28,10 +28,18 @@ export function LibraryNotFound({ error }: { error?: string | null }) {
 }
 
 /** Owner 暂时不可用时保留真实失败语义，并提供原地重试。 */
-export function LibraryUnavailable({ message, onRetry }: { message: string; onRetry: () => void }) {
+export function LibraryUnavailable({
+  message,
+  requestId,
+  onRetry,
+}: {
+  message: string;
+  requestId?: string | null;
+  onRetry: () => void;
+}) {
   return (
     <main className="mx-auto max-w-3xl px-5 py-24 md:px-8">
-      <ErrorBanner message={message} onRetry={onRetry} />
+      <ErrorBanner message={message} requestId={requestId} onRetry={onRetry} />
       <DetailStateBackLink />
     </main>
   );

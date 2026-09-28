@@ -5,6 +5,7 @@ import {
   fetchCampusCategories,
   fetchCampusItems,
   mockAllowed,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type { CampusCategory, CampusItem } from "@/lib/api/types";
 import {
@@ -58,7 +59,7 @@ export default function MarketPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [categories, setCategories] = useState<Category[]>(CATEGORIES);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
   const [type, setType] = useState<ItemType | "all">("all");
@@ -77,7 +78,8 @@ export default function MarketPage() {
       setCategories(toCategories(catsResp?.categories ?? null));
       rememberCampusItems(itemsResp.items, catsResp?.categories ?? null);
       setLoadState("ready");
-    } catch {
+    } catch (loadError) {
+      const failure = { message: "互助信息暂时无法加载，请重试。", requestId: portalErrorRequestId(loadError) };
       try {
         await initCampusGateway();
         const cached = getGatewayItems();
@@ -96,7 +98,7 @@ export default function MarketPage() {
           return;
         }
         setItems([]);
-        setError("互助信息暂时无法加载，请重试。");
+        setError(failure);
         setLoadState("error");
       } catch {
         if (mockAllowed) {
@@ -105,7 +107,7 @@ export default function MarketPage() {
           setLoadState("ready");
           return;
         }
-        setError("互助信息暂时无法加载，请重试。");
+        setError(failure);
         setLoadState("error");
       }
     }
@@ -155,7 +157,7 @@ export default function MarketPage() {
 
       <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">
         {loadState === "error" && error && (
-          <ErrorBanner message={error} onRetry={() => void load()} className="mb-6" />
+          <ErrorBanner message={error.message} requestId={error.requestId} onRetry={() => void load()} className="mb-6" />
         )}
 
         <div

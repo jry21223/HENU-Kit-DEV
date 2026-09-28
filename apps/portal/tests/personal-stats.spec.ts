@@ -83,7 +83,7 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
         await loadingGate;
       }
       if (phase === "failure") {
-        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "database unavailable" }) });
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "database unavailable", request_id: "req_stats_down" }) });
         return;
       }
       await route.fulfill({
@@ -114,6 +114,7 @@ test.describe("QuizCraft personal Practice stats presentation", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("practice-stats-error")).toBeVisible();
     await expect(page.getByTestId("practice-stats-error")).toContainText("服务暂时不可用，请稍后再试。");
+    await expect(page.getByTestId("practice-stats-error")).toContainText("错误编号：req_stats_down");
     await expect(page.locator("main")).not.toContainText("486");
 
     phase = "success";

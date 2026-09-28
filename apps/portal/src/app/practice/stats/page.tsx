@@ -93,6 +93,7 @@ export default function StatsPage() {
         <section data-testid="practice-stats-error" className="mt-10">
           <ErrorBanner
             message={state.message}
+            requestId={state.requestId}
             onRetry={retry}
           />
         </section>

@@ -1052,7 +1052,7 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) practiceLegacyGone(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, contract.ErrorEnvelope{
 		Error:     "not found",
-		Message:   "练习目录与排行榜已迁移到新数据源，请刷新页面或升级客户端。",
+		Message:   "页面版本已过期，请刷新页面后重试。",
 		RequestID: requestIDOf(w, r),
 	})
 }
@@ -1490,7 +1490,7 @@ func (h *Handler) requireLifetime(w http.ResponseWriter, r *http.Request, actorU
 	if err != nil {
 		if errors.Is(err, accountportfolio.ErrUnauthorized) || errors.Is(err, accountportfolio.ErrNotFound) {
 			// No valid membership for this actor: not a Lifetime member.
-			writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要 Lifetime VIP 会员", RequestID: requestIDOf(w, r)})
+			writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要终身会员", RequestID: requestIDOf(w, r)})
 			return false
 		}
 		writeJSON(w, http.StatusServiceUnavailable, contract.ErrorEnvelope{Error: "membership_unavailable", Message: "会员服务暂时不可用，请稍后再试", RequestID: requestIDOf(w, r)})
@@ -1506,7 +1506,7 @@ func (h *Handler) requireLifetime(w http.ResponseWriter, r *http.Request, actorU
 		return false
 	}
 	if !membership.Lifetime {
-		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要 Lifetime VIP 会员", RequestID: requestIDOf(w, r)})
+		writeJSON(w, http.StatusForbidden, contract.ErrorEnvelope{Error: "lifetime_required", Message: "求职雷达需要终身会员", RequestID: requestIDOf(w, r)})
 		return false
 	}
 	return true

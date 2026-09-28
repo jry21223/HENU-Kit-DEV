@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type DependencyList, type Dispatch, type SetStateAction } from "react";
-import { formatPortalError, PortalUnauthorizedError } from "@/lib/api/client";
+import { formatPortalError, portalErrorRequestId, PortalUnauthorizedError } from "@/lib/api/client";
 import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
 
 /**
@@ -12,7 +12,7 @@ import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
 export type FetchState<T> =
   | { status: "loading" }
   | { status: "anonymous" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; requestId: string | null }
   | { status: "ready"; data: T };
 
 /**
@@ -38,7 +38,7 @@ export function useFetchState<T>(
           setState({ status: "anonymous" });
           return;
         }
-        setState({ status: "error", message: formatPortalError(error) });
+        setState({ status: "error", message: formatPortalError(error), requestId: portalErrorRequestId(error) });
         return;
       }
       if (data) {

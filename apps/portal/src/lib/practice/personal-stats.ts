@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchPersonalPracticeStats,
   formatPortalError,
+  portalErrorRequestId,
   PortalUnauthorizedError,
 } from "@/lib/api/client";
 import { quizCraftV2ReadsEnabled } from "@/lib/api/env";
@@ -17,7 +18,7 @@ export type PersonalPracticeStatsState =
   | { status: "disabled" }
   | { status: "loading" }
   | { status: "unauthenticated" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; requestId: string | null }
   | { status: "empty"; data: PersonalPracticeStats }
   | { status: "ready"; data: PersonalPracticeStats };
 
@@ -76,7 +77,7 @@ export function usePersonalPracticeStats(): {
           setState({ status: "unauthenticated" });
           return;
         }
-        setState({ status: "error", message: formatPortalError(error) });
+        setState({ status: "error", message: formatPortalError(error), requestId: portalErrorRequestId(error) });
       });
 
     return () => {

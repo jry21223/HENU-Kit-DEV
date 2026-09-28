@@ -13,6 +13,8 @@ export type {
 
 export interface ErrorEnvelope {
   error: string | { code: string; message: string };
+  /** Gateway envelopes: the user-facing text for `error` (see gateway-errors.ts). */
+  message?: string;
   detail?: string;
   request_id?: string;
 }

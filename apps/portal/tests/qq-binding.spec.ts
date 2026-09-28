@@ -97,6 +97,27 @@ test("the binding service's own message is shown as it is", async ({ page }) => 
   await expect(pageAlert(page)).toHaveText("绑定链接已失效，请重新发起");
 });
 
+// 与全站同一套规则（#554）：Gateway 自己的错误信封（error 是码、message 是中文）照样展示，
+// 不认识的码不展示服务端文字。
+test("the Gateway's own binding message is shown as well", async ({ page }) => {
+  await page.route("**/api/v1/session", (route) => route.fulfill({ json: SIGNED_IN }));
+  await page.route("**/api/v1/account/qq-binding/status", (route) => route.fulfill({ json: { data: { bound: false } } }));
+  await page.route("**/api/v1/account/qq-binding/authorize", (route) => route.fulfill({ status: 400, json: { error: "INVALID_REQUEST", message: "请求无效，请重新打开绑定链接", request_id: "req_qq_invalid" } }));
+  await page.goto(`/bind/qq#${"h".repeat(43)}`);
+  await page.getByRole("button", { name: "授权绑定当前账号" }).click();
+  await expect(pageAlert(page)).toHaveText("请求无效，请重新打开绑定链接");
+});
+
+test("a binding error the Portal does not know keeps to the page's own copy", async ({ page }) => {
+  await page.route("**/api/v1/session", (route) => route.fulfill({ json: SIGNED_IN }));
+  await page.route("**/api/v1/account/qq-binding/status", (route) => route.fulfill({ json: { data: { bound: false } } }));
+  await page.route("**/api/v1/account/qq-binding/authorize", (route) => route.fulfill({ status: 503, json: { error: { code: "CORE_QUEUE_STALLED", message: "worker pool exhausted" }, request_id: "req_qq_stalled" } }));
+  await page.goto(`/bind/qq#${"k".repeat(43)}`);
+  await page.getByRole("button", { name: "授权绑定当前账号" }).click();
+  await expect(pageAlert(page)).toHaveText("绑定服务暂时不可用，请稍后重试。");
+  await expect(page.locator("main")).not.toContainText("worker pool");
+});
+
 test("invalid links cannot authorize", async ({ page }) => {
   await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, json: {} }));
   await page.goto("/bind/qq#invalid");

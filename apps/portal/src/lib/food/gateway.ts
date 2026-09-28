@@ -10,6 +10,7 @@ import {
   hasGateway,
   mockAllowed,
   PortalConfigError,
+  portalErrorRequestId,
 } from "@/lib/api/client";
 import type { FoodPost } from "@/lib/api/types";
 import { foodStore } from "@/lib/food/mock";
@@ -70,6 +71,8 @@ export function rememberCreatedFoodPost(post: FoodPost): void {
 export interface FoodPostsResult {
   posts: FoodPost[];
   error: string | null;
+  /** 错误编号（#554）：失败且响应带请求编号时才有。 */
+  requestId: string | null;
 }
 
 /**
@@ -82,14 +85,15 @@ export async function loadFoodPosts(): Promise<FoodPostsResult> {
   await initFoodGateway();
 
   const cached = getGatewayPosts();
-  if (cached) return { posts: cached, error: null };
+  if (cached) return { posts: cached, error: null, requestId: null };
 
-  if (mockAllowed) return { posts: foodStore.get().posts, error: null };
+  if (mockAllowed) return { posts: foodStore.get().posts, error: null, requestId: null };
 
   // 走到这里时 initFoodGateway 必然已记录错误（无 gateway 或拉取失败），
   // ?? 仅为类型兜底；错误表示统一为 error object。
   return {
     posts: [],
     error: formatPortalError(lastError ?? new Error("加载美食数据失败")),
+    requestId: portalErrorRequestId(lastError),
   };
 }

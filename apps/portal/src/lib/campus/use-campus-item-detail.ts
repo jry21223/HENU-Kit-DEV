@@ -5,6 +5,7 @@ import {
   fetchCampusItemDetail,
   formatPortalError,
   PortalApiError,
+  portalErrorRequestId,
   PortalHttpError,
 } from "@/lib/api/client";
 import { getCampusItemOrFallback } from "@/lib/campus/gateway";
@@ -19,7 +20,14 @@ export type CampusItemDetailState =
   | { loadState: "loading"; item: null; messages: CampusMessage[]; error: null }
   | { loadState: "ready"; item: CampusItem; messages: CampusMessage[]; error: null }
   | { loadState: "not-found"; item: null; messages: CampusMessage[]; error: null }
-  | { loadState: "error"; item: null; messages: CampusMessage[]; error: string; retry: () => void };
+  | {
+      loadState: "error";
+      item: null;
+      messages: CampusMessage[];
+      error: string;
+      requestId: string | null;
+      retry: () => void;
+    };
 
 /**
  * 列表缓存也回退不到这条单子时，这次失败是否说明单子不存在：接口回 404，或者空响应
@@ -74,7 +82,14 @@ export function useCampusItemDetail(id: string): CampusItemDetailState {
         setState({ loadState: "not-found", item: null, messages: [], error: null });
         return;
       }
-      setState({ loadState: "error", item: null, messages: [], error: formatPortalError(loadError), retry });
+      setState({
+        loadState: "error",
+        item: null,
+        messages: [],
+        error: formatPortalError(loadError),
+        requestId: portalErrorRequestId(loadError),
+        retry,
+      });
     }
   }, [id, retry]);
 
