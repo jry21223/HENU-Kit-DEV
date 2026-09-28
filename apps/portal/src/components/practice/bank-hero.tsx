@@ -248,7 +248,7 @@ export default function BankHero({
             role="search"
             aria-label="题库搜索"
             tabIndex={-1}
-            className="enter-rise mt-5 w-full max-w-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent lg:mt-8"
+            className="enter-rise mt-5 w-full max-w-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring lg:mt-8"
             style={{ animationDelay: "0.2s" }}
           >
             <label htmlFor="practice-query" className="mb-1 block font-mono text-xs text-ink/60">
@@ -259,7 +259,7 @@ export default function BankHero({
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               placeholder="如：数据结构 / 高等数学"
-              className="h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-accent"
+              className="h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-focus-ring"
             />
           </div>
 

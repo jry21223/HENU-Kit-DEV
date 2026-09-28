@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef } from "react";
-import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
+import { gsap, useGSAP, FINE_MOTION, isOnScreen } from "@/lib/gsap";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import LegalNotice from "@/components/legal-notice";
 
@@ -22,18 +22,23 @@ export default function Footer() {
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
+        // 从中间位置加载、页脚已经在视口里：巨型字和底栏是服务端画好的，
+        // 不再藏起来重播入场（#557）；下面的水平视差照常。
+        const entrance = !isOnScreen(sectionRef.current);
         // 巨型字进入揭示（接近视窗中部时开始，可重播）
-        gsap.from(giantRef.current, {
-          y: 80,
-          opacity: 0,
-          duration: 1,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: sectionRef.current,
-            start: "top 60%",
-            toggleActions: "play none none reverse",
-          },
-        });
+        if (entrance) {
+          gsap.from(giantRef.current, {
+            y: 80,
+            opacity: 0,
+            duration: 1,
+            ease: "power3.out",
+            scrollTrigger: {
+              trigger: sectionRef.current,
+              start: "top 60%",
+              toggleActions: "play none none reverse",
+            },
+          });
+        }
         // 巨型字水平视差（位置联动，贯穿 Footer 过场全程）
         gsap.fromTo(
           giantRef.current,
@@ -49,17 +54,19 @@ export default function Footer() {
             },
           }
         );
-        gsap.from("[data-footer-bottom]", {
-          y: 24,
-          opacity: 0,
-          duration: 0.7,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: sectionRef.current,
-            start: "top 55%",
-            toggleActions: "play none none reverse",
-          },
-        });
+        if (entrance) {
+          gsap.from("[data-footer-bottom]", {
+            y: 24,
+            opacity: 0,
+            duration: 0.7,
+            ease: "power3.out",
+            scrollTrigger: {
+              trigger: sectionRef.current,
+              start: "top 55%",
+              toggleActions: "play none none reverse",
+            },
+          });
+        }
       });
       return () => mm.revert();
     },

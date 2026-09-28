@@ -119,7 +119,7 @@ function PublishForm() {
                 aria-pressed={category === c.key}
                 onClick={() => setCategory(c.key)}
                 className={cn(
-                  "border px-3 py-1.5 font-mono text-xs transition-colors",
+                  "min-h-11 border px-3 py-1.5 font-mono text-xs transition-colors",
                   category === c.key ? "border-ink bg-ink text-paper" : "border-line text-ink/60 hover:border-ink/40"
                 )}
               >
@@ -136,7 +136,7 @@ function PublishForm() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={type === "help" ? "如：代取中通快递 3 件到 6 号楼" : "如：九成新机械键盘"}
-            className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
+            className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
           />
         </div>
 
@@ -156,17 +156,23 @@ function PublishForm() {
           <p className="mb-1 font-mono text-xs text-ink/60">
             图片（{images.length}/3，≤2MB，可选）
           </p>
-          <div className="flex flex-wrap items-start gap-3">
+          <div className="flex flex-wrap items-start gap-5">
             {images.map((src, i) => (
               <div key={i} className="relative">
                 <Img src={src} alt={`图 ${i + 1}`} label={`FIG.${i + 1}`} className="h-20 w-28" />
+                {/* 看到的 × 仍是 20×20 的小方块；点击区是以它为中心的 44×44（DESIGN_SYSTEM §13）。 */}
                 <button
                   type="button"
                   onClick={() => setImages((imgs) => imgs.filter((_, j) => j !== i))}
-                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs hover:border-accent hover:text-accent-text"
+                  className="group absolute -right-5 -top-5 flex h-11 w-11 items-center justify-center"
                   aria-label={`删除图 ${i + 1}`}
                 >
-                  ×
+                  <span
+                    aria-hidden
+                    className="flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs group-hover:border-accent group-hover:text-accent-text"
+                  >
+                    ×
+                  </span>
                 </button>
               </div>
             ))}
@@ -195,7 +201,7 @@ function PublishForm() {
               onChange={(e) => setPrice(e.target.value)}
               inputMode="numeric"
               placeholder="3"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+              className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           <div>
@@ -205,7 +211,7 @@ function PublishForm() {
               value={place}
               onChange={(e) => setPlace(e.target.value)}
               placeholder="明伦校区 · 西门"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+              className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           {type === "help" && (
@@ -216,7 +222,7 @@ function PublishForm() {
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
                 placeholder="今天 18:00 前"
-                className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
               />
             </div>
           )}

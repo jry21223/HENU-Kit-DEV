@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
+import { gsap, useGSAP, FINE_MOTION, isOnScreen } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 import AmbientSvg from "@/components/ui/ambient-svg";
@@ -32,6 +32,13 @@ export default function SectionPractice() {
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
+        // 从中间位置加载、模块已经在视口里：解析文字、进度条和面板是服务端画好的，
+        // 不清空也不重播（#557）。上一轮打字可能停在半截，补回全文。
+        if (isOnScreen(sectionRef.current)) {
+          if (textRef.current) textRef.current.textContent = TYPE_TEXT;
+          return;
+        }
+
         // 打字机：滚动进入时逐字输出（动画启用时先清空面板）
         if (textRef.current) textRef.current.textContent = "";
         const counter = { value: 0 };
@@ -234,6 +241,7 @@ export default function SectionPractice() {
             </p>
             <p
               ref={textRef}
+              data-typewriter
               className="min-h-40 whitespace-pre-line font-mono text-[13px] leading-7 text-paper/85"
             >
               {TYPE_TEXT}

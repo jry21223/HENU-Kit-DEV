@@ -349,7 +349,7 @@ test.describe("登录页", () => {
     await expect(page.getByLabel("密码 / PASSWORD")).toBeVisible();
     await expectTouchTargets(page, "密码登录", { inSentence: CONSENT_LINKS });
 
-    await page.getByRole("button", { name: "注册", exact: true }).click();
+    await page.getByRole("tab", { name: "注册" }).click();
     await expect(page.getByLabel("确认密码 / CONFIRM")).toBeVisible();
     await expectTouchTargets(page, "注册", { inSentence: CONSENT_LINKS });
   });
@@ -360,4 +360,80 @@ test.describe("登录页", () => {
     await expect(page.getByRole("heading", { name: "登录链接已过期或不可继续" })).toBeVisible();
     await expectTouchTargets(page, "登录链接失效");
   });
+});
+
+/** 1×1 的 PNG：发布页用它生成图片预览和删除按钮。 */
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64"
+);
+
+async function signInWithUnavailableGateway(page: Page) {
+  await mockUnavailableGateway(page);
+  await page.route("**/api/v1/session", (route) =>
+    route.fulfill({
+      json: { user_id: "11111111-1111-4111-8111-111111111111", display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" },
+    })
+  );
+}
+
+for (const width of [390, 1440]) {
+  test(`${width}px 两个发布页：输入框、校区与分类切换、侧栏按钮、删除菜品和删除图片都不小于 44×44（#557）`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await signInWithUnavailableGateway(page);
+
+    await page.goto("/food/publish");
+    await waitForHydration(page);
+    await page.locator('input[type="file"]').setInputFiles({ name: "dish.png", mimeType: "image/png", buffer: TINY_PNG });
+    await expect(page.getByRole("button", { name: "删除图 1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "删除菜品 1" })).toBeVisible();
+    await expectTouchTargets(page, "/food/publish（已登录，有图）");
+
+    await page.goto("/campus/publish");
+    await waitForHydration(page);
+    await page.locator('input[type="file"]').setInputFiles({ name: "item.png", mimeType: "image/png", buffer: TINY_PNG });
+    await expect(page.getByRole("button", { name: "删除图 1" })).toBeVisible();
+    await expectTouchTargets(page, "/campus/publish（已登录，有图）");
+  });
+}
+
+test("账户中心的表单：求职画像、新建工单和安全设置的输入框不小于 44×44（#557）", async ({ page }) => {
+  await signInWithUnavailableGateway(page);
+  await page.route("**/api/v1/career/profile", (route) =>
+    route.fulfill({
+      json: {
+        profile: {
+          user_id: "11111111-1111-4111-8111-111111111111",
+          target_roles: "后端开发",
+          tech_stack: "go,postgres",
+          locations: "郑州",
+          job_type: "daily_intern",
+          graduation_year: 2027,
+          resume_text: "校内项目经历",
+          email_notification_enabled: true,
+          updated_at: "2026-08-15T00:00:00Z",
+        },
+        request_id: "req_targets_profile",
+      },
+    })
+  );
+  await page.route("**/api/v1/account/tickets*", (route) =>
+    route.fulfill({ json: { data: { tickets: [] }, request_id: "req_targets_tickets" } })
+  );
+
+  await page.goto("/account/profile");
+  await waitForHydration(page);
+  await expect(page.locator('[data-account-career-profile-state="ready"]')).toBeVisible();
+  await expectTouchTargets(page, "/account/profile（求职画像表单）", { within: "main form" });
+
+  await page.goto("/account/tickets");
+  await waitForHydration(page);
+  await page.getByRole("button", { name: "新建工单" }).click();
+  await expect(page.getByRole("button", { name: "收起表单" })).toBeVisible();
+  await expectTouchTargets(page, "/account/tickets（新建工单表单）", { within: "main form" });
+
+  await page.goto("/account/security");
+  await waitForHydration(page);
+  await expect(page.getByRole("heading", { name: "安全设置" })).toBeVisible();
+  await expectTouchTargets(page, "/account/security（表单）", { within: "main form" });
 });

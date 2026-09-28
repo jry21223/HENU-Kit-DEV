@@ -169,3 +169,42 @@ test("已登录时，子站页头的账户入口读出完整昵称", async ({ pa
       .toBeVisible();
   }
 });
+
+test("登录 / 注册是一组标签页，方向键在两个标签间切换，提交按钮不夹空格（#557）", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/account/login");
+  await waitForHydration(page);
+
+  const tabs = page.getByRole("tablist", { name: "登录或注册" });
+  const signIn = tabs.getByRole("tab", { name: "登录" });
+  const register = tabs.getByRole("tab", { name: "注册" });
+  await expect(signIn).toHaveAttribute("aria-selected", "true");
+  await expect(register).toHaveAttribute("aria-selected", "false");
+  // 只有选中的标签在 Tab 键顺序里。
+  await expect(signIn).toHaveAttribute("tabindex", "0");
+  await expect(register).toHaveAttribute("tabindex", "-1");
+
+  const panel = page.getByRole("tabpanel", { name: "登录" });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: "登录", exact: true })).toHaveAttribute("type", "submit");
+
+  await signIn.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(register).toBeFocused();
+  await expect(register).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { level: 1, name: "注册" })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "注册" }).getByRole("button", { name: "注册", exact: true })).toBeVisible();
+
+  await page.keyboard.press("Home");
+  await expect(signIn).toBeFocused();
+  await expect(signIn).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowLeft");
+  await expect(register).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(register).toBeFocused();
+
+  // 登录方式是一对开关按钮，读得出哪一个按下了。
+  await signIn.click();
+  await expect(page.getByRole("button", { name: "验证码登录" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "密码登录" })).toHaveAttribute("aria-pressed", "false");
+});

@@ -13,13 +13,18 @@ import { expect, test, type Page } from "@playwright/test";
  * 节点从头播放——对用户同样是一次重播，按身份追踪会把它当成一个新元素放过去。
  */
 
-type Measure = "opacity" | "scaleX";
+type Measure = "opacity" | "scaleX" | "textLength";
 
 interface Probe {
   selector: string;
   measure: Measure;
   /** 数值往哪个方向走是在「显露」：opacity、生长线往上走；遮住标题的橙色块往下走。 */
   reveal: "up" | "down";
+  /**
+   * 默认按「文字 + 同文字里的第几个」认元素；文字本身会变的元素（打字机，以及包着它的面板）
+   * 改按它在匹配结果里的位置认。
+   */
+  identity?: "text" | "position";
 }
 
 interface Series {
@@ -43,6 +48,7 @@ async function recordFromFirstFrame(page: Page, probes: Probe[]) {
     window.__entrance = state;
 
     const read = (element: Element, measure: Measure) => {
+      if (measure === "textLength") return (element.textContent ?? "").length;
       const style = getComputedStyle(element);
       if (measure === "opacity") return Number(style.opacity);
       return style.transform === "none" ? 1 : new DOMMatrixReadOnly(style.transform).a;
@@ -53,11 +59,11 @@ async function recordFromFirstFrame(page: Page, probes: Probe[]) {
       const hydrated = document.documentElement.dataset.scrollMemory === "ready";
       probes.forEach((probe, probeIndex) => {
         const seen = new Map<string, number>();
-        document.querySelectorAll(probe.selector).forEach((element) => {
+        document.querySelectorAll(probe.selector).forEach((element, position) => {
           const text = (element.textContent ?? "").replace(/\s+/g, "");
           const nth = seen.get(text) ?? 0;
           seen.set(text, nth + 1);
-          const key = `${probeIndex}|${text}|${nth}`;
+          const key = probe.identity === "position" ? `${probeIndex}|@${position}` : `${probeIndex}|${text}|${nth}`;
           series[key] ??= { probe: probeIndex, label: `${probe.selector}「${text.slice(0, 12)}」#${nth}`, points: [] };
           series[key].points.push([Math.round(now), read(element, probe.measure), hydrated]);
         });
@@ -345,4 +351,68 @@ test.describe("脚本没有运行", () => {
     for (const line of await lines.all()) await expect(line).toHaveCSS("opacity", "1");
     await expect(page.locator("[data-hero-wipe]")).toHaveCSS("transform", "matrix(0, 0, 0, 1, 0, 0)");
   });
+});
+
+/**
+ * 首页从中间位置加载（刷新后浏览器恢复滚动位置）时，视口里的模块是服务端已经画好的内容：
+ * 水合后不能先把它藏起来再重播入场（#557）。滚到模块后刷新，从首帧起逐帧采样。
+ */
+test.describe("首页从中间位置加载", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  test.describe.configure({ timeout: 150_000 });
+
+  const MODULES = [
+    {
+      name: "04 互助平台",
+      section: "section:has([data-order-card])",
+      probes: [
+        { selector: "[data-order-card]", measure: "opacity", reveal: "up" },
+        { selector: "[data-flow-node]", measure: "opacity", reveal: "up" },
+      ] as Probe[],
+    },
+    {
+      name: "02 智能刷题",
+      section: "section:has([data-terminal])",
+      probes: [
+        { selector: "[data-terminal]", measure: "opacity", reveal: "up", identity: "position" },
+        { selector: "[data-typewriter]", measure: "textLength", reveal: "up", identity: "position" },
+      ] as Probe[],
+    },
+    {
+      name: "页脚",
+      section: "footer:has([data-footer-bottom])",
+      probes: [{ selector: "[data-footer-bottom]", measure: "opacity", reveal: "up" }] as Probe[],
+    },
+  ];
+
+  for (const homeModule of MODULES) {
+    test(`停在${homeModule.name}时刷新，已经画出的内容不会先消失再出现`, async ({ page }) => {
+      await page.route("**/api/v1/**", (route) =>
+        route.fulfill({ status: 503, json: { error: "upstream_unavailable", request_id: "req_mid_page" } })
+      );
+      await page.route("**/api/v1/session", (route) => route.fulfill({ status: 401, json: {} }));
+      await page.goto("/");
+      await page.waitForSelector("html[data-scroll-memory='ready']", { state: "attached", timeout: 90_000 });
+      const top = await page.locator(homeModule.section).first().evaluate((section) => section.getBoundingClientRect().top + window.scrollY);
+      await page.evaluate((y) => window.scrollTo(0, y), top);
+      await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBe(Math.round(top));
+
+      await recordFromFirstFrame(page, homeModule.probes);
+      await throttleCPU(page);
+      await page.reload({ waitUntil: "commit" });
+      await settle(page);
+
+      // 前提：浏览器确实把页面恢复到了这个模块，否则这条断言测的是首屏。
+      const restored = await page.locator(homeModule.section).first().evaluate((section) => {
+        const box = section.getBoundingClientRect();
+        return box.top < window.innerHeight * 0.5 && box.bottom > window.innerHeight * 0.5;
+      });
+      expect(restored, "刷新后停在这个模块").toBe(true);
+
+      const series = await collect(page);
+      expect(series.length, "采到了模块里的元素").toBeGreaterThan(0);
+      expect(sampledBeforeHydration(series), "采到了水合之前的帧").toBe(true);
+      expect(relapses(series, homeModule.probes)).toEqual([]);
+    });
+  }
 });

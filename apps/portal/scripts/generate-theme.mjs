@@ -29,6 +29,8 @@ export const COLOR_MAP = [
   ["easy", "semantic.success"],
   ["mid", "semantic.warning"],
   ["hard", "semantic.danger"],
+  // 焦点描边与输入框聚焦时的下划线：在纸白、白色卡片和墨色底上都不低于 3:1（#557）。
+  ["focus-ring", "semantic.focus_ring"],
 ];
 
 export function renderTheme(tokens) {

@@ -142,19 +142,21 @@ export default function Navbar() {
             <span className="font-display text-xl font-bold tracking-tight">
               henukit<span className="text-accent">®</span>
             </span>
-            {/* 页头是 95% 纸白，压在墨色的刷题模块上会变深，灰字至少 ink/65。 */}
-            <span className="hidden font-mono text-xs tracking-[0.3em] text-ink/65 sm:inline">
+            {/* 页头是 95% 纸白，压在墨色的刷题模块上会变深，灰字至少 ink/65。
+                平板宽度（md 到 lg）留给五个模块标签，这句口号先收起（#557）。 */}
+            <span className="hidden font-mono text-xs tracking-[0.3em] text-ink/65 sm:inline md:hidden lg:inline">
               KEEP IN TOUCH
             </span>
           </Link>
 
-          {/* 桌面导航：平板上同样靠手指点，点击区撑到 44px 高；下划线挂在里层 span 上，仍贴着文字。 */}
-          <nav className="hidden items-center gap-7 md:flex">
+          {/* 桌面导航：平板上同样靠手指点，点击区撑到 44px 高；下划线挂在里层 span 上，仍贴着文字。
+              768px 起就要一行放下五个标签（#557）：md 到 lg 之间收窄间距，标签不换行。 */}
+          <nav className="hidden items-center gap-4 md:flex lg:gap-7">
             {LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="group inline-flex min-h-11 items-center font-mono text-xs text-ink/80 transition-colors hover:text-ink"
+                className="group inline-flex min-h-11 items-center whitespace-nowrap font-mono text-xs text-ink/80 transition-colors hover:text-ink"
               >
                 {/* 宽字距只加在编号上，中文模块名不拉开（DESIGN_SYSTEM.md 第 4 节）。 */}
                 <span className="relative py-1">

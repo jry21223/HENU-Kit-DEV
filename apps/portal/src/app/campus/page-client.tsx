@@ -166,7 +166,7 @@ export default function MarketPage() {
           role="search"
           aria-label="互助搜索与筛选"
           tabIndex={-1}
-          className="flex flex-wrap items-center gap-x-6 gap-y-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+          className="flex flex-wrap items-center gap-x-6 gap-y-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring"
         >
           <div className="flex items-center gap-2">
             <label htmlFor="campus-query" className="mr-1 font-mono text-xs text-ink/70">
@@ -177,7 +177,7 @@ export default function MarketPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="如：快递 / 键盘 / 占座"
-              className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-accent"
+              className="h-11 w-52 border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-focus-ring"
             />
           </div>
           {/* 两组筛选都以“全部”开头：各带一个看得见的组名，免得分不清。 */}

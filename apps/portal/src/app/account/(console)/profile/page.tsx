@@ -567,7 +567,7 @@ export default function CareerProfilePage() {
                       id="career-job-type"
                       value={form.job_type}
                       onChange={(e) => setField({ job_type: e.target.value as CareerJobType })}
-                      className="w-full border-b border-ink/30 bg-paper py-2 font-mono text-sm outline-none focus:border-ink"
+                      className="min-h-11 w-full border-b border-ink/30 bg-paper py-2 font-mono text-sm outline-none focus:border-ink"
                     >
                       {JOB_TYPE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -592,7 +592,7 @@ export default function CareerProfilePage() {
                       }}
                       maxLength={4}
                       placeholder="例如 2027"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                      className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                   </div>
                 </div>

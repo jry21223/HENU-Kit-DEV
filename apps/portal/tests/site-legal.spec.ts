@@ -124,7 +124,7 @@ test("registration states the operator and asks for agreement before an account 
   await page.goto("/account/login", { waitUntil: "domcontentloaded" });
   // 水合前点击只是一次无效的点击：先等客户端外壳就绪（与 sub-site-back-navigation 同一个标记）。
   await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1);
-  await page.getByRole("button", { name: "注册", exact: true }).click();
+  await page.getByRole("tab", { name: "注册" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "注册" })).toBeVisible();
 
   const consent = page.locator("[data-account-consent]");

@@ -314,7 +314,7 @@ export default function FoodPublishPage() {
                   noteEdit();
                 }}
                 placeholder="如：仁和食堂三楼 8 号窗口"
-                className="w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 text-lg font-medium outline-none placeholder:text-ink/60 focus:border-ink"
               />
               {fieldErrors.venue && (
                 <p className="mt-2 font-mono text-xs text-accent-text">
@@ -339,7 +339,7 @@ export default function FoodPublishPage() {
                       noteEdit();
                     }}
                     className={cn(
-                      "border px-4 py-2 font-mono text-xs transition-colors",
+                      "min-h-11 border px-4 py-2 font-mono text-xs transition-colors",
                       campus === key
                         ? "border-ink bg-ink text-paper"
                         : "border-line text-ink/60 hover:border-ink/40"
@@ -447,7 +447,7 @@ export default function FoodPublishPage() {
                     noteEdit();
                   }}
                   placeholder="如：人均 ¥18"
-                  className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                  className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                 />
               </div>
               <div>
@@ -466,7 +466,7 @@ export default function FoodPublishPage() {
                     noteEdit();
                   }}
                   placeholder="如：11:00–21:00"
-                  className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                  className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                 />
               </div>
             </div>
@@ -505,7 +505,7 @@ export default function FoodPublishPage() {
                         updateDish(index, { name: event.target.value })
                       }
                       placeholder="菜名（必填）"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                      className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                     <input
                       aria-label={`菜品 ${index + 1} 价格`}
@@ -515,7 +515,7 @@ export default function FoodPublishPage() {
                         updateDish(index, { price: event.target.value })
                       }
                       placeholder="参考价格"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                      className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                     <input
                       aria-label={`菜品 ${index + 1} 理由`}
@@ -525,12 +525,12 @@ export default function FoodPublishPage() {
                         updateDish(index, { reason: event.target.value })
                       }
                       placeholder="推荐理由"
-                      className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+                      className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
                     />
                     <button
                       type="button"
                       onClick={() => removeDish(index)}
-                      className="self-center px-2 py-1 font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center self-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
                       aria-label={`删除菜品 ${index + 1}`}
                     >
                       ×
@@ -544,7 +544,7 @@ export default function FoodPublishPage() {
               <p className="font-mono text-xs text-ink/60">
                 图片（{images.length}/{MAX_IMAGES}，单张 ≤2MB，可选）
               </p>
-              <div className="mt-4 flex flex-wrap items-start gap-3">
+              <div className="mt-4 flex flex-wrap items-start gap-5">
                 {images.map((image, index) => (
                   <div key={index} className="relative">
                     <Img
@@ -553,13 +553,19 @@ export default function FoodPublishPage() {
                       label={`FIG.${index + 1}`}
                       className="h-20 w-28"
                     />
+                    {/* 看到的 × 仍是 20×20 的小方块；点击区是以它为中心的 44×44（DESIGN_SYSTEM §13）。 */}
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs hover:border-accent hover:text-accent-text"
+                      className="group absolute -right-5 -top-5 flex h-11 w-11 items-center justify-center"
                       aria-label={`删除图 ${index + 1}`}
                     >
-                      ×
+                      <span
+                        aria-hidden
+                        className="flex h-5 w-5 items-center justify-center border border-ink bg-paper font-mono text-xs group-hover:border-accent group-hover:text-accent-text"
+                      >
+                        ×
+                      </span>
                     </button>
                   </div>
                 ))}
@@ -608,13 +614,13 @@ export default function FoodPublishPage() {
             </p>
             <Link
               href="/account/posts"
-              className="mt-6 block bg-ink px-5 py-3 text-center font-mono text-xs text-paper transition-colors hover:bg-accent hover:text-ink"
+              className="mt-6 flex min-h-11 items-center justify-center bg-ink px-5 py-3 text-center font-mono text-xs text-paper transition-colors hover:bg-accent hover:text-ink"
             >
               查看我的投稿 →
             </Link>
             <Link
               href="/food"
-              className="mt-3 block border border-ink px-5 py-3 text-center font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
+              className="mt-3 flex min-h-11 items-center justify-center border border-ink px-5 py-3 text-center font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
             >
               先看看五档榜
             </Link>

@@ -129,3 +129,28 @@ test.describe("Portal mobile layout", () => {
     });
   }
 });
+
+test.describe("home header on tablets (#557)", () => {
+  for (const width of [768, 820, 900, 1024]) {
+    test(`${width}px keeps each desktop nav label on one line`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.route("**/api/v1/**", (route) => route.fulfill({ status: 401, json: { error: "not authenticated" } }));
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+      await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
+
+      for (const href of ["/library", "/practice", "/food", "/campus", "/career"]) {
+        const label = page.locator(`header nav a[href="${href}"] > span`).first();
+        await expect(label).toBeVisible();
+        const box = await label.boundingBox();
+        // 一行是 16px 行高加上下 4px 内边距；折成两行时是 40px。
+        expect(box?.height, `${await label.textContent()} 折行了`).toBeLessThan(32);
+      }
+      const header = await page.locator("header > div").evaluate((row) => ({
+        scroll: row.scrollWidth,
+        client: row.clientWidth,
+      }));
+      expect(header.scroll).toBeLessThanOrEqual(header.client + 1);
+      await expectNoPageOverflow(page);
+    });
+  }
+});

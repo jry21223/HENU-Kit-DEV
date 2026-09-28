@@ -97,6 +97,24 @@ function Field({
   );
 }
 
+type AuthTab = "login" | "register";
+const AUTH_TABS: readonly AuthTab[] = ["login", "register"];
+const AUTH_PANEL_ID = "auth-panel";
+
+function authTabId(tab: AuthTab) {
+  return `auth-tab-${tab}`;
+}
+
+/** 标签页的键盘约定（WAI-ARIA Tabs）：左右方向键循环切换，Home / End 到第一个、最后一个。 */
+function nextAuthTab(current: AuthTab, key: string): AuthTab | null {
+  const index = AUTH_TABS.indexOf(current);
+  if (key === "ArrowRight") return AUTH_TABS[(index + 1) % AUTH_TABS.length];
+  if (key === "ArrowLeft") return AUTH_TABS[(index - 1 + AUTH_TABS.length) % AUTH_TABS.length];
+  if (key === "Home") return AUTH_TABS[0];
+  if (key === "End") return AUTH_TABS[AUTH_TABS.length - 1];
+  return null;
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -114,7 +132,7 @@ function LoginForm() {
   );
   useReveal();
 
-  const [tab, setTab] = useState<"login" | "register">("login");
+  const [tab, setTab] = useState<AuthTab>("login");
   const [mode, setMode] = useState<"password" | "code">("code");
   const [name, setName] = useState("");
   const [localPart, setLocalPart] = useState("");
@@ -126,6 +144,14 @@ function LoginForm() {
   const [info, setInfo] = useState("");
   const [cd, setCd] = useState(0);
   const [csrf, setCsrf] = useState("");
+
+  function selectTab(next: AuthTab) {
+    setTab(next);
+    setCsrf("");
+    if (next === "register") setMode("code");
+    setErrors({});
+    setInfo("");
+  }
   const [continuationProduct, setContinuationProduct] = useState("");
   const [continuationAttempt, setContinuationAttempt] = useState(0);
   const [continuationFailure, setContinuationFailure] = useState<{
@@ -528,19 +554,25 @@ function LoginForm() {
           </p>
         ) : null}
 
-        {/* 登录 / 注册 */}
-        <div className="mt-6 flex border border-line">
-          {(["login", "register"] as const).map((t) => (
+        {/* 登录 / 注册：一组标签页（#557）。只有选中的标签在 Tab 键顺序里，方向键和 Home / End 切换并选中。 */}
+        <div role="tablist" aria-label="登录或注册" className="mt-6 flex border border-line">
+          {AUTH_TABS.map((t) => (
             <button
               key={t}
+              id={authTabId(t)}
               type="button"
+              role="tab"
+              aria-selected={tab === t}
+              aria-controls={AUTH_PANEL_ID}
+              tabIndex={tab === t ? 0 : -1}
               disabled={pending}
-              onClick={() => {
-                setTab(t);
-                setCsrf("");
-                if (t === "register") setMode("code");
-                setErrors({});
-                setInfo("");
+              onClick={() => selectTab(t)}
+              onKeyDown={(event) => {
+                const next = nextAuthTab(t, event.key);
+                if (!next) return;
+                event.preventDefault();
+                selectTab(next);
+                document.getElementById(authTabId(next))?.focus();
               }}
               className={cn(
                 "min-h-11 flex-1 font-mono text-xs transition-colors",
@@ -552,141 +584,144 @@ function LoginForm() {
           ))}
         </div>
 
-        {/* 密码 / 验证码 */}
-        {tab === "login" && (
-          <div className="mt-4 flex gap-2">
-            {(["password", "code"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setMode(m);
-                  setErrors({});
-                  setInfo("");
-                }}
-                className={cn(
-                  "min-h-11 border px-3 font-mono text-xs transition-colors",
-                  mode === m
-                    ? "border-ink bg-ink text-paper"
-                    : "border-line text-ink/60 hover:border-ink/40"
-                )}
-              >
-                {m === "password" ? "密码登录" : "验证码登录"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <form
-          className="mt-6 space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
-          }}
-        >
-          {tab === "register" && (
-            <Field
-              id="reg-name"
-              label={<>展示名 / <span className="tracking-[0.25em]">NAME</span></>}
-              value={name}
-              onChange={setName}
-              error={errors.name}
-              placeholder="可先填邮箱前缀"
-              hint="展示名会公开显示在刷题排行榜和你发布的美食投稿中，请不要使用真实姓名或学号。"
-              autoComplete="nickname"
-            />
-          )}
-          <HenuEmailField
-            id="auth-email"
-            value={localPart}
-            onChange={setLocalPart}
-            errorId={errors.email ? "auth-email-error" : undefined}
-          />
-          {errors.email ? (
-            <p id="auth-email-error" role="alert" className="-mt-3 font-mono text-xs text-accent-text">
-              {errors.email}
-            </p>
-          ) : null}
-
-          {needCode && (
-            <div>
-              <Label htmlFor="auth-code">邮箱验证码</Label>
-              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end sm:gap-3">
-                <Input
-                  id="auth-code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  placeholder="6 位数字"
-                  value={code}
-                  onChange={(e) =>
-                    setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  aria-describedby={errors.code ? "auth-code-error" : undefined}
-                  aria-invalid={errors.code ? true : undefined}
-                  className={cn(
-                    "tracking-[0.35em] placeholder:tracking-normal",
-                    errors.code ? "border-accent focus:border-accent" : undefined
-                  )}
-                />
-                <Button
+        <div role="tabpanel" id={AUTH_PANEL_ID} aria-labelledby={authTabId(tab)}>
+          {/* 密码 / 验证码 */}
+          {tab === "login" && (
+            <div className="mt-4 flex gap-2">
+              {(["password", "code"] as const).map((m) => (
+                <button
+                  key={m}
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={pending || cd > 0}
-                  onClick={() => void sendCode()}
-                  className="w-full shrink-0 sm:w-auto"
+                  aria-pressed={mode === m}
+                  onClick={() => {
+                    setMode(m);
+                    setErrors({});
+                    setInfo("");
+                  }}
+                  className={cn(
+                    "min-h-11 border px-3 font-mono text-xs transition-colors",
+                    mode === m
+                      ? "border-ink bg-ink text-paper"
+                      : "border-line text-ink/60 hover:border-ink/40"
+                  )}
                 >
-                  {cd > 0 ? `${cd}s` : "发送验证码"}
-                </Button>
-              </div>
-              {errors.code ? (
-                <p id="auth-code-error" role="alert" className="mt-1 font-mono text-xs text-accent-text">
-                  {errors.code}
-                </p>
-              ) : null}
-              {/* 常驻的 status：验证码发出后读屏软件会读出这句。只在有内容时才插入的节点，
-                  有的读屏软件不会读。没有内容时它是空的，不占位置。 */}
-              <p role="status" className="mt-1 font-mono text-xs leading-5 text-ink/60">
-                {info}
-              </p>
+                  {m === "password" ? "密码登录" : "验证码登录"}
+                </button>
+              ))}
             </div>
           )}
 
-          {(tab === "register" || mode === "password") && (
-            <Field
-              id="auth-pwd"
-              label={<>密码 / <span className="tracking-[0.25em]">PASSWORD</span></>}
-              type="password"
-              value={pwd}
-              onChange={setPwd}
-              error={errors.pwd}
-              placeholder="至少 10 个字符"
-              autoComplete={
-                tab === "register" ? "new-password" : "current-password"
-              }
-            />
-          )}
-          {tab === "register" && (
-            <Field
-              id="auth-pwd-confirm"
-              label={<>确认密码 / <span className="tracking-[0.25em]">CONFIRM</span></>}
-              type="password"
-              value={pwd2}
-              onChange={setPwd2}
-              error={errors.pwd2}
-              autoComplete="new-password"
-            />
-          )}
-          <Button
-            type="submit"
-            className="mt-8 w-full"
-            disabled={pending}
+          <form
+            className="mt-6 space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
           >
-            {pending ? "处理中…" : tab === "login" ? "登 录" : "注 册"}
-          </Button>
-          <LegalConsent data-account-consent action={tab === "login" ? "登录" : "注册"} />
-        </form>
+            {tab === "register" && (
+              <Field
+                id="reg-name"
+                label={<>展示名 / <span className="tracking-[0.25em]">NAME</span></>}
+                value={name}
+                onChange={setName}
+                error={errors.name}
+                placeholder="可先填邮箱前缀"
+                hint="展示名会公开显示在刷题排行榜和你发布的美食投稿中，请不要使用真实姓名或学号。"
+                autoComplete="nickname"
+              />
+            )}
+            <HenuEmailField
+              id="auth-email"
+              value={localPart}
+              onChange={setLocalPart}
+              errorId={errors.email ? "auth-email-error" : undefined}
+            />
+            {errors.email ? (
+              <p id="auth-email-error" role="alert" className="-mt-3 font-mono text-xs text-accent-text">
+                {errors.email}
+              </p>
+            ) : null}
+
+            {needCode && (
+              <div>
+                <Label htmlFor="auth-code">邮箱验证码</Label>
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end sm:gap-3">
+                  <Input
+                    id="auth-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="6 位数字"
+                    value={code}
+                    onChange={(e) =>
+                      setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                    aria-describedby={errors.code ? "auth-code-error" : undefined}
+                    aria-invalid={errors.code ? true : undefined}
+                    className={cn(
+                      "tracking-[0.35em] placeholder:tracking-normal",
+                      errors.code ? "border-accent focus:border-accent" : undefined
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending || cd > 0}
+                    onClick={() => void sendCode()}
+                    className="w-full shrink-0 sm:w-auto"
+                  >
+                    {cd > 0 ? `${cd}s` : "发送验证码"}
+                  </Button>
+                </div>
+                {errors.code ? (
+                  <p id="auth-code-error" role="alert" className="mt-1 font-mono text-xs text-accent-text">
+                    {errors.code}
+                  </p>
+                ) : null}
+                {/* 常驻的 status：验证码发出后读屏软件会读出这句。只在有内容时才插入的节点，
+                    有的读屏软件不会读。没有内容时它是空的，不占位置。 */}
+                <p role="status" className="mt-1 font-mono text-xs leading-5 text-ink/60">
+                  {info}
+                </p>
+              </div>
+            )}
+
+            {(tab === "register" || mode === "password") && (
+              <Field
+                id="auth-pwd"
+                label={<>密码 / <span className="tracking-[0.25em]">PASSWORD</span></>}
+                type="password"
+                value={pwd}
+                onChange={setPwd}
+                error={errors.pwd}
+                placeholder="至少 10 个字符"
+                autoComplete={
+                  tab === "register" ? "new-password" : "current-password"
+                }
+              />
+            )}
+            {tab === "register" && (
+              <Field
+                id="auth-pwd-confirm"
+                label={<>确认密码 / <span className="tracking-[0.25em]">CONFIRM</span></>}
+                type="password"
+                value={pwd2}
+                onChange={setPwd2}
+                error={errors.pwd2}
+                autoComplete="new-password"
+              />
+            )}
+            <Button
+              type="submit"
+              className="mt-8 w-full"
+              disabled={pending}
+            >
+              {pending ? "处理中…" : tab === "login" ? "登录" : "注册"}
+            </Button>
+            <LegalConsent data-account-consent action={tab === "login" ? "登录" : "注册"} />
+          </form>
+        </div>
 
         {/* 邮箱后缀已固定显示在输入框右侧，这里不再重复。 */}
         <div className="mt-1 font-mono text-xs text-ink/60">

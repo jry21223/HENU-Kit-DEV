@@ -151,7 +151,7 @@ export default function SecurityPage() {
                 value={f.v}
                 onChange={(e) => f.set(e.target.value)}
                 autoComplete={f.label === "当前密码" ? "current-password" : "new-password"}
-                className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none focus:border-ink"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none focus:border-ink"
               />
             </div>
           ))}
@@ -166,7 +166,7 @@ export default function SecurityPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@henu.edu.cn"
               autoComplete="email"
-              className="w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
+              className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
             />
           </div>
           <div>
@@ -184,7 +184,7 @@ export default function SecurityPage() {
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 maxLength={6}
-                className="min-w-0 flex-1 border-b border-ink/30 bg-transparent py-2 font-mono text-sm tracking-[0.4em] outline-none placeholder:tracking-normal placeholder:text-ink/60 focus:border-ink"
+                className="min-h-11 min-w-0 flex-1 border-b border-ink/30 bg-transparent py-2 font-mono text-sm tracking-[0.4em] outline-none placeholder:tracking-normal placeholder:text-ink/60 focus:border-ink"
               />
               <button
                 type="button"
