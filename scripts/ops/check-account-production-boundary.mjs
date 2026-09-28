@@ -110,9 +110,16 @@ function assertAccountSources(root) {
     }
   }
 
-  const authMock = read(root, "apps/portal/src/lib/auth/mock.ts");
-  if (/\b(?:accountStore|AccountData|MEMBERSHIP_PLANS|FREE_MEMBERSHIP|TicketMsg|unreadNotices)\b/.test(authMock)) {
-    die("apps/portal/src/lib/auth/mock.ts contains an Account Portfolio fixture");
+  // Account dashboard fixtures must not come back in any auth helper, whether
+  // or not the retired lib/auth/mock.ts reappears. Tests may name them.
+  const authHelpers = "apps/portal/src/lib/auth";
+  if (existsSync(join(root, authHelpers))) {
+    for (const file of sourceFiles(root, authHelpers)) {
+      if (/\.test\.[cm]?[jt]sx?$/.test(file)) continue;
+      if (/\b(?:accountStore|AccountData|MEMBERSHIP_PLANS|FREE_MEMBERSHIP|TicketMsg|unreadNotices)\b/.test(readFileSync(file, "utf8"))) {
+        die(`${relative(root, file)} contains an Account Portfolio fixture`);
+      }
+    }
   }
 }
 
