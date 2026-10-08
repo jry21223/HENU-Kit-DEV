@@ -72,3 +72,12 @@ _Avoid_: Email password, mailbox password
 **Email Verification Code**:
 A short-lived proof of control over an Email Identity, used for Registration, code login, account recovery, and recent verification of high-risk credential changes.
 _Avoid_: Email password, permanent login code
+
+## Campus Membership Benefit Read
+
+The signed subject-only QQ benefit read resolves the current application binding
+and active, verified Platform User before reading Account Portfolio. Core owns
+this identity decision; Account Portfolio remains the only Membership Entitlement
+owner. An independent membership-only credential cannot read payment/points or
+mutate membership. Network calls occur after the binding transaction commits,
+and Core checks the binding again before returning an uncached result.

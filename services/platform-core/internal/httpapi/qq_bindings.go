@@ -32,6 +32,7 @@ func (h *Handler) qqBinding(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	raw, body, ok := decodeInboxBody[qqBindingRequest](w, r)
 	if !ok {
+		writeError(w, r, 400, "INVALID_REQUEST", "请求无效，请重试")
 		return
 	}
 	action := strings.TrimPrefix(r.URL.Path, "/api/v1/qq-bindings/")
@@ -57,6 +58,10 @@ func (h *Handler) qqBinding(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if !qqSubjectPattern.MatchString(body.Subject) || body.SessionToken != "" || action == "authorize" {
 		writeError(w, r, 403, "BINDING_FORBIDDEN", "此操作不可用")
+		return
+	}
+	if action == "benefits" && (body.Token != "" || body.RequestID != "") {
+		writeError(w, r, 400, "INVALID_REQUEST", "请求仅接受当前 QQ 身份")
 		return
 	}
 	// Bound caller/subject rate limiting, atomic expiry, and fail closed on Redis loss.
@@ -97,7 +102,11 @@ func (h *Handler) qqBinding(w http.ResponseWriter, r *http.Request) {
 		h.writeFlowError(w, r, err)
 		return
 	}
-	result, err := h.performQQBinding(r, tx, action, body, app, user, session)
+	bindingAction := action
+	if action == "benefits" {
+		bindingAction = "resolve"
+	}
+	result, err := h.performQQBinding(r, tx, bindingAction, body, app, user, session)
 	if err != nil {
 		var failure *qqBindingError
 		if errors.As(err, &failure) {
@@ -109,6 +118,10 @@ func (h *Handler) qqBinding(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = tx.Commit(r.Context()); err != nil {
 		h.writeFlowError(w, r, err)
+		return
+	}
+	if action == "benefits" {
+		h.qqBenefits(w, r, result, app, body.Subject)
 		return
 	}
 	writeSuccess(w, r, 200, result)

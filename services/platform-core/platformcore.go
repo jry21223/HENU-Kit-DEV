@@ -29,33 +29,34 @@ import (
 )
 
 type Config struct {
-	Database                    *pgxpool.Pool
-	Redis                       *redis.Client
-	CoreCookieName              string
-	LocalCoreCookieName         string
-	CoreSessionTTL              time.Duration
-	AuthorizationTTL            time.Duration
-	ExchangeSessionTTL          time.Duration
-	ExchangeSessionTTLOverrides map[string]time.Duration
-	IdempotencyEncryptionKey    []byte
-	IdempotencyTTL              time.Duration
-	Logger                      *slog.Logger
-	VerificationEncryptionKey   []byte
-	StudentEmailDomains         []string
-	VerificationCodeTTL         time.Duration
-	VerificationResendDelay     time.Duration
-	MailDeliveryWebhookToken    string
-	MailDeliveryActiveKeyID     string
-	MailDeliveryRetiringToken   string
-	MailDeliveryRetiringKeyID   string
-	CareerDigestClientID        string
-	CareerDigestKeyID           string
-	CareerDigestSecret          string
-	TrustedProxyCIDRs           []string
-	PasswordMemoryKiB           uint32
-	PasswordIterations          uint32
-	PasswordParallelism         uint8
-	PasswordHashConcurrency     int
+	MembershipBaseURL, MembershipClientID, MembershipKeyID, MembershipSecret string
+	Database                                                                 *pgxpool.Pool
+	Redis                                                                    *redis.Client
+	CoreCookieName                                                           string
+	LocalCoreCookieName                                                      string
+	CoreSessionTTL                                                           time.Duration
+	AuthorizationTTL                                                         time.Duration
+	ExchangeSessionTTL                                                       time.Duration
+	ExchangeSessionTTLOverrides                                              map[string]time.Duration
+	IdempotencyEncryptionKey                                                 []byte
+	IdempotencyTTL                                                           time.Duration
+	Logger                                                                   *slog.Logger
+	VerificationEncryptionKey                                                []byte
+	StudentEmailDomains                                                      []string
+	VerificationCodeTTL                                                      time.Duration
+	VerificationResendDelay                                                  time.Duration
+	MailDeliveryWebhookToken                                                 string
+	MailDeliveryActiveKeyID                                                  string
+	MailDeliveryRetiringToken                                                string
+	MailDeliveryRetiringKeyID                                                string
+	CareerDigestClientID                                                     string
+	CareerDigestKeyID                                                        string
+	CareerDigestSecret                                                       string
+	TrustedProxyCIDRs                                                        []string
+	PasswordMemoryKiB                                                        uint32
+	PasswordIterations                                                       uint32
+	PasswordParallelism                                                      uint8
+	PasswordHashConcurrency                                                  int
 }
 
 func New(config Config) (http.Handler, error) {
@@ -144,6 +145,10 @@ func New(config Config) (http.Handler, error) {
 	if config.MailDeliveryRetiringToken != "" && (len(config.MailDeliveryRetiringToken) < 32 || config.MailDeliveryRetiringKeyID == config.MailDeliveryActiveKeyID) {
 		return nil, errors.New("retiring mail delivery key must be distinct and contain at least 32 characters")
 	}
+	membership, err := httpapi.NewMembershipClient(config.MembershipBaseURL, config.MembershipClientID, config.MembershipKeyID, config.MembershipSecret)
+	if err != nil {
+		return nil, err
+	}
 	queries := store.New(config.Database)
 	careerDigestKeys := map[string][]byte{}
 	var digestMail *careerdigestmail.Service
@@ -199,7 +204,7 @@ func New(config Config) (http.Handler, error) {
 		deliveryKeys[config.MailDeliveryRetiringKeyID] = []byte(config.MailDeliveryRetiringToken)
 	}
 	continuations := oauthcontinuation.New(config.Redis)
-	return httpapi.New(flow, verificationFlow, continuations, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger), nil
+	return httpapi.New(flow, verificationFlow, continuations, inbox, platformOperations, queries, config.Database, config.Redis, config.CoreCookieName, config.LocalCoreCookieName, deliveryKeys, deviceKey, trustedProxies, digestMail, config.CareerDigestClientID, careerDigestKeys, config.Logger, membership), nil
 }
 
 func credentialPlaceholder(value string) bool {

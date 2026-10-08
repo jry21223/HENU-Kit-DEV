@@ -88,6 +88,12 @@ paths:
     get:
       operationId: getAccountMembership
       summary: Return the signed-in user's persistent membership entitlement
+      description: >-
+        Also available to an independently configured membership-only service caller,
+        using the same six-line signed actor protocol. That caller may use only this
+        exact GET route without query parameters and cannot initialize account rows,
+        access other owner routes or mutate payments/membership. Missing membership
+        rows return free; all responses use Cache-Control no-store.
       parameters:
         - $ref: '#/components/parameters/ServiceID'
         - $ref: '#/components/parameters/KeyID'

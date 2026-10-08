@@ -39,6 +39,7 @@ import (
 )
 
 type Handler struct {
+	membership           *MembershipClient
 	flow                 *identity.Service
 	verification         *verification.Service
 	continuations        *oauthcontinuation.Store
@@ -77,11 +78,14 @@ func writeExplicitAccountFormSuccess(writer http.ResponseWriter, request *http.R
 	return true
 }
 
-func New(flow *identity.Service, verificationFlow *verification.Service, continuations *oauthcontinuation.Store, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, digestMail *careerdigestmail.Service, careerDigestClientID string, careerDigestKeys map[string][]byte, logger *slog.Logger) http.Handler {
+func New(flow *identity.Service, verificationFlow *verification.Service, continuations *oauthcontinuation.Store, inbox *operationsinbox.Service, platformOps *platformoperations.Service, queries *store.Queries, database *pgxpool.Pool, redisClient *redis.Client, cookieName, localCookieName string, deliveryKeys map[string][]byte, deviceKey []byte, trustedProxies []*net.IPNet, digestMail *careerdigestmail.Service, careerDigestClientID string, careerDigestKeys map[string][]byte, logger *slog.Logger, membershipClients ...*MembershipClient) http.Handler {
 	handler := &Handler{flow: flow, verification: verificationFlow, continuations: continuations, inbox: inbox, platformOps: platformOps, queries: queries, database: database, redis: redisClient, cookieName: cookieName, localCookieName: localCookieName, deliveryKeys: deliveryKeys, deviceKey: deviceKey, trustedProxies: trustedProxies, digestMail: digestMail, careerDigestClientID: careerDigestClientID, careerDigestKeys: careerDigestKeys, logger: logger}
+	if len(membershipClients) > 0 {
+		handler.membership = membershipClients[0]
+	}
 	router := chi.NewRouter()
 	router.Use(handler.requestAudit)
-	for _, action := range []string{"start", "authorize", "pending", "confirm", "status", "resolve", "unlink"} {
+	for _, action := range []string{"start", "authorize", "pending", "confirm", "status", "resolve", "unlink", "benefits"} {
 		router.Post("/api/v1/qq-bindings/"+action, handler.qqBinding)
 	}
 	router.Get("/api/v1/healthz", handler.health)

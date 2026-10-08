@@ -28,6 +28,66 @@ tags:
   - name: Internal Events
 
 paths:
+  /qq-bindings/benefits:
+    post:
+      operationId: getQQMembershipBenefits
+      summary: Read current campus benefits for the authenticated Bot application subject
+      description: >-
+        Only a provisioned Bot service may call this route. Core resolves its own
+        application-scoped subject to an active verified user, commits the binding
+        read, then queries Account Portfolio using an independent read-only credential.
+        Results cannot be cached; membership is never taken from caller fields.
+      security:
+        - clientSecret: []
+          serviceHmac: []
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+        - $ref: '#/components/parameters/KeyId'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subject]
+              properties:
+                subject: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+      responses:
+        '200':
+          description: Current free or lifetime entitlement; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  request_id: { type: string }
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required: [bound, plan, lifetime, allowed, benefits, checked_at]
+                    properties:
+                      bound: { const: true }
+                      plan: { type: string, enum: [free, lifetime] }
+                      lifetime: { type: boolean }
+                      allowed: { type: boolean }
+                      benefits:
+                        type: array
+                        uniqueItems: true
+                        items: { type: string, enum: [yuketang, ucampus, chaoxing, library_schedule] }
+                      checked_at: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: NOT_BOUND; current application subject is unbound, suspended or unverified
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503':
+          description: MEMBERSHIP_UNAVAILABLE; missing configuration, owner failure or invalid response never grants benefits
   /healthz:
     get:
       tags: [Health]

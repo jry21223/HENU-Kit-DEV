@@ -40,11 +40,13 @@ const maxPublicPointValue int64 = 9_007_199_254_740_991
 // Config contains only private service-to-service configuration. Browser
 // clients always go through Portal Gateway and never receive these values.
 type Config struct {
-	Database        *pgxpool.Pool
-	ClientID        string
-	Keys            map[string]string
-	ConsoleClientID string
-	ConsoleKeys     map[string]string
+	Database           *pgxpool.Pool
+	ClientID           string
+	Keys               map[string]string
+	ConsoleClientID    string
+	ConsoleKeys        map[string]string
+	MembershipClientID string
+	MembershipKeys     map[string]string
 	// PaymentProvider is nil in every production configuration until the
 	// separately authorized provider Spike supplies a real implementation.
 	PaymentProvider PaymentProvider
@@ -56,13 +58,14 @@ type Config struct {
 }
 
 type service struct {
-	database        *pgxpool.Pool
-	clientID        string
-	consoleClientID string
-	clientKeys      map[string]map[string]string
-	paymentProvider PaymentProvider
-	pointCursors    *pointCursorCodec
-	now             func() time.Time
+	database           *pgxpool.Pool
+	clientID           string
+	consoleClientID    string
+	membershipClientID string
+	clientKeys         map[string]map[string]string
+	paymentProvider    PaymentProvider
+	pointCursors       *pointCursorCodec
+	now                func() time.Time
 }
 
 type actor struct {
@@ -160,12 +163,16 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, errors.New("account portfolio point cursor encryption key is invalid")
 	}
-	if pointCursorKeyReusesServiceSecret(config.PointCursorKey, config.Keys, config.ConsoleKeys) {
+	if pointCursorKeyReusesServiceSecret(config.PointCursorKey, config.Keys, config.ConsoleKeys, config.MembershipKeys) {
 		return nil, errors.New("account portfolio point cursor encryption key must be independent from service credentials")
 	}
 	consoleConfigured := strings.TrimSpace(config.ConsoleClientID) != "" || len(config.ConsoleKeys) != 0
 	if consoleConfigured && (strings.TrimSpace(config.ConsoleClientID) == "" || config.ConsoleClientID == config.ClientID || !validClientKeys(config.ConsoleKeys) || sharedServiceSecret(config.Keys, config.ConsoleKeys)) {
 		return nil, errors.New("account portfolio Console service credentials are invalid")
+	}
+	membershipConfigured := config.MembershipClientID != "" || len(config.MembershipKeys) != 0
+	if membershipConfigured && (strings.TrimSpace(config.MembershipClientID) == "" || config.MembershipClientID == config.ClientID || config.MembershipClientID == config.ConsoleClientID || !validClientKeys(config.MembershipKeys) || sharedServiceSecret(config.MembershipKeys, config.Keys) || sharedServiceSecret(config.MembershipKeys, config.ConsoleKeys)) {
+		return nil, errors.New("account portfolio membership reader credentials must be independent")
 	}
 	if config.PaymentProvider != nil && !validPaymentProviderName(config.PaymentProvider.Name()) {
 		return nil, errors.New("account portfolio payment provider is invalid")
@@ -178,7 +185,10 @@ func New(config Config) (http.Handler, error) {
 	if consoleConfigured {
 		clientKeys[config.ConsoleClientID] = config.ConsoleKeys
 	}
-	h := &service{database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, clientKeys: clientKeys, paymentProvider: config.PaymentProvider, pointCursors: pointCursors, now: now}
+	if membershipConfigured {
+		clientKeys[config.MembershipClientID] = config.MembershipKeys
+	}
+	h := &service{membershipClientID: config.MembershipClientID, database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, clientKeys: clientKeys, paymentProvider: config.PaymentProvider, pointCursors: pointCursors, now: now}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, h.health)
@@ -351,15 +361,22 @@ func (h *service) points(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *service) membership(w http.ResponseWriter, r *http.Request) {
-	userID, ok := h.prepareAccount(w, r)
-	if !ok {
-		return
+	value := authenticatedActor(r)
+	userID := value.userID
+	if value.clientID != h.membershipClientID || h.membershipClientID == "" {
+		var ok bool
+		userID, ok = h.prepareAccount(w, r)
+		if !ok {
+			return
+		}
 	}
 	data := struct {
 		Plan     string `json:"plan"`
 		Lifetime bool   `json:"lifetime"`
 	}{}
-	if err := h.database.QueryRow(r.Context(), `SELECT plan FROM account_portfolio_memberships WHERE user_id=$1`, userID).Scan(&data.Plan); err != nil {
+	if err := h.database.QueryRow(r.Context(), `SELECT plan FROM account_portfolio_memberships WHERE user_id=$1`, userID).Scan(&data.Plan); errors.Is(err, pgx.ErrNoRows) && value.clientID == h.membershipClientID {
+		data.Plan = "free"
+	} else if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Account Portfolio membership is unavailable")
 		return
 	}
