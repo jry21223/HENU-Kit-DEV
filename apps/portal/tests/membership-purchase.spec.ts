@@ -102,6 +102,9 @@ test("a free member is offered lifetime membership in one consistent voice", asy
   // 支付前再次说明主体，并告知购买即同意《用户协议》（DESIGN_SYSTEM §16）。
   const purchase = page.locator("[data-membership-purchase]");
   await expect(purchase).toContainText("非河南大学官方项目");
+  for (const benefit of ["雨课堂", "U校园", "含AI版", "学习通", "图书馆定时预约", "服务费用已包含", "无需额外付费", "绑定 HENU KIT 账号"]) {
+    await expect(purchase).toContainText(benefit);
+  }
   await expect(purchase.getByRole("link", { name: "《用户协议》" })).toHaveAttribute("href", "/terms");
   await expect(purchase.getByRole("link", { name: "《隐私政策》" })).toHaveAttribute("href", "/privacy");
   // 用户协议把“终身”限定为服务存续期间，页面上就不能再承诺“永久”。

@@ -20,33 +20,34 @@ import (
 const RequiredCoreSessionTTL = 30 * 24 * time.Hour
 
 type Config struct {
-	Address                     string
-	DatabaseURL                 string
-	RedisURL                    string
-	CoreCookieName              string
-	LocalCoreCookieName         string
-	CoreSessionTTL              time.Duration
-	AuthorizationTTL            time.Duration
-	ExchangeSessionTTL          time.Duration
-	ExchangeSessionTTLOverrides map[string]time.Duration
-	IdempotencyEncryptionKey    []byte
-	IdempotencyTTL              time.Duration
-	VerificationKey             []byte
-	StudentEmailDomains         []string
-	VerificationCodeTTL         time.Duration
-	VerificationResendDelay     time.Duration
-	MailDeliveryWebhookToken    string
-	MailDeliveryActiveKeyID     string
-	MailDeliveryRetiringToken   string
-	MailDeliveryRetiringKeyID   string
-	CareerDigestClientID        string
-	CareerDigestKeyID           string
-	CareerDigestSecret          string
-	TrustedProxyCIDRs           []string
-	PasswordMemoryKiB           uint32
-	PasswordIterations          uint32
-	PasswordParallelism         uint8
-	PasswordHashConcurrency     int
+	MembershipBaseURL, MembershipClientID, MembershipKeyID, MembershipSecret string
+	Address                                                                  string
+	DatabaseURL                                                              string
+	RedisURL                                                                 string
+	CoreCookieName                                                           string
+	LocalCoreCookieName                                                      string
+	CoreSessionTTL                                                           time.Duration
+	AuthorizationTTL                                                         time.Duration
+	ExchangeSessionTTL                                                       time.Duration
+	ExchangeSessionTTLOverrides                                              map[string]time.Duration
+	IdempotencyEncryptionKey                                                 []byte
+	IdempotencyTTL                                                           time.Duration
+	VerificationKey                                                          []byte
+	StudentEmailDomains                                                      []string
+	VerificationCodeTTL                                                      time.Duration
+	VerificationResendDelay                                                  time.Duration
+	MailDeliveryWebhookToken                                                 string
+	MailDeliveryActiveKeyID                                                  string
+	MailDeliveryRetiringToken                                                string
+	MailDeliveryRetiringKeyID                                                string
+	CareerDigestClientID                                                     string
+	CareerDigestKeyID                                                        string
+	CareerDigestSecret                                                       string
+	TrustedProxyCIDRs                                                        []string
+	PasswordMemoryKiB                                                        uint32
+	PasswordIterations                                                       uint32
+	PasswordParallelism                                                      uint8
+	PasswordHashConcurrency                                                  int
 }
 
 func Load() (Config, error) {
@@ -54,6 +55,7 @@ func Load() (Config, error) {
 	passwordIterations := intEnv("PLATFORM_CORE_PASSWORD_ITERATIONS", 3)
 	passwordParallelism := intEnv("PLATFORM_CORE_PASSWORD_PARALLELISM", 1)
 	config := Config{
+		MembershipBaseURL: os.Getenv("PLATFORM_CORE_MEMBERSHIP_BASE_URL"), MembershipClientID: os.Getenv("PLATFORM_CORE_MEMBERSHIP_CLIENT_ID"), MembershipKeyID: os.Getenv("PLATFORM_CORE_MEMBERSHIP_KEY_ID"), MembershipSecret: os.Getenv("PLATFORM_CORE_MEMBERSHIP_SECRET"),
 		Address:                     env("PLATFORM_CORE_ADDRESS", ":8081"),
 		DatabaseURL:                 os.Getenv("PLATFORM_CORE_DATABASE_URL"),
 		RedisURL:                    env("PLATFORM_CORE_REDIS_URL", "redis://localhost:6379/0"),

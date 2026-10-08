@@ -27,6 +27,20 @@ func main() {
 	consoleClientID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID")
 	consoleKeyID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID")
 	consoleSecret := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_SECRET")
+	membershipClientID := os.Getenv("ACCOUNT_PORTFOLIO_MEMBERSHIP_CLIENT_ID")
+	membershipKeyID := os.Getenv("ACCOUNT_PORTFOLIO_MEMBERSHIP_KEY_ID")
+	membershipSecret := os.Getenv("ACCOUNT_PORTFOLIO_MEMBERSHIP_SECRET")
+	membershipConfigured := membershipClientID != "" || membershipKeyID != "" || membershipSecret != ""
+	if membershipConfigured && (membershipClientID == "" || membershipKeyID == "" || membershipSecret == "") {
+		log.Fatal("Account Portfolio membership caller configuration is incomplete")
+	}
+	if membershipConfigured && os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(membershipSecret) {
+		log.Fatal("Account Portfolio membership caller secret is a deployment placeholder")
+	}
+	var membershipKeys map[string]string
+	if membershipConfigured {
+		membershipKeys = map[string]string{membershipKeyID: membershipSecret}
+	}
 	pointCursorKey, err := pointCursorKeyFromEnv()
 	if err != nil {
 		log.Fatal(err)
@@ -62,11 +76,12 @@ func main() {
 		log.Fatal(err)
 	}
 	handler, err := accountportfolio.New(accountportfolio.Config{
-		Database:        pool,
-		ClientID:        clientID,
-		Keys:            map[string]string{keyID: secret},
-		ConsoleClientID: consoleClientID,
-		ConsoleKeys:     consoleKeys,
+		Database:           pool,
+		ClientID:           clientID,
+		Keys:               map[string]string{keyID: secret},
+		ConsoleClientID:    consoleClientID,
+		ConsoleKeys:        consoleKeys,
+		MembershipClientID: membershipClientID, MembershipKeys: membershipKeys,
 		PointCursorKey:  pointCursorKey,
 		PaymentProvider: paymentProvider,
 	})

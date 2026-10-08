@@ -170,3 +170,9 @@ sorting boundary, expires after ten minutes, and uses Account Portfolio's
 independent cursor key. Portal forwards it only as an uninspected bounded
 query value; clients do not derive it from an identifier or timestamp.
 _Avoid_: Offset pagination, exposed audit identifier
+
+The independent membership-only caller can read the exact membership GET route
+with a signed actor. It cannot initialize Account Portfolio rows, read other
+account facts or mutate entitlement/payment; a missing row returns the default
+free plan without creating durable state. Its credential must be distinct from
+Portal, Console and the cursor encryption key.

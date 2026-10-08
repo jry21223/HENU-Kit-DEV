@@ -78,6 +78,10 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
+		if clientID == h.membershipClientID && (r.Method != http.MethodGet || r.URL.Path != "/api/v1/account/membership" || r.URL.RawQuery != "") {
+			writeError(w, r, http.StatusForbidden, "ACCESS_DENIED", "membership reader route is not permitted")
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID, clientID: clientID})))
 	})
 }
