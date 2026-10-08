@@ -20,10 +20,10 @@ import (
 )
 
 var (
-	membershipConfigError    = errors.New("membership owner configuration unavailable")
-	membershipTransportError = errors.New("membership owner transport unavailable")
-	membershipContractError  = errors.New("membership owner contract invalid")
-	membershipStatusError    = errors.New("membership owner rejected read")
+	errMembershipConfig    = errors.New("membership owner configuration unavailable")
+	errMembershipTransport = errors.New("membership owner transport unavailable")
+	errMembershipContract  = errors.New("membership owner contract invalid")
+	errMembershipStatus    = errors.New("membership owner rejected read")
 )
 
 // MembershipClient reads only the owner membership route. It never uses Portal credentials.
@@ -44,15 +44,15 @@ func NewMembershipClient(baseURL, clientID, keyID, secret string) (*MembershipCl
 }
 func (c *MembershipClient) read(ctx context.Context, user string) (string, error) {
 	if c == nil {
-		return "", membershipConfigError
+		return "", errMembershipConfig
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/v1/account/membership", nil)
 	if err != nil {
-		return "", membershipTransportError
+		return "", errMembershipTransport
 	}
 	nonceBytes := make([]byte, 24)
 	if _, err = rand.Read(nonceBytes); err != nil {
-		return "", membershipTransportError
+		return "", errMembershipTransport
 	}
 	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
@@ -66,15 +66,15 @@ func (c *MembershipClient) read(ctx context.Context, user string) (string, error
 	}
 	response, err := c.client.Do(req)
 	if err != nil {
-		return "", membershipTransportError
+		return "", errMembershipTransport
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 {
-		return "", membershipStatusError
+		return "", errMembershipStatus
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 4097))
 	if err != nil || len(raw) > 4096 {
-		return "", membershipContractError
+		return "", errMembershipContract
 	}
 	var envelope struct {
 		Data *struct {
@@ -83,11 +83,11 @@ func (c *MembershipClient) read(ctx context.Context, user string) (string, error
 		} `json:"data"`
 	}
 	if err = json.Unmarshal(raw, &envelope); err != nil || envelope.Data == nil || envelope.Data.Lifetime == nil {
-		return "", membershipContractError
+		return "", errMembershipContract
 	}
 	data := envelope.Data
 	if (data.Plan != "free" && data.Plan != "lifetime") || *data.Lifetime != (data.Plan == "lifetime") {
-		return "", membershipContractError
+		return "", errMembershipContract
 	}
 	return data.Plan, nil
 }
@@ -102,11 +102,11 @@ func (h *Handler) qqBenefits(w http.ResponseWriter, r *http.Request, resolved ma
 	if err != nil {
 		category := "owner_contract"
 		switch {
-		case errors.Is(err, membershipConfigError):
+		case errors.Is(err, errMembershipConfig):
 			category = "owner_config"
-		case errors.Is(err, membershipTransportError):
+		case errors.Is(err, errMembershipTransport):
 			category = "owner_transport"
-		case errors.Is(err, membershipStatusError):
+		case errors.Is(err, errMembershipStatus):
 			category = "owner_status"
 		}
 		h.membershipUnavailable(w, r, category)

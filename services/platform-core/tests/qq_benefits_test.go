@@ -71,7 +71,7 @@ func TestQQBenefitsUsesCurrentOwnerAndNeverTrustsCallerMembership(t *testing.T) 
 		}
 		switch currentMode {
 		case "redirect":
-			http.Redirect(w, r, redirect.URL, 302)
+			http.Redirect(w, r, redirect.URL, http.StatusFound)
 			return
 		case "oversize":
 			fmt.Fprint(w, strings.Repeat("x", 4097))
