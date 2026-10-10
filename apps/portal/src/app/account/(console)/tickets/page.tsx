@@ -340,9 +340,9 @@ export default function TicketsPage() {
         <section
           data-account-tickets-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs text-ink/60"
         >
-          TICKETS LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
+          工单加载中<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
@@ -445,8 +445,8 @@ function TicketDetail({
   }
   if (state.kind === "loading") {
     return (
-      <aside data-account-ticket-detail-state="loading" className="border border-line p-6 font-mono text-xs tracking-[0.16em] text-ink/60">
-        TICKET DETAIL LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
+      <aside data-account-ticket-detail-state="loading" className="border border-line p-6 font-mono text-xs text-ink/60">
+        工单详情加载中<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </aside>
     );
   }

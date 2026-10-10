@@ -114,9 +114,9 @@ export default function NotificationsPage() {
         <section
           data-account-notifications-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs text-ink/60"
         >
-          NOTIFICATIONS LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
+          通知加载中<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 
