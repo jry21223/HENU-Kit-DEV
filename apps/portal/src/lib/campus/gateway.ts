@@ -4,45 +4,12 @@
  * 生产 / require-gateway：必须走 API；失败不静默回退 mock。
  */
 
-import {
-  fetchCampusCategories,
-  fetchCampusItems,
-  hasGateway,
-  mockAllowed,
-} from "@/lib/api/client";
+import { mockAllowed } from "@/lib/api/client";
 import type { CampusCategory, CampusItem, CampusMessage } from "@/lib/api/types";
 import { campusStore } from "@/lib/campus/mock";
 
 let gatewayItems: CampusItem[] | null = null;
 let gatewayCategories: CampusCategory[] | null = null;
-let loaded = false;
-
-export async function initCampusGateway(): Promise<void> {
-  if (loaded) return;
-
-  if (!hasGateway) {
-    if (mockAllowed) loaded = true;
-    return;
-  }
-
-  try {
-    const [itemsResp, catsResp] = await Promise.all([
-      fetchCampusItems(),
-      fetchCampusCategories().catch(() => null),
-    ]);
-    gatewayItems = itemsResp.items;
-    gatewayCategories = catsResp?.categories ?? null;
-    loaded = true;
-  } catch {
-    if (!mockAllowed) {
-      gatewayItems = null;
-      gatewayCategories = null;
-      loaded = false;
-    } else {
-      loaded = true;
-    }
-  }
-}
 
 /**
  * /campus 列表实时读到的单子写入共享缓存：从列表点进详情时，详情接口失败仍可回退到
