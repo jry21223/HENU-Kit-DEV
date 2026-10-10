@@ -106,7 +106,7 @@ export default function FoodBoardPage() {
           {/* 失败时只由下方 ErrorBanner 说明，这里不再挂着“还在同步”。 */}
           {loadState === "error" ? null : (
             <p className="font-mono text-xs text-ink/60">
-              {loadState === "ready" ? `共 ${visibleCount} 家` : "同步中"}
+              {loadState === "ready" ? `共 ${visibleCount} 条` : "同步中"}
             </p>
           )}
         </div>
