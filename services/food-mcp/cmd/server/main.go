@@ -12,6 +12,7 @@ import (
 
 	"henukit.dev/food-mcp/internal/foodclient"
 	mcp "henukit.dev/food-mcp/internal/mcp"
+	"henukit.dev/food-mcp/internal/sessionclient"
 )
 
 func main() {
@@ -27,7 +28,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	handler, err := mcp.NewHandler(mcp.Options{Client: client, AccessToken: accessToken})
+	kitSession, err := sessionclient.NewClient(os.Getenv("FOOD_MCP_KIT_SESSION_URL"), os.Getenv("FOOD_MCP_KIT_SESSION_COOKIE_NAME"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	requireActor := strings.TrimSpace(os.Getenv("FOOD_MCP_REQUIRE_ACTOR_CONTEXT"))
+	if requireActor != "" && requireActor != "true" && requireActor != "false" && requireActor != "1" && requireActor != "0" {
+		log.Fatal("invalid FOOD_MCP_REQUIRE_ACTOR_CONTEXT")
+	}
+	handler, err := mcp.NewHandler(mcp.Options{Client: client, AccessToken: accessToken, KitSession: kitSession, ActorSecret: strings.TrimSpace(os.Getenv("FOOD_MCP_ACTOR_SECRET")), RequireActorContext: requireActor == "true" || requireActor == "1"})
 	if err != nil {
 		log.Fatal(err)
 	}

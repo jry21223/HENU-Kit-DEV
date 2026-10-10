@@ -19,8 +19,12 @@ _Avoid_: Platform Operations Inbox 正文
 _Avoid_: Console 排名配置
 
 **Food Post**:
-由登录学生直接发布到公开榜单的餐饮推荐;创建即公开,没有待审核或草稿状态,展示投稿账号的真实显示名。
+由学生直接发布到公开榜单的餐饮推荐;创建即公开,没有待审核或草稿状态,展示投稿账号的显示名或游客标识。
 _Avoid_: Food Submission(那是等待运营审核的旧投稿模型)、portal_food_posts(portal-api 的冻结遗留数据)
+
+**Food Post Guest**:
+未关联 Kit 账号但仍可发布餐饮推荐的投稿者，其投稿展示游客标识。
+_Avoid_: 已绑定账号、由显示名推定的账号
 
 ## Owns
 
