@@ -30,18 +30,22 @@ const (
 
 // Handler is the MCP server's HTTP handler.
 type Handler struct {
-	client      *foodclient.Client
-	mcpServer   *mcpsdk.Server
-	accessToken string
-	kitSession  *sessionclient.Client
-	httpHandler http.Handler
+	client              *foodclient.Client
+	mcpServer           *mcpsdk.Server
+	accessToken         string
+	kitSession          *sessionclient.Client
+	actorSecret         string
+	requireActorContext bool
+	httpHandler         http.Handler
 }
 
 // Options configures the MCP handler.
 type Options struct {
-	Client      *foodclient.Client
-	AccessToken string
-	KitSession  *sessionclient.Client
+	Client              *foodclient.Client
+	AccessToken         string
+	KitSession          *sessionclient.Client
+	ActorSecret         string
+	RequireActorContext bool
 }
 
 // NewHandler builds the MCP server, its tools, and the shared Streamable HTTP
@@ -51,7 +55,10 @@ func NewHandler(options Options) (*Handler, error) {
 	if options.Client == nil {
 		return nil, errors.New("food client is required")
 	}
-	handler := &Handler{client: options.Client, accessToken: options.AccessToken, kitSession: options.KitSession}
+	if (options.ActorSecret != "" && len(options.ActorSecret) < 32) || (options.RequireActorContext && options.ActorSecret == "") {
+		return nil, errors.New("food actor secret must contain at least 32 bytes")
+	}
+	handler := &Handler{client: options.Client, accessToken: options.AccessToken, kitSession: options.KitSession, actorSecret: options.ActorSecret, requireActorContext: options.RequireActorContext}
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "henukit-food-posts", Version: "1.0.0"}, nil)
 	handler.mcpServer = server
 	handler.registerTools(server)
@@ -86,7 +93,7 @@ func (h *Handler) registerTools(server *mcpsdk.Server) {
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_food_posts", Description: "读取公开美食投稿列表，可选按 campus 过滤。无需登录。"}, h.listPosts)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "get_food_post", Description: "读取单条公开美食投稿详情。"}, h.getPost)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_food_venues", Description: "读取指定校区的场所汇总。campus 必填（minglun/jinming/longzihu）。"}, h.listVenues)
-	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_my_food_posts", Description: "读取当前关联 Kit 账号的美食投稿；未绑定时读取当前会话的游客投稿，并提示绑定。无需用户提供 UUID。"}, h.myPosts)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_my_food_posts", Description: "读取当前关联 Kit 账号的美食投稿；未绑定时读取当前游客身份的投稿，并提示绑定。无需用户提供 UUID。"}, h.myPosts)
 }
 
 type createPostInput struct {
@@ -137,6 +144,9 @@ func (h *Handler) createPost(ctx context.Context, request *mcpsdk.CallToolReques
 		return nil, nil, err
 	}
 	key := "foodmcp:" + uuid.NewString()
+	if actor.idempotencyKey != "" {
+		key = actor.idempotencyKey
+	}
 	payload := map[string]any{
 		"venue_name": input.VenueName, "campus": input.Campus, "tier": input.Tier, "review_text": input.ReviewText,
 		"price_reference": input.PriceReference, "hours_reference": input.HoursReference,
@@ -259,9 +269,16 @@ func (h *Handler) myPosts(ctx context.Context, request *mcpsdk.CallToolRequest, 
 
 type postActor struct {
 	userID, displayName, notice string
+	idempotencyKey              string
 }
 
 func (h *Handler) resolveActor(ctx context.Context, request *mcpsdk.CallToolRequest) (postActor, error) {
+	if actor, present, err := h.signedActor(request); present {
+		return actor, err
+	}
+	if h.requireActorContext {
+		return postActor{}, errActorContext
+	}
 	if request == nil || request.Session == nil || request.Session.ID() == "" {
 		return postActor{}, errors.New("投稿会话已失效，请重新连接后重试")
 	}
@@ -296,7 +313,7 @@ func validUUID(value string) bool {
 func upstreamMessage(err error) error {
 	var upstream *foodclient.UpstreamError
 	if errors.As(err, &upstream) {
-		return fmt.Errorf("Food 返回 %d（%s）：%s", upstream.StatusCode, upstream.Code, upstream.Message)
+		return fmt.Errorf("food 返回 %d（%s）：%s", upstream.StatusCode, upstream.Code, upstream.Message)
 	}
 	if errors.Is(err, foodclient.ErrInvalidResponse) {
 		return fmt.Errorf("投稿服务返回了无效响应：%v", err)

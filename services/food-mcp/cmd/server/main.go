@@ -32,7 +32,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	handler, err := mcp.NewHandler(mcp.Options{Client: client, AccessToken: accessToken, KitSession: kitSession})
+	requireActor := strings.TrimSpace(os.Getenv("FOOD_MCP_REQUIRE_ACTOR_CONTEXT"))
+	if requireActor != "" && requireActor != "true" && requireActor != "false" && requireActor != "1" && requireActor != "0" {
+		log.Fatal("invalid FOOD_MCP_REQUIRE_ACTOR_CONTEXT")
+	}
+	handler, err := mcp.NewHandler(mcp.Options{Client: client, AccessToken: accessToken, KitSession: kitSession, ActorSecret: strings.TrimSpace(os.Getenv("FOOD_MCP_ACTOR_SECRET")), RequireActorContext: requireActor == "true" || requireActor == "1"})
 	if err != nil {
 		log.Fatal(err)
 	}

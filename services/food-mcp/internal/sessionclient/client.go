@@ -19,7 +19,7 @@ const secureCookieName = "__Host-henukit_portal_session"
 
 var (
 	ErrNoSession   = errors.New("no usable Kit session")
-	ErrUnavailable = errors.New("Kit session lookup is unavailable")
+	ErrUnavailable = errors.New("kit session lookup is unavailable")
 )
 
 type Account struct {

@@ -42,10 +42,10 @@ func (e *UpstreamError) Error() string {
 }
 
 // ErrUnavailable wraps transport-level failures (Food down, unconfigured).
-var ErrUnavailable = errors.New("Food service is unavailable")
+var ErrUnavailable = errors.New("food service is unavailable")
 
 // ErrInvalidResponse wraps a response that is not a usable Food envelope.
-var ErrInvalidResponse = errors.New("Food returned an invalid response")
+var ErrInvalidResponse = errors.New("food returned an invalid response")
 
 // Client talks to services/food over its signed HTTP contract.
 type Client struct {
@@ -81,10 +81,10 @@ func NewClient(baseURL, createClientID, createSecret, createKeyID, readClientID,
 
 func validateCredential(name, clientID, secret, keyID string) error {
 	if strings.TrimSpace(clientID) == "" || secret == "" || strings.TrimSpace(keyID) == "" {
-		return fmt.Errorf("Food %s credential is incomplete", name)
+		return fmt.Errorf("food %s credential is incomplete", name)
 	}
 	if len(secret) < 32 || isPlaceholderSecret(secret) {
-		return fmt.Errorf("Food %s credential secret is not deployment-safe", name)
+		return fmt.Errorf("food %s credential secret is not deployment-safe", name)
 	}
 	return nil
 }

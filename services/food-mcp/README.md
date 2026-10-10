@@ -47,3 +47,24 @@ See ADR-0047 for the optional-identity amendment to ADR-0033.
 go test ./... -count=1 -timeout=60s
 go vet ./...
 ```
+
+### Shared QQ/LangBot identity
+
+A shared MCP session is not a user. The plugin-owned `henu_food` tool resolves
+the current Bot+sender Kit binding on each create/mine call and signs `_meta`
+`henukit.dev/food-actor`. Set a dedicated matching `FOOD_MCP_ACTOR_SECRET` /
+`HENU_FOOD_CONTEXT_SECRET` (at least 32 bytes), and
+`FOOD_MCP_REQUIRE_ACTOR_CONTEXT=true` in shared-bot production. Missing or
+invalid proof fails closed; public reads remain available. The model never
+receives identity parameters or the signing key.
+
+The signed payload covers tool name, Go-compatible canonical argument SHA256,
+opaque Bot+sender scope, account kind and optional canonical UID/name, Unix
+timestamp (60-second lifetime, 10-second clock skew), and random nonce. The
+nonce also becomes Food's persistent idempotency key, so replay of the same
+proof cannot create a second post. Guests remain stable across MCP reconnects
+and distinct between senders. Keep the dedicated key stable. Account lookup
+failure degrades to that guest; unbinding takes effect on the next call.
+
+Replace the QQ pipeline's independent `food` MCP connector with the plugin
+tool; keep other connectors available. No UUID is requested from users.

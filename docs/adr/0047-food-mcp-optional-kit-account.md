@@ -7,7 +7,10 @@ amends: 0032, 0033
 
 The user requested automatic, optional account identity instead of asking
 people to remember a UUID. This amends ADR-0033 for independent Food MCP.
-ADR-0046's separate QQ review queue remains in force.
+The user explicitly also requires unbound QQ users to continue submitting.
+This narrowly amends ADR-0046/#523's bound-only rule for the already-enabled
+Food MCP channel, preserving its existing immediate publication behavior.
+The separate proposed pending-review queue is not implemented by this change.
 
 ## Decision
 
@@ -22,7 +25,7 @@ ADR-0046's separate QQ review queue remains in force.
   without account integration use a system-generated guest UUID and `游客`.
   Successful results include a binding prompt. Lookup failures instead explain
   that the account could not be read. Submission remains available.
-- Keep one guest identity per authenticated SDK-managed MCP session. Food
+- In standalone mode, keep one guest identity per authenticated SDK-managed MCP session. Food
   retains signing, validation, idempotency and its daily cap. Guest cap and
   mine history apply within that session; reconnecting starts a new identity.
   Later account association affects future calls and does not reassign posts.
@@ -49,3 +52,21 @@ requires Gateway to trust the MCP container network, already set in Compose.
 
 SDK/HTTP boundary tests cover automatic account preference, optional lookup
 failure, schema, guest stability and isolation, signing, validation and caps.
+
+## Shared Bot integration amendment
+
+QQ pipelines must use the plugin-owned `henu_food` tool instead of the shared
+independent Food connector. The plugin obtains trusted SDK Bot+sender context,
+resolves the existing signed Core binding endpoint afresh, and signs per-call
+MCP metadata with a dedicated secret. Valid bound accounts are preferred;
+missing/unavailable binding uses a stable opaque guest scope derived from
+Bot+sender without disclosing QQ identity to Food. Unbinding affects future
+calls. There is no automatic reassignment of older guest posts.
+
+MCP verifies the HMAC, tool and canonical argument digest, timestamp, kind,
+UUID/name and nonce before invoking Food. In shared-bot production it requires
+this context for create/mine. Invalid context never silently falls back.
+The nonce is reused as Food's durable idempotency key: proof replay repeats
+the original operation, while changed arguments are rejected. All five Food
+capabilities remain available through the plugin tool. Other MCPs and campus
+CLI behavior remain unchanged.
