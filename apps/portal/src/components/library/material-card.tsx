@@ -4,7 +4,7 @@ import { MATERIAL_TYPES } from "@/lib/library/material-types";
 import { readableMaterialTitle } from "@/lib/library/material-title";
 
 /**
- * 资料卡：封面块（图纸网格 + 类型代号）+ 元信息行。公开目录只收免费资料（契约 price 恒为 0），
+ * 资料卡：封面块（图纸网格 + 类型名）+ 元信息行。公开目录只收免费资料（契约 price 恒为 0），
  * 所以不逐张标“免费”。
  */
 export default function MaterialCard({ material }: { material: Material }) {
