@@ -33,6 +33,7 @@ import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import { cn } from "@/lib/cn";
+import { choiceOptionState, judgeOptionState, type OptionFeedbackState } from "@/lib/practice/answer-feedback";
 
 const OPTION_LABEL = ["A", "B", "C", "D", "E", "F", "G", "H"];
 // Match the canonical UUID text form accepted by Gateway and QuizCraft Core;
@@ -138,9 +139,35 @@ function hasAnswer(question: PortalPracticeQuestion, value: unknown) {
   return typeof value === "number";
 }
 
-function optionIsExpected(expected: unknown, option: string, index: number): boolean {
-  if (Array.isArray(expected)) return expected.some((item) => optionIsExpected(item, option, index));
-  return expected === index || expected === option;
+// Post-score look of one option. Colour is never the only signal: every
+// non-neutral state also carries a glyph or text label (see OptionFeedbackMark).
+const OPTION_FEEDBACK_CLASS: Record<OptionFeedbackState, string> = {
+  correct: "border-ink bg-ink text-paper",
+  wrong: "border-accent bg-accent text-ink",
+  // Inset ring doubles the outline without growing the box when the result lands.
+  missed: "border-ink bg-paper text-ink ring-1 ring-inset ring-ink",
+  neutral: "border-line text-ink/60",
+};
+
+function OptionFeedbackMark({ state }: { state: OptionFeedbackState }) {
+  if (state === "correct") {
+    return (
+      <span className="font-mono text-xs">
+        <span aria-hidden="true">✓</span>
+        <span className="sr-only">你的选择，正确</span>
+      </span>
+    );
+  }
+  if (state === "wrong") {
+    return (
+      <span className="font-mono text-xs">
+        <span aria-hidden="true">✗</span>
+        <span className="sr-only">你的选择，错误</span>
+      </span>
+    );
+  }
+  if (state === "missed") return <span className="font-mono text-xs">正确答案</span>;
+  return null;
 }
 
 function expectedAnswerText(expected: unknown, question: PortalPracticeQuestion) {
@@ -754,12 +781,28 @@ export default function QuizPage() {
                 {favoriteError}
               </p>
             )}
-            <h1 className="mt-5 text-xl font-medium leading-relaxed md:text-2xl">{question.content}</h1>
+            {/* The live region stays mounted so the verdict is announced when it arrives. */}
+            <div role="status" data-testid="practice-verdict" className={result ? "mt-5" : undefined}>
+              {result && (
+                <p
+                  className={cn(
+                    "inline-flex items-center gap-2 border px-3 py-1.5 font-mono text-sm",
+                    result.correct ? OPTION_FEEDBACK_CLASS.correct : OPTION_FEEDBACK_CLASS.wrong
+                  )}
+                >
+                  <span aria-hidden="true">{result.correct ? "✓" : "✗"}</span>
+                  {result.correct ? "回答正确" : "回答错误"}
+                </p>
+              )}
+            </div>
+            <h1 className={cn("text-xl font-medium leading-relaxed md:text-2xl", result ? "mt-4" : "mt-5")}>{question.content}</h1>
 
             <div className="mt-8 space-y-3">
               {(question.type === "single" || question.type === "multi") && options.map((option, optionIndex) => {
                 const selectedHere = question.type === "multi" ? optionIndexes.includes(optionIndex) : selected === optionIndex;
-                const expectedHere = confirmed && optionIsExpected(result.expected_answer, option, optionIndex);
+                const feedback = confirmed
+                  ? choiceOptionState({ selected: selectedHere, expectedAnswer: result.expected_answer, option, index: optionIndex })
+                  : null;
                 return (
                   <button
                     key={optionIndex}
@@ -777,15 +820,12 @@ export default function QuizPage() {
                     !confirmed && selectedHere && "border-ink border-l-4 border-l-accent",
                     !confirmed && !selectedHere && !answerLocked && "border-line hover:border-ink/40",
                     !confirmed && !selectedHere && answerLocked && "border-line opacity-50",
-                      confirmed && expectedHere && "border-ink bg-ink text-paper",
-                      confirmed && selectedHere && !expectedHere && "border-accent bg-accent text-ink",
-                      confirmed && !expectedHere && !selectedHere && "border-line opacity-50"
+                      feedback && OPTION_FEEDBACK_CLASS[feedback]
                     )}
                   >
                     <span className="font-mono text-xs">{OPTION_LABEL[optionIndex] ?? optionIndex + 1}</span>
                     <span className="flex-1 text-sm md:text-base">{option}</span>
-                    {confirmed && expectedHere && <span className="font-mono text-xs">✓</span>}
-                    {confirmed && selectedHere && !expectedHere && <span className="font-mono text-xs">✗</span>}
+                    {feedback && <OptionFeedbackMark state={feedback} />}
                   </button>
                 );
               })}
@@ -793,7 +833,9 @@ export default function QuizPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {[true, false].map((value) => {
                     const selectedHere = selected === value;
-                    const expectedHere = confirmed && result.expected_answer === value;
+                    const feedback = confirmed
+                      ? judgeOptionState({ selected: selectedHere, expectedAnswer: result.expected_answer, value })
+                      : null;
                     return (
                       <button
                         key={String(value)}
@@ -805,12 +847,13 @@ export default function QuizPage() {
                           !confirmed && selectedHere && "border-ink bg-ink text-paper",
                           !confirmed && !selectedHere && !answerLocked && "border-line hover:border-ink/40",
                           !confirmed && !selectedHere && answerLocked && "border-line opacity-50",
-                          confirmed && expectedHere && "border-ink bg-ink text-paper",
-                          confirmed && selectedHere && !expectedHere && "border-accent bg-accent text-ink",
-                          confirmed && !expectedHere && !selectedHere && "border-line opacity-50"
+                          feedback && OPTION_FEEDBACK_CLASS[feedback]
                         )}
                       >
-                        {value ? "正确" : "错误"}
+                        <span className="inline-flex items-center justify-center gap-3">
+                          <span>{value ? "正确" : "错误"}</span>
+                          {feedback && <OptionFeedbackMark state={feedback} />}
+                        </span>
                       </button>
                     );
                   })}
@@ -1000,12 +1043,16 @@ export default function QuizPage() {
                   key={questionKey(item)}
                   type="button"
                   onClick={() => goToQuestion(itemIndex)}
+                  aria-current={itemIndex === idx ? "step" : undefined}
+                  aria-label={`第 ${itemIndex + 1} 题${itemResult ? (itemResult.correct ? "，答对" : "，答错") : "，未答"}`}
                   className={cn(
                     "flex h-9 items-center justify-center border font-mono text-xs transition-colors",
-                    itemIndex === idx && "border-accent text-accent-text",
-                    itemIndex !== idx && !itemResult && "border-line text-ink/60 hover:border-ink/40",
-                    itemIndex !== idx && itemResult?.correct && "border-ink bg-ink text-paper",
-                    itemIndex !== idx && itemResult && !itemResult.correct && "border-accent bg-accent text-ink"
+                    !itemResult && itemIndex === idx && "border-accent text-accent-text",
+                    !itemResult && itemIndex !== idx && "border-line text-ink/60 hover:border-ink/40",
+                    itemResult?.correct && "border-ink bg-ink text-paper",
+                    itemResult && !itemResult.correct && "border-accent bg-accent text-ink",
+                    // The current question keeps its result colour; an outline marks position.
+                    itemIndex === idx && itemResult && "outline outline-2 outline-offset-2 outline-ink"
                   )}
                 >
                   {String(itemIndex + 1).padStart(2, "0")}
