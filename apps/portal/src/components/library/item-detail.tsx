@@ -53,8 +53,7 @@ export default function ItemDetail({ id }: { id: string }) {
       <div className="gap-10 md:flex">
         {/* 封面只标类型与科目；标题只在右侧以易读标题 H1 出现；入库时的原始标题不对用户展示。 */}
         <div data-enter className="bg-blueprint relative flex h-72 w-full shrink-0 flex-col justify-between border border-ink p-5 md:w-64">
-          <span aria-hidden className="font-mono text-[10px] tracking-[0.3em] text-ink/50">{t.code}</span>
-          <div>
+          <div className="mt-auto">
             <p className="font-display text-2xl font-bold leading-snug">{t.name}</p>
             <p className="mt-2 break-words font-mono text-xs text-ink/60">{material.subject}</p>
           </div>
@@ -63,8 +62,6 @@ export default function ItemDetail({ id }: { id: string }) {
         {/* 元信息 + 操作 */}
         <div className="mt-8 min-w-0 flex-1 md:mt-0">
           <p data-enter className="font-mono text-xs text-ink/60">
-            <span className="tracking-[0.3em] text-accent-text">{t.code}</span>
-            <span className="mx-2">/</span>
             {t.name} · {material.subject}
           </p>
           <h1 data-enter className="mt-3 break-words font-display text-3xl font-bold tracking-tight md:text-4xl">
