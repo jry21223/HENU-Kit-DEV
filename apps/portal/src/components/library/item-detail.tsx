@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Material } from "@/lib/library/mock";
 import { MATERIAL_TYPES } from "@/lib/library/material-types";
 import { readableMaterialTitle } from "@/lib/library/material-title";
+import { relatedMaterials } from "@/lib/library/related-materials";
 import { getMaterials, loadLibraryMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
 import { useReveal } from "@/components/account/use-reveal";
@@ -44,15 +45,13 @@ export default function ItemDetail({ id }: { id: string }) {
   const t = MATERIAL_TYPES[material.type];
   const title = readableMaterialTitle(material);
   const free = material.price === 0;
-  const related = catalog.filter(
-    (m) => m.id !== id && (m.subject === material.subject || m.type === material.type)
-  ).slice(0, 3);
+  const related = relatedMaterials(catalog, material);
   const toc = tocOpen ? material.toc : material.toc.slice(0, 6);
 
   return (
     <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="gap-10 md:flex">
-        {/* 封面只标类型与科目；标题在右侧，H1 是易读标题，“原始标题”一行是完整标题。 */}
+        {/* 封面只标类型与科目；标题只在右侧以易读标题 H1 出现；入库时的原始标题不对用户展示。 */}
         <div data-enter className="bg-blueprint relative flex h-72 w-full shrink-0 flex-col justify-between border border-ink p-5 md:w-64">
           <span aria-hidden className="font-mono text-[10px] tracking-[0.3em] text-ink/50">{t.code}</span>
           <div>
@@ -71,10 +70,6 @@ export default function ItemDetail({ id }: { id: string }) {
           <h1 data-enter className="mt-3 break-words font-display text-3xl font-bold tracking-tight md:text-4xl">
             {title}
           </h1>
-          <dl data-enter className="mt-3 text-xs leading-6 text-ink/60">
-            <dt className="font-mono text-xs text-ink/60">原始标题</dt>
-            <dd className="break-words">{material.title}</dd>
-          </dl>
           <p data-enter className="mt-3 font-mono text-xs text-ink/60">
             {material.author}
             {material.rating !== undefined ? ` · ★ ${material.rating.toFixed(1)}` : ""}
