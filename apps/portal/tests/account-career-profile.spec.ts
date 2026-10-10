@@ -559,8 +559,8 @@ test("the marketing radar is labelled a schematic and claims no counts", async (
   await expect(page.locator('[data-career-state="anonymous"]')).toBeVisible();
   await expect(page.locator('svg[aria-label="求职雷达示意图"]')).toBeVisible();
   await expect(page.getByText("SCHEMATIC")).toBeVisible();
-  // 读数区（SOURCES / JOBS FOUND / MATCHED）不得出现在示意表盘上。
-  await expect(page.getByText("JOBS FOUND")).toHaveCount(0);
+  // 读数区（来源 / 发现岗位 / 匹配岗位）不得出现在示意表盘上。
+  await expect(page.getByText("发现岗位")).toHaveCount(0);
 });
 
 test("/career renders the ready view for a lifetime member with a complete profile", async ({ page }) => {

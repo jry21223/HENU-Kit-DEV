@@ -139,6 +139,10 @@ export default function SectionCampus() {
       <div className="mx-auto grid max-w-site items-center gap-12 px-5 py-24 md:min-h-svh md:grid-cols-2 md:px-8">
         <div>
           <SectionHeading index="04" en="CAMPUS MUTUAL AID" title="互助平台" />
+          {/* 发布、接单和结算还没开放：模块名旁直接标明，免得它看起来像已在运营（#568）。 */}
+          <p className="mt-4 inline-block border border-accent px-2 py-0.5 font-mono text-xs text-accent-text">
+            发布、接单即将开放
+          </p>
           <p className="mt-6 max-w-sm text-sm leading-7 text-ink/70">
             看看同校的互助需求与闲置信息，
             按类别查找你关注的内容。

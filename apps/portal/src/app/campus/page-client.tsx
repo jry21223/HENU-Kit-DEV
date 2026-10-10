@@ -18,7 +18,6 @@ import {
 import {
   getGatewayCategories,
   getGatewayItems,
-  initCampusGateway,
   rememberCampusItems,
 } from "@/lib/campus/gateway";
 import ItemCard from "@/components/campus/item-card";
@@ -80,36 +79,24 @@ export default function MarketPage() {
       setLoadState("ready");
     } catch (loadError) {
       const failure = { message: "互助信息暂时无法加载，请重试。", requestId: portalErrorRequestId(loadError) };
-      try {
-        await initCampusGateway();
-        const cached = getGatewayItems();
-        const cats = getGatewayCategories();
-        if (cached?.length) {
-          setItems(cached.map(toItem));
-          setCategories(toCategories(cats));
-          setLoadState("ready");
-          return;
-        }
-        if (mockAllowed) {
-          const data = campusStore.get();
-          setItems(data.items);
-          setCategories(CATEGORIES);
-          setLoadState("ready");
-          return;
-        }
-        setItems([]);
-        setError(failure);
-        setLoadState("error");
-      } catch {
-        if (mockAllowed) {
-          setItems(campusStore.get().items);
-          setCategories(CATEGORIES);
-          setLoadState("ready");
-          return;
-        }
-        setError(failure);
-        setLoadState("error");
+      // 失败后不再重发同一批请求：再请求一遍只会让失败的页面多等一个超时（#568）。
+      // 只读此前成功读到的缓存；本地开发才回退到示例数据。
+      const cached = getGatewayItems();
+      if (cached?.length) {
+        setItems(cached.map(toItem));
+        setCategories(toCategories(getGatewayCategories()));
+        setLoadState("ready");
+        return;
       }
+      if (mockAllowed) {
+        setItems(campusStore.get().items);
+        setCategories(CATEGORIES);
+        setLoadState("ready");
+        return;
+      }
+      setItems([]);
+      setError(failure);
+      setLoadState("error");
     }
   }, []);
 

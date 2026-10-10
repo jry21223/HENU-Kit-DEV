@@ -69,6 +69,13 @@ search and filters change only visible cards. Loading and failed reads expose
 no numeric claim, while an empty successful owner snapshot may truthfully show
 zero.
 
+The Campus market is browse-only until posting, taking orders, and settlement
+exist (#568). `/campus` stays; its sub-site navigation lists no unopened tabs,
+the homepage module 04 is labelled 即将开放, and `/campus/deals` and
+`/campus/publish` render a static coming-soon notice with no sign-in redirect,
+form, or draft state. A failed `/campus` read is requested once and shown as an
+error; it is never retried by a second identical request.
+
 ## Design language
 
 "Industrial Minimal" — warm paper white (#F2F0EA), deep ink text (#161513), safety orange accent (#FF4D00). The colours come from `packages/design-tokens`: Portal's Tailwind colour theme (`src/app/theme.css`) is generated from its `tokens.json` with literal values, so opacity modifiers keep a precomputed fallback where `color-mix()` is unsupported. The safety orange is for fills and text on ink (on paper it is 2.92:1, below even the 3:1 large-text minimum); orange text of any size on light surfaces uses the darker text-safe accent (`--hk-accent-text`, #BB3800), and text on an orange fill is ink. Grey text is at least ink/60 (ink/65 over a 5% tint) and paper text on ink at least paper/50; lighter greys are reserved for `aria-hidden` decoration and disabled controls. Typography: Space Grotesk (display), IBM Plex Mono (labels), system Chinese fonts (body). Text is at least 12px (10px only for `aria-hidden` decorative Latin labels); wide tracking goes on Latin and mono text only, Chinese stays `tracking-normal`, and a mixed label tracks only its Latin span. Visual elements: 1px structural lines, crosshair alignment marks, mono numbering, engineering blueprint grid backgrounds.
