@@ -145,7 +145,7 @@ export default function FoodBoardPage() {
                     </span>
                     <span className="mt-1 block font-display text-lg font-bold">{tier.label}</span>
                     <span className="mt-1 block font-mono text-xs text-ink/60 group-hover:text-ink">
-                      {tierPosts.length} 家
+                      {tierPosts.length} 条
                     </span>
                   </a>
                 ))}
