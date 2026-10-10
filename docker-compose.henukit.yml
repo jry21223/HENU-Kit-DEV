@@ -269,6 +269,8 @@ services:
     environment:
       FOOD_MCP_ADDR: ${FOOD_MCP_ADDR:-:8098}
       FOOD_MCP_ACCESS_TOKEN: ${FOOD_MCP_ACCESS_TOKEN:-}
+      FOOD_MCP_KIT_SESSION_URL: ${FOOD_MCP_KIT_SESSION_URL-http://portal-gateway:8084/api/v1/session}
+      FOOD_MCP_KIT_SESSION_COOKIE_NAME: ${FOOD_MCP_KIT_SESSION_COOKIE_NAME:-__Host-henukit_portal_session}
       FOOD_POSTS_URL: ${FOOD_POSTS_URL:-http://food:8096}
       FOOD_POST_CREATE_CLIENT_ID: ${FOOD_POST_CREATE_CLIENT_ID:-portal-gateway-food-post-create}
       FOOD_POST_CREATE_KEY_ID: ${FOOD_POST_CREATE_KEY_ID:-food-post-create-key}

@@ -6,6 +6,8 @@ package mcp
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"henukit.dev/food-mcp/internal/foodclient"
+	"henukit.dev/food-mcp/internal/sessionclient"
 )
 
 const (
@@ -30,6 +33,7 @@ type Handler struct {
 	client      *foodclient.Client
 	mcpServer   *mcpsdk.Server
 	accessToken string
+	kitSession  *sessionclient.Client
 	httpHandler http.Handler
 }
 
@@ -37,6 +41,7 @@ type Handler struct {
 type Options struct {
 	Client      *foodclient.Client
 	AccessToken string
+	KitSession  *sessionclient.Client
 }
 
 // NewHandler builds the MCP server, its tools, and the shared Streamable HTTP
@@ -46,7 +51,7 @@ func NewHandler(options Options) (*Handler, error) {
 	if options.Client == nil {
 		return nil, errors.New("food client is required")
 	}
-	handler := &Handler{client: options.Client, accessToken: options.AccessToken}
+	handler := &Handler{client: options.Client, accessToken: options.AccessToken, kitSession: options.KitSession}
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "henukit-food-posts", Version: "1.0.0"}, nil)
 	handler.mcpServer = server
 	handler.registerTools(server)
@@ -77,11 +82,11 @@ func validBearer(header, expected string) bool {
 }
 
 func (h *Handler) registerTools(server *mcpsdk.Server) {
-	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "create_food_post", Description: "发布一条校园美食投稿（创建即公开，无审核环节）。必填：venue_name 店铺名、campus（minglun/jinming/longzihu）、tier（hang 夯|top 顶级|elite 人上人|npc NPC|bad 拉完了）、review_text 锐评正文、actor_user_id、actor_display_name。可选：price_reference、hours_reference、dishes（至多 6 道）、images（至多 6 张，单张 ≤2MiB，base64 无前缀，仅 image/jpeg|image/png|image/webp）。同一 actor 每自然日至多 3 条，超限返回 DAILY_POST_CAP_REACHED。"}, h.createPost)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "create_food_post", Description: "发布一条校园美食投稿（创建即公开，无审核环节）。必填：venue_name 店铺名、campus（minglun/jinming/longzihu）、tier（hang 夯|top 顶级|elite 人上人|npc NPC|bad 拉完了）、review_text 锐评正文。自动优先使用当前关联的 Kit 账号，无需用户提供 UUID 或显示名；未绑定时仍可投稿，并提示绑定。可选：price_reference、hours_reference、dishes（至多 6 道）、images（至多 6 张，单张 ≤2MiB，base64 无前缀，仅 image/jpeg|image/png|image/webp）。同一投稿身份每自然日至多 3 条，超限返回 DAILY_POST_CAP_REACHED。"}, h.createPost)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_food_posts", Description: "读取公开美食投稿列表，可选按 campus 过滤。无需登录。"}, h.listPosts)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "get_food_post", Description: "读取单条公开美食投稿详情。"}, h.getPost)
 	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_food_venues", Description: "读取指定校区的场所汇总。campus 必填（minglun/jinming/longzihu）。"}, h.listVenues)
-	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_my_food_posts", Description: "读取 actor_user_id 自己发布过的全部美食投稿。"}, h.myPosts)
+	mcpsdk.AddTool(server, &mcpsdk.Tool{Name: "list_my_food_posts", Description: "读取当前关联 Kit 账号的美食投稿；未绑定时读取当前会话的游客投稿，并提示绑定。无需用户提供 UUID。"}, h.myPosts)
 }
 
 type createPostInput struct {
@@ -93,8 +98,6 @@ type createPostInput struct {
 	HoursReference string           `json:"hours_reference,omitempty" jsonschema:"营业参考（可选）"`
 	Dishes         []postDishInput  `json:"dishes,omitempty" jsonschema:"推荐菜品，至多 6 道"`
 	Images         []postImageInput `json:"images,omitempty" jsonschema:"图片，至多 6 张，单张 ≤2MiB"`
-	ActorUserID    string           `json:"actor_user_id" jsonschema:"投稿账号的 UUID"`
-	ActorName      string           `json:"actor_display_name" jsonschema:"投稿账号的显示名，1-120 字"`
 }
 
 type postDishInput struct {
@@ -116,21 +119,20 @@ type getPostInput struct {
 	PostID string `json:"post_id" jsonschema:"帖子 UUID"`
 }
 
-type actorInput struct {
-	ActorUserID string `json:"actor_user_id" jsonschema:"投稿账号的 UUID"`
-}
+type myPostsInput struct{}
 
-func (h *Handler) createPost(ctx context.Context, _ *mcpsdk.CallToolRequest, input *createPostInput) (*mcpsdk.CallToolResult, any, error) {
+func (h *Handler) createPost(ctx context.Context, request *mcpsdk.CallToolRequest, input *createPostInput) (*mcpsdk.CallToolResult, any, error) {
 	if input == nil {
 		return nil, nil, errors.New("缺少参数")
-	}
-	if !validUUID(input.ActorUserID) || strings.TrimSpace(input.ActorName) == "" || len([]rune(input.ActorName)) > 120 {
-		return nil, nil, errors.New("actor_user_id 必须是合法 UUID，actor_display_name 非空且 ≤120 字")
 	}
 	if err := validateCreateInput(input); err != nil {
 		return nil, nil, err
 	}
 	images, err := decodeImages(input.Images)
+	if err != nil {
+		return nil, nil, err
+	}
+	actor, err := h.resolveActor(ctx, request)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -140,11 +142,11 @@ func (h *Handler) createPost(ctx context.Context, _ *mcpsdk.CallToolRequest, inp
 		"price_reference": input.PriceReference, "hours_reference": input.HoursReference,
 		"dishes": input.Dishes, "images": images,
 	}
-	data, err := h.client.CreatePost(ctx, input.ActorUserID, strings.TrimSpace(input.ActorName), key, payload)
+	data, err := h.client.CreatePost(ctx, actor.userID, actor.displayName, key, payload)
 	if err != nil {
 		return nil, nil, upstreamMessage(err)
 	}
-	return textResult("投稿已发布（创建即公开）: " + jsonText(data)), nil, nil
+	return textResult("投稿已发布（创建即公开）: " + jsonText(data) + actor.notice), nil, nil
 }
 
 func validateCreateInput(input *createPostInput) error {
@@ -243,15 +245,47 @@ func (h *Handler) listVenues(ctx context.Context, _ *mcpsdk.CallToolRequest, inp
 	return textResult("场所汇总: " + jsonText(data)), nil, nil
 }
 
-func (h *Handler) myPosts(ctx context.Context, _ *mcpsdk.CallToolRequest, input *actorInput) (*mcpsdk.CallToolResult, any, error) {
-	if input == nil || !validUUID(input.ActorUserID) {
-		return nil, nil, errors.New("actor_user_id 必须是合法 UUID")
+func (h *Handler) myPosts(ctx context.Context, request *mcpsdk.CallToolRequest, _ *myPostsInput) (*mcpsdk.CallToolResult, any, error) {
+	actor, err := h.resolveActor(ctx, request)
+	if err != nil {
+		return nil, nil, err
 	}
-	data, err := h.client.MyPosts(ctx, input.ActorUserID)
+	data, err := h.client.MyPosts(ctx, actor.userID)
 	if err != nil {
 		return nil, nil, upstreamMessage(err)
 	}
-	return textResult("我的投稿: " + jsonText(data)), nil, nil
+	return textResult("我的投稿: " + jsonText(data) + actor.notice), nil, nil
+}
+
+type postActor struct {
+	userID, displayName, notice string
+}
+
+func (h *Handler) resolveActor(ctx context.Context, request *mcpsdk.CallToolRequest) (postActor, error) {
+	if request == nil || request.Session == nil || request.Session.ID() == "" {
+		return postActor{}, errors.New("投稿会话已失效，请重新连接后重试")
+	}
+	var headers http.Header
+	if request.Extra != nil {
+		headers = request.Extra.Header
+	}
+	account, err := h.kitSession.Resolve(ctx, headers)
+	if err == nil {
+		return postActor{userID: account.UserID, displayName: account.DisplayName}, nil
+	}
+	notice := "\n当前未读取到 Kit 账号，可登录或绑定账号后将后续投稿关联到账号；游客投稿记录仅在当前会话中可查询。"
+	if !errors.Is(err, sessionclient.ErrNoSession) {
+		notice = "\n暂时无法读取 Kit 账号，当前使用游客身份；稍后可重新关联账号，游客投稿记录仅在当前会话中可查询。"
+	}
+	// The SDK owns session IDs. Keep one guest actor per authenticated MCP
+	// session so repeated submissions share Food's cap and mine history.
+	mac := hmac.New(sha256.New, []byte(h.accessToken))
+	_, _ = mac.Write([]byte("henukit-food-mcp:guest:" + request.Session.ID()))
+	id := uuid.NewSHA1(uuid.NameSpaceURL, mac.Sum(nil))
+	return postActor{
+		userID: id.String(), displayName: "游客",
+		notice: notice,
+	}, nil
 }
 
 func validUUID(value string) bool {
