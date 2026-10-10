@@ -13,8 +13,8 @@ function LoadingBlock() {
       data-career-history-state="loading"
       className="flex min-h-[40vh] items-center justify-center"
     >
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        SCAN HISTORY LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
+      <p className="font-mono text-xs text-ink/60">
+        扫描历史加载中<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </p>
     </div>
   );

@@ -78,9 +78,9 @@ export default function MyFoodPostsPage() {
         <section
           data-account-food-posts-state="loading"
           aria-live="polite"
-          className="mt-6 border border-line px-5 py-8 font-mono text-xs tracking-[0.2em] text-ink/60"
+          className="mt-6 border border-line px-5 py-8 font-mono text-xs text-ink/60"
         >
-          FOOD POSTS LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
+          我的发布加载中<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </section>
       ) : null}
 

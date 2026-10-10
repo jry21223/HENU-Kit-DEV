@@ -241,10 +241,10 @@ export default function SectionLibrary() {
             <p className="font-mono text-xs text-ink/60">
               <span className="tracking-[0.3em]">AUTO-SCAN</span> / 档案卡循环巡检中
             </p>
-            {/* 失败时只由上方 ErrorBanner 说明，这里不再叠一个英文状态。 */}
+            {/* 失败时只由上方 ErrorBanner 说明，这里不再叠一个状态。 */}
             {error ? null : (
-              <p className="hidden font-mono text-xs tracking-[0.3em] text-ink/60 md:block">
-                {totalCount === null ? "LOADING…" : `${totalCount} FILES INDEXED`}
+              <p className="hidden font-mono text-xs text-ink/60 md:block">
+                {totalCount === null ? "加载中…" : `已收录 ${totalCount} 份`}
               </p>
             )}
           </div>
