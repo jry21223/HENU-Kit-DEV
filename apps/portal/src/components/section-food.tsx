@@ -72,7 +72,7 @@ function RankRow({ item }: { item: RankRowItem }) {
       </div>
       <div ref={reviewRef} className="h-0 overflow-hidden">
         <p className="pb-5 pl-[4.5rem] text-sm text-ink/60 md:pl-[7.5rem]">
-          学长锐评：{item.review}
+          锐评：{item.review}
         </p>
       </div>
     </li>
