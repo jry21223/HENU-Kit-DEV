@@ -5,7 +5,6 @@ import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 /**
  * 读屏软件读得出名字和状态：
  * - 输入框由看得见的标签命名，placeholder 不代替标签，搜索框的 placeholder 只举例（DESIGN_SYSTEM §11）；
- *   互助发布表单的 <label> 都连着控件，分类是一组有名字的按钮；
  * - 子站页头的标签行和账户中心的菜单用 aria-current 标出当前页；
  * - 资料目录的展开按钮用 aria-expanded 报告开合；
  * - 已登录时页头的账户入口读出完整昵称，而不只是头像块上的一个字。
@@ -60,33 +59,6 @@ test("资料库、互助和题库的搜索框由看得见的标签命名", async
   await page.goto("/library");
   await waitForHydration(page);
   await expect(page.getByRole("searchbox", { name: "搜索资料", exact: true })).toHaveAttribute("placeholder", /^如：/);
-});
-
-test("互助发布表单的每个字段都读得出自己的标签，分类是一组有名字的按钮", async ({ page }) => {
-  await mockSignedInGateway(page);
-  await page.goto("/campus/publish");
-  await waitForHydration(page);
-  await expect(page.getByRole("heading", { name: "发布单子" })).toBeVisible();
-
-  for (const name of ["标题", "描述", "赏金（元）", "位置", "时限（可选）"]) {
-    await expect(page.getByRole("textbox", { name, exact: true }), name).toBeVisible();
-  }
-  await page.getByText("位置", { exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "位置", exact: true })).toBeFocused();
-
-  // 和 /campus 的筛选一样：组名读得出，选中的那一个报告「已按下」。
-  const category = page.getByRole("group", { name: "分类" });
-  await expect(category.getByRole("button", { name: "跑腿代办" })).toHaveAttribute("aria-pressed", "true");
-  await expect(category.getByRole("button", { name: "代取快递" })).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: /发求助单/ })).toHaveAttribute("aria-pressed", "true");
-
-  // 页面上的 <label> 都连着一个控件，没有只长得像标签、读屏却对不上输入框的文字。
-  const orphanLabels = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("label"))
-      .filter((label) => !label.control)
-      .map((label) => label.textContent?.trim())
-  );
-  expect(orphanLabels).toEqual([]);
 });
 
 test("安全设置的每个输入框都读得出自己的标签", async ({ page }) => {

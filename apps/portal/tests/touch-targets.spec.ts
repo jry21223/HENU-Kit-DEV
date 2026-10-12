@@ -293,7 +293,7 @@ async function expectImageDeleteClearOfNeighbours(page: Page) {
 }
 
 for (const width of [390, 1440]) {
-  test(`${width}px 两个发布页：输入框、校区与分类切换、侧栏按钮、删除菜品和删除图片都不小于 44×44（#557）`, async ({ page }) => {
+  test(`${width}px 美食发布页的输入框、校区切换、侧栏按钮、删除菜品和删除图片，以及互助发布页的说明，都不小于 44×44（#557、#568）`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockSignedInGateway(page);
 
@@ -305,12 +305,11 @@ for (const width of [390, 1440]) {
     await expectTouchTargets(page, "/food/publish（已登录，有图）");
     await expectImageDeleteClearOfNeighbours(page);
 
+    // 互助发布页尚未开放（#568），只剩「即将开放」说明，没有表单和图片上传。
     await page.goto("/campus/publish");
     await waitForHydration(page);
-    await page.locator('input[type="file"]').setInputFiles({ name: "item.png", mimeType: "image/png", buffer: TINY_PNG });
-    await expect(page.getByRole("button", { name: "删除图 1" })).toBeVisible();
-    await expectTouchTargets(page, "/campus/publish（已登录，有图）");
-    await expectImageDeleteClearOfNeighbours(page);
+    await expect(page.getByRole("main").getByText("即将开放").first()).toBeVisible();
+    await expectTouchTargets(page, "/campus/publish（即将开放）");
   });
 }
 

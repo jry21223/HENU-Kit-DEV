@@ -84,7 +84,7 @@ export default function FoodPublishPage() {
   const [pending, setPending] = useState(false);
   const submitKeyRef = useRef<string | null>(null);
 
-  // 守卫：未登录重定向（与 campus/publish 同模式）
+  // 守卫：未登录重定向
   useEffect(() => {
     if (ready && !user) {
       router.replace(
