@@ -52,6 +52,34 @@ const CITED_FILES = [
   "components/library/item-detail.tsx",
 ];
 
+/**
+ * 承载信息的英文改用中文（#573），资料类型沿用资料库的叫法（#572）。
+ * 纯装饰的英文（FIG 编号、KEEP IN TOUCH、SCHEMATIC、T-01 / MUST EAT 这类标签）不在此列。
+ */
+const ENGLISH_INFORMATION = [
+  "ENTRIES",
+  "FILES INDEXED",
+  "SYNCING",
+  "LOADING…",
+  "MEMBERSHIP LOADING",
+  "TICKETS LOADING",
+  "NOTIFICATIONS LOADING",
+  "WORK RADAR LOADING",
+  "SCAN HISTORY LOADING",
+  "FOOD POSTS LOADING",
+  "CAREER PROFILE LOADING",
+  "TICKET DETAIL LOADING",
+  "STANDBY",
+  "SCANNING",
+  "JOBS FOUND",
+  "往年试卷",
+  "学长笔记",
+  "HANDOUT",
+  "COURSEWARE",
+  "EXERCISE",
+  "TEXTBOOK",
+];
+
 const SRC = path.resolve(__dirname, "..");
 
 /** 直接对外提供的纯文本文件，整份都是可见文案。 */
@@ -121,6 +149,18 @@ describe("user-visible copy", () => {
     const hits = files.flatMap((file) =>
       renderableStrings(file, readFileSync(file, "utf8")).flatMap(({ text, line }) =>
         INTERNAL_TERMS.filter((term) => text.includes(term)).map(
+          (term) => `${path.relative(SRC, file)}:${line} ${term}`
+        )
+      )
+    );
+
+    expect(hits).toEqual([]);
+  });
+
+  it("states counts, status and material types in Chinese", () => {
+    const hits = sourceFiles(SRC).flatMap((file) =>
+      renderableStrings(file, readFileSync(file, "utf8")).flatMap(({ text, line }) =>
+        ENGLISH_INFORMATION.filter((term) => text.includes(term)).map(
           (term) => `${path.relative(SRC, file)}:${line} ${term}`
         )
       )

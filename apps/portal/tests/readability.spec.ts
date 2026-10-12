@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
 test("home marquee sets ink text on the orange band", async ({ page }) => {
   await page.goto("/");
 
-  const item = page.getByText("往年试卷", { exact: true }).first();
+  const item = page.getByText("往年真题", { exact: true }).first();
   await expect(item).toBeVisible();
   const { text, band } = await item.evaluate((element) => {
     // 条带底色：从文字往上找第一个不透明的背景。

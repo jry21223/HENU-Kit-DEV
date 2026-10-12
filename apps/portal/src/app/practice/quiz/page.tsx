@@ -735,7 +735,7 @@ export default function QuizPage() {
         <div className="h-1 min-w-32 flex-1 bg-ink/10">
           <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${((idx + (confirmed ? 1 : 0)) / questions.length) * 100}%` }} />
         </div>
-        <p className="font-mono text-xs tracking-widest text-ink/60">TIME {fmtTime(elapsed)}</p>
+        <p className="font-mono text-xs text-ink/60">用时 {fmtTime(elapsed)}</p>
         <p className="font-mono text-xs text-ink/60">已答 <span className="text-accent-text">{answeredCount}</span></p>
         <p className="font-mono text-xs text-ink/60">连对 <span className={streak >= 3 ? "text-accent-text" : ""}>{streak}</span></p>
       </div>

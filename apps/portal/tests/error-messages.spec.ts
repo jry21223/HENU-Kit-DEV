@@ -112,8 +112,8 @@ test("/food says a failed ranking load once, in the error banner only (#549)", a
   // 与 /library、/campus 一致：失败只由提示条说明，列表区不再叠一句空状态。
   await expect(page.getByText(/榜单暂时加载不出来/)).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText(LEAKS);
-  // 筛选行右侧的英文状态也不再说还在同步：请求已经失败了。
-  await expect(page.locator("main")).not.toContainText("SYNCING");
+  // 筛选行右侧的状态也不再说还在同步：请求已经失败了。
+  await expect(page.locator("main")).not.toContainText("同步中");
 });
 
 /**

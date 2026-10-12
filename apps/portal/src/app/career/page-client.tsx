@@ -14,8 +14,8 @@ type PageState = { kind: "loading" } | CareerViewState;
 function LoadingBlock() {
   return (
     <div data-career-state="loading" className="flex min-h-[40vh] items-center justify-center">
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        WORK RADAR LOADING<span aria-hidden className="animate-pulse text-accent-text">…</span>
+      <p className="font-mono text-xs text-ink/60">
+        求职雷达加载中<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </p>
     </div>
   );

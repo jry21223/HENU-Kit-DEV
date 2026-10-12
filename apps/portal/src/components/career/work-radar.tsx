@@ -58,14 +58,6 @@ const ANGLES = Array.from({ length: 12 }, (_, index) => index * 30);
 const TICKS = Array.from({ length: 72 }, (_, index) => index * 5);
 
 const STATUS_COPY: Record<WorkRadarStatus, string> = {
-  idle: "STANDBY",
-  queued: "QUEUED",
-  running: "SCANNING",
-  completed: "COMPLETE",
-  failed: "FAULT",
-};
-
-const STATUS_LABEL: Record<WorkRadarStatus, string> = {
   idle: "待机",
   queued: "排队中",
   running: "扫描中",
@@ -106,7 +98,7 @@ export default function WorkRadar({
   const headerLabel = schematic ? "SCHEMATIC" : STATUS_COPY[dialStatus];
   const ariaLabel = schematic
     ? "求职雷达示意图"
-    : `求职雷达状态：${STATUS_LABEL[dialStatus]}`;
+    : `求职雷达状态：${STATUS_COPY[dialStatus]}`;
 
   // 亮起的目标点：示意图全亮；真实任务只在完成后按服务端确认的推荐数点亮，
   // 进行中不按进度估算——后端此时并不返回任何计数。
@@ -229,7 +221,7 @@ export default function WorkRadar({
         <div className={cn("@container mx-auto", compact ? "max-w-[34rem] p-4 md:p-6" : "max-w-[48rem] p-4 md:p-8")}>
           <div className="mb-3 flex items-center justify-between font-mono text-xs tracking-[0.2em] text-ink/60">
             <span>WORK RADAR / WR-01</span>
-            <span className={!schematic && dialStatus === "failed" ? "text-accent-text" : undefined}>
+            <span className={cn("tracking-normal", !schematic && dialStatus === "failed" && "text-accent-text")}>
               {headerLabel}
             </span>
           </div>
@@ -358,11 +350,11 @@ export default function WorkRadar({
           </svg>
 
           {compact || schematic ? null : (
-            <div className="mt-2 grid grid-cols-2 gap-x-8 gap-y-2 border-t border-ink/60 pt-4 font-mono text-xs tracking-[0.12em] text-ink/60 sm:grid-cols-4">
-              <p>STATUS<br /><strong className="font-normal text-ink">{STATUS_COPY[dialStatus]}</strong></p>
-              <p>SOURCES<br /><strong className="font-normal text-ink">{readout(sources)}</strong></p>
-              <p>JOBS FOUND<br /><strong className="font-normal text-ink">{readout(jobs)}</strong></p>
-              <p>MATCHED<br /><strong className="font-normal text-accent-text">{readout(matched)}</strong></p>
+            <div className="mt-2 grid grid-cols-2 gap-x-8 gap-y-2 border-t border-ink/60 pt-4 font-mono text-xs text-ink/60 sm:grid-cols-4">
+              <p>状态<br /><strong className="font-normal text-ink">{STATUS_COPY[dialStatus]}</strong></p>
+              <p>来源<br /><strong className="font-normal text-ink">{readout(sources)}</strong></p>
+              <p>发现岗位<br /><strong className="font-normal text-ink">{readout(jobs)}</strong></p>
+              <p>匹配岗位<br /><strong className="font-normal text-accent-text">{readout(matched)}</strong></p>
             </div>
           )}
         </div>

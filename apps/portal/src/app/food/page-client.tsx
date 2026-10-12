@@ -105,8 +105,8 @@ export default function FoodBoardPage() {
           </div>
           {/* 失败时只由下方 ErrorBanner 说明，这里不再挂着“还在同步”。 */}
           {loadState === "error" ? null : (
-            <p className="font-mono text-xs tracking-[0.2em] text-ink/60">
-              {loadState === "ready" ? `${visibleCount} ENTRIES` : "SYNCING"}
+            <p className="font-mono text-xs text-ink/60">
+              {loadState === "ready" ? `共 ${visibleCount} 条` : "同步中"}
             </p>
           )}
         </div>
@@ -145,7 +145,7 @@ export default function FoodBoardPage() {
                     </span>
                     <span className="mt-1 block font-display text-lg font-bold">{tier.label}</span>
                     <span className="mt-1 block font-mono text-xs text-ink/60 group-hover:text-ink">
-                      {tierPosts.length} ENTRIES
+                      {tierPosts.length} 条
                     </span>
                   </a>
                 ))}

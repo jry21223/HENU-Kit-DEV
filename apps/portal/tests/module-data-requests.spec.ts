@@ -30,7 +30,7 @@ const SECOND_NOTE = {
   id: "33333333-3333-4333-8333-333333333333", subject: "线性代数", title: "矩阵复习笔记",
 };
 
-// 三份资料、两个类型：首页的“N FILES INDEXED”是资料数，不是卡片数。
+// 三份资料、两个类型：首页的“已收录 N 份”是资料数，不是卡片数。
 const CATALOG = {
   materials: [NOTE, EXAM, SECOND_NOTE],
   statistics: {
@@ -85,7 +85,7 @@ test("home reads only the type counts, once, when they load", async ({ page }) =
   await expect(section.getByRole("article").filter({ hasText: "笔记总结" })).toContainText("收录 2 份");
   await expect(section.getByRole("article").filter({ hasText: "往年真题" })).toContainText("收录 1 套");
   await expect(section.getByRole("heading", { name: "复习讲义" })).toHaveCount(0);
-  await expect(section.getByText("3 FILES INDEXED")).toBeVisible();
+  await expect(section.getByText("已收录 3 份")).toBeVisible();
   await settle(page);
 
   expect(requests.filter((path) => path === MATERIAL_COUNTS)).toHaveLength(1);

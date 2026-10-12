@@ -11,11 +11,11 @@ import { SITE_STATEMENT_FULL } from "@/lib/site-legal";
 const Hero3D = dynamic(() => import("@/components/hero-3d"), { ssr: false });
 
 const MARQUEE_ITEMS = [
-  "往年试卷",
+  "往年真题",
   "智能刷题",
   "美食榜",
   "校园互助",
-  "学长笔记",
+  "笔记总结",
   "KEEP IN TOUCH",
 ];
 
