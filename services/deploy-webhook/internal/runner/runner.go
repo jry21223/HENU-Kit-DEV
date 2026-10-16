@@ -15,13 +15,14 @@ import (
 )
 
 type Runner struct {
-	store   *state.Store
-	command string
-	timeout time.Duration
-	logger  *slog.Logger
+	store          *state.Store
+	command        string
+	timeout        time.Duration
+	logger         *slog.Logger
+	inheritedFiles []*os.File
 }
 
-func New(store *state.Store, command string, timeout time.Duration, logger *slog.Logger) (*Runner, error) {
+func New(store *state.Store, command string, timeout time.Duration, logger *slog.Logger, inheritedFiles ...*os.File) (*Runner, error) {
 	if store == nil {
 		return nil, errors.New("state store is required")
 	}
@@ -42,7 +43,7 @@ func New(store *state.Store, command string, timeout time.Duration, logger *slog
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Runner{store: store, command: command, timeout: timeout, logger: logger}, nil
+	return &Runner{store: store, command: command, timeout: timeout, logger: logger, inheritedFiles: append([]*os.File(nil), inheritedFiles...)}, nil
 }
 
 // RunAll processes queued deliveries serially. A failed deployment is recorded
@@ -129,6 +130,7 @@ func (r *Runner) runOne(ctx context.Context, event state.Event) (int, error) {
 	)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
+	command.ExtraFiles = r.inheritedFiles
 	command.WaitDelay = 10 * time.Second
 
 	err := command.Run()

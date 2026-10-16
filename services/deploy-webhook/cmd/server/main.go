@@ -188,6 +188,16 @@ func runPending(logger *slog.Logger) error {
 }
 
 func runMaterials(logger *slog.Logger) error {
+	lock, err := materialsControlLock()
+	if err != nil {
+		return fmt.Errorf("materials control wrapper is required: %w", err)
+	}
+	defer lock.Close()
+	if _, err := os.Lstat("/opt/henukit-materials/admin-resync/active"); err == nil {
+		return errors.New("administrative materials request unresolved; reconcile before queue consumption")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check administrative request: %w", err)
+	}
 	config, err := loadMaterialsConfig()
 	if err != nil {
 		return err
@@ -196,10 +206,51 @@ func runMaterials(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	return runStore(logger, store, materialsOrchestrationCommand, "HENUKIT_MATERIALS_PREPARATION_TIMEOUT", 2*time.Hour)
+	return runStore(logger, store, materialsOrchestrationCommand, "HENUKIT_MATERIALS_PREPARATION_TIMEOUT", 2*time.Hour, nil, nil, nil, nil, nil, nil, lock)
 }
 
-func runStore(logger *slog.Logger, store *state.Store, command, timeoutName string, fallbackTimeout time.Duration) error {
+// The public binary must not bypass control even when invoked outside systemd.
+// Descriptor 9 belongs to the fixed wrapper, is the same trusted lock inode,
+// and is retained by every executing deployment child.
+func materialsControlLock() (*os.File, error) {
+	const path = "/opt/henukit-materials/orchestration.lock"
+	lock := os.NewFile(9, "materials-pipeline-lock")
+	if lock == nil {
+		return nil, errors.New("missing inherited pipeline lock")
+	}
+	reject := func(err error) (*os.File, error) { _ = lock.Close(); return nil, err }
+	opened, err := lock.Stat()
+	if err != nil {
+		return reject(err)
+	}
+	expected, err := os.Lstat(path)
+	if err != nil {
+		return reject(err)
+	}
+	stat, ok := expected.Sys().(*syscall.Stat_t)
+	if os.Geteuid() != 0 || !ok || stat.Uid != 0 || !expected.Mode().IsRegular() || expected.Mode().Perm() != 0o600 || !os.SameFile(opened, expected) {
+		return reject(errors.New("inherited descriptor is not the trusted pipeline lock"))
+	}
+	for directory := filepath.Dir(path); ; directory = filepath.Dir(directory) {
+		info, err := os.Lstat(directory)
+		if err != nil {
+			return reject(err)
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != 0 || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
+			return reject(errors.New("pipeline lock has an untrusted ancestor"))
+		}
+		if directory == filepath.Dir(directory) {
+			break
+		}
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return reject(err)
+	}
+	return lock, nil
+}
+
+func runStore(logger *slog.Logger, store *state.Store, command, timeoutName string, fallbackTimeout time.Duration, inheritedFiles ...*os.File) error {
 	if err := store.RecoverInterrupted(); err != nil {
 		return fmt.Errorf("recover interrupted deployment: %w", err)
 	}
@@ -212,6 +263,7 @@ func runStore(logger *slog.Logger, store *state.Store, command, timeoutName stri
 		command,
 		timeout,
 		logger,
+		inheritedFiles...,
 	)
 	if err != nil {
 		return err

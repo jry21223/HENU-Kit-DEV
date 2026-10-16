@@ -27,7 +27,7 @@ test("materials unit templates keep the receiver unprivileged and confine the pr
   );
   assert.doesNotMatch(runner, /^Group=/m, "the root-default runner does not need a redundant group directive");
   assert.match(runner, /^Environment=HOME=\/root$/m);
-  assert.match(runner, /^ExecStart=\/usr\/local\/bin\/henukit-deploy-webhook materials-run$/m);
+  assert.match(runner, /^ExecStart=\/usr\/local\/libexec\/henukit\/henukit-materials-control run$/m);
   assert.doesNotMatch(runner, /^StateDirectory=/m, "root runner must not take ownership away from the receiver");
   assert.match(runner, /^NoNewPrivileges=yes$/m);
   assert.match(

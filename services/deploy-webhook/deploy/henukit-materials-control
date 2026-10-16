@@ -1,0 +1,58 @@
+#!/bin/bash
+set -Eeuo pipefail
+umask 077
+export PATH=/usr/bin:/bin
+readonly PATH
+unset CDPATH ENV BASH_ENV
+
+readonly materials_root="/opt/henukit-materials"
+readonly pipeline_lock="$materials_root/orchestration.lock"
+readonly queue_consumer="/usr/local/bin/henukit-deploy-webhook"
+readonly admin_helper="/usr/local/libexec/henukit/resync-henukit-materials.mjs"
+readonly flock_bin="/usr/bin/flock"
+
+fail() { printf 'henukit-materials-control: %s\n' "$*" >&2; exit 64; }
+trusted() {
+  local path="$1" kind="$2" cursor owner_mode permission_bits
+  [[ ! -L "$path" ]] || fail "trusted path is a symbolic link"
+  if [[ "$kind" == file ]]; then [[ -f "$path" ]] || fail "trusted file is missing"; else [[ -d "$path" ]] || fail "trusted directory is missing"; fi
+  cursor="$path"
+  while :; do
+    [[ ! -L "$cursor" ]] || fail "trusted ancestor is a symbolic link"
+    owner_mode="$(/usr/bin/stat -c '%u:%a' -- "$cursor")"
+    [[ "${owner_mode%%:*}" == 0 ]] || fail "trusted path must be root-owned"
+    permission_bits="${owner_mode#*:}"
+    (( (8#$permission_bits & 8#022) == 0 )) || fail "trusted path must not be group/other writable"
+    [[ "$cursor" != / ]] || break
+    cursor="$(/usr/bin/dirname -- "$cursor")"
+  done
+}
+
+[[ "$(/usr/bin/id -u)" == 0 ]] || fail "requires root"
+(( $# >= 1 )) || fail "expected run, resync or reconcile"
+readonly mode="$1"
+shift
+case "$mode" in
+  run) (( $# == 0 )) || fail "run takes no arguments" ;;
+  resync|reconcile) ;;
+  *) fail "expected run, resync or reconcile" ;;
+esac
+trusted "$materials_root" directory
+trusted "$pipeline_lock" file
+trusted "$flock_bin" file
+[[ -x "$flock_bin" ]] || fail "flock is unavailable"
+# The installer creates this file. Even preflight never creates/truncates it.
+exec 9<"$pipeline_lock"
+"$flock_bin" -n 9 || fail "another materials operation holds the pipeline lock"
+if [[ "$mode" == run ]]; then
+  [[ ! -e "$materials_root/admin-resync/active" && ! -L "$materials_root/admin-resync/active" ]] || fail "administrative request unresolved; reconcile before queue consumption"
+  trusted "$queue_consumer" file
+  exec "$queue_consumer" materials-run
+fi
+trusted "$admin_helper" file
+node_bin=""
+for candidate in /usr/bin/node /usr/local/bin/node; do
+  if [[ -x "$candidate" ]]; then node_bin="$candidate"; break; fi
+done
+[[ -n "$node_bin" ]] || fail "fixed Node runtime is unavailable"
+exec /usr/bin/env -i HOME=/root PATH=/usr/bin:/bin "$node_bin" "$admin_helper" "$mode" "$@"

@@ -45,7 +45,7 @@ release_marker="$payload_dir/../RELEASE_SHA"
 [[ "$(tr -d '[:space:]' < "$release_marker")" == "$release_sha" ]] ||
   die "payload release SHA does not match --release-sha"
 
-for command in awk cp find grep install mktemp mv sha256sum sort stat systemctl; do
+for command in awk cp find flock grep install mktemp mv sha256sum sort stat systemctl; do
   command -v "$command" >/dev/null 2>&1 || die "missing required command: $command"
 done
 
@@ -58,7 +58,7 @@ if find "$payload_dir" ! -type d ! -type f -print -quit | grep -q .; then
   die "materials payload contains an unsupported file type"
 fi
 actual_files="$(cd "$payload_dir" && find . -type f ! -name SHA256SUMS -printf '%P\n' | LC_ALL=C sort)"
-manifest_files="$(awk 'NF == 2 && $1 ~ /^[0-9a-f]{64}$/ { print $2 }' "$checksum_manifest" | LC_ALL=C sort)"
+manifest_files="$(awk 'NF == 2 && length($1) == 64 && $1 ~ /^[0-9a-f]+$/ { print $2 }' "$checksum_manifest" | LC_ALL=C sort)"
 [[ -n "$actual_files" && "$actual_files" == "$manifest_files" ]] ||
   die "materials payload does not exactly match SHA256SUMS"
 (cd "$payload_dir" && sha256sum -c SHA256SUMS) >/dev/null || die "materials payload checksum verification failed"
@@ -69,6 +69,8 @@ required_files=(
   bin/materials-oss-release
   bin/library-activate-public-release
   libexec/henukit-materials-orchestrate
+  libexec/henukit-materials-control
+  libexec/resync-henukit-materials.mjs
   libexec/henukit-materials-prepare
   libexec/henukit-materials-seal
   libexec/henukit-materials-activate
@@ -86,14 +88,6 @@ for relative_path in "${required_files[@]}"; do
   [[ -f "$payload_dir/$relative_path" && ! -L "$payload_dir/$relative_path" ]] ||
     die "materials payload is missing $relative_path"
 done
-
-# Close the only automatic publication/activation trigger before any database
-# or configuration mutation. Missing units are acceptable on a first install;
-# an existing unit that remains active or enabled is not.
-systemctl disable --now henukit-materials-webhook.path >/dev/null 2>&1 || true
-systemctl stop henukit-materials-runner.service >/dev/null 2>&1 || true
-! systemctl is-active --quiet henukit-materials-runner.service || die "materials runner did not stop"
-! systemctl is-enabled --quiet henukit-materials-webhook.path || die "materials runner path did not disable"
 
 file_mode() {
   stat -c '%a' "$1"
@@ -115,6 +109,33 @@ require_root_file() {
     die "$label must not be writable by group or other"
   fi
 }
+
+# Coordinate replacement with the complete normal/admin publication lifetime.
+readonly materials_root=/opt/henukit-materials
+pipeline_lock="$materials_root/orchestration.lock"
+lock_parent="$materials_root"
+while :; do
+  [[ -d "$lock_parent" && ! -L "$lock_parent" ]] || die "untrusted materials lock parent"
+  [[ "$(file_owner "$lock_parent")" == "0:0" ]] || die "materials lock parent must be root-owned"
+  (( (8#$(file_mode "$lock_parent") & 8#022) == 0 )) || die "materials lock parent is writable"
+  [[ "$lock_parent" != / ]] || break
+  lock_parent="$(dirname "$lock_parent")"
+done
+if [[ ! -e "$pipeline_lock" && ! -L "$pipeline_lock" ]]; then
+  (set -o noclobber; : > "$pipeline_lock")
+fi
+require_root_file "$pipeline_lock" "materials pipeline lock" "600"
+exec 9<"$pipeline_lock"
+flock -n 9 || die "materials pipeline lock is held; wait for the current operation"
+[[ ! -e "$materials_root/admin-resync/active" && ! -L "$materials_root/admin-resync/active" ]] || die "administrative request unresolved; reconcile before runtime installation"
+
+# Close the only automatic publication/activation trigger before any database
+# or configuration mutation. Missing units are acceptable on a first install;
+# an existing unit that remains active or enabled is not.
+systemctl disable --now henukit-materials-webhook.path >/dev/null 2>&1 || true
+systemctl stop henukit-materials-runner.service >/dev/null 2>&1 || true
+! systemctl is-active --quiet henukit-materials-runner.service || die "materials runner did not stop"
+! systemctl is-enabled --quiet henukit-materials-webhook.path || die "materials runner path did not disable"
 
 incoming_paths=()
 cleanup() {
@@ -220,6 +241,8 @@ declare -a install_records=(
   "bin/materials-oss-release|/usr/local/libexec/henukit/materials-oss-release|0700"
   "bin/library-activate-public-release|/usr/local/libexec/henukit/library-activate-public-release|0700"
   "libexec/henukit-materials-orchestrate|/usr/local/libexec/henukit/henukit-materials-orchestrate|0700"
+  "libexec/henukit-materials-control|/usr/local/libexec/henukit/henukit-materials-control|0700"
+  "libexec/resync-henukit-materials.mjs|/usr/local/libexec/henukit/resync-henukit-materials.mjs|0600"
   "libexec/henukit-materials-prepare|/usr/local/libexec/henukit/henukit-materials-prepare|0755"
   "libexec/henukit-materials-seal|/usr/local/libexec/henukit/henukit-materials-seal|0700"
   "libexec/henukit-materials-activate|/usr/local/libexec/henukit/henukit-materials-activate|0700"
@@ -238,6 +261,7 @@ for record in "${install_records[@]}"; do
   backup_existing_target "$target"
   atomic_install "$payload_dir/$source" "$target" "$mode"
 done
+
 
 systemctl daemon-reload
 systemctl disable --now henukit-materials-webhook.path >/dev/null

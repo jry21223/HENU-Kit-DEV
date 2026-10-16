@@ -233,6 +233,8 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./materials-runtime/bin/materials-oss-canary",
     "./materials-runtime/bin/materials-oss-release",
     "./materials-runtime/bin/library-activate-public-release",
+    "./materials-runtime/libexec/henukit-materials-control",
+    "./materials-runtime/libexec/resync-henukit-materials.mjs",
     "./materials-runtime/libexec/henukit-materials-activate",
     "./materials-runtime/libexec/activate-henukit-materials.mjs",
     "./materials-runtime/systemd/henukit-materials-webhook.service",

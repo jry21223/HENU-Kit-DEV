@@ -158,6 +158,7 @@ chmod 0555 "$runtime/materials-runtime/bin"/*
 chmod 0555 "$runtime/bin/food-sanitize-post-image"
 
 for helper in \
+  henukit-materials-control \
   henukit-materials-orchestrate \
   henukit-materials-prepare \
   henukit-materials-seal \
@@ -168,6 +169,7 @@ for helper in \
     "$runtime/materials-runtime/libexec/$helper"
 done
 for helper in \
+  resync-henukit-materials.mjs \
   prepare-henukit-materials.mjs \
   seal-henukit-materials.mjs \
   activate-henukit-materials.mjs \

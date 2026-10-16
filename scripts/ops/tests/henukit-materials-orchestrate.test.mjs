@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, closeSync, mkdtempSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,8 +10,11 @@ import test from "node:test";
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const templatePath = join(repositoryRoot, "services", "deploy-webhook", "deploy", "henukit-materials-orchestrate");
 const acceptedSHA = "a".repeat(40);
-const releaseID = `${acceptedSHA}-${"b".repeat(16)}`;
+const manifestBytes = Buffer.from("approved manifest fixture\n");
+const manifestSHA = createHash("sha256").update(manifestBytes).digest("hex");
+const releaseID = `${acceptedSHA}-${manifestSHA.slice(0, 16)}`;
 const receiptSHA = "c".repeat(64);
+const adminRequestID = "12345678-1234-4234-8234-123456789abc";
 
 function shellLiteral(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -28,6 +32,7 @@ function createFixture({
   publishedAssetCount = 1,
   malformedPublishOutput = false,
   nonCanonicalAssetCount = false,
+  admin = false,
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), "henukit-materials-orchestrate-"));
   const state = join(root, "state");
@@ -35,6 +40,18 @@ function createFixture({
   mkdirSync(state, { mode: 0o700 });
   mkdirSync(join(state, "candidates"), { mode: 0o700 });
   mkdirSync(sealed, { mode: 0o700 });
+  const auditRoot = join(root, "admin-resync");
+  const publicRoot = join(root, "public");
+  mkdirSync(auditRoot, { mode: 0o700 }); mkdirSync(publicRoot, { mode: 0o700 });
+  const previousID = `${"0".repeat(40)}-${"1".repeat(16)}`;
+  writeFileSync(join(publicRoot, "ACTIVE_RELEASE"), `${previousID}\n`);
+  if (admin) {
+    mkdirSync(join(auditRoot, adminRequestID), { mode: 0o700 });
+    writeFileSync(join(auditRoot, "active"), `${adminRequestID}\n`, { mode: 0o400 });
+    writeFileSync(join(auditRoot, adminRequestID, "approval.env"), `request_id=${adminRequestID}\nsha=${acceptedSHA}\nmanifest_sha256=${manifestSHA}\nrepository=jry21223/HENU-Final-Review\nref=refs/heads/main\nprevious_release=${previousID}\n`, { mode: 0o400 });
+    mkdirSync(join(sealed, releaseID), { mode: 0o700 });
+    writeFileSync(join(sealed, releaseID, "manifest.json"), manifestBytes, { mode: 0o400 });
+  }
   const webhookConfig = join(root, "materials-webhook.env");
   const sealConfig = join(root, "materials-seal.env");
   writeFileSync(webhookConfig, [
@@ -88,22 +105,60 @@ function createFixture({
   template = template.replace('readonly publish_release_wrapper="/usr/local/libexec/henukit/henukit-materials-publish-release-oss"', `readonly publish_release_wrapper=${shellLiteral(publishRelease)}`);
   template = template.replace('readonly activate_wrapper="/usr/local/libexec/henukit/henukit-materials-activate"', `readonly activate_wrapper=${shellLiteral(activate)}`);
   template = template.replace('readonly runuser_bin="/usr/sbin/runuser"', `readonly runuser_bin=${shellLiteral(runuser)}`);
+  template = template.replace('readonly admin_audit_root="/opt/henukit-materials/admin-resync"', `readonly admin_audit_root=${shellLiteral(auditRoot)}`);
+  template = template.replace('readonly public_root="/opt/henukit-materials/public"', `readonly public_root=${shellLiteral(publicRoot)}`);
   const wrapper = join(root, "henukit-materials-orchestrate");
   executable(wrapper, template);
-  return { root, wrapper, calls, publishRelease };
+  return { root, wrapper, calls, publishRelease, auditRoot, sealed, prepare, seal, runuser };
 }
 
-function invoke(fixture, sha = acceptedSHA) {
+function invoke(fixture, sha = acceptedSHA, correlationFlag = "--delivery", correlation = "delivery-1", lockFD) {
   return spawnSync(fixture.wrapper, [
     "--sha", sha,
-    "--delivery", "delivery-1",
+    correlationFlag, correlation,
     "--repository", "jry21223/HENU-Final-Review",
     "--ref", "refs/heads/main",
   ], {
     encoding: "utf8",
     env: { ...process.env, PATH: fixture.root, BASH_ENV: join(fixture.root, "attacker") },
+    ...(lockFD === undefined ? {} : { stdio: ["pipe", "pipe", "pipe", "ignore", "ignore", "ignore", "ignore", "ignore", "ignore", lockFD] }),
   });
 }
+
+test("Linux root orchestration keeps its lock away from the unprivileged prepare process", { skip: process.platform !== "linux" || process.getuid() !== 0 }, () => {
+  const fixture = createFixture();
+  const lockPath = join(fixture.root, "lock"); writeFileSync(lockPath, "", { mode: 0o600 });
+  const lockFD = openSync(lockPath, "r");
+  try {
+    executable(fixture.runuser, `#!/bin/sh\n/usr/sbin/runuser -u nobody -- /bin/sh -c 'test ! -e /proc/self/fd/9' || exit 71\nshift 3\nexec "$@"\n`);
+    executable(fixture.prepare, `#!/bin/sh\ntest ! -e /proc/self/fd/9 || exit 72\nprintf 'attempt_locator=.attempt.Ab1Cd2Ef3G\\n'\n`);
+    executable(fixture.seal, `#!/bin/sh\ntest -e /proc/self/fd/9 || exit 73\nprintf '{"attempt_locator":".attempt.Ab1Cd2Ef3G","release_id":"${releaseID}","receipt_sha256":"${receiptSHA}"}\\n'\n`);
+    const result = invoke(fixture, acceptedSHA, "--delivery", "delivery-1", lockFD);
+    assert.equal(result.status, 0, result.stderr);
+  } finally { closeSync(lockFD); rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("admin recovery preserves its separate authority and binds the full approved manifest before publication", () => {
+  const fixture = createFixture({ admin: true });
+  try {
+    const result = invoke(fixture, acceptedSHA, "--admin-request", adminRequestID);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(fixture.calls, "utf8"), new RegExp(`prepare --sha ${acceptedSHA} --admin-request ${adminRequestID}`));
+    assert.equal(readFileSync(join(fixture.auditRoot, adminRequestID, "sealed-receipt.sha256"), "utf8"), `${receiptSHA}\n`);
+    assert.equal(JSON.parse(readFileSync(join(fixture.auditRoot, adminRequestID, "publish-commit.json"))).release_id, releaseID);
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
+
+test("admin recovery rejects changed sealed manifest bytes before any OSS publication", () => {
+  const fixture = createFixture({ admin: true });
+  try {
+    const path = join(fixture.sealed, releaseID, "manifest.json");
+    chmodSync(path, 0o600); writeFileSync(path, "changed after approval\n");
+    const result = invoke(fixture, acceptedSHA, "--admin-request", adminRequestID);
+    assert.notEqual(result.status, 0); assert.match(result.stderr, /manifest digest differs/);
+    assert.doesNotMatch(readFileSync(fixture.calls, "utf8"), /publish-release|activate/);
+  } finally { rmSync(fixture.root, { recursive: true, force: true }); }
+});
 
 test("root materials orchestration binds one accepted event through prepare, seal, complete OSS publish, and activate", () => {
   const fixture = createFixture();

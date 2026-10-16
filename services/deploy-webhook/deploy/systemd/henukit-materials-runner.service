@@ -13,7 +13,7 @@ Type=oneshot
 # omitted with the otherwise unchanged default root identity.
 EnvironmentFile=/etc/henukit-deploy/materials-webhook.env
 Environment=HOME=/root
-ExecStart=/usr/local/bin/henukit-deploy-webhook materials-run
+ExecStart=/usr/local/libexec/henukit/henukit-materials-control run
 TimeoutStartSec=2h
 UMask=0077
 Nice=10

@@ -31,7 +31,7 @@ config_owner_and_mode() {
 if (( "$#" != 8 )); then
   usage
 fi
-if [[ "$1" != "--sha" || "$3" != "--delivery" || "$5" != "--repository" || "$7" != "--ref" ]]; then
+if [[ "$1" != "--sha" || ( "$3" != "--delivery" && "$3" != "--admin-request" ) || "$5" != "--repository" || "$7" != "--ref" ]]; then
   usage
 fi
 

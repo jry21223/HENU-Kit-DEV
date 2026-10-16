@@ -3,7 +3,7 @@
 仓库能力不等于生产已启用。以下是 #306 唯一受支持的生产路径；启用 watcher 前仍须完成
 主机配置、Nginx 检查、数据库 schema 预检和受控 smoke。
 
-## 唯一入口与信任边界
+## 正常入口与信任边界
 
 | 边界 | 固定值 |
 | --- | --- |
@@ -12,6 +12,7 @@
 | Secret | systemd credential `/etc/henukit-deploy/materials-webhook-secret` |
 | Queue | `/var/lib/henukit-materials-webhook` latest-arrival：最多一个 running、一个 waiting |
 | Runner | `henukit-materials-runner.service`（root、固定 orchestrator） |
+| Runner control | `/usr/local/libexec/henukit/henukit-materials-control run`（领取队列前取得共同锁） |
 | Public root | `/opt/henukit-materials/public` |
 | Sealed root | `/opt/henukit-materials/sealed` |
 
@@ -99,6 +100,58 @@ queue/running 为空、HENU-Final `main` 仍是该 exact SHA，随后只在 GitH
 `queued=true`、`duplicate=false`，queue latest 仍是该 exact delivery GUID 与 SHA，并再次确认
 HENU-Final `main` 仍是同一 SHA；任一项不一致都保持 path 停用并人工核对。启用后继续核对
 runner 日志中的 delivery 与 SHA。
+
+### 原投递超过 GitHub 重投窗口
+
+ADR-0048 提供独立的 root 管理员恢复边界；它不是 GitHub delivery，也不向 webhook
+queue 写入任何内容。只能在该变更完成评审、合并 current main、构建签名 runtime 并按正式
+发布流程安装后使用。不要在生产复制未合并的脚本作为临时入口。
+
+1. 记录 current/previous release、receipt、服务健康和可回退版本；使用已有发布流程获取
+   新的 Library 数据库备份并验证归档可读。需要磁盘操作时另保留可恢复的系统盘备份。
+2. 确认 runner MainPID 为 0，才停用 `henukit-materials-webhook.path`，不得停止正在发布的
+   runner。确认 running、waiting、candidate、fence 和 journal 为空。保留 receiver 和失败审计。
+3. 从真实上游核对完整 source SHA 和 manifest SHA256，审核公开/待复核边界。生成一个新的
+   请求 UUID。operator 是说明性标签；请求另记录实际 OS UID，标签不是认证依据。
+4. 运行只读预检，核对 public/review 数量、manifest、磁盘峰值与 previous receipt：
+
+   ```bash
+   sudo /usr/local/libexec/henukit/henukit-materials-control resync \
+     --sha <approved-current-materials-main-sha> \
+     --manifest-sha256 <approved-full-manifest-sha256> \
+     --request-id <new-lowercase-v4-uuid> \
+     --operator <operator-label> --reason 'recover expired materials delivery' \
+     --preflight
+   ```
+
+   用相同参数把 `--preflight` 改为 `--execute` 才执行已批准的同步。入口重做预检，固定
+   prepare → seal → complete OSS publish → activate 顺序，并在首次 Put 前核对完整 manifest
+   摘要。请求及阶段凭据位于 `/opt/henukit-materials/admin-resync/<uuid>`，不覆盖旧请求。
+   成功后仍须完成本 runbook 的生产下载、两侧 API、数量和 audit 验收。
+5. 控制命令与正常 runner 共同持有 `/opt/henukit-materials/orchestration.lock`。失败或崩溃
+   保留 `admin-resync/active`；正常 runner 在领取真实事件前拒绝运行。不得删 active 文件
+   或换 UUID 绕过未决请求。
+6. 核对已封存 receipt、完整 OSS commit、数据库、marker、fence/journal 后，使用正式收敛：
+
+   ```bash
+   sudo /usr/local/libexec/henukit/henukit-materials-control reconcile \
+     --request-id <pending-uuid> --outcome finish \
+     --operator <operator-label> --reason 'complete the approved sealed release' \
+     --preflight
+   ```
+
+   相同参数改为 `--execute`；`finish` 只重新激活该请求已封存的精确 release/receipt。
+   `--outcome rollback` 则通过同一完整 activator 恢复请求中捕获的 previous release/receipt。
+   Library 结果未知时仍遵循同 release/digest journal 门禁，不能以 rollback 强行覆盖。
+   请求会写不可覆盖的 resolution 后才解除 active；若只在解除前崩溃，重跑同一收敛仅验证
+   并完成解除，不再次激活。收敛允许新的真实 waiting 事件保留在队列，绝不编辑或领取它。
+7. 核对真实 waiting 事件及当前上游版本，再恢复此前批准的 watcher 状态。
+
+恢复机制不新增 HTTP 入口、账号、凭据、RAM/IAM 权限、ACL、自动快照或购买项。runtime
+回滚按 artifact runbook 恢复旧 unit/脚本；若旧 runtime 没有新 control/helper，另按其
+“candidate 新建文件”规则核对这两个目标。保留 admin 审计和稳定 lock inode，不用删除它们
+掩盖失败。GitHub 超期规则见
+<https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/redelivering-webhooks>。
 
 激活前必须验证 sealed receipt 的 `slides.status` 为 `disabled`，派生目录为空且 canonical
 digest 等于空列表；任一派生预览资产、converter 参数或旧 `--slides-dir` 参数都必须失败关闭。
