@@ -45,7 +45,12 @@ async function fixture() {
   command(orchestrate, `const fs=require('node:fs'),marker=${JSON.stringify(join(materials, "public/ACTIVE_RELEASE"))};fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify(process.argv.slice(2))+'\\n');fs.writeFileSync(marker+'.next','${targetID}\\n');fs.renameSync(marker+'.next',marker);`);
   const activator = join(root, "activator");
   command(activator, `const fs=require('node:fs'),marker=${JSON.stringify(join(materials, "public/ACTIVE_RELEASE"))};fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify(process.argv.slice(2))+'\\n');fs.writeFileSync(marker+'.next',process.argv[3]+'\\n');fs.renameSync(marker+'.next',marker);`);
-  const server = createServer((req, res) => { res.writeHead(req.url === `/jry21223/HENU-Final-Review/${sha}/manifest.json` ? 200 : 404); res.end(manifest); });
+  const server = createServer((req, res) => {
+    const pinnedRawRequest = req.url === `/repos/jry21223/HENU-Final-Review/contents/manifest.json?ref=${sha}` &&
+      req.headers.accept === "application/vnd.github.raw+json" &&
+      req.headers["user-agent"] === "HENU-Kit-materials-admin-preflight" && !req.headers.authorization;
+    res.writeHead(pinnedRawRequest ? 200 : 404); res.end(manifest);
+  });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   let code = template;
   for (const [from, to] of [
@@ -54,7 +59,7 @@ async function fixture() {
     ["/usr/bin/git", git], ["/usr/bin/systemctl", systemctl],
     ["/usr/local/libexec/henukit/henukit-materials-orchestrate", orchestrate],
     ["/usr/local/libexec/henukit/henukit-materials-activate", activator],
-    ["https://raw.githubusercontent.com", `http://127.0.0.1:${server.address().port}`],
+    ["https://api.github.com", `http://127.0.0.1:${server.address().port}`],
   ]) code = code.replaceAll(from, to);
   // The test's isolated root replaces production's / trust boundary, as does its UID.
   code = code.replace('if (cursor === dirname(cursor)) break;', `if (cursor === ${JSON.stringify(root)} || cursor === dirname(cursor)) break;`);

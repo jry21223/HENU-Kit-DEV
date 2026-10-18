@@ -10,7 +10,7 @@ const CONFIG_ROOT = "/etc/henukit-deploy";
 const MATERIALS_ROOT = "/opt/henukit-materials";
 const GIT = "/usr/bin/git";
 const SYSTEMCTL = "/usr/bin/systemctl";
-const MANIFEST_BASE = "https://raw.githubusercontent.com";
+const MANIFEST_BASE = "https://api.github.com";
 const ORCHESTRATE = "/usr/local/libexec/henukit/henukit-materials-orchestrate";
 const ACTIVATOR = "/usr/local/libexec/henukit/henukit-materials-activate";
 const SHA = /^[a-f0-9]{40}$/;
@@ -120,7 +120,10 @@ function policy() {
 async function sourceInventory(p, o) {
   const head = run(GIT, ["ls-remote", "--exit-code", p.source, p.ref]);
   if (head !== `${o.sha}\t${p.ref}`) fail("requested SHA is not current upstream main");
-  const response = await fetch(`${MANIFEST_BASE}/${p.repository}/${o.sha}/manifest.json`, { redirect: "error", signal: AbortSignal.timeout(15000) });
+  const response = await fetch(`${MANIFEST_BASE}/repos/${p.repository}/contents/manifest.json?ref=${o.sha}`, {
+    headers: { Accept: "application/vnd.github.raw+json", "User-Agent": "HENU-Kit-materials-admin-preflight" },
+    redirect: "error", signal: AbortSignal.timeout(15000),
+  });
   if (!response.ok) fail("cannot read exact-SHA source manifest");
   const chunks = []; let length = 0;
   for await (const chunk of response.body) {
