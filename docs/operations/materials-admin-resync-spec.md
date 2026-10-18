@@ -26,6 +26,10 @@ Required behavior:
    review-only exclusions; preserve all existing content safety checks and
    complete publisher/activation gates. Bind the full manifest hash after seal
    and before any OSS Put, not only its shortened release ID prefix.
+   Read preflight manifest bytes through the fixed GitHub Contents API with
+   the full SHA as `ref` and its raw media type, without credentials. Reject
+   redirects, unsuccessful responses, oversized content and digest drift
+   before creating administrative intent.
 4. The webhook queue is never written by admin commands. Normal work cannot
    claim deliveries while an admin process or unresolved request exists.
 5. Failure/process death leaves an unresolved request. Reconcile only uses
