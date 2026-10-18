@@ -15,6 +15,8 @@ readonly seal_wrapper="/usr/local/libexec/henukit/henukit-materials-seal"
 readonly publish_release_wrapper="/usr/local/libexec/henukit/henukit-materials-publish-release-oss"
 readonly activate_wrapper="/usr/local/libexec/henukit/henukit-materials-activate"
 readonly runuser_bin="/usr/sbin/runuser"
+readonly admin_audit_root="/opt/henukit-materials/admin-resync"
+readonly public_root="/opt/henukit-materials/public"
 
 fail() {
   echo "henukit-materials-orchestrate: $*" >&2
@@ -49,8 +51,9 @@ require_fixed_command() {
 
 [[ "$(/usr/bin/id -u)" == "$runtime_owner" ]] || fail "must run as root"
 (( $# == 8 )) || fail "expected --sha SHA --delivery ID --repository OWNER/NAME --ref REF"
-[[ "$1" == "--sha" && "$3" == "--delivery" && "$5" == "--repository" && "$7" == "--ref" ]] || fail "expected --sha SHA --delivery ID --repository OWNER/NAME --ref REF"
+[[ "$1" == "--sha" && ( "$3" == "--delivery" || "$3" == "--admin-request" ) && "$5" == "--repository" && "$7" == "--ref" ]] || fail "expected --sha SHA --delivery/--admin-request ID --repository OWNER/NAME --ref REF"
 readonly event_sha="$2"
+readonly correlation_flag="$3"
 readonly delivery="$4"
 readonly event_repository="$6"
 readonly event_ref="$8"
@@ -104,8 +107,52 @@ done < "$seal_config"
 [[ "$prepared_source_repository" == "$sealed_source_repository" ]] || fail "prepare and seal source repositories differ"
 [[ "$event_ref" == "$sealed_source_ref" ]] || fail "event ref does not match root-approved source ref"
 
+admin_directory=""
+approved_manifest=""
+if [[ "$correlation_flag" == --admin-request ]]; then
+  [[ "$delivery" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$ ]] || fail "admin request ID is invalid"
+  admin_directory="$admin_audit_root/$delivery"
+  for directory in "$admin_audit_root" "$admin_directory"; do
+    [[ ! -L "$directory" && -d "$directory" && "$(owner_and_mode "$directory")" == "$config_owner:700" ]] || fail "admin audit directory is not trusted"
+  done
+  require_root_config "$admin_audit_root/active" "active admin request"
+  [[ "$(cat "$admin_audit_root/active")" == "$delivery" ]] || fail "admin request is not active"
+  require_root_config "$admin_directory/approval.env" "admin approval"
+  (( $(wc -c < "$admin_directory/approval.env") <= 4096 )) || fail "admin approval exceeds limit"
+  approved_id="" approved_sha="" approved_repository="" approved_ref="" approved_previous="" seen_keys="|"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    key="${line%%=*}"; value="${line#*=}"
+    [[ "$seen_keys" != *"|$key|"* ]] || fail "duplicate admin approval key"
+    seen_keys+="$key|"
+    case "$key" in
+      request_id) approved_id="$value" ;;
+      sha) approved_sha="$value" ;;
+      manifest_sha256) approved_manifest="$value" ;;
+      repository) approved_repository="$value" ;;
+      ref) approved_ref="$value" ;;
+      previous_release) approved_previous="$value" ;;
+      *) fail "unsupported admin approval key" ;;
+    esac
+  done < "$admin_directory/approval.env"
+  [[ "$approved_id" == "$delivery" && "$approved_sha" == "$event_sha" && "$approved_repository" == "$event_repository" && "$approved_ref" == "$event_ref" && "$approved_manifest" =~ ^[a-f0-9]{64}$ && "$approved_previous" =~ ^[a-f0-9]{40}-[a-f0-9]{16}$ ]] || fail "admin approval identity mismatch"
+  [[ "$(cat "$public_root/ACTIVE_RELEASE")" == "$approved_previous" && ! -e "$public_root/.maintenance" && ! -L "$public_root/.maintenance" && ! -e "$public_root/activation-journal.json" && ! -L "$public_root/activation-journal.json" ]] || fail "admin baseline changed or requires reconciliation"
+fi
+
+record_admin_stage() {
+  [[ -n "$admin_directory" ]] || return 0
+  local path="$admin_directory/$1" temporary
+  [[ ! -e "$path" && ! -L "$path" ]] || fail "admin stage already exists"
+  temporary="$(mktemp "$admin_directory/.writing.XXXXXXXXXX")"
+  printf '%s\n' "$2" > "$temporary"
+  chmod 0400 "$temporary"
+  if [[ "$(uname -s)" == Linux ]]; then /usr/bin/sync -f "$temporary"; else /bin/sync; fi
+  ln "$temporary" "$path" || fail "admin stage already exists"
+  if [[ "$(uname -s)" == Linux ]]; then /usr/bin/sync -f "$path"; else /bin/sync; fi
+  rm -- "$temporary"
+}
+
 prepare_output="$($runuser_bin -u henukit-deploy -- "$prepare_wrapper" \
-  --sha "$event_sha" --delivery "$delivery" --repository "$event_repository" --ref "$event_ref")"
+  --sha "$event_sha" "$correlation_flag" "$delivery" --repository "$event_repository" --ref "$event_ref" 9<&-)"
 attempt_line="${prepare_output##*$'\n'}"
 [[ "$attempt_line" =~ ^attempt_locator=(\.attempt\.[A-Za-z0-9]{10})$ ]] || fail "preparation did not return a valid attempt locator"
 readonly attempt="${BASH_REMATCH[1]}"
@@ -118,6 +165,19 @@ if [[ ! "$seal_line" =~ $seal_result_pattern ]] || [[ "${BASH_REMATCH[1]:-}" != 
 fi
 readonly release_id="${BASH_REMATCH[2]}"
 readonly receipt_sha256="${BASH_REMATCH[3]}"
+if [[ -n "$admin_directory" ]]; then
+  [[ "$release_id" == "$event_sha-${approved_manifest:0:16}" ]] || fail "sealed release differs from admin approval"
+  approved_manifest_path="$(awk -F= '$1 == "HENUKIT_MATERIALS_SEALED_ROOT" {print $2}' "$seal_config")/$release_id/manifest.json"
+  readonly approved_manifest_path
+  require_root_config "$approved_manifest_path" "sealed admin manifest"
+  if [[ -x /usr/bin/sha256sum ]]; then
+    actual_manifest="$(/usr/bin/sha256sum "$approved_manifest_path")"
+  else
+    actual_manifest="$(/usr/bin/shasum -a 256 "$approved_manifest_path")"
+  fi
+  [[ "${actual_manifest%% *}" == "$approved_manifest" ]] || fail "sealed manifest digest differs from admin approval"
+  record_admin_stage sealed-receipt.sha256 "$receipt_sha256"
+fi
 
 if ! publish_output="$("$publish_release_wrapper" --release-id "$release_id" --receipt-sha256 "$receipt_sha256")"; then
   fail "complete OSS publication failed; keep the materials runner disabled and follow the production runbook before retrying the same sealed release"
@@ -130,4 +190,5 @@ if [[ ! "$publish_line" =~ $publish_result_pattern ]] ||
    (( 10#${BASH_REMATCH[6]:-501} > 500 )); then
   fail "complete OSS publication did not return a valid release commit attestation; keep the materials runner disabled and follow the production runbook before retrying the same sealed release"
 fi
+record_admin_stage publish-commit.json "$publish_line"
 exec "$activate_wrapper" --release-id "$release_id" --receipt-sha256 "$receipt_sha256"

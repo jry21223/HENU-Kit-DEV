@@ -64,6 +64,40 @@ func TestRunnerPassesValidatedValuesAsArgumentsWithoutShell(t *testing.T) {
 	}
 }
 
+func TestRunnerKeepsInheritedControlDescriptorInExecutingChild(t *testing.T) {
+	dir := t.TempDir()
+	lockPath := filepath.Join(dir, "lock")
+	if err := os.WriteFile(lockPath, []byte("inherited pipeline lock"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := os.Open(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	output := filepath.Join(dir, "inherited")
+	t.Setenv("INHERITED_OUTPUT", output)
+	script := filepath.Join(dir, "deploy")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\ncat <&9 > \"$INHERITED_OUTPUT\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store := newRunnerStore(t)
+	if _, err := store.Enqueue(state.Event{Delivery: "delivery-lock", Repository: "jry21223/HENU-Kit-DEV", Ref: "refs/heads/main", After: strings.Repeat("a", 40), ReceivedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := New(store, script, time.Minute, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, nil, nil, nil, lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RunAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(output)
+	if err != nil || string(got) != "inherited pipeline lock" {
+		t.Fatalf("child descriptor = %q, %v", got, err)
+	}
+}
+
 func TestRunnerRecordsFailureAndDrainsLaterFix(t *testing.T) {
 	dir := t.TempDir()
 	counter := filepath.Join(dir, "counter")

@@ -7,6 +7,12 @@ on:
       - infra/nginx/henukit.conf.example
       - services/deploy-webhook/**
       - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/resync-henukit-materials.mjs
+      - scripts/ops/tests/materials-admin-resync.test.mjs
+      - scripts/ops/tests/materials-admin-control-linux.test.mjs
+      - scripts/ops/tests/materials-runtime-install-lock-linux.test.mjs
+      - docs/adr/0048-materials-admin-resync.md
+      - docs/operations/materials-admin-resync-spec.md
       - scripts/ops/seal-henukit-materials.mjs
       - scripts/ops/activate-henukit-materials.mjs
       - scripts/ops/sync-henukit-materials.sh
@@ -55,6 +61,12 @@ on:
       - infra/nginx/henukit.conf.example
       - services/deploy-webhook/**
       - scripts/ops/prepare-henukit-materials.mjs
+      - scripts/ops/resync-henukit-materials.mjs
+      - scripts/ops/tests/materials-admin-resync.test.mjs
+      - scripts/ops/tests/materials-admin-control-linux.test.mjs
+      - scripts/ops/tests/materials-runtime-install-lock-linux.test.mjs
+      - docs/adr/0048-materials-admin-resync.md
+      - docs/operations/materials-admin-resync-spec.md
       - scripts/ops/seal-henukit-materials.mjs
       - scripts/ops/activate-henukit-materials.mjs
       - scripts/ops/sync-henukit-materials.sh
@@ -148,6 +160,7 @@ jobs:
         run: |
           set -euo pipefail
           shellcheck \
+            services/deploy-webhook/deploy/henukit-materials-control \
             services/deploy-webhook/deploy/henukit-deploy \
             services/deploy-webhook/deploy/henukit-approve-release \
             services/deploy-webhook/deploy/henukit-materials-prepare \
@@ -161,6 +174,7 @@ jobs:
             services/deploy-webhook/deploy/hooks/10-command.example \
             services/deploy-webhook/deploy/hooks/20-study.example
           bash -n services/deploy-webhook/deploy/henukit-deploy
+          bash -n services/deploy-webhook/deploy/henukit-materials-control
           bash -n services/deploy-webhook/deploy/henukit-approve-release
           bash -n services/deploy-webhook/deploy/henukit-materials-prepare
           sh -n services/deploy-webhook/deploy/henukit-materials-seal
@@ -176,7 +190,9 @@ jobs:
       - name: Validate systemd units
         run: |
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
-          systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
+          sudo install -d -m 0755 /usr/local/libexec/henukit
+          sudo install -m 0700 services/deploy-webhook/deploy/henukit-materials-control /usr/local/libexec/henukit/henukit-materials-control
+          sudo systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
       - name: Verify materials runner can drop preparation privileges
         run: |
           set -euo pipefail
@@ -218,10 +234,13 @@ jobs:
           # first activation's image pull never races the kernel-lock assertion.
           docker pull node:22-alpine
           node --check scripts/ops/prepare-henukit-materials.mjs
+          node --check scripts/ops/resync-henukit-materials.mjs
           node --check scripts/ops/seal-henukit-materials.mjs
           node --check scripts/ops/activate-henukit-materials.mjs
           node --check scripts/ops/build-henukit-library-activation-bundle.mjs
           node --test \
+            scripts/ops/tests/materials-admin-resync.test.mjs \
+            scripts/ops/tests/materials-admin-control-linux.test.mjs \
             scripts/ops/tests/prepare-henukit-materials.test.mjs \
             scripts/ops/tests/henukit-materials-prepare-wrapper.test.mjs \
             scripts/ops/tests/henukit-materials-systemd.test.mjs \
@@ -243,6 +262,10 @@ jobs:
           docker run --rm \
             -v "$PWD/infra/nginx/henukit.conf.example:/etc/nginx/conf.d/default.conf:ro" \
             nginx:1.27-alpine nginx -t
+      - name: Verify root runtime installation shares the materials lock
+        run: |
+          sudo "$(command -v node)" --test scripts/ops/tests/materials-runtime-install-lock-linux.test.mjs
+          sudo "$(command -v node)" --test --test-name-pattern='Linux root orchestration' scripts/ops/tests/henukit-materials-orchestrate.test.mjs
       - name: Reject committed deployment secrets
         run: |
           set -euo pipefail

@@ -35,6 +35,12 @@ henukit-deploy-webhook materials-serve
 henukit-deploy-webhook materials-run
 ```
 
+Production systemd invokes materials consumption through the signed root-only
+`henukit-materials-control run` wrapper, which takes the same process lock as
+explicit administrative `resync`/`reconcile` operations before any queue claim.
+Expired deliveries use the separately audited ADR-0048 boundary; generic retry
+and queue editing remain unsupported. See the materials sync runbook.
+
 The receiver exposes loopback endpoints:
 
 - `POST /webhooks/github`

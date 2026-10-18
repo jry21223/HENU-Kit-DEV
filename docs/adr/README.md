@@ -49,6 +49,8 @@
 43. [`0044-actions-degraded-baseline-recovery.md`](./0044-actions-degraded-baseline-recovery.md) — 允许经显式双 SHA 授权的最新成功 current-main Actions 制品复用 ADR-0030 降级基线恢复契约。
 44. [`0045-stateless-getwork-crawl-transport.md`](./0045-stateless-getwork-crawl-transport.md) — 启动时保留官方 MCP SDK 校验，远程 `crawl_jobs` 改用受限 stateless Streamable HTTP，避免并发 SDK session 打断 WSL SSH 隧道。
 
+48. [`0048-materials-admin-resync.md`](./0048-materials-admin-resync.md) — 过期资料投递的 root 管理员恢复、共同锁与持久收敛边界。
+
 ## 使用规则
 
 - ADR 的状态为 Accepted 时，实现不得静默偏离；如需变更，新增或修订 ADR 并明确替代关系。

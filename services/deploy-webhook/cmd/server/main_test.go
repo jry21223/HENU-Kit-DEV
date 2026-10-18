@@ -1,10 +1,25 @@
 package main
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestBareMaterialsRunRejectsBeforeCreatingOrClaimingQueue(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "uncreated-state")
+	t.Setenv("HENUKIT_WEBHOOK_STATE_DIR", statePath)
+	err := runMaterials(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil || !strings.Contains(err.Error(), "control wrapper") {
+		t.Fatalf("bare materials-run must require control wrapper before queue access, got %v", err)
+	}
+	if _, err := os.Lstat(statePath); !os.IsNotExist(err) {
+		t.Fatalf("queue state was touched: %v", err)
+	}
+}
 
 func TestValidateLoopbackAddress(t *testing.T) {
 	for _, address := range []string{"127.0.0.1:10087", "[::1]:10087", "localhost:10087"} {
