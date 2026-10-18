@@ -192,7 +192,7 @@ jobs:
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
           sudo install -d -m 0755 /usr/local/libexec/henukit
           sudo install -m 0700 services/deploy-webhook/deploy/henukit-materials-control /usr/local/libexec/henukit/henukit-materials-control
-          systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
+          sudo systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
       - name: Verify materials runner can drop preparation privileges
         run: |
           set -euo pipefail
