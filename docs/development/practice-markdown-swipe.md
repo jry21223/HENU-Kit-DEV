@@ -40,9 +40,9 @@ of production activation.
 ## Implementation evidence
 
 - Renderer regression: first failed because the renderer did not exist, then
-  passed; four examples cover Java fences/generics/indentation, inline code,
+  passed; five examples cover Java fences/generics/indentation, inline code,
   GFM tables, inert HTML/unsafe URLs and valid structured option content.
-- Portal unit suite: 39 files / 299 tests passed; unit contracts: 5 passed.
+- Portal unit suite: 39 files / 300 tests passed; unit contracts: 5 passed.
 - TypeScript passed. ESLint passed with existing navigation warnings only.
 - Production build and both public-artifact checks passed.
 - Chromium production browser run covers Practice, submission retry identity,
@@ -65,3 +65,9 @@ Production activation requires the existing operator-owned exact-SHA release
 entry and evidence described in docs/operations/henukit-artifact-deployment.md.
 This workspace has no configured production SSH identity; local success and
 GitHub merge must not be described as proof that production changed.
+
+Compatibility follow-up: an additional red/green regression showed that discarding
+raw HTML nodes also lost the literal `<String>` from unformatted legacy prose.
+The renderer now uses react-markdown's default escaped-text handling (without
+rehype-raw), preserving that notation while keeping HTML inert. Standards and
+Spec delta reviews: 0 findings; no new product copy.

@@ -60,7 +60,6 @@ function QuestionMarkdown({ content, className, option = false }: {
     <Markdown
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
-      skipHtml
       allowedElements={option ? optionElements : undefined}
       unwrapDisallowed={option}
       components={option ? optionComponents : components}

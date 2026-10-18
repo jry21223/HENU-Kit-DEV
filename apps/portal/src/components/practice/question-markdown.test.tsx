@@ -33,4 +33,9 @@ describe("question Markdown", () => {
     expect(html.match(/role="cell"/g)).toHaveLength(2);
     expect(html).toContain('class="table-cell border border-line p-2">1</span>');
   });
+
+  it("keeps plain Java generic notation visible even when the source omitted code formatting", () => {
+    const html = renderToStaticMarkup(<QuestionMarkdown content="List<String> values;" />);
+    expect(html).toContain("List&lt;String&gt; values;");
+  });
 });
