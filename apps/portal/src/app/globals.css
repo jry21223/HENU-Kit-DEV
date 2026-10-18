@@ -26,6 +26,53 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Question content keeps its own typography; code never inherits the stem's
+   heading size. Horizontal overflow belongs to the code/table, not the page. */
+.question-markdown {
+  overflow-wrap: anywhere;
+}
+.question-markdown > * + * { margin-top: 0.75rem; }
+.question-markdown p { white-space: pre-wrap; }
+.question-markdown :not(pre):not(.question-code) > code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-line);
+  padding: 0.1em 0.25em;
+}
+.question-markdown .question-code {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.75;
+  text-align: left;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+  padding: 1rem;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.question-code code { font-family: inherit; font-size: inherit; }
+.question-code .hljs-keyword, .question-code .hljs-string,
+.question-code .hljs-title { color: var(--color-accent-text); }
+.question-code .hljs-comment { color: var(--color-ink-muted); }
+.question-markdown ul { list-style: disc; padding-left: 1.5rem; }
+.question-markdown ol { list-style: decimal; padding-left: 1.5rem; }
+.question-markdown blockquote { border-left: 2px solid var(--color-line); padding-left: 1rem; }
+.question-markdown table { border-collapse: collapse; font-size: 0.875rem; }
+.question-markdown th, .question-markdown td { border: 1px solid var(--color-line); padding: 0.5rem; }
+.question-markdown a { color: var(--color-accent-text); text-decoration: underline; }
+.question-markdown img { max-width: 100%; height: auto; }
+
+/* A scrollable code block must not inherit Swiper's pan-y restriction. The
+   library declines drags at data-no-question-swipe; the browser owns scrolling. */
+.practice-question-track.swiper { touch-action: pan-x pan-y pinch-zoom; }
+.practice-question-track .swiper-slide { height: auto; }
+
 /* 强调橙底上用墨色字（5.49:1），纸白字只有 2.92:1。 */
 ::selection {
   background: var(--color-accent);

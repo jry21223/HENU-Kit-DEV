@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type TouchEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   createPracticeFeedback,
@@ -32,6 +32,8 @@ import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
 import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
+import QuestionMarkdown from "@/components/practice/question-markdown";
+import QuestionPager from "@/components/practice/question-pager";
 import { cn } from "@/lib/cn";
 import { choiceOptionState, judgeOptionState, type OptionFeedbackState } from "@/lib/practice/answer-feedback";
 
@@ -39,9 +41,6 @@ const OPTION_LABEL = ["A", "B", "C", "D", "E", "F", "G", "H"];
 // Match the canonical UUID text form accepted by Gateway and QuizCraft Core;
 // do not unnecessarily reject a newer UUID version issued by a real bank.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SWIPE_DISTANCE = 56;
-const SWIPE_INTENT_DISTANCE = 12;
-const SWIPE_HORIZONTAL_RATIO = 1.25;
 
 const FEEDBACK_CATEGORIES: Array<{ value: PracticeFeedbackCategory; label: string }> = [
   { value: "wrong_answer", label: "答案有误" },
@@ -62,7 +61,6 @@ const FEEDBACK_STATUS_LABEL: Record<PortalPracticeFeedbackStatusResponse["data"]
 type LoadState = "loading" | "setup" | "ready" | "empty" | "missing-selection" | "error" | "finished";
 type AnswerResult = PortalPracticeAnswerResponse["data"];
 type PracticeSetup = { bankID: string; bankVersionID: string };
-type SwipeStart = { x: number; y: number; deltaX: number; horizontal: boolean };
 
 function fmtTime(sec: number) {
   const m = Math.floor(sec / 60);
@@ -191,14 +189,14 @@ function questionTypeLabel(type: PortalPracticeQuestion["type"]) {
 }
 
 function isInteractiveTarget(target: EventTarget | null) {
-  return target instanceof Element && target.closest("button, input, textarea, select, a, [contenteditable='true']") !== null;
+  return target instanceof Element && target.closest("button, input, textarea, select, a, [contenteditable='true'], [data-no-question-swipe]") !== null;
 }
 
 export default function QuizPage() {
   const router = useRouter();
   const cardRef = usePageEnter<HTMLDivElement>("question");
   const explainRef = useRef<HTMLDivElement>(null);
-  const swipeStartRef = useRef<SwipeStart | null>(null);
+  const navigationFocusRef = useRef<string | null>(null);
   const idempotencyKeys = useRef<Record<string, string>>({});
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -322,7 +320,6 @@ export default function QuizPage() {
   const result = currentKey ? answers[currentKey] : undefined;
   const answerLocked = currentKey !== "" && Object.hasOwn(lockedDrafts, currentKey);
   const selected = currentKey ? (answerLocked ? lockedDrafts[currentKey] : drafts[currentKey]) : undefined;
-  const answerError = currentKey ? answerErrors[currentKey] ?? null : null;
   const correctCount = Object.values(answers).filter((item) => item.correct).length;
   const answeredCount = Object.keys(answers).length;
 
@@ -337,16 +334,26 @@ export default function QuizPage() {
   };
 
   const goToQuestion = useCallback((nextIndex: number) => {
-    setIdx(nextIndex);
-    if (explainRef.current) gsap.set(explainRef.current, { height: 0 });
-    if (cardRef.current && !window.matchMedia(REDUCED_MOTION).matches) {
-      gsap.fromTo(
-        cardRef.current,
-        { x: 24, autoAlpha: 0 },
-        { x: 0, autoAlpha: 1, duration: 0.35, ease: "power2.out" }
-      );
+    if (submitting || nextIndex < 0 || nextIndex >= questions.length) return;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && cardRef.current?.contains(focused)) {
+      navigationFocusRef.current = focused.getAttribute("aria-label") ?? "";
     }
-  }, [cardRef]);
+    setIdx(nextIndex);
+  }, [submitting, questions.length, cardRef]);
+
+  // A result belongs to its immutable question key. Restore the explanation
+  // after returning to a scored question; never hide a cached server result.
+  useEffect(() => {
+    if (explainRef.current) gsap.set(explainRef.current, { height: result ? "auto" : 0 });
+    const label = navigationFocusRef.current;
+    if (label !== null && cardRef.current) {
+      navigationFocusRef.current = null;
+      const button = label ? cardRef.current.querySelector<HTMLButtonElement>(`button[aria-label="${CSS.escape(label)}"]:not(:disabled)`) : null;
+      const target = button ?? cardRef.current.querySelector<HTMLElement>("[data-question-stem]");
+      target?.focus({ preventScroll: true });
+    }
+  }, [currentKey, result, cardRef]);
 
   useEffect(() => {
     if (loadState !== "ready") return;
@@ -363,43 +370,6 @@ export default function QuizPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goToQuestion, idx, loadState, questions.length, submitting]);
-
-  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    if (window.innerWidth > 768 || submitting || event.touches.length !== 1 || isInteractiveTarget(event.target)) {
-      swipeStartRef.current = null;
-      return;
-    }
-    const touch = event.touches[0];
-    swipeStartRef.current = { x: touch.clientX, y: touch.clientY, deltaX: 0, horizontal: false };
-  };
-
-  const handleTouchMove = (event: TouchEvent<HTMLDivElement>) => {
-    const start = swipeStartRef.current;
-    if (!start || event.touches.length !== 1) return;
-    const touch = event.touches[0];
-    const deltaX = touch.clientX - start.x;
-    const deltaY = touch.clientY - start.y;
-    const absX = Math.abs(deltaX);
-    const absY = Math.abs(deltaY);
-    if (absY >= SWIPE_INTENT_DISTANCE && absX <= absY * SWIPE_HORIZONTAL_RATIO) {
-      swipeStartRef.current = null;
-      return;
-    }
-    if (!start.horizontal) {
-      if (absX < SWIPE_INTENT_DISTANCE || absX <= absY * SWIPE_HORIZONTAL_RATIO) return;
-      start.horizontal = true;
-    }
-    start.deltaX = deltaX;
-    event.preventDefault();
-  };
-
-  const handleTouchEnd = () => {
-    const start = swipeStartRef.current;
-    swipeStartRef.current = null;
-    if (!start?.horizontal || Math.abs(start.deltaX) < SWIPE_DISTANCE) return;
-    if (start.deltaX < 0 && idx < questions.length - 1) goToQuestion(idx + 1);
-    if (start.deltaX > 0 && idx > 0) goToQuestion(idx - 1);
-  };
 
   const setSelected = (value: unknown) => {
     if (!question || result || answerLocked) return;
@@ -672,20 +642,6 @@ export default function QuizPage() {
 
   const confirmed = result !== undefined;
   const favoriteSeedReady = !user || favoritesSeedSessionID === sessionID;
-  const isFavorited = !!(user && favorites?.has(question.question_id));
-  const favoriteLabel = !authReady
-    ? "收藏"
-    : !user
-      ? "登录后收藏"
-      : !favoriteSeedReady
-        ? "读取收藏中…"
-        : favoriteBusy
-        ? isFavorited
-          ? "取消收藏中…"
-          : "收藏中…"
-        : isFavorited
-          ? "已收藏 ✓"
-          : "收藏 +";
 
   const toggleFavorite = () => {
     if (!question || !session || favoriteBusy || !favoriteSeedReady) return;
@@ -724,32 +680,36 @@ export default function QuizPage() {
       .finally(() => setFavoriteBusy(false));
   };
 
-  const optionIndexes = Array.isArray(selected) ? selected.filter((value): value is number => typeof value === "number") : [];
-  const options = question.options ?? [];
-
-  return (
-    // 内容框与页头同为 max-w-site，左缘与返回链接对齐；答题区仍限在 max-w-6xl，行宽不随宽屏拉长。
-    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
-      <div data-block data-enter className="flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 border-b border-line pb-4">
-        <p className="font-mono text-sm">第 <span className="text-accent-text">{idx + 1}</span> / {questions.length} 题</p>
-        <div className="h-1 min-w-32 flex-1 bg-ink/10">
-          <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${((idx + (confirmed ? 1 : 0)) / questions.length) * 100}%` }} />
-        </div>
-        <p className="font-mono text-xs text-ink/60">用时 {fmtTime(elapsed)}</p>
-        <p className="font-mono text-xs text-ink/60">已答 <span className="text-accent-text">{answeredCount}</span></p>
-        <p className="font-mono text-xs text-ink/60">连对 <span className={streak >= 3 ? "text-accent-text" : ""}>{streak}</span></p>
-      </div>
-
-      <div className="mt-8 grid max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_12rem]">
-        <div data-block className="min-w-0 overflow-x-clip">
+  const renderQuestion = (position: number, active: boolean) => {
+    const question = questions[position];
+    const idx = position;
+    const currentKey = questionKey(question);
+    const result = answers[currentKey];
+    const confirmed = result !== undefined;
+    const answerLocked = Object.hasOwn(lockedDrafts, currentKey);
+    const selected = answerLocked ? lockedDrafts[currentKey] : drafts[currentKey];
+    const answerError = answerErrors[currentKey];
+    const options = question.options ?? [];
+    const optionIndexes = Array.isArray(selected) ? selected.filter((value): value is number => typeof value === "number") : [];
+    const isFavorited = !!(user && favorites?.has(question.question_id));
+    const favoriteLabel = !authReady
+      ? "收藏"
+      : !user
+        ? "登录后收藏"
+        : !favoriteSeedReady
+          ? "读取收藏中…"
+          : favoriteBusy
+          ? isFavorited
+            ? "取消收藏中…"
+            : "收藏中…"
+          : isFavorited
+            ? "已收藏 ✓"
+            : "收藏 +";
+    return (
           <div
-            ref={cardRef}
-            data-testid="practice-question-card"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={() => { swipeStartRef.current = null; }}
-            className="touch-pan-y border border-ink bg-paper p-6 md:p-8"
+            ref={active ? cardRef : undefined}
+            data-testid={active ? "practice-question-card" : undefined}
+            className="min-w-0 border border-ink bg-paper p-6 md:p-8"
           >
             <div className="flex flex-wrap items-center gap-3">
               <span className="font-mono text-xs text-accent-text">Q-{String(idx + 1).padStart(2, "0")}</span>
@@ -795,7 +755,7 @@ export default function QuizPage() {
                 </p>
               )}
             </div>
-            <h1 className={cn("text-xl font-medium leading-relaxed md:text-2xl", result ? "mt-4" : "mt-5")}>{question.content}</h1>
+            <div role="heading" aria-level={1} data-question-stem tabIndex={-1} className={cn("text-xl font-medium leading-relaxed md:text-2xl", result ? "mt-4" : "mt-5")}><QuestionMarkdown content={question.content} /></div>
 
             <div className="mt-8 space-y-3">
               {(question.type === "single" || question.type === "multi") && options.map((option, optionIndex) => {
@@ -824,7 +784,7 @@ export default function QuizPage() {
                     )}
                   >
                     <span className="font-mono text-xs">{OPTION_LABEL[optionIndex] ?? optionIndex + 1}</span>
-                    <span className="flex-1 text-sm md:text-base">{option}</span>
+                    <QuestionMarkdown option className="flex-1 text-sm md:text-base" content={option} />
                     {feedback && <OptionFeedbackMark state={feedback} />}
                   </button>
                 );
@@ -875,14 +835,14 @@ export default function QuizPage() {
               )}
             </div>
 
-            <div ref={explainRef} className="h-0 overflow-hidden">
+            <div ref={active ? explainRef : undefined} className={confirmed ? "overflow-hidden" : "h-0 overflow-hidden"}>
               {confirmed && (
                 <div className="mt-6 border-t border-line pt-5">
                   <p className="font-mono text-xs text-accent-text">
                     解析 / <span className="tracking-[0.25em]">EXPLAIN</span>
                   </p>
                   <p className="mt-2 font-mono text-xs text-ink/60">参考答案：{expectedAnswerText(result.expected_answer, question)}</p>
-                  <p className="mt-2 text-sm leading-7 text-ink/80">{result.analysis || "本题暂无补充解析。"}</p>
+                  <QuestionMarkdown className="mt-2 text-sm leading-7 text-ink/80" content={result.analysis || "本题暂无补充解析。"} />
                   {result.replayed && <p className="mt-2 font-mono text-xs text-ink/60">这次作答之前已提交成功，显示的是当时的判题结果。</p>}
                 </div>
               )}
@@ -1029,6 +989,25 @@ export default function QuizPage() {
               )}
             </div>
           </div>
+    );
+  };
+
+  return (
+    // 内容框与页头同为 max-w-site，左缘与返回链接对齐；答题区仍限在 max-w-6xl，行宽不随宽屏拉长。
+    <main className="mx-auto max-w-site px-5 py-10 md:px-8">
+      <div data-block data-enter className="flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 border-b border-line pb-4">
+        <p className="font-mono text-sm">第 <span className="text-accent-text">{idx + 1}</span> / {questions.length} 题</p>
+        <div className="h-1 min-w-32 flex-1 bg-ink/10">
+          <div className="h-full bg-accent transition-[width] duration-300" style={{ width: `${((idx + (confirmed ? 1 : 0)) / questions.length) * 100}%` }} />
+        </div>
+        <p className="font-mono text-xs text-ink/60">用时 {fmtTime(elapsed)}</p>
+        <p className="font-mono text-xs text-ink/60">已答 <span className="text-accent-text">{answeredCount}</span></p>
+        <p className="font-mono text-xs text-ink/60">连对 <span className={streak >= 3 ? "text-accent-text" : ""}>{streak}</span></p>
+      </div>
+
+      <div className="mt-8 grid max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_12rem]">
+        <div data-block className="min-w-0 overflow-x-clip">
+          <QuestionPager count={questions.length} index={idx} disabled={submitting} onChange={goToQuestion} renderQuestion={renderQuestion} />
         </div>
 
         <aside data-enter className="hidden lg:block">

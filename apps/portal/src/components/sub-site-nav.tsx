@@ -72,7 +72,7 @@ export default function SubSiteNav({
             ref={navRef}
             // 键盘聚焦的标签同样整个滑进来：浏览器聚焦时只要标签露出一截就不再横滑，焦点框会被裁掉一边。
             onFocus={revealKeyboardFocus}
-            className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto border-t border-line px-5 scrollbar-none md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0"
+            className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto scroll-smooth border-t border-line px-5 scrollbar-none motion-reduce:scroll-auto md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0"
           >
             {tabs.map((tab, index) => {
               const active = index === activeIndex;

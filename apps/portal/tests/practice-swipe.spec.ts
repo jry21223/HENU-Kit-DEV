@@ -44,7 +44,7 @@ async function newMobilePage(browser: Browser, reducedMotion: "reduce" | "no-pre
   return { context, page: await context.newPage() };
 }
 
-async function mockPractice(page: Page) {
+async function mockPractice(page: Page, firstContent?: string) {
   let answerCalls = 0;
   const answerKeys: string[] = [];
   await page.route("**/api/v1/practice/catalog", (route) =>
@@ -75,7 +75,7 @@ async function mockPractice(page: Page) {
           bank_version_id: bankVersionID,
           mode: "random",
           excluded_unavailable_count: 0,
-          questions,
+          questions: firstContent ? questions.map((item, index) => index === 0 ? { ...item, content: firstContent } : item) : questions,
         },
       }),
     })
@@ -121,20 +121,21 @@ async function touchGesture(page: Page, selector: string, deltaX: number, deltaY
 }
 
 async function touchPath(page: Page, selector: string, points: Array<{ x: number; y: number }>) {
-  await page.locator(selector).evaluate((element, delta) => {
-    const dispatch = (type: string, x: number, y: number, active: boolean) => {
-      const touch = new Touch({ identifier: 1, target: element, clientX: x, clientY: y });
-      element.dispatchEvent(new TouchEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        touches: active ? [touch] : [],
-        changedTouches: [touch],
+  const target = selector.includes("practice-question-card") ? page.locator(selector) : page.getByTestId("practice-question-card").locator(selector);
+  await target.evaluate((element, delta) => {
+    const dispatch = (type: string, x: number, y: number) => {
+      element.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerId: 1, pointerType: "touch",
+        isPrimary: true, clientX: x, clientY: y,
       }));
     };
-    dispatch("touchstart", 250, 320, true);
-    for (const point of delta) dispatch("touchmove", 250 + point.x, 320 + point.y, true);
+    dispatch("pointerdown", 250, 320);
+    // Cross the intent threshold before following the rest of the drag.
+    const first = delta[0] ?? { x: 0, y: 0 };
+    dispatch("pointermove", 250 + first.x * 0.2, 320 + first.y * 0.2);
+    for (const point of delta) dispatch("pointermove", 250 + point.x, 320 + point.y);
     const end = delta.at(-1) ?? { x: 0, y: 0 };
-    dispatch("touchend", 250 + end.x, 320 + end.y, false);
+    dispatch("pointerup", 250 + end.x, 320 + end.y);
   }, points);
 }
 
@@ -151,7 +152,7 @@ test("390px touch swipe navigates without losing drafts, retry identity, or serv
   await touchGesture(page, card, -110, 8);
   await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
   await page.getByLabel("填写答案").fill("保留这份草稿");
-  await touchGesture(page, card, 20, 2);
+  await touchGesture(page, card, 6, 2);
   await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
   await touchGesture(page, card, 12, 140);
   await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
@@ -171,6 +172,7 @@ test("390px touch swipe navigates without losing drafts, retry identity, or serv
 
   await page.getByRole("button", { name: "下一道题" }).click();
   await expect(page.getByLabel("填写答案")).toHaveValue("保留这份草稿");
+  await expect(page.getByRole("button", { name: "下一道题" })).toBeFocused();
   await page.getByLabel("填写答案").press("ArrowRight");
   await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
   await page.getByRole("heading", { name: questions[1].content }).click();
@@ -192,7 +194,7 @@ test("390px touch swipe navigates without losing drafts, retry identity, or serv
   expect(feedbackToggleBox?.height ?? 0).toBeGreaterThanOrEqual(44);
   await touchGesture(page, "[data-feedback] > button", -120, 3);
   await page.getByRole("button", { name: "这道题有问题？提交纠错 +" }).click();
-  const correction = page.getByPlaceholder("简单描述问题，例如：第 2 题解析里的公式有笔误。");
+  const correction = page.getByTestId("practice-question-card").getByPlaceholder("简单描述问题，例如：第 2 题解析里的公式有笔误。");
   await correction.fill("移动端纠错输入保持可用");
   await touchGesture(page, "[data-feedback] textarea", -120, 3);
   await expect(correction).toHaveValue("移动端纠错输入保持可用");
@@ -229,5 +231,59 @@ test("reduced motion reaches the same swipe destination while mouse drag does no
 
   await touchGesture(page, "[data-testid='practice-question-card']", -120, 4);
   await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
+  await context.close();
+});
+
+test("real mobile touch follows the finger and scrolls code without changing questions", async ({ browser, browserName }, testInfo) => {
+  test.skip(browserName !== "chromium", "CDP supplies real touchscreen input in Chromium");
+  const { context, page } = await newMobilePage(browser);
+  await mockPractice(page, '阅读下面代码：\n\n```java\nList<String> list = new ArrayList<>();\n  list.add("a very long value that extends beyond the mobile code viewport");\n```');
+  await page.goto(`/practice/quiz?bank_id=${bankID}&bank_version_id=${bankVersionID}`);
+  await page.getByLabel("题数 / COUNT").fill("3");
+  await page.getByTestId("practice-session-start").click();
+  const card = page.getByTestId("practice-question-card");
+  const code = card.locator("pre");
+  await expect(code).toContainText("List<String>");
+  await expect(code).toHaveCSS("font-size", "14px");
+  await expect(card.locator(".hljs-keyword")).not.toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("markdown-mobile.png"), fullPage: true });
+  await code.focus();
+  await code.press("ArrowRight");
+  await expect(page.getByRole("heading", { name: questions[1].content })).toHaveCount(0);
+  await code.evaluate((element) => { element.scrollLeft = 0; element.blur(); });
+  const session = await context.newCDPSession(page);
+  const touch = async (type: "touchStart" | "touchMove" | "touchEnd", x: number, y: number) => {
+    await session.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+  };
+  await code.scrollIntoViewIfNeeded();
+  const box = (await code.boundingBox())!;
+  const x = box.x + box.width - 24;
+  const y = box.y + 30;
+  await touch("touchStart", x, y);
+  for (let offset = 15; offset <= 135; offset += 15) await touch("touchMove", x - offset, y);
+  await touch("touchEnd", x - 135, y);
+  await expect.poll(() => code.evaluate((el) => el.scrollLeft)).toBeGreaterThan(40);
+  await expect(page.getByRole("button", { name: "下一道题" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: questions[1].content })).toHaveCount(0);
+
+  // Drag on the question text and inspect geometry before releasing: a fade
+  // that starts only on touchend cannot satisfy this assertion.
+  const stem = card.getByRole("heading");
+  await stem.scrollIntoViewIfNeeded();
+  const stemBox = (await stem.boundingBox())!;
+  const before = (await card.boundingBox())!;
+  const dragX = before.x + before.width - 30;
+  const dragY = stemBox.y + 12;
+  await touch("touchStart", dragX, dragY);
+  await touch("touchMove", dragX - 20, dragY);
+  await touch("touchMove", dragX - 70, dragY);
+  await touch("touchMove", dragX - 120, dragY);
+  await expect.poll(async () => (await card.boundingBox())!.x).toBeLessThan(before.x - 60);
+  await touch("touchEnd", dragX - 120, dragY);
+  await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
+  await page.getByRole("button", { name: "上一道题" }).click();
+  await expect(page.getByTestId("practice-question-card").locator("pre")).toBeVisible();
+  const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 1);
   await context.close();
 });
