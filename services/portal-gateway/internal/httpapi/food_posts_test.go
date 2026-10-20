@@ -677,3 +677,65 @@ func foodPostsRequest(t *testing.T, handler *Handler, withSession bool, method, 
 	}
 	return request
 }
+
+func TestAuthorFoodPostEditRoutesBindSessionAndForwardOwnerErrors(t *testing.T) {
+	const path = "/api/v1/food/posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	const body = `{"expected_version":1,"venue_name":"仁和食堂","campus":"minglun","tier":"hang","review_text":"汤鲜料足。","retained_image_positions":[0]}`
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("X-Actor-User-Id") != foodSessionUserID {
+			t.Errorf("actor not bound: %s", r.Header.Get("X-Actor-User-Id"))
+		}
+		id, _, _ := r.BasicAuth()
+		want := "food-post-read"
+		if r.Method == http.MethodPut {
+			want = "food-post-create"
+		}
+		if id != want || r.Header.Get("Cookie") != "" {
+			t.Errorf("wrong credential or cookie: %s", id)
+		}
+		if r.Method == http.MethodPut {
+			raw, _ := io.ReadAll(r.Body)
+			if string(raw) != body || r.URL.Path != path || r.Header.Get("Idempotency-Key") != "author_edit_key" {
+				t.Errorf("mutated edit command")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(409)
+			_, _ = w.Write([]byte(`{"error":{"code":"VERSION_CONFLICT","message":"reload"},"request_id":"req_edit"}`))
+			return
+		}
+		if r.URL.Path != path+"/edit" {
+			t.Errorf("wrong read path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":{"post":{"id":"a","version":1}},"request_id":"req_edit"}`))
+	}))
+	defer upstream.Close()
+	handler := newFoodPostsHandler(t, upstream.URL, unreachablePortalAPIURL())
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		target := path
+		if method == http.MethodGet {
+			target += "/edit"
+		}
+		before := calls
+		rec := httptest.NewRecorder()
+		handler.Router().ServeHTTP(rec, foodPostsRequest(t, handler, false, method, target, body, "author_edit_key"))
+		if rec.Code != 401 || calls != before {
+			t.Fatalf("unauthenticated %s: %d", method, rec.Code)
+		}
+		request := foodPostsRequest(t, handler, true, method, target, body, "author_edit_key")
+		request.Header.Set("X-Actor-User-Id", "99999999-9999-4999-8999-999999999999")
+		rec = httptest.NewRecorder()
+		handler.Router().ServeHTTP(rec, request)
+		want := 200
+		if method == http.MethodPut {
+			want = 409
+		}
+		if rec.Code != want || !strings.Contains(rec.Header().Get("Cache-Control"), "no-store") {
+			t.Fatalf("edit %s=%d %s", method, rec.Code, rec.Body.String())
+		}
+		if method == http.MethodPut && !strings.Contains(rec.Body.String(), `"code":"VERSION_CONFLICT"`) {
+			t.Fatalf("owner code lost: %s", rec.Body.String())
+		}
+	}
+}

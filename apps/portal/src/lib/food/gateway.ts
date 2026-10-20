@@ -15,6 +15,7 @@ import {
 import type { FoodPost } from "@/lib/api/types";
 import { foodStore } from "@/lib/food/mock";
 
+const pendingUpdatedPosts = new Map<string, FoodPost>();
 const pendingCreatedPosts = new Map<string, FoodPost>();
 let gatewayPosts: FoodPost[] | null = null;
 let lastError: unknown = null;
@@ -37,7 +38,7 @@ export async function initFoodGateway(): Promise<void> {
     const postsResp = await fetchFoodPosts();
     gatewayPosts = [
       ...pendingCreatedPosts.values(),
-      ...postsResp.posts.filter((post) => !pendingCreatedPosts.has(post.id)),
+      ...postsResp.posts.filter((post) => !pendingCreatedPosts.has(post.id)).map((post) => pendingUpdatedPosts.get(post.id) ?? post),
     ];
     // 场馆（food/venues）目前没有页面展示，不在这里顺带请求；榜单只等投稿列表（#546）。
     loaded = true;
@@ -66,6 +67,18 @@ export function rememberCreatedFoodPost(post: FoodPost): void {
     return;
   }
   gatewayPosts = [post, ...gatewayPosts.filter((item) => item.id !== post.id)];
+}
+
+/** Editing preserves the owner's created_at ordering; it never promotes a post. */
+export function rememberUpdatedFoodPost(post: FoodPost): void {
+  if (pendingCreatedPosts.has(post.id)) pendingCreatedPosts.set(post.id, post);
+  else pendingUpdatedPosts.set(post.id, post);
+  if (gatewayPosts === null || !gatewayPosts.some((item) => item.id === post.id)) {
+    loaded = false;
+    lastError = null;
+    return;
+  }
+  gatewayPosts = gatewayPosts.map((item) => item.id === post.id ? post : item);
 }
 
 export interface FoodPostsResult {

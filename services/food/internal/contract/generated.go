@@ -1,4 +1,4 @@
-// Code generated from food.yaml (SHA256 8b789969ac6bb86f0d8ebe641ea0ec755515f46832c16619b846977e6dad98b0); DO NOT EDIT.
+// Code generated from food.yaml (SHA256 1201bbc02975ae2f7133222d4908b1f9e97f6764abab951e33aaed9043b61466); DO NOT EDIT.
 package contract
 
 const (
@@ -11,6 +11,8 @@ const (
 	ListPostsRoute  = "/api/v1/food/posts"
 	MyPostsRoute    = "/api/v1/food/posts/mine"
 	PostRoute       = "/api/v1/food/posts/{id}"
+	AuthorPostRoute = "/api/v1/food/posts/{id}/edit"
+	UpdatePostRoute = "/api/v1/food/posts/{id}"
 	PostImageRoute  = "/api/v1/food/posts/{id}/images/{position}"
 	VenuesRoute     = "/api/v1/food/venues"
 )
