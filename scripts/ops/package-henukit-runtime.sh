@@ -193,6 +193,7 @@ install -m 0444 "$source_root"/services/deploy-webhook/deploy/systemd/henukit-ma
 )
 
 for helper in \
+  deploy-henukit-food-scoped.py \
   deploy-henukit-artifact.sh \
   watch-henukit-actions.sh \
   activate-henukit-release.sh \

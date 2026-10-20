@@ -2160,6 +2160,10 @@ reconcile_pending_rollback_contract() {
 
 check_once() {
   local run_row run_id run_attempt release_sha run_status run_conclusion run_url branch_head
+  if [[ -e "$state_root/scoped-food-release" || -L "$state_root/scoped-food-release" ]]; then
+    log "scoped Food release is recorded; full activation is paused until its explicit rollback"
+    return
+  fi
   reconcile_pending_rollback_contract
   [[ "$rollback_reconciliation_handled" == "0" ]] || return 0
   run_row="$(
@@ -2194,6 +2198,8 @@ check_once() {
 
 check_local_artifacts() {
   local branch_head
+  [[ ! -e "$state_root/scoped-food-release" && ! -L "$state_root/scoped-food-release" ]] ||
+    die "scoped Food release must be rolled back before full activation"
   reconcile_pending_rollback_contract
   [[ "$rollback_reconciliation_handled" == "0" ]] || return 0
   branch_head="$(github_branch_head)"

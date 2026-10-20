@@ -213,6 +213,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   for (const file of [
     "./RELEASE_SHA",
     "./bin/deploy-henukit-artifact.sh",
+    "./bin/deploy-henukit-food-scoped.py",
     "./bin/watch-henukit-actions.sh",
     "./bin/adopt-henukit-degraded-baseline.sh",
     "./bin/rotate-henukit-release-signers.sh",

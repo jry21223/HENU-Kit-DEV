@@ -2516,3 +2516,13 @@ test("one-shot refuses while the Account EasyPay provider remains disabled", () 
   assert.match(result.stderr, /ACCOUNT_PORTFOLIO_EASYPAY_ENABLED must be 1/i);
   assert.doesNotMatch(calls, /pg_dump|docker load|^deploy /m);
 });
+
+test("full watcher pauses before artifact or runtime mutations while a scoped release is active", () => {
+  const setup = fixture();
+  writeFileSync(join(setup.state, "scoped-food-release"), "private scoped receipt\n", { mode: 0o600 });
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /scoped Food release/);
+  const calls = readFileSync(setup.log, "utf8");
+  assert.doesNotMatch(calls, /docker load|pg_dump|deploy |iptables|gh run download/);
+});
