@@ -59,12 +59,25 @@ QuizCraft must use its existing `host.docker.internal` Docker host-gateway
 route to the host PostgreSQL 16 `quizcraft_v2` database. The helper derives only
 the host portion for gateway and loopback probes (using the trusted Docker
 container hosts file bound to its exact ID); credentials, database, port,
-and query remain identical. It compares the existing owner's gateway/loopback
-connections and peer-authenticated existing postgres admin connection using
-database OID, server startup, port, database and version. For QuizCraft, only installed
-`/usr/lib/postgresql/16/bin` tools and `/usr/sbin/runuser` are used. The Docker
+and query remain identical. The gateway probe must originate in the running
+QuizCraft container's network namespace: a host-origin connection has a different
+source address and can legitimately be rejected by the existing PostgreSQL HBA.
+The helper opens and pins that exact PID's network namespace, verifies its kernel
+network type and device/inode agreement with Docker's retained `SandboxKey`, and
+passes only that FD to trusted root-owned `/usr/bin/nsenter`. Only the network
+namespace is entered; the installed host PG16 `psql` executes the read-only
+identity query with the same owner environment. No container executable is used.
+Container ID, PID, start time, running state, network settings and both namespace
+bindings must remain unchanged before and after the query; drift fails closed.
+It compares the owner's container-origin gateway connection, host loopback
+connection and peer-authenticated existing postgres admin connection using
+database OID, server startup, port, database and version. Snapshot/dump stay on
+the proven host loopback route and isolated restore uses the existing admin.
+For QuizCraft, only installed `/usr/lib/postgresql/16/bin` tools,
+`/usr/bin/nsenter` and `/usr/sbin/runuser` are used. The Docker
 PostgreSQL service is not this database. No database role, password, grant,
-account, or host configuration is changed.
+account, HBA rule or host configuration is changed. A failed route proof must
+not be bypassed or repaired by changing production authentication rules.
 
 The exact GitHub Contents inventories and Git blob hashes of every QuizCraft
 migration must match between baseline and candidate commits. The packaged

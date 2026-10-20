@@ -5,7 +5,7 @@
 - Portal-specific OAuth callback, PKCE flow, and one-time state (Redis + browser-binding nonce).
 - Portal Session cookie (`__Host-henukit_portal_session`) with AES-256-GCM encryption.
 - Server-to-server signed forwarding to product services (Library, Food, Practice, Notice, Account Portfolio).
-- Portal-specific permission verification via Platform Core (`portal.practice.read`; generic `portal.library.read`/`portal.food.read` owner clients remain removed by #261). ADR-0027 adds only one anonymous, exact Library download-grant client.
+- Portal-specific permission verification via Platform Core where a registered user capability is required. ADR-0052 authenticates only self-service statistics/favorites reads with the verified Portal Session; `portal.practice.read` remains their Gateway-to-QuizCraft service read permission, not a learner role grant. Generic `portal.library.read`/`portal.food.read` owner clients remain removed by #261. ADR-0027 adds only one anonymous, exact Library download-grant client.
 
 ## Does not own
 
@@ -104,3 +104,13 @@ Gateway selects the actor from the Portal Session, forwards the opaque version
 and image selection, and signs with the existing read/write credential rings.
 Food owns the author check, moderation exclusion, versions and replay ledger.
 Image reads retain their digest query in the signed RequestURI.
+
+ADR-0052 corrects only the statistics and favorites read boundary. A valid,
+unexpired encrypted Portal Session supplies an unpadded, non-nil UUID actor;
+Gateway signs that actor with the existing independent read credential and
+QuizCraft restricts the query to the signed actor. These self-service reads
+do not call Platform Core operator RBAC or require an invented learner grant.
+Their read gate, private headers, owner service authentication and honest failure
+behavior remain mandatory. Feedback-status and generic permission checks remain
+unchanged. This uses the existing Portal Session lifetime and does not claim
+live Core Session introspection or an additional revocation guarantee.

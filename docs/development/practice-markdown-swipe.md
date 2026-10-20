@@ -77,11 +77,11 @@ Spec delta reviews: 0 findings; no new product copy.
 ## H3C joint release integration (2026-10-20)
 
 PR #598 is the existing H3C delivery, owned by the “整理并上线 H3C 题库” task.
-Its nine independent banks contain 1,369 reviewed questions; 542 source records
-remain held. PR #588 must wait for that task's content publication/readback and
-acceptance, then ship in a candidate containing both changes. It must not be
-released independently. getWork remains deferred and Food author editing must
-remain available through the reviewed fixed-five cohort.
+Its nine source sets contain 1,369 reviewed questions; 542 source records remain
+held. The owner has completed publication and acceptance, merging supplements
+into five published banks while retaining nine original PDFs. PR #588 retains
+that delivery in the same source history. getWork remains deferred and Food
+author editing must remain available through the reviewed release boundary.
 
 Merge the current main into this existing PR and retain the content-addressed
 H3C figure allowlist in the shared Markdown renderer. Reviewed figures work in
@@ -113,3 +113,20 @@ end. The regression passes before/after horizontal intent locks, from the gutter
 and confirms the next fresh single-finger swipe works. Independent Standards,
 Spec and Public-ready Copy delta reviews have zero remaining findings. These
 are local integration results, not a production deployment claim.
+
+## Current-main compatibility and release hold
+
+The next integration baseline is main
+`27b922825452f46fa1678170b6b1f20ef6180c94` (PR #601). Keep its self-service
+statistics/favorites authorization and Food author editing unchanged. The shared
+figure renderer retains #601's responsive maximum height of `min(28svh,280px)`,
+automatic width and no upscaling, including figures in Markdown options and
+explanations. Existing rendered-browser tests cover three viewport sizes,
+portrait/square/landscape figures, the original-image link and image recovery.
+
+This continuation prepares the existing PR only. Do not merge or switch
+production until the release hold is resolved. The active production HMAC
+configuration already exists, but the current fixed-five helper generates a
+new key for each new release. Existing configuration is not authorization to
+create or rotate a credential. Investigating a path that preserves credentials
+in place does not authorize changing the helper or production configuration.

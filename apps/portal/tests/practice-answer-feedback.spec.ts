@@ -166,37 +166,72 @@ test("judge: a wrong pick shows ✗ and marks the other side as the answer", asy
   await expect(page.getByRole("button", { name: /^错误/ })).toContainText("正确答案");
 });
 
-test("source figures fit a phone screen and remain available in answer analysis", async ({ page }) => {
-  const src = `/practice-assets/h3c/${"a".repeat(64)}.png`;
-  await page.route(`**${src}`, (route) => route.fulfill({
-    contentType: "image/png",
-    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII=", "base64"),
-  }));
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1366, height: 768 }, { width: 360, height: 800 }]) {
+test(`source figures stay compact without cropping or upscaling at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  const src = "/practice-assets/h3c/c8cb43031248931995bb1e9eef62b59c10dc96f33acbdad50cda1eb47377b413.png";
+  const small = "/practice-assets/h3c/f55e6873ac899a02f2bed67dffcb9da6ce367dff5db112d8d40f2e0a8976c507.png";
+  const portrait = "/practice-assets/h3c/63f4c34b6350bb357aa26ef6bd03234fc5808af9461364540c8e4fcfd09b4470.png";
+  const square = "/practice-assets/h3c/2b88300d50f28bf5f842c6d4a35cfe9aa008ec86198de0e4519ea2fd2935ec7e.png";
+  const landscape = "/practice-assets/h3c/4547ee6bdcb442f379db407d50749aa871481088d934429d9c09564ddb809670.png";
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await openScoredQuestion(page, {
     name: "source-figure",
     type: "single",
-    options: ["甲", "乙"],
+    options: ["网络中四台路由器都是 ABR(Area Border Router)", `小图选项\n![选项示意](${small})`],
     correct: true,
     expected: 0,
-    content: `带图练习题\n![网络拓扑](${src})\ninterface GE1/0\n ip address 10.1.1.1 24`,
-    analysis: `根据题图检查各条链路。\n![网络拓扑](${src})`,
+    content: `在四台 MSR 路由器之间运行 OSPF 并划分区域，其连接以及划分方式如图。已知网络中所有链路的 OSPF Cost 值都为 10，那么关于此图描述正确的是______。（选择一项或多项）\n![网络拓扑](${src})`,
+    analysis: `根据题图检查各条链路。\n![纵向配置](${portrait})\n![方形拓扑](${square})\n![横向拓扑](${landscape})`,
   });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(viewport);
+  await page.evaluate(() => document.fonts.ready);
   const figure = page.getByRole("img", { name: "网络拓扑", exact: true });
   await expect(figure).toBeVisible();
-  await expect(figure).toHaveJSProperty("naturalWidth", 1);
+  await expect(figure).toHaveJSProperty("naturalWidth", 459);
   const bounds = await figure.boundingBox();
   expect(bounds).not.toBeNull();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
-  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
-  await expect(page.getByRole("link", { name: "打开网络拓扑原图" })).toHaveAttribute("href", src);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+  expect(bounds!.height).toBeLessThanOrEqual(Math.min(280, viewport.height * 0.28) + 1);
+  const original = page.getByRole("link", { name: "打开网络拓扑原图" });
+  await expect(original).toHaveAttribute("href", src);
+  await expect(original).toHaveAttribute("target", "_blank");
+  await expect(original).toHaveAttribute("rel", "noopener noreferrer");
 
-  await page.getByRole("button", { name: /甲/ }).click();
+  const firstOption = page.getByRole("button", { name: /网络中四台路由器都是 ABR/ });
+  const optionBounds = await firstOption.boundingBox();
+  expect(optionBounds).not.toBeNull();
+  expect(optionBounds!.y - (bounds!.y + bounds!.height)).toBeLessThanOrEqual(64);
+  // On a laptop the diagram must leave room for the first choice in the same viewport.
+  if (viewport.width >= 1024) expect(optionBounds!.y + optionBounds!.height).toBeLessThanOrEqual(viewport.height);
+  await expect(page.getByRole("button", { name: /小图选项/ }).getByRole("link")).toHaveCount(0);
+
+  await firstOption.click();
   await page.getByRole("button", { name: "确认", exact: true }).click();
   await expect(page.getByTestId("practice-verdict")).toHaveText(/回答正确/);
-  await expect(figure).toHaveCount(2);
-  await expect(figure.last()).toBeVisible();
+  for (const label of ["网络拓扑", "选项示意", "纵向配置", "方形拓扑", "横向拓扑"]) {
+    const image = page.getByRole("img", { name: label, exact: true });
+    await expect(image).toHaveJSProperty("complete", true);
+    const geometry = await image.evaluate((element) => {
+      const img = element as HTMLImageElement;
+      const style = getComputedStyle(img);
+      const rect = img.getBoundingClientRect();
+      const horizontalInset = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+      const verticalInset = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      return { x: rect.x, right: rect.right, width: rect.width - horizontalInset, height: rect.height - verticalInset, outerHeight: rect.height, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight, objectFit: style.objectFit };
+    });
+    expect(geometry.naturalWidth).toBeGreaterThan(0);
+    expect(geometry.objectFit).toBe("contain");
+    expect(geometry.outerHeight).toBeLessThanOrEqual(Math.min(280, viewport.height * 0.28) + 1);
+    expect(geometry.x).toBeGreaterThanOrEqual(0);
+    expect(geometry.right).toBeLessThanOrEqual(viewport.width);
+    expect(geometry.width).toBeLessThanOrEqual(geometry.naturalWidth + 1);
+    expect(geometry.height).toBeLessThanOrEqual(geometry.naturalHeight + 1);
+    expect(Math.abs(geometry.width / geometry.height - geometry.naturalWidth / geometry.naturalHeight)).toBeLessThan(0.03);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
 });
+}
 
 test("a failed figure does not hide the next question's valid figure", async ({ page }) => {
   const missing = `/practice-assets/h3c/${"a".repeat(64)}.png`;
