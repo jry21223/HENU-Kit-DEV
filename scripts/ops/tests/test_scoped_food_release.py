@@ -1,8 +1,10 @@
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
+import secrets
 import subprocess
 import tempfile
 import tarfile
@@ -228,6 +230,85 @@ class ReleaseCLI(unittest.TestCase):
             "PATH": str(self.root / "bin") + ":" + os.environ["PATH"],
             "FIXTURE": str(self.root),
         }
+
+    def make_oci_images(self, invalid=None):
+        state_file = self.root / "fake-state.json"
+        state = json.loads(state_file.read_text())
+        for service in SELECTED:
+            path = self.artifacts / ("henukit-" + service + "-" + NEW + ".docker.tar.gz")
+            with tarfile.open(path, "r:gz") as archive:
+                entry = json.load(archive.extractfile("manifest.json"))[0]
+                config = archive.extractfile(entry["Config"]).read()
+            config_id = hashlib.sha256(config).hexdigest()
+            manifest = {
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                "config": {
+                    "mediaType": "application/vnd.oci.image.config.v1+json",
+                    "digest": "sha256:" + config_id,
+                    "size": len(config),
+                },
+                "layers": [],
+            }
+            if invalid == "config":
+                manifest["config"]["digest"] = "sha256:" + "0" * 64
+            raw = json.dumps(manifest).encode()
+            manifest_id = hashlib.sha256(raw).hexdigest()
+            descriptor = {
+                "mediaType": manifest["mediaType"],
+                "digest": "sha256:" + manifest_id,
+                "size": len(raw),
+            }
+            index = {"schemaVersion": 2, "manifests": [descriptor]}
+            if invalid == "ambiguous":
+                index["manifests"].append(descriptor)
+            entry["Config"] = "blobs/sha256/" + config_id
+            with tarfile.open(path, "w:gz") as archive:
+                for name, content in [
+                    ("manifest.json", json.dumps([entry]).encode()),
+                    (entry["Config"], config),
+                    ("index.json", json.dumps(index).encode()),
+                    ("blobs/sha256/" + manifest_id, raw),
+                ]:
+                    member = tarfile.TarInfo(name)
+                    member.size = len(content)
+                    archive.addfile(member, io.BytesIO(content))
+            Path(str(path) + ".sha256").write_text(
+                hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n"
+            )
+            state["images"]["henukit-" + service + ":" + NEW] = "sha256:" + manifest_id
+        state_file.write_text(json.dumps(state))
+
+    def test_oci_manifest_image_identity_executes_and_is_recorded(self):
+        self.make_oci_images()
+        result = self.run_cli("--execute")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        marker = self.root / "var/lib/henukit-actions-watch/scoped-food-release"
+        receipt = json.loads((marker / "receipt.json").read_text())
+        state = json.loads((self.root / "fake-state.json").read_text())
+        for service in SELECTED:
+            self.assertEqual(receipt["images"][service], state["images"]["henukit-" + service + ":" + NEW])
+
+    def test_oci_config_mismatch_and_ambiguous_manifest_stop_before_mutation(self):
+        for invalid in ("config", "ambiguous"):
+            self.make_oci_images(invalid)
+            result = self.run_cli("--preflight")
+            self.assertNotEqual(result.returncode, 0, invalid)
+            self.assertIn("OCI", result.stderr)
+        self.assertFalse(
+            any(c[0] == "docker" and ("up" in c[1] or "load" in c[1] or "exec" in c[1]) for c in self.calls())
+        )
+
+    def test_unrelated_loaded_digest_is_rejected_before_replacement(self):
+        self.make_oci_images()
+        path = self.root / "fake-state.json"
+        state = json.loads(path.read_text())
+        state["images"]["henukit-food:" + NEW] = "sha256:" + "9" * 64
+        path.write_text(json.dumps(state))
+        result = self.run_cli("--execute")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("loaded image identity", result.stderr)
+        self.assertFalse(any(c[0] == "docker" and "up" in c[1] for c in self.calls()))
 
     def run_cli(self, mode, extra=None):
         cmd = [
@@ -485,6 +566,56 @@ class ReleaseCLI(unittest.TestCase):
             any(c[0] == "docker" and ("up" in c[1] or "load" in c[1] or "exec" in c[1]) for c in self.calls())
         )
         self.assertFalse((self.root / "var/lib/henukit-actions-watch/scoped-food-release").exists())
+
+
+class DockerImageInterop(unittest.TestCase):
+    def test_real_docker_saved_archive_binds_the_reported_image_identity(self):
+        tag = "henukit-scoped-image-contract:" + secrets.token_hex(8)
+        container = None
+        with tempfile.TemporaryDirectory(prefix="henukit-image-contract-") as directory:
+            root = Path(directory)
+            payload = io.BytesIO()
+            with tarfile.open(fileobj=payload, mode="w") as archive:
+                data = b"image identity contract\n"
+                entry = tarfile.TarInfo("probe")
+                entry.size = len(data)
+                archive.addfile(entry, io.BytesIO(data))
+            subprocess.run(
+                ["docker", "image", "import", "--platform", "linux/amd64", "-", tag],
+                input=payload.getvalue(),
+                check=True,
+                capture_output=True,
+                timeout=60,
+            )
+            try:
+                path = root / "image.tar"
+                subprocess.run(
+                    ["docker", "image", "save", "--output", str(path), tag],
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
+                actual = json.loads(subprocess.check_output(["docker", "image", "inspect", tag]))[0]
+                spec = importlib.util.spec_from_file_location("scoped_image_contract", SOURCE)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                with tarfile.open(path) as archive:
+                    entry = json.load(archive.extractfile("manifest.json"))[0]
+                    config = archive.extractfile(entry["Config"]).read()
+                    self.assertIn(actual["Id"], module.archive_image_ids(archive, config))
+                self.assertEqual((actual["Os"], actual["Architecture"]), ("linux", "amd64"))
+                container = subprocess.check_output(
+                    ["docker", "create", "--platform", "linux/amd64", "--entrypoint", "/probe", tag],
+                    text=True,
+                    timeout=60,
+                ).strip()
+                created = json.loads(subprocess.check_output(["docker", "inspect", container]))[0]
+                self.assertEqual(created["Image"], actual["Id"])
+                self.assertEqual(created["State"]["Status"], "created")
+            finally:
+                if container:
+                    subprocess.run(["docker", "rm", container], check=True, capture_output=True, timeout=60)
+                subprocess.run(["docker", "image", "rm", tag], check=True, capture_output=True, timeout=60)
 
 
 if __name__ == "__main__":
