@@ -66,6 +66,11 @@ The retired `/quiz/` path may use Next's exact canonical `308` redirect to
 `https://henukit.cn/quiz`. Acceptance requires that canonical URL to return
 `404`; other redirect destinations are rejected without being requested. The
 bounded request budget is shared across the canonical hop.
+Each public probe requires curl to finish the complete response successfully,
+with up to 60 seconds per request and a 210-second total deadline shared by
+retries, retry delays and that canonical hop. The existing 30-attempt ceiling
+also remains. A successful status header followed by an incomplete transfer
+does not pass acceptance.
 
 ## Rollback and interrupted attempts
 
@@ -86,8 +91,8 @@ Do not remove that marker by hand or relabel a mixed runtime healthy. Once the
 scoped units are rolled back and the deferred dependency is restored, proceed
 through the normal full-release gates.
 
-A provenance-verified successor helper can recover the one predecessor
-source/helper-digest pair pinned in `PREDECESSOR_ROLLBACK`, only for
+A provenance-verified successor helper can recover only the predecessor
+source/helper-digest pairs pinned in `PREDECESSOR_ROLLBACKS`, only for
 `rollback_failed` or repeated `rolled_back` receipts. Invoke that verified
 successor with the retained receipt's SHA, run and proof arguments and
 `--rollback`. It preserves the original helper digest, records

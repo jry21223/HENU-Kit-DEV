@@ -37,6 +37,9 @@ units while deferring getWork acceptance.
   routes. Retry bounded readiness/DNS convergence; never broaden accepted
   final status codes to make a failed check pass. The exact same-origin
   `/quiz/` canonical 308 hop is allowed only when `/quiz` still returns 404.
+  Require complete responses, allowing up to 60 seconds per request within a
+  210-second total probe deadline shared across retries and the canonical hop;
+  retain the 30-attempt ceiling. Response headers alone never pass acceptance.
 - On failure restore only the retained three images with their original configuration.
   Preserve user writes; database restore is recovery evidence, not an automatic
   rollback of application data. Recheck every unselected container. A failed
@@ -46,8 +49,8 @@ units while deferring getWork acceptance.
   matching orphaned watcher quiescence can be recovered using the existing
   exact-SHA/instance/nonce protocol.
 
-A verified successor may recover only the exact pinned predecessor
-source/helper digest in failed or already completed rollback state. Preserve
+A verified successor may recover only an exact pinned predecessor
+source/helper digest pair in failed or already completed rollback state. Preserve
 the original helper identity and record the recovery helper digest; all
 existing rollback gates remain mandatory. Other helper/source identities and
 active receipts remain refused.
