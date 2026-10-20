@@ -334,3 +334,20 @@ func responseError(response *http.Response) error {
 		return fmt.Errorf("platform core returned %d", response.StatusCode)
 	}
 }
+
+// CheckQuizcraft binds the Console exchange Session to the exact management capability.
+func (c *Client) CheckQuizcraft(ctx context.Context, token, permission, bank string) error {
+	switch permission {
+	case "quizcraft.workshop.read", "quizcraft.workshop.write", "quizcraft.workshop.publish":
+	default:
+		return ErrInvalid
+	}
+	scope := map[string]string{"kind": "product", "product_code": "quizcraft"}
+	if bank != "" {
+		if id, err := uuid.Parse(bank); err != nil || id == uuid.Nil || id.String() != bank {
+			return ErrInvalid
+		}
+		scope = map[string]string{"kind": "resource", "product_code": "quizcraft", "resource_type": "bank", "resource_id": bank}
+	}
+	return c.checkPermission(ctx, token, permission, scope)
+}

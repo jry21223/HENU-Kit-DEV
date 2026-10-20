@@ -29,6 +29,7 @@ func main() {
 		overviewCredentials[id] = overview.Credentials{ClientID: credential.ClientID, ClientSecret: credential.ClientSecret, KeyID: credential.KeyID}
 	}
 	handler, err := consolegateway.New(consolegateway.Config{
+		QuizcraftManagementEnabled: config.QuizcraftManagementEnabled, QuizcraftAPIURL: config.QuizcraftAPIURL, QuizcraftCredentials: overview.Credentials{ClientID: config.QuizcraftCredentials.ClientID, ClientSecret: config.QuizcraftCredentials.ClientSecret, KeyID: config.QuizcraftCredentials.KeyID},
 		PlatformCoreURL: config.PlatformCoreURL, PlatformAccountOrigin: config.PlatformAuthorize,
 		ClientID: config.ClientID, ClientSecret: config.ClientSecret, KeyID: config.KeyID, RedirectURI: config.RedirectURI,
 		SessionKey: config.SessionKey, Redis: redisClient, Logger: logger,

@@ -82,6 +82,15 @@ func (problem workshopHTTPError) Error() string { return problem.message }
 var errWorkshopReplay = errors.New("workshop idempotent replay")
 
 func (service *practiceHTTP) workshopActor(writer http.ResponseWriter, request *http.Request, permission string, bankID *uuid.UUID, allowResourceList bool) (practiceActor, map[uuid.UUID]bool, bool) {
+	if identity, ok := request.Context().Value(consoleManagementContextKey{}).(consoleManagementIdentity); ok {
+		if identity.permission != permission || (bankID == nil && identity.bankID != "") || (bankID != nil && identity.bankID != bankID.String()) {
+			writeError(writer, http.StatusForbidden, "scope_denied", "Console management permission or bank scope is denied")
+			return practiceActor{}, nil, false
+		}
+		actor := practiceActor{userID: &identity.actorID, key: "user:" + identity.actorID.String(), platformProductScope: bankID == nil}
+		return actor, nil, true
+	}
+
 	actor, status, err := service.actor(writer, request)
 	if err != nil || actor.userID == nil {
 		if err != nil {

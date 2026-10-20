@@ -64,3 +64,18 @@ func TestFromEnvRejectsAccountPortfolioConsolePlaceholderWhenStrongSecretsAreReq
 		t.Fatal("FromEnv() accepted an Account Portfolio Console placeholder secret in strong-secret mode")
 	}
 }
+
+func TestFromEnvQuizcraftManagementDefaultsOffAndRejectsPartialEnablement(t *testing.T) {
+	t.Setenv("CONSOLE_SESSION_KEY", base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
+	for k, v := range map[string]string{"PLATFORM_CORE_URL": "https://account.test", "PLATFORM_ACCOUNT_ORIGIN": "https://account.test", "PLATFORM_CLIENT_ID": "console-gateway", "PLATFORM_CLIENT_SECRET": "platform-secret-with-at-least-32-bytes", "PLATFORM_KEY_ID": "platform-key", "CONSOLE_REDIRECT_URI": "https://console.test/api/v1/auth/callback", "REDIS_ADDR": "redis:6379", "QUIZCRAFT_CONSOLE_ENABLED": "0"} {
+		t.Setenv(k, v)
+	}
+	c, err := FromEnv()
+	if err != nil || c.QuizcraftManagementEnabled {
+		t.Fatalf("default config: %v", err)
+	}
+	t.Setenv("QUIZCRAFT_CONSOLE_ENABLED", "1")
+	if _, err = FromEnv(); err == nil {
+		t.Fatal("enabled incomplete management accepted")
+	}
+}

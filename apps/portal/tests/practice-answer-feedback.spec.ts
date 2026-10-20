@@ -13,6 +13,9 @@ type FeedbackCase = {
   /** Server-owned scoring result the answer endpoint returns. */
   correct: boolean;
   expected: unknown;
+  content?: string;
+  analysis?: string;
+  nextContent?: string;
 };
 
 async function openScoredQuestion(page: Page, input: FeedbackCase) {
@@ -50,9 +53,17 @@ async function openScoredQuestion(page: Page, input: FeedbackCase) {
             type: input.type,
             chapter_id: "chapter-1",
             chapter: "第一章",
-            content: "判题反馈测试题",
+            content: input.content ?? "判题反馈测试题",
             ...(input.options ? { options: input.options } : {}),
-          }],
+          }, ...(input.nextContent ? [{
+            question_id: "77777777-7777-4777-8777-777777777777",
+            question_version_id: "88888888-8888-4888-8888-888888888888",
+            type: input.type,
+            chapter_id: "chapter-1",
+            chapter: "第一章",
+            content: input.nextContent,
+            ...(input.options ? { options: input.options } : {}),
+          }] : [])],
         },
       }),
     })
@@ -68,7 +79,7 @@ async function openScoredQuestion(page: Page, input: FeedbackCase) {
           correct: input.correct,
           replayed: false,
           expected_answer: input.expected,
-          analysis: "服务端解析。",
+          analysis: input.analysis ?? "服务端解析。",
         },
       }),
     })
@@ -76,9 +87,9 @@ async function openScoredQuestion(page: Page, input: FeedbackCase) {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/practice/quiz?bank_id=${bankID}&bank_version_id=${bankVersionID}`);
-  await page.getByLabel("题数 / COUNT").fill("1");
+  await page.getByLabel("题数 / COUNT").fill(input.nextContent ? "2" : "1");
   await page.getByTestId("practice-session-start").click();
-  await expect(page.getByRole("heading", { name: "判题反馈测试题" })).toBeVisible();
+  await expect(page.getByRole("heading").filter({ hasText: input.content?.split("\n")[0] ?? "判题反馈测试题" })).toBeVisible();
 }
 
 test("multi choice: picking only one right option is wrong, shows the missed answer and colours the jump cell", async ({ page }) => {
@@ -153,4 +164,57 @@ test("judge: a wrong pick shows ✗ and marks the other side as the answer", asy
   await expect(page.getByTestId("practice-verdict")).toHaveText(/回答错误/);
   await expect(page.getByRole("button", { name: /^正确/ })).toContainText("✗");
   await expect(page.getByRole("button", { name: /^错误/ })).toContainText("正确答案");
+});
+
+test("source figures fit a phone screen and remain available in answer analysis", async ({ page }) => {
+  const src = `/practice-assets/h3c/${"a".repeat(64)}.png`;
+  await page.route(`**${src}`, (route) => route.fulfill({
+    contentType: "image/png",
+    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII=", "base64"),
+  }));
+  await openScoredQuestion(page, {
+    name: "source-figure",
+    type: "single",
+    options: ["甲", "乙"],
+    correct: true,
+    expected: 0,
+    content: `带图练习题\n![网络拓扑](${src})\ninterface GE1/0\n ip address 10.1.1.1 24`,
+    analysis: `根据题图检查各条链路。\n![网络拓扑](${src})`,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const figure = page.getByRole("img", { name: "网络拓扑", exact: true });
+  await expect(figure).toBeVisible();
+  await expect(figure).toHaveJSProperty("naturalWidth", 1);
+  const bounds = await figure.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await expect(page.getByRole("link", { name: "打开网络拓扑原图" })).toHaveAttribute("href", src);
+
+  await page.getByRole("button", { name: /甲/ }).click();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(page.getByTestId("practice-verdict")).toHaveText(/回答正确/);
+  await expect(figure).toHaveCount(2);
+  await expect(figure.last()).toBeVisible();
+});
+
+test("a failed figure does not hide the next question's valid figure", async ({ page }) => {
+  const missing = `/practice-assets/h3c/${"a".repeat(64)}.png`;
+  const present = `/practice-assets/h3c/${"b".repeat(64)}.png`;
+  await page.route(`**${missing}`, (route) => route.fulfill({ status: 404, body: "missing" }));
+  await page.route(`**${present}`, (route) => route.fulfill({
+    contentType: "image/png",
+    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII=", "base64"),
+  }));
+  await openScoredQuestion(page, {
+    name: "figure-recovery", type: "single", options: ["甲", "乙"], correct: true, expected: 0,
+    content: `第一题\n![网络拓扑](${missing})`,
+    nextContent: `第二题\n![网络拓扑](${present})`,
+  });
+  await expect(page.getByRole("img", { name: "网络拓扑", exact: true })).toContainText("暂无图片");
+  await page.getByRole("button", { name: "第 2 题，未答", exact: true }).click();
+  await expect(page.getByRole("heading").filter({ hasText: "第二题" })).toBeVisible();
+  const recovered = page.getByRole("img", { name: "网络拓扑", exact: true });
+  await expect(recovered).toHaveAttribute("src", present);
+  await expect(recovered).toHaveJSProperty("naturalWidth", 1);
 });

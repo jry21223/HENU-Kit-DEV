@@ -1,0 +1,6 @@
+# Local source preparation and its PDF regression fixtures; Go production does not use these.
+-r requirements.txt
+PyMuPDF==2.0
+Pillow==13.0.0
+reportlab==5.0.1
+pytest==9.1.1

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -50,7 +51,12 @@ func main() {
 	if keyID := os.Getenv("QUIZCRAFT_PORTAL_COMMAND_KEY_ID"); keyID != "" {
 		portalCommandKeys[keyID] = os.Getenv("QUIZCRAFT_PORTAL_COMMAND_CLIENT_SECRET")
 	}
+	managementKeys := map[string]string{}
+	if raw := os.Getenv("QUIZCRAFT_CONSOLE_KEYS_JSON"); raw != "" {
+		fail(json.Unmarshal([]byte(raw), &managementKeys))
+	}
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{
+		ConsoleManagementEnabled: os.Getenv("QUIZCRAFT_CONSOLE_ENABLED") == "1", ConsoleManagementClientID: os.Getenv("QUIZCRAFT_CONSOLE_CLIENT_ID"), ConsoleManagementKeys: managementKeys,
 		Database:              pool,
 		AuthHMACSecret:        []byte(authSecret),
 		LegacyBaseURL:         os.Getenv("QUIZCRAFT_LEGACY_BASE_URL"),

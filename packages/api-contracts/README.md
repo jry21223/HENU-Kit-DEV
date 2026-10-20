@@ -49,3 +49,5 @@ packages/api-contracts/
 - Major：删除字段、改变语义或不兼容认证方式。
 
 安全关键契约变更必须由非作者评审。
+
+Console 题库管理的独立、默认关闭契约见 `openapi/quizcraft-console-management.yaml`；它复用现行题库版本 schema，不恢复独立产品登录。

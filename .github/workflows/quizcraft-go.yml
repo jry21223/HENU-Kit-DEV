@@ -11,8 +11,11 @@ on:
       - products/quizcraft/server.py
       - products/quizcraft/db_storage.py
       - products/quizcraft/tests/**
+      - products/quizcraft/scripts/h3c*.py
+      - products/quizcraft/requirements*.txt
       - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
+      - packages/api-contracts/openapi/quizcraft-console-management.yaml
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
       - .github/workflows/quizcraft-go.yml
@@ -26,8 +29,11 @@ on:
       - products/quizcraft/server.py
       - products/quizcraft/db_storage.py
       - products/quizcraft/tests/**
+      - products/quizcraft/scripts/h3c*.py
+      - products/quizcraft/requirements*.txt
       - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
+      - packages/api-contracts/openapi/quizcraft-console-management.yaml
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
       - .github/workflows/quizcraft-go.yml
@@ -65,7 +71,9 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: products/quizcraft/requirements.txt
+          cache-dependency-path: |
+            products/quizcraft/requirements.txt
+            products/quizcraft/requirements.h3c.txt
       - name: Verify migration round trip and recovery
         run: |
           set -euo pipefail
@@ -122,6 +130,7 @@ jobs:
           bash products/quizcraft/go-service/scripts/generate-contract.sh
           git diff --exit-code -- products/quizcraft/go-service/internal/contract products/quizcraft/go-service/internal/store products/quizcraft/web-app/src/generated/quizcraft-api
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft.yaml
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft-console-management.yaml
           if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" 2>/dev/null; then
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" > /tmp/quizcraft-base.yaml
             cd products/quizcraft/go-service
@@ -156,10 +165,11 @@ jobs:
           ! grep -E 'DO_NOT_PRINT|DO_NOT_PRINT_RESTORE' /tmp/backuprestore-help.txt
       - name: Verify existing FastAPI remains intact
         run: |
-          python -m pip install -r products/quizcraft/requirements.txt pytest
+          python -m pip install -r products/quizcraft/requirements.h3c.txt
           python -m py_compile products/quizcraft/server.py products/quizcraft/db_storage.py
           cd products/quizcraft
           PYTHONPATH=. python -m pytest -q tests/test_shadow_compare.py tests/test_migration_event_outbox.py tests/test_feedback_migration_boundary.py tests/test_cutover_read_only.py tests/test_ranking_privacy.py
+          DATABASE_URL='' PYTHONPATH=. python -m pytest -q tests/test_h3c_pdf_workflow.py tests/test_h3cne_pdf_source.py tests/test_h3c_bank_release.py
       - name: Verify React generated-client shadow flow
         run: |
           set -euo pipefail

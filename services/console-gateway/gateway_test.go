@@ -1,6 +1,7 @@
 package consolegateway
 
 import (
+	"encoding/base64"
 	"net/http"
 	"strings"
 	"testing"
@@ -66,5 +67,18 @@ func TestNewAcceptsProductionLibraryServiceConfiguration(t *testing.T) {
 	}
 	if _, err := New(config); err != nil {
 		t.Fatalf("New() rejected the production Library service configuration: %v", err)
+	}
+}
+
+func TestNewRejectsQuizcraftManagementSessionKeyReuse(t *testing.T) {
+	key := []byte("0123456789abcdef0123456789abcdef")
+	config := Config{PlatformCoreURL: "https://account.test", PlatformAccountOrigin: "https://account.test", ClientID: "console-gateway", ClientSecret: "platform-secret-at-least-32-characters", KeyID: "platform-key", RedirectURI: "https://console.test/api/v1/auth/callback", SessionKey: key, Redis: redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}), QuizcraftManagementEnabled: true, QuizcraftAPIURL: "http://quizcraft:10089", QuizcraftCredentials: overview.Credentials{ClientID: "console-management", ClientSecret: string(key), KeyID: "management-key"}}
+	defer config.Redis.Close()
+	if _, err := New(config); err == nil {
+		t.Fatal("browser Session key accepted as management credential")
+	}
+	config.QuizcraftCredentials.ClientSecret = base64.StdEncoding.EncodeToString(key)
+	if _, err := New(config); err == nil {
+		t.Fatal("encoded browser Session key accepted as management credential")
 	}
 }

@@ -28,16 +28,19 @@ import (
 )
 
 type PracticeHTTPConfig struct {
-	Database            *pgxpool.Pool
-	AuthHMACSecret      []byte
-	LegacyBaseURL       string
-	LegacyCompareSecret string
-	HTTPClient          *http.Client
-	Now                 func() time.Time
-	SummaryClientID     string
-	SummaryKeys         map[string]string
-	CatalogClientID     string
-	CatalogKeys         map[string]string
+	ConsoleManagementEnabled  bool
+	ConsoleManagementClientID string
+	ConsoleManagementKeys     map[string]string
+	Database                  *pgxpool.Pool
+	AuthHMACSecret            []byte
+	LegacyBaseURL             string
+	LegacyCompareSecret       string
+	HTTPClient                *http.Client
+	Now                       func() time.Time
+	SummaryClientID           string
+	SummaryKeys               map[string]string
+	CatalogClientID           string
+	CatalogKeys               map[string]string
 	// Portal command credentials are a deliberately separate, write-capable
 	// service identity. They must never share the read-only catalog key ring.
 	PortalCommandClientID   string
@@ -58,29 +61,31 @@ type PracticeHTTPConfig struct {
 }
 
 type practiceHTTP struct {
-	database                *pgxpool.Pool
-	queries                 *store.Queries
-	authHMACSecret          []byte
-	legacyBaseURL           string
-	legacyCompareSecret     string
-	httpClient              *http.Client
-	now                     func() time.Time
-	summaryClientID         string
-	summaryKeys             map[string]string
-	catalogClientID         string
-	catalogKeys             map[string]string
-	portalCommandClientID   string
-	portalCommandKeys       map[string]string
-	portalCommandsEnabled   bool
-	platform                *platformClient
-	sessionCodec            *quizcraftSessionCodec
-	publicURL               string
-	inboxExchangeToken      string
-	inboxDispatchWake       chan struct{}
-	allowTestWorkshopClaims bool
-	writesDisabled          bool
-	releaseSHA              string
-	cutoverEvidenceSecret   []byte
+	consoleManagementClientID string
+	consoleManagementKeys     map[string]string
+	database                  *pgxpool.Pool
+	queries                   *store.Queries
+	authHMACSecret            []byte
+	legacyBaseURL             string
+	legacyCompareSecret       string
+	httpClient                *http.Client
+	now                       func() time.Time
+	summaryClientID           string
+	summaryKeys               map[string]string
+	catalogClientID           string
+	catalogKeys               map[string]string
+	portalCommandClientID     string
+	portalCommandKeys         map[string]string
+	portalCommandsEnabled     bool
+	platform                  *platformClient
+	sessionCodec              *quizcraftSessionCodec
+	publicURL                 string
+	inboxExchangeToken        string
+	inboxDispatchWake         chan struct{}
+	allowTestWorkshopClaims   bool
+	writesDisabled            bool
+	releaseSHA                string
+	cutoverEvidenceSecret     []byte
 }
 
 type practiceActor struct {
@@ -192,6 +197,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if config.PortalCommandClientID != "" && config.PortalCommandClientID == config.CatalogClientID {
 		return nil, errors.New("QuizCraft Portal command client must differ from the catalog client")
 	}
+	if err := validateConsoleManagementConfig(config); err != nil {
+		return nil, err
+	}
 	platformValues := []bool{config.PlatformCoreURL != "", config.PlatformClientID != "", config.PlatformClientSecret != "", config.PlatformKeyID != "", config.PublicURL != "", len(config.SessionEncryptionKey) != 0}
 	platformCount := 0
 	for _, configured := range platformValues {
@@ -250,7 +258,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	if releaseSHA == "" {
 		releaseSHA = "development"
 	}
-	service := &practiceHTTP{database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, catalogClientID: config.CatalogClientID, catalogKeys: config.CatalogKeys, portalCommandClientID: config.PortalCommandClientID, portalCommandKeys: config.PortalCommandKeys, portalCommandsEnabled: config.PortalCommandsEnabled, allowTestWorkshopClaims: config.AllowTestWorkshopClaims, writesDisabled: config.WritesDisabled, releaseSHA: releaseSHA, cutoverEvidenceSecret: config.CutoverEvidenceSecret}
+	service := &practiceHTTP{consoleManagementClientID: config.ConsoleManagementClientID, consoleManagementKeys: config.ConsoleManagementKeys, database: config.Database, queries: store.New(config.Database), authHMACSecret: config.AuthHMACSecret, legacyBaseURL: legacyBaseURL, legacyCompareSecret: config.LegacyCompareSecret, httpClient: client, now: now, summaryClientID: config.SummaryClientID, summaryKeys: config.SummaryKeys, catalogClientID: config.CatalogClientID, catalogKeys: config.CatalogKeys, portalCommandClientID: config.PortalCommandClientID, portalCommandKeys: config.PortalCommandKeys, portalCommandsEnabled: config.PortalCommandsEnabled, allowTestWorkshopClaims: config.AllowTestWorkshopClaims, writesDisabled: config.WritesDisabled, releaseSHA: releaseSHA, cutoverEvidenceSecret: config.CutoverEvidenceSecret}
 	if platformCount == len(platformValues) {
 		platform, err := newPlatformClient(config.PlatformCoreURL, config.PlatformClientID, config.PlatformClientSecret, config.PlatformKeyID, client)
 		if err != nil {
@@ -298,6 +306,9 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 	// The versioned administration contract remains available to trusted
 	// service callers during data migration, but it has no browser UI or OAuth
 	// entry. Removing this frozen API is a separate breaking-contract release.
+	if config.ConsoleManagementEnabled {
+		service.registerConsoleManagement(router)
+	}
 	router.Get("/api/v1/workshop/banks", service.listWorkshopBanks)
 	router.Get("/api/v1/workshop/catalog", service.listWorkshopCatalog)
 	writes.Post("/api/v1/workshop/banks", service.createWorkshopBank)
