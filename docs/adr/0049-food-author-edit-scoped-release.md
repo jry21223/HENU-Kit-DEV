@@ -35,7 +35,8 @@ units while deferring getWork acceptance.
 - Require readiness, public product/health routes, existing authentication and
   legacy-route rejection, and unauthenticated rejection at both new edit
   routes. Retry bounded readiness/DNS convergence; never broaden accepted
-  status codes to make a failed check pass.
+  final status codes to make a failed check pass. The exact same-origin
+  `/quiz/` canonical 308 hop is allowed only when `/quiz` still returns 404.
 - On failure restore only the retained three images with their original configuration.
   Preserve user writes; database restore is recovery evidence, not an automatic
   rollback of application data. Recheck every unselected container. A failed
@@ -44,6 +45,12 @@ units while deferring getWork acceptance.
   replacing containers. An interrupted intent requires explicit rollback;
   matching orphaned watcher quiescence can be recovered using the existing
   exact-SHA/instance/nonce protocol.
+
+A verified successor may recover only the exact pinned predecessor
+source/helper digest in failed or already completed rollback state. Preserve
+the original helper identity and record the recovery helper digest; all
+existing rollback gates remain mandatory. Other helper/source identities and
+active receipts remain refused.
 
 ## Consequences
 
