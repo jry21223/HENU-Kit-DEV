@@ -18,7 +18,7 @@ export default function QuestionContent({ content, openImages = true }: { conten
         src={src}
         alt={label}
         loading="eager"
-        className="block h-auto max-h-[70vh] w-full bg-white object-contain p-2"
+        className="block h-auto max-h-[min(28svh,17.5rem)] w-auto max-w-full bg-white object-contain p-2"
       />
     );
     parts.push(openImages ? (

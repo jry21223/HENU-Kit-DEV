@@ -410,8 +410,8 @@ func (c *Client) actorBoundRead(ctx context.Context, path, actorUserID, requestI
 		return resp, nil
 	case http.StatusUnauthorized, http.StatusForbidden:
 		_ = resp.Body.Close()
-		// Portal Gateway has already checked the browser's session and live
-		// permission. A Core 401/403 here is an internal service-auth failure,
+		// Portal Gateway has already authenticated the browser. A Core
+		// 401/403 here is an internal service-auth failure,
 		// never evidence that the browser should be asked to sign in again.
 		return nil, fmt.Errorf("portal actor read %s service authentication: %w", path, ErrStatsUnavailable)
 	default:

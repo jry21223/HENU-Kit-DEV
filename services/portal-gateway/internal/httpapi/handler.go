@@ -1036,6 +1036,21 @@ func readGatewayPracticeCommandBody(r *http.Request) ([]byte, error) {
 	return raw, nil
 }
 
+// practiceSelfServiceReadActor authenticates reads of the user's own learning
+// data under ADR-0052. The actor is never selected by browser headers, query
+// parameters, or the anonymous Practice cookie. Core still verifies the actor
+// bound to the independent read credential before accessing owner data.
+func (h *Handler) practiceSelfServiceReadActor(r *http.Request) (string, error) {
+	value, err := h.readSession(r)
+	if err != nil {
+		return "", err
+	}
+	if !practice.ValidUUID(value.UserID) || strings.TrimSpace(value.UserID) != value.UserID || value.UserID == "00000000-0000-0000-0000-000000000000" {
+		return "", errors.New("invalid Portal Session actor")
+	}
+	return value.UserID, nil
+}
+
 // personalPracticeStats returns only the signed-in user's Core-derived
 // statistics. It intentionally has no mock or Portal API success fallback.
 func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) {
@@ -1044,16 +1059,12 @@ func (h *Handler) personalPracticeStats(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, http.StatusServiceUnavailable, "practice statistics are not enabled", "学习统计暂时不可用，请稍后再试")
 		return
 	}
-	value, err := h.readSession(r)
+	actorUserID, err := h.practiceSelfServiceReadActor(r)
 	if err != nil {
 		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 		return
 	}
-	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
-		h.writePracticeReadPermissionError(w, r, err)
-		return
-	}
-	stats, err := h.quizCraft.PersonalStats(r.Context(), value.UserID, requestIDOf(w, r))
+	stats, err := h.quizCraft.PersonalStats(r.Context(), actorUserID, requestIDOf(w, r))
 	if err != nil {
 		switch {
 		case errors.Is(err, practice.ErrStatsUnauthorized):
@@ -1119,25 +1130,21 @@ func (h *Handler) getPracticeFeedbackStatus(w http.ResponseWriter, r *http.Reque
 }
 
 // favoritesRead runs the shared actor-bound favorites read skeleton: private
-// response headers, service gate, session, permission, then the typed read
-// and JSON write. It mirrors personalPracticeStats/getPracticeFeedbackStatus
-// but stays scoped to favorites so the main-line handlers remain untouched.
+// response headers, service gate, verified Portal Session actor, then the typed
+// owner read. ADR-0052 uses the same self-service policy as favorite writes;
+// this is not an operator RBAC read.
 func (h *Handler) favoritesRead(w http.ResponseWriter, r *http.Request, read func(userID, requestID string) (any, error)) {
 	setPrivateResponseHeaders(w)
 	if h.quizCraft == nil {
 		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are not enabled", "收藏暂时不可用，请稍后再试")
 		return
 	}
-	value, err := h.readSession(r)
+	actorUserID, err := h.practiceSelfServiceReadActor(r)
 	if err != nil {
 		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
 		return
 	}
-	if err := h.platform.CheckPermission(r.Context(), value.ExchangeToken, practice.CatalogReadPermission); err != nil {
-		h.writePracticeReadPermissionError(w, r, err)
-		return
-	}
-	envelope, err := read(value.UserID, requestIDOf(w, r))
+	envelope, err := read(actorUserID, requestIDOf(w, r))
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "practice favorites are temporarily unavailable", "收藏暂时不可用，请稍后再试")
 		return
@@ -1190,7 +1197,7 @@ func (h *Handler) favoritesCommand(w http.ResponseWriter, r *http.Request, succe
 }
 
 // writePracticeReadPermissionError maps Platform Core permission outcomes for
-// actor-bound practice reads (stats, feedback status, favorites).
+// feedback-status permission checks. Self-service stats/favorites use ADR-0052.
 func (h *Handler) writePracticeReadPermissionError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, platformcore.ErrUnauthorized):
