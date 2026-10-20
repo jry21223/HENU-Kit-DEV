@@ -9,6 +9,7 @@ import python from "highlight.js/lib/languages/python";
 import cpp from "highlight.js/lib/languages/cpp";
 import sql from "highlight.js/lib/languages/sql";
 import { cn } from "@/lib/cn";
+import { PracticeFigure } from "./question-content";
 
 const remarkPlugins = [remarkGfm];
 const rehypePlugins: NonNullable<React.ComponentProps<typeof Markdown>["rehypePlugins"]> = [
@@ -16,6 +17,7 @@ const rehypePlugins: NonNullable<React.ComponentProps<typeof Markdown>["rehypePl
 ];
 
 const components: Components = {
+  img: ({ src, alt }) => <PracticeFigure src={typeof src === "string" ? src : ""} alt={alt} />,
   pre: ({ children }) => (
     <pre data-no-question-swipe tabIndex={0} aria-label="代码，可横向滚动" className="question-code">
       {children}
@@ -29,7 +31,7 @@ const components: Components = {
 };
 
 // Options live inside native answer buttons: use only phrasing content and no
-// nested links, focusable scrollers, inputs, images or other interactive nodes.
+// nested links, focusable scrollers, inputs or other interactive nodes.
 function OptionBlock({ children }: { children?: ReactNode }) {
   return <span className="block">{children}</span>;
 }
@@ -37,7 +39,7 @@ const optionComponents: Components = {
   p: OptionBlock,
   pre: ({ children }) => <span data-no-question-swipe className="question-code block">{children}</span>,
   a: ({ children }) => <span>{children}</span>,
-  img: ({ alt }) => <span>{alt}</span>,
+  img: ({ src, alt }) => <PracticeFigure src={typeof src === "string" ? src : ""} alt={alt} openImage={false} />,
   table: ({ children }) => <span data-no-question-swipe className="block max-w-full overflow-x-auto"><span role="table" className="table text-sm">{children}</span></span>,
   thead: ({ children }) => <span role="rowgroup" className="table-header-group">{children}</span>,
   tbody: ({ children }) => <span role="rowgroup" className="table-row-group">{children}</span>,

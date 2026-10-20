@@ -48,6 +48,24 @@ describe("createFoodPost", () => {
     vi.unstubAllGlobals();
   });
 
+  it("loads structured author fields and PUTs a versioned edit without selecting an actor", async () => {
+    const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({post: createdPost(), request_id: "req_edit"}), {status: 200}));
+    vi.stubGlobal("fetch", fetch);
+    const { fetchFoodPostForEdit, updateFoodPost } = await import("./submit");
+    await fetchFoodPostForEdit("post-1");
+    expect(fetch.mock.calls[0][0]).toBe("/api/v1/food/posts/post-1/edit");
+    const input = {...CREATE_INPUT, expected_version: 2, retained_image_positions: [1]};
+    await updateFoodPost("post-1", input, IDEMPOTENCY_KEY);
+    const [url, init] = fetch.mock.calls[1];
+    expect(url).toBe("/api/v1/food/posts/post-1");
+    expect(init.method).toBe("PUT");
+    expect(init.credentials).toBe("include");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(init.body)).toEqual(input);
+    expect(init.headers["Idempotency-Key"]).toBe(IDEMPOTENCY_KEY);
+    expect(init.headers["X-Actor-User-Id"]).toBeUndefined();
+  });
+
   it("POSTs the create input with credentials, JSON content type and the Idempotency-Key header", async () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(

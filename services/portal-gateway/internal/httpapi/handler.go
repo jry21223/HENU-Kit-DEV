@@ -272,6 +272,8 @@ func (h *Handler) Router() chi.Router {
 	// credentials and never fall back to the Portal API proxy. The exact routes
 	// are registered before the wildcard, and /posts/mine before /posts/{post_id}.
 	r.Post("/api/v1/food/posts", h.createFoodPost)
+	r.Put("/api/v1/food/posts/{post_id}", h.updateFoodPost)
+	r.Get("/api/v1/food/posts/{post_id}/edit", h.authorFoodPost)
 	r.Get("/api/v1/food/posts", h.listFoodPosts)
 	r.Get("/api/v1/food/posts/mine", h.myFoodPosts)
 	r.Get("/api/v1/food/posts/{post_id}", h.foodPostDetail)
@@ -1207,6 +1209,14 @@ func (h *Handler) writePracticeReadPermissionError(w http.ResponseWriter, r *htt
 // missing session is a 401, never an anonymous downgrade. The browser body is
 // re-signed byte-for-byte with the independent create credential.
 func (h *Handler) createFoodPost(w http.ResponseWriter, r *http.Request) {
+	h.saveFoodPost(w, r, false)
+}
+
+func (h *Handler) updateFoodPost(w http.ResponseWriter, r *http.Request) {
+	h.saveFoodPost(w, r, true)
+}
+
+func (h *Handler) saveFoodPost(w http.ResponseWriter, r *http.Request, update bool) {
 	setPrivateResponseHeaders(w)
 	value, err := h.readSession(r)
 	if err != nil {
@@ -1231,7 +1241,12 @@ func (h *Handler) createFoodPost(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "food_post_invalid", "请求内容不完整，请检查后重试")
 		return
 	}
-	data, err := h.foodPosts.CreatePost(r.Context(), value.UserID, value.DisplayName, requestIDOf(w, r), idempotencyKey, raw)
+	var data json.RawMessage
+	if update {
+		data, err = h.foodPosts.UpdatePost(r.Context(), chi.URLParam(r, "post_id"), value.UserID, value.DisplayName, requestIDOf(w, r), idempotencyKey, raw)
+	} else {
+		data, err = h.foodPosts.CreatePost(r.Context(), value.UserID, value.DisplayName, requestIDOf(w, r), idempotencyKey, raw)
+	}
 	if err != nil {
 		h.writeFoodPostsFailure(w, r, err, foodPostCreateUnavailable)
 		return
@@ -1259,6 +1274,18 @@ func (h *Handler) myFoodPosts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) authorFoodPost(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w)
+	value, err := h.readSession(r)
+	if err != nil {
+		writeError(w, r, http.StatusUnauthorized, "not authenticated", "登录已过期，请重新登录")
+		return
+	}
+	h.foodPostsRead(w, r, func(ctx context.Context, requestID string) (json.RawMessage, error) {
+		return h.foodPosts.AuthorPost(ctx, chi.URLParam(r, "post_id"), value.UserID, requestID)
+	})
+}
+
 func (h *Handler) foodPostDetail(w http.ResponseWriter, r *http.Request) {
 	h.foodPostsRead(w, r, func(ctx context.Context, requestID string) (json.RawMessage, error) {
 		return h.foodPosts.Post(ctx, requestID, chi.URLParam(r, "post_id"))
@@ -1272,7 +1299,7 @@ func (h *Handler) foodPostImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "food_posts_unavailable", foodPostsReadUnavailable)
 		return
 	}
-	image, err := h.foodPosts.PostImage(r.Context(), requestIDOf(w, r), chi.URLParam(r, "post_id"), chi.URLParam(r, "position"))
+	image, err := h.foodPosts.PostImage(r.Context(), requestIDOf(w, r), chi.URLParam(r, "post_id"), chi.URLParam(r, "position"), r.URL.RawQuery)
 	if err != nil {
 		h.writeFoodPostsFailure(w, r, err, foodPostsReadUnavailable)
 		return

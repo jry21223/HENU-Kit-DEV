@@ -50,6 +50,38 @@ export interface FoodPostCreateResponse {
   request_id: string;
 }
 
+export interface FoodPostUpdateInput extends FoodPostCreateInput {
+  expected_version: number;
+  retained_image_positions: number[];
+}
+
+export interface FoodPostEditData extends Omit<FoodPostCreateInput, "images"> {
+  id: string;
+  version: number;
+  dishes: FoodPostDishInput[];
+  images: { position: number; url: string }[];
+}
+
+export function fetchFoodPostForEdit(
+  id: string,
+): Promise<{ post: FoodPostEditData; request_id: string }> {
+  return apiFetchRequired(`/api/v1/food/posts/${encodeURIComponent(id)}/edit`, {
+    cache: "no-store",
+    credentials: "include",
+  });
+}
+
+export function updateFoodPost(
+  id: string,
+  input: FoodPostUpdateInput,
+  key: string,
+): Promise<FoodPostCreateResponse> {
+  return apiFetchRequired(`/api/v1/food/posts/${encodeURIComponent(id)}`, {
+    ...foodPostCommandInit(key, input),
+    method: "PUT",
+  });
+}
+
 // ---- 每日上限 ----
 
 /** Food 每日投稿上限错误码(food.yaml 429 响应,经 Gateway 原样透传)。 */
@@ -74,7 +106,10 @@ export function isFoodPostDailyCapError(error: unknown): boolean {
 }
 
 export function isFoodPostPlaceholderError(error: unknown): boolean {
-  return error instanceof PortalHttpError && error.errorCode === FOOD_POST_PLACEHOLDER_CODE;
+  return (
+    error instanceof PortalHttpError &&
+    error.errorCode === FOOD_POST_PLACEHOLDER_CODE
+  );
 }
 
 export function foodPostPlaceholderMessage(): string {
@@ -85,7 +120,7 @@ export function foodPostPlaceholderMessage(): string {
 
 function foodPostCommandInit(
   idempotencyKey: string,
-  input: FoodPostCreateInput
+  input: FoodPostCreateInput,
 ): RequestInit {
   const key = idempotencyKey.trim();
   if (key.length < 8 || key.length > 200) {
@@ -112,11 +147,11 @@ function foodPostCommandInit(
  */
 export async function createFoodPost(
   input: FoodPostCreateInput,
-  idempotencyKey: string
+  idempotencyKey: string,
 ): Promise<FoodPostCreateResponse> {
   return apiFetchRequired<FoodPostCreateResponse>(
     "/api/v1/food/posts",
-    foodPostCommandInit(idempotencyKey, input)
+    foodPostCommandInit(idempotencyKey, input),
   );
 }
 
@@ -127,7 +162,7 @@ export async function createFoodPost(
  * (JPG/PNG/WebP、单张 ≤2MiB),再从 dataURL 去掉 data: 前缀得到纯 base64。
  */
 export async function foodPostImageFromFile(
-  file: File
+  file: File,
 ): Promise<FoodPostImageInput> {
   const dataUrl = await fileToDataUrl(file);
   const comma = dataUrl.indexOf(",");

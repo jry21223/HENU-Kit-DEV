@@ -23,7 +23,40 @@ export default function QuestionPager({ count, index, disabled, onChange, render
 }) {
   const swiperRef = useRef<SwiperInstance | null>(null);
   const gestureRef = useRef<{ x: number; y: number; cancelled: boolean } | null>(null);
+  const multiTouchRef = useRef(false);
   const reducedMotion = useSyncExternalStore(subscribeMotion, getMotion, getServerMotion);
+
+  useEffect(() => {
+    function cancelMultitouch(event: TouchEvent) {
+      const swiper = swiperRef.current;
+      if (event.touches.length < 2 || !gestureRef.current || !swiper || swiper.destroyed) return;
+      // Capture before Swiper's document move listener, including a second
+      // contact outside the track. Native zoom keeps its default behavior.
+      multiTouchRef.current = true;
+      gestureRef.current.cancelled = true;
+      swiper.params.longSwipes = false;
+      swiper.params.shortSwipes = false;
+      swiper.allowTouchMove = false;
+      swiper.slideTo(index, 0);
+    }
+    function finishMultitouch(event: TouchEvent) {
+      const swiper = swiperRef.current;
+      if (event.touches.length || !multiTouchRef.current || !swiper || swiper.destroyed) return;
+      multiTouchRef.current = false;
+      swiper.allowTouchMove = !disabled && swiper.params.allowTouchMove !== false;
+    }
+    const options = { capture: true, passive: true };
+    document.addEventListener("touchstart", cancelMultitouch, options);
+    document.addEventListener("touchmove", cancelMultitouch, options);
+    document.addEventListener("touchend", finishMultitouch, options);
+    document.addEventListener("touchcancel", finishMultitouch, options);
+    return () => {
+      document.removeEventListener("touchstart", cancelMultitouch, options);
+      document.removeEventListener("touchmove", cancelMultitouch, options);
+      document.removeEventListener("touchend", finishMultitouch, options);
+      document.removeEventListener("touchcancel", finishMultitouch, options);
+    };
+  }, [index, disabled]);
 
   useEffect(() => {
     const swiper = swiperRef.current;
@@ -62,6 +95,7 @@ export default function QuestionPager({ count, index, disabled, onChange, render
       noSwipingSelector="button, input, textarea, select, a, [contenteditable='true'], [data-no-question-swipe]"
       onSwiper={(swiper) => { swiperRef.current = swiper; }}
       onTouchStart={(swiper, event) => {
+        if (multiTouchRef.current) return;
         const point = "touches" in event ? event.touches[0] : event;
         gestureRef.current = point ? { x: point.pageX, y: point.pageY, cancelled: false } : null;
         swiper.params.longSwipes = true;

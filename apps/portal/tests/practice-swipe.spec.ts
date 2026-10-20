@@ -33,9 +33,9 @@ const questions = [
   },
 ] as const;
 
-async function newMobilePage(browser: Browser, reducedMotion: "reduce" | "no-preference" = "no-preference") {
+async function newMobilePage(browser: Browser, baseURL: string | undefined, reducedMotion: "reduce" | "no-preference" = "no-preference") {
   const context = await browser.newContext({
-    baseURL: "http://localhost:3001",
+    baseURL,
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
@@ -139,8 +139,8 @@ async function touchPath(page: Page, selector: string, points: Array<{ x: number
   }, points);
 }
 
-test("390px touch swipe navigates without losing drafts, retry identity, or server results", async ({ browser }) => {
-  const { context, page } = await newMobilePage(browser);
+test("390px touch swipe navigates without losing drafts, retry identity, or server results", async ({ browser, baseURL }) => {
+  const { context, page } = await newMobilePage(browser, baseURL);
   const commands = await mockPractice(page);
   await startPractice(page);
   const card = "[data-testid='practice-question-card']";
@@ -215,8 +215,8 @@ test("390px touch swipe navigates without losing drafts, retry identity, or serv
   await context.close();
 });
 
-test("reduced motion reaches the same swipe destination while mouse drag does nothing", async ({ browser }) => {
-  const { context, page } = await newMobilePage(browser, "reduce");
+test("reduced motion reaches the same swipe destination while mouse drag does nothing", async ({ browser, baseURL }) => {
+  const { context, page } = await newMobilePage(browser, baseURL, "reduce");
   await mockPractice(page);
   await startPractice(page);
   const card = page.getByTestId("practice-question-card");
@@ -234,9 +234,9 @@ test("reduced motion reaches the same swipe destination while mouse drag does no
   await context.close();
 });
 
-test("real mobile touch follows the finger and scrolls code without changing questions", async ({ browser, browserName }, testInfo) => {
+test("real mobile touch follows the finger and scrolls code without changing questions", async ({ browser, browserName, baseURL }, testInfo) => {
   test.skip(browserName !== "chromium", "CDP supplies real touchscreen input in Chromium");
-  const { context, page } = await newMobilePage(browser);
+  const { context, page } = await newMobilePage(browser, baseURL);
   await mockPractice(page, '阅读下面代码：\n\n```java\nList<String> list = new ArrayList<>();\n  list.add("a very long value that extends beyond the mobile code viewport");\n```');
   await page.goto(`/practice/quiz?bank_id=${bankID}&bank_version_id=${bankVersionID}`);
   await page.getByLabel("题数 / COUNT").fill("3");
@@ -285,5 +285,41 @@ test("real mobile touch follows the finger and scrolls code without changing que
   await expect(page.getByTestId("practice-question-card").locator("pre")).toBeVisible();
   const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(width.scroll).toBeLessThanOrEqual(width.client + 1);
+  await context.close();
+});
+
+test("a two-finger pinch cancels navigation before and after horizontal intent locks", async ({ browser, browserName, baseURL }) => {
+  test.skip(browserName !== "chromium", "CDP supplies genuine simultaneous touchscreen contacts");
+  const { context, page } = await newMobilePage(browser, baseURL);
+  await mockPractice(page);
+  await startPractice(page);
+  const session = await context.newCDPSession(page);
+  const send = (type: "touchStart" | "touchMove" | "touchEnd", points: { x: number; y: number; id: number }[]) =>
+    session.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+
+  for (const { initialDrag, secondX } of [
+    { initialDrag: 0, secondX: 80 },
+    { initialDrag: 60, secondX: 80 },
+    { initialDrag: 0, secondX: 10 },
+  ]) {
+    const stem = page.getByTestId("practice-question-card").getByRole("heading");
+    await stem.scrollIntoViewIfNeeded();
+    const y = (await stem.boundingBox())!.y + 15;
+    await send("touchStart", [{ x: 270, y, id: 1 }]);
+    if (initialDrag) {
+      await send("touchMove", [{ x: 245, y, id: 1 }]);
+      await send("touchMove", [{ x: 210, y, id: 1 }]);
+    }
+    await send("touchStart", [{ x: 270 - initialDrag, y, id: 1 }, { x: secondX, y, id: 2 }]);
+    for (let step = 1; step <= 4; step++) {
+      await send("touchMove", [{ x: 270 - initialDrag - step * (initialDrag ? 20 : 35), y, id: 1 }, { x: secondX + step * 7.5, y, id: 2 }]);
+    }
+    await send("touchEnd", []);
+    await expect(page.getByRole("heading", { name: questions[0].content })).toBeVisible();
+    // The next fresh one-finger gesture remains usable after cancellation.
+    await touchGesture(page, "[data-testid='practice-question-card']", -120, 4);
+    await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
+    await page.getByRole("button", { name: "上一道题" }).click();
+  }
   await context.close();
 });

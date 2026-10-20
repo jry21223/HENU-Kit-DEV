@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           run_contract_tests() {
+            python3 -m unittest discover -s scripts/ops/tests -p 'test_scoped*.py' -v
             node --test \
               scripts/ops/tests/deploy-henukit-workflow.test.mjs \
               scripts/ops/tests/import-legacy-portal-food-images.test.mjs \

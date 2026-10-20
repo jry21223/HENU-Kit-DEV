@@ -63,11 +63,53 @@ mobile tab widths. Neither local config nor fonts are repository changes.
 
 Production activation requires the existing operator-owned exact-SHA release
 entry and evidence described in docs/operations/henukit-artifact-deployment.md.
-This workspace has no configured production SSH identity; local success and
-GitHub merge must not be described as proof that production changed.
+The original implementation workspace had no configured production SSH identity.
+Local success and GitHub merge must not be described as proof that production
+changed; the joint release now uses the existing Mac operator environment.
 
 Compatibility follow-up: an additional red/green regression showed that discarding
 raw HTML nodes also lost the literal `<String>` from unformatted legacy prose.
 The renderer now uses react-markdown's default escaped-text handling (without
 rehype-raw), preserving that notation while keeping HTML inert. Standards and
 Spec delta reviews: 0 findings; no new product copy.
+
+
+## H3C joint release integration (2026-10-20)
+
+PR #598 is the existing H3C delivery, owned by the “整理并上线 H3C 题库” task.
+Its nine independent banks contain 1,369 reviewed questions; 542 source records
+remain held. PR #588 must wait for that task's content publication/readback and
+acceptance, then ship in a candidate containing both changes. It must not be
+released independently. getWork remains deferred and Food author editing must
+remain available through the reviewed fixed-five cohort.
+
+Merge the current main into this existing PR and retain the content-addressed
+H3C figure allowlist in the shared Markdown renderer. Reviewed figures work in
+stems, options and analysis; option figures do not nest interactive links inside
+answer buttons. External/traversal image sources do not create image requests.
+Keep the current source-figure fallback/recovery behavior and Markdown/swipe
+acceptance together. No content import, publication, permissions or migrations
+are performed by this presentation change.
+
+The dependency was freshly identified from PR #598 and the owner's current
+publication evidence, not from the unrelated standalone QuizCraft upload skill.
+Merged code, successful builds and frozen local banks are not proof of completed
+production content publication. The joint release additionally requires final
+main CI, attestation, both database isolated restores, scoped rollback safety,
+real author Food edit, real Library download and public Practice answer/image/
+Markdown/swipe acceptance on the user's Mac.
+
+
+Joint integration verification: Portal 307 unit tests and five Node contracts,
+TypeScript, production build and public-artifact checks passed. Lint reports no
+errors (three existing navigation warnings). On the user's macOS 26.6, the
+production build passed all 51 Chromium Practice/session/answer-feedback/swipe/
+transition/navigation cases. This includes H3C figures and failed-image recovery.
+A real CDP pinch first reproduced unintended navigation. The fix uses passive
+native document capture listeners scoped by the active pager gesture; it avoids
+Swiper React's event-prop translation, catches a second finger in the page
+gutter, leaves browser defaults intact and restores swiping after all touches
+end. The regression passes before/after horizontal intent locks, from the gutter,
+and confirms the next fresh single-finger swipe works. Independent Standards,
+Spec and Public-ready Copy delta reviews have zero remaining findings. These
+are local integration results, not a production deployment claim.

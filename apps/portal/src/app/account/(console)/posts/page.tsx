@@ -70,7 +70,7 @@ export default function MyFoodPostsPage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">我的投稿</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          这里是你发布过的全部美食投稿；投稿创建后立即公开，点击任意一条可查看公开详情页。
+          这里是你发布过的全部美食投稿；投稿创建后立即公开，可以查看公开详情，也可以编辑自己的投稿。
         </p>
       </section>
 
@@ -119,14 +119,13 @@ export default function MyFoodPostsPage() {
           ) : (
             <div className="border-t border-ink">
               {posts.map((post) => (
-                <Link
+                <article
                   key={post.id}
-                  href={`/food/post/${post.id}`}
                   className="group block border-b border-line px-1 py-5 transition-colors hover:bg-ink/5"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <p className="min-w-0 truncate font-display text-lg font-bold transition-colors group-hover:text-accent-text">
-                      {post.title}
+                      <Link href={`/food/post/${post.id}`} className="inline-flex min-h-11 items-center">{post.title}</Link>
                     </p>
                     <span className="shrink-0 border border-accent px-2 py-1 font-mono text-xs text-accent-text">
                       {tierLabelFor(post.tags)}
@@ -136,7 +135,8 @@ export default function MyFoodPostsPage() {
                   <p className="mt-2 font-mono text-xs text-ink/65">
                     {CAMPUSES[post.campus].name} · 发布于 {formatTimestamp(post.time)}
                   </p>
-                </Link>
+                  {!post.hidden && <Link href={`/food/post/${post.id}/edit`} aria-label={`编辑投稿：${post.title}`} className="mt-3 inline-flex min-h-11 items-center border border-ink px-4 py-2 font-mono text-xs">编辑</Link>}
+                </article>
               ))}
             </div>
           )}

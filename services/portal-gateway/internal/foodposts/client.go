@@ -114,10 +114,19 @@ func NewClient(baseURL, createClientID, createClientSecret, createKeyID, readCli
 // display-name snapshot come exclusively from the verified Portal Session,
 // and the body is re-signed byte-for-byte with the create credential.
 func (c *Client) CreatePost(ctx context.Context, actorUserID, actorDisplayName, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	return c.writePost(ctx, http.MethodPost, PostsPath, actorUserID, actorDisplayName, requestID, idempotencyKey, raw)
+}
+
+// UpdatePost forwards only the exact author-edit command using the existing write credential.
+func (c *Client) UpdatePost(ctx context.Context, postID, actorUserID, actorDisplayName, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
+	return c.writePost(ctx, http.MethodPut, PostPath(postID), actorUserID, actorDisplayName, requestID, idempotencyKey, raw)
+}
+
+func (c *Client) writePost(ctx context.Context, method, path, actorUserID, actorDisplayName, requestID, idempotencyKey string, raw []byte) (json.RawMessage, error) {
 	if strings.TrimSpace(actorUserID) == "" || strings.TrimSpace(actorDisplayName) == "" || !ValidIdempotencyKey(idempotencyKey) || len(raw) == 0 || len(raw) > maxBodyBytes {
 		return nil, ErrBadRequest
 	}
-	body, _, _, err := c.call(ctx, http.MethodPost, PostsPath, c.createSigner, requestID, raw, func(request *http.Request) {
+	body, _, _, err := c.call(ctx, method, path, c.createSigner, requestID, raw, func(request *http.Request) {
 		request.Header.Set("X-Actor-User-Id", actorUserID)
 		request.Header.Set("X-Actor-Display-Name", actorDisplayName)
 		request.Header.Set("Idempotency-Key", idempotencyKey)
@@ -149,6 +158,17 @@ func (c *Client) MyPosts(ctx context.Context, actorUserID, requestID string) (js
 	return unwrapEnvelope(body)
 }
 
+// AuthorPost reads structured editable data with the session actor and read credential.
+func (c *Client) AuthorPost(ctx context.Context, postID, actorUserID, requestID string) (json.RawMessage, error) {
+	body, _, _, err := c.call(ctx, http.MethodGet, PostPath(postID)+"/edit", c.readSigner, requestID, nil, func(request *http.Request) {
+		request.Header.Set("X-Actor-User-Id", actorUserID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return unwrapEnvelope(body)
+}
+
 // Post forwards one public post detail. Food's 404 passes through unchanged.
 func (c *Client) Post(ctx context.Context, requestID, postID string) (json.RawMessage, error) {
 	if strings.TrimSpace(postID) == "" {
@@ -158,11 +178,11 @@ func (c *Client) Post(ctx context.Context, requestID, postID string) (json.RawMe
 }
 
 // PostImage forwards one stored photo and its cache headers.
-func (c *Client) PostImage(ctx context.Context, requestID, postID, position string) (*Image, error) {
+func (c *Client) PostImage(ctx context.Context, requestID, postID, position, rawQuery string) (*Image, error) {
 	if strings.TrimSpace(postID) == "" || strings.TrimSpace(position) == "" {
 		return nil, ErrBadRequest
 	}
-	body, _, header, err := c.call(ctx, http.MethodGet, PostImagePath(postID, position), c.readSigner, requestID, nil, nil)
+	body, _, header, err := c.call(ctx, http.MethodGet, withQuery(PostImagePath(postID, position), rawQuery), c.readSigner, requestID, nil, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,455 @@
+openapi: 3.0.3
+info:
+  title: HENU Kit Console question-bank management
+  version: 0.1.0
+  description: |
+    API-only, default-off management bridge. Console checks its own normal OAuth
+    Session with Platform Core on every request; no product OAuth, new grants or
+    direct activation are introduced. Read and write bodies are limited to 2 MiB;
+    complete owner responses are bounded to 8 MiB. Existing Workshop lifecycle,
+    optimistic versions, idempotency and review-before-publish remain mandatory.
+    Owner signature canonical lines are METHOD, request URI, timestamp, nonce,
+    raw-body SHA256 hex, actor UUID, permission, bank UUID (empty for product),
+    and Idempotency-Key (empty for GET), joined by LF. Dedicated management keys
+    cannot be shared with Portal, summary or browser Session credentials.
+servers:
+  - url: https://console.henukit.cn
+paths:
+  /api/v1/quizcraft/workshop/banks:
+    get:
+      summary: List workshop banks and active versions
+      tags: [Workshop]
+      operationId: consoleManagementGatewayListWorkshopBanks
+      security: [{ consoleSession: [] }]
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Published Workshop banks, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/BankListEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+    post:
+      summary: Create a stable workshop bank
+      tags: [Workshop]
+      operationId: consoleManagementGatewayCreateWorkshopBank
+      security: [{ consoleSession: [] }]
+      parameters: [{ $ref: '#/components/parameters/Origin' }, { $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/CreateWorkshopBank' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '201': { description: Bank write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    get:
+      summary: List workshop banks and active versions
+      tags: [Workshop]
+      operationId: consoleManagementOwnerListWorkshopBanks
+      security: [{ managementBasic: [], managementSignature: [] }]
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Published Workshop banks, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/BankListEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+    post:
+      summary: Create a stable workshop bank
+      tags: [Workshop]
+      operationId: consoleManagementOwnerCreateWorkshopBank
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters: [{ $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/CreateWorkshopBank' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '201': { description: Bank write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/catalog:
+    get:
+      summary: List Workshop banks with draft, validation, and publication lifecycle state
+      tags: [Workshop]
+      operationId: consoleManagementGatewayListWorkshopCatalog
+      security: [{ consoleSession: [] }]
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Workshop lifecycle catalog, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/WorkshopBankListEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/catalog:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    get:
+      summary: List Workshop banks with draft, validation, and publication lifecycle state
+      tags: [Workshop]
+      operationId: consoleManagementOwnerListWorkshopCatalog
+      security: [{ managementBasic: [], managementSignature: [] }]
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Workshop lifecycle catalog, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/WorkshopBankListEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/banks/{bank_id}/versions:
+    post:
+      summary: Create an immutable draft bank version
+      tags: [Workshop]
+      operationId: consoleManagementGatewayCreateWorkshopBankVersion
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/CreateBankVersion' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '201': { description: Version write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks/{bank_id}/versions:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    post:
+      summary: Create an immutable draft bank version
+      tags: [Workshop]
+      operationId: consoleManagementOwnerCreateWorkshopBankVersion
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/CreateBankVersion' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '201': { description: Version write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/banks/{bank_id}/imports:
+    post:
+      summary: Import and validate an immutable workshop bank version
+      tags: [Workshop]
+      operationId: consoleManagementGatewayImportWorkshopBank
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { allOf: [{ $ref: './quizcraft.yaml#/components/schemas/BankImportRequest' }, { type: object, required: [expected_version] }] }
+            examples:
+              valid:
+                value:
+                  expected_version: 1
+                  source_sha256: 1f1e1d1c1b1a19181716151413121110abcdefabcdefabcdefabcdefabcdefab
+                  questions:
+                    - { source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: ['1', '2'], answer: 1 }
+            x-invalid-examples:
+              - { expected_version: 1, source_sha256: bad, questions: [{ source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: [], answer: null }] }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '201': { description: Import report for an accepted immutable version, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ImportReportEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '422': { description: Import rejected without content writes, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ImportReportEnvelope' } } } }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks/{bank_id}/imports:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    post:
+      summary: Import and validate an immutable workshop bank version
+      tags: [Workshop]
+      operationId: consoleManagementOwnerImportWorkshopBank
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { allOf: [{ $ref: './quizcraft.yaml#/components/schemas/BankImportRequest' }, { type: object, required: [expected_version] }] }
+            examples:
+              valid:
+                value:
+                  expected_version: 1
+                  source_sha256: 1f1e1d1c1b1a19181716151413121110abcdefabcdefabcdefabcdefabcdefab
+                  questions:
+                    - { source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: ['1', '2'], answer: 1 }
+            x-invalid-examples:
+              - { expected_version: 1, source_sha256: bad, questions: [{ source_question_id: q0001, type: single, chapter_id: ch01, content: '1+1=?', options: [], answer: null }] }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '201': { description: Import report for an accepted immutable version, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ImportReportEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '422': { description: Import rejected without content writes, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ImportReportEnvelope' } } } }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/banks/{bank_id}/versions/{bank_version_id}:
+    get:
+      summary: Read one immutable version with full questions for human validation
+      tags: [Workshop]
+      operationId: consoleManagementGatewayGetWorkshopBankVersion
+      security: [{ consoleSession: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Full authorized validation view, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/WorkshopVersionDetailEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './quizcraft.yaml#/components/responses/NotFound' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks/{bank_id}/versions/{bank_version_id}:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    get:
+      summary: Read one immutable version with full questions for human validation
+      tags: [Workshop]
+      operationId: consoleManagementOwnerGetWorkshopBankVersion
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Full authorized validation view, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/WorkshopVersionDetailEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './quizcraft.yaml#/components/responses/NotFound' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/banks/{bank_id}/versions/{bank_version_id}/validate:
+    post:
+      summary: Record human validation of a draft before publication
+      tags: [Workshop]
+      operationId: consoleManagementGatewayValidateWorkshopBankVersion
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/VersionCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Validation write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks/{bank_id}/versions/{bank_version_id}/validate:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    post:
+      summary: Record human validation of a draft before publication
+      tags: [Workshop]
+      operationId: consoleManagementOwnerValidateWorkshopBankVersion
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/VersionCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Validation write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/banks/{bank_id}/versions/{bank_version_id}/publish:
+    post:
+      summary: Publish a human-validated immutable version
+      tags: [Workshop]
+      operationId: consoleManagementGatewayPublishWorkshopBankVersion
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/VersionCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Publish write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks/{bank_id}/versions/{bank_version_id}/publish:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    post:
+      summary: Publish a human-validated immutable version
+      tags: [Workshop]
+      operationId: consoleManagementOwnerPublishWorkshopBankVersion
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/VersionCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Publish write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/banks/{bank_id}/versions/{bank_version_id}/unpublish:
+    post:
+      summary: Unpublish a bank version without deleting its facts
+      tags: [Workshop]
+      operationId: consoleManagementGatewayUnpublishWorkshopBankVersion
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/VersionCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Unpublish write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks/{bank_id}/versions/{bank_version_id}/unpublish:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    post:
+      summary: Unpublish a bank version without deleting its facts
+      tags: [Workshop]
+      operationId: consoleManagementOwnerUnpublishWorkshopBankVersion
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/BankVersionID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/VersionCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Unpublish write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/quizcraft/workshop/banks/{bank_id}/rollback:
+    post:
+      summary: Roll back by republishing a prior immutable version
+      tags: [Workshop]
+      operationId: consoleManagementGatewayRollbackWorkshopBank
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Origin' }
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/RollbackCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Rollback write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+  /api/v1/console/workshop/banks/{bank_id}/rollback:
+    parameters:
+      - { $ref: '#/components/parameters/Actor' }
+      - { $ref: '#/components/parameters/Permission' }
+      - { $ref: '#/components/parameters/BankScope' }
+      - { $ref: '#/components/parameters/Timestamp' }
+      - { $ref: '#/components/parameters/Nonce' }
+      - { $ref: '#/components/parameters/KeyID' }
+      - { $ref: '#/components/parameters/ServiceID' }
+    post:
+      summary: Roll back by republishing a prior immutable version
+      tags: [Workshop]
+      operationId: consoleManagementOwnerRollbackWorkshopBank
+      security: [{ managementBasic: [], managementSignature: [] }]
+      parameters:
+        - $ref: './quizcraft.yaml#/components/parameters/BankID'
+        - $ref: './quizcraft.yaml#/components/parameters/IdempotencyKey'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/RollbackCommand' } } } }
+      responses:
+        '413': { description: Request body exceeds 2 MiB, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/ErrorEnvelope' } } } }
+        '200': { description: Rollback write result, content: { application/json: { schema: { $ref: './quizcraft.yaml#/components/schemas/OperationEnvelope' } } } }
+        '401': { $ref: './quizcraft.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './quizcraft.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './quizcraft.yaml#/components/responses/Conflict' }
+        '503': { $ref: './quizcraft.yaml#/components/responses/ServiceUnavailable' }
+components:
+  securitySchemes:
+    consoleSession: { type: apiKey, in: cookie, name: __Host-henukit_console_session }
+    managementBasic: { type: http, scheme: basic }
+    managementSignature: { type: apiKey, in: header, name: X-Signature }
+  parameters:
+    Actor: { name: X-Actor-User-Id, in: header, required: true, schema: { type: string, format: uuid } }
+    Permission: { name: X-Permission-Code, in: header, required: true, schema: { type: string, enum: [quizcraft.workshop.read, quizcraft.workshop.write, quizcraft.workshop.publish] } }
+    Origin: { name: Origin, in: header, required: true, description: Exact HTTPS Console request origin required for cookie-authenticated writes, schema: { type: string, format: uri } }
+    BankScope: { name: X-Resource-Id, in: header, required: false, description: Requested bank UUID; absent for product-scoped listing or bank creation, schema: { type: string } }
+    Timestamp: { name: X-Timestamp, in: header, required: true, schema: { type: string, pattern: '^[0-9]+$' } }
+    Nonce: { name: X-Nonce, in: header, required: true, schema: { type: string, minLength: 32, maxLength: 32 } }
+    KeyID: { name: X-Key-Id, in: header, required: true, schema: { type: string } }
+    ServiceID: { name: X-Service-Id, in: header, required: true, schema: { type: string } }

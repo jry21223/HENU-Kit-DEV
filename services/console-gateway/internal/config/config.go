@@ -8,6 +8,9 @@ import (
 )
 
 type Config struct {
+	QuizcraftManagementEnabled  bool
+	QuizcraftAPIURL             string
+	QuizcraftCredentials        SummaryCredentials
 	ListenAddr                  string
 	PlatformCoreURL             string
 	PlatformAuthorize           string
@@ -81,6 +84,12 @@ func FromEnv() (Config, error) {
 	}
 	if len(missing) > 0 {
 		return Config{}, errors.New("console gateway configuration is incomplete; set " + strings.Join(missing, ", "))
+	}
+	config.QuizcraftManagementEnabled = os.Getenv("QUIZCRAFT_CONSOLE_ENABLED") == "1"
+	config.QuizcraftAPIURL = os.Getenv("QUIZCRAFT_CONSOLE_API_URL")
+	config.QuizcraftCredentials = SummaryCredentials{ClientID: os.Getenv("QUIZCRAFT_CONSOLE_CLIENT_ID"), ClientSecret: os.Getenv("QUIZCRAFT_CONSOLE_SECRET"), KeyID: os.Getenv("QUIZCRAFT_CONSOLE_KEY_ID")}
+	if config.QuizcraftManagementEnabled && (config.QuizcraftAPIURL == "" || config.QuizcraftCredentials.ClientID == "" || config.QuizcraftCredentials.KeyID == "" || len(config.QuizcraftCredentials.ClientSecret) < 32 || isPlaceholderSecret(config.QuizcraftCredentials.ClientSecret)) {
+		return Config{}, errors.New("QuizCraft Console management configuration is incomplete or placeholder")
 	}
 	accountConfigured := config.AccountPortfolioAPIURL != "" || config.AccountPortfolioCredentials.ClientID != "" || config.AccountPortfolioCredentials.ClientSecret != "" || config.AccountPortfolioCredentials.KeyID != ""
 	if accountConfigured {

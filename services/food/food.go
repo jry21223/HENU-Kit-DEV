@@ -87,6 +87,7 @@ func New(config Config) (http.Handler, error) {
 	router.Group(func(posts chi.Router) {
 		posts.Use(h.postAuthenticate(postRoleCreate))
 		posts.Post(contract.CreatePostRoute, h.createPost)
+		posts.Put(contract.UpdatePostRoute, h.updateAuthorPost)
 	})
 	router.Group(func(posts chi.Router) {
 		posts.Use(h.postAuthenticate(postRoleRead))
@@ -99,6 +100,7 @@ func New(config Config) (http.Handler, error) {
 		posts.Use(h.postAuthenticate(postRoleRead))
 		posts.Use(h.postActorRequired)
 		posts.Get(contract.MyPostsRoute, h.myPosts)
+		posts.Get(contract.AuthorPostRoute, h.getAuthorPost)
 	})
 	return router, nil
 }

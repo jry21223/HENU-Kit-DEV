@@ -38,4 +38,25 @@ describe("question Markdown", () => {
     const html = renderToStaticMarkup(<QuestionMarkdown content="List<String> values;" />);
     expect(html).toContain("List&lt;String&gt; values;");
   });
+
+  it("keeps reviewed H3C figures inside an option without an interactive link", () => {
+    const path = `/practice-assets/h3c/${"b".repeat(64)}.png`;
+    const html = renderToStaticMarkup(<button><QuestionMarkdown option content={`![配置](${path})`} /></button>);
+    expect(html).toContain(`src="${path}"`);
+    expect(html).toContain('alt="配置"');
+    expect(html).not.toContain("<a ");
+  });
+
+
+  it("combines fenced commands with reviewed figures without requesting untrusted images", () => {
+    const path = `/practice-assets/h3c/${"a".repeat(64)}.png`;
+    const html = renderToStaticMarkup(<QuestionMarkdown content={`配置：\n\n\`\`\`\ninterface GE1/0\n ip address 10.1.1.1 24\n\`\`\`\n\n![网络拓扑](${path})\n\n![外部图](https://outside.example/a.png)\n![越界图](/practice-assets/h3c/../secret.png)`} />);
+    expect(html).toContain("<pre");
+    expect(html).toContain(" ip address 10.1.1.1 24");
+    expect(html).toContain(`src="${path}"`);
+    expect(html).toContain('aria-label="打开网络拓扑原图"');
+    expect(html.match(/<img /g)).toHaveLength(1);
+    expect(html).not.toContain('src="https://');
+  });
+
 });
