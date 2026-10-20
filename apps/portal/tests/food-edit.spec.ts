@@ -133,9 +133,10 @@ for (const width of [360, 1440]) {
     await page.getByRole("button", { name: "保存修改 →" }).click();
     await expect(page.getByLabel("店铺名")).toBeDisabled();
     await expect(page.getByRole("button", { name: "提交中…" })).toBeDisabled();
-    expect(writes).toBe(1);
+    await expect.poll(() => writes).toBe(1);
     release();
     await expect(page).toHaveURL(`/food/post/${id}`);
+    expect(writes).toBe(1);
   });
 }
 
