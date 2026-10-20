@@ -5,6 +5,10 @@ built either by GitHub Actions or by the controlled WSL Linux/amd64 builder
 described below. The host does not compile the repository and does not read
 secrets from the release artifact.
 
+The explicitly authorized, fixed Portal/Gateway/Food scope is documented in
+[Food author-edit scoped release](henukit-food-scoped-release.md). It records
+getWork acceptance as deferred and does not advance the full-stack version.
+
 ## Release procedure
 
 1. Select one successful `Build HENU Kit release artifacts` run for the exact full SHA. Download every image archive, its `.sha256` file, and `henukit-runtime-<sha>.tar.gz` with its checksum.

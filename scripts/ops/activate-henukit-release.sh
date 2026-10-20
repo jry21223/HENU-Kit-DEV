@@ -60,6 +60,8 @@ blocker_issue="${HENUKIT_BLOCKER_ISSUE:-166}"
 branch="${HENUKIT_BRANCH:-main}"
 workflow="${HENUKIT_WORKFLOW:-deploy-henukit.yml}"
 state_root="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}"
+[[ ! -e "$state_root/scoped-food-release" && ! -L "$state_root/scoped-food-release" ]] ||
+  die "scoped Food release must be rolled back before full approval"
 watcher="${HENUKIT_WATCHER:-/usr/local/sbin/watch-henukit-actions}"
 env_file="${HENUKIT_ENV_FILE:-}"
 token_file="${GH_TOKEN_FILE:-/etc/henukit/github-actions-read.token}"

@@ -592,3 +592,15 @@ test("one command refuses a failed newest workflow before preparing or modifying
   assert.match(result.stderr, /not the newest completed successful/i);
   assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^watcher |^ssh /m);
 });
+
+test("full approval entry refuses an active scoped release before external or environment writes", () => {
+  const setup = fixture();
+  writeFileSync(join(setup.state, "scoped-food-release"), "private scoped receipt\n", { mode: 0o600 });
+  const before = readFileSync(setup.env.HENUKIT_ENV_FILE);
+  const result = spawnSync(command, [releaseSha, "--execute"], { env: setup.env, encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /scoped Food release/);
+  assert.deepEqual(readFileSync(setup.env.HENUKIT_ENV_FILE), before);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /watcher|ssh|gateway/);
+});
