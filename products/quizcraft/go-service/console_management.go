@@ -26,19 +26,19 @@ type consoleManagementIdentity struct {
 
 func validateConsoleManagementConfig(config PracticeHTTPConfig) error {
 	if (config.ConsoleManagementClientID == "") != (len(config.ConsoleManagementKeys) == 0) || (config.ConsoleManagementEnabled && len(config.ConsoleManagementKeys) == 0) {
-		return errors.New("Console management requires a client and dedicated key ring")
+		return errors.New("invalid configuration: Console management requires a client and dedicated key ring")
 	}
 	if config.ConsoleManagementClientID != "" && (config.ConsoleManagementClientID == config.SummaryClientID || config.ConsoleManagementClientID == config.CatalogClientID || config.ConsoleManagementClientID == config.PortalCommandClientID) {
-		return errors.New("Console management client must be separate from summary and Portal clients")
+		return errors.New("invalid configuration: Console management client must be separate from summary and Portal clients")
 	}
 	for id, secret := range config.ConsoleManagementKeys {
 		if id == "" || len(secret) < 32 || secret == string(config.AuthHMACSecret) || secret == string(config.CutoverEvidenceSecret) || secret == config.PlatformClientSecret || secret == string(config.SessionEncryptionKey) {
-			return errors.New("Console management key ring is invalid or shared")
+			return errors.New("invalid configuration: Console management key ring is invalid or shared")
 		}
 		for _, ring := range []map[string]string{config.SummaryKeys, config.CatalogKeys, config.PortalCommandKeys} {
 			for _, other := range ring {
 				if hmac.Equal([]byte(secret), []byte(other)) {
-					return errors.New("Console management keys must not be shared")
+					return errors.New("invalid configuration: Console management keys must not be shared")
 				}
 			}
 		}
