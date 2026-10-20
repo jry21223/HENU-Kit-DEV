@@ -45,3 +45,11 @@ _Avoid_: 已绑定账号、由显示名推定的账号
 HC-15 exposes only Food submission review, anomaly resolution/dismissal, and tier-adjustment confirmation/rejection. Console Gateway verifies one exact `food.*` permission within product Scope `food`, signs the actor context, and never connects to the Food database. Every write requires an actor-scoped idempotency key and expected version; its result remains queryable after an uncertain client response.
 
 Food Post routes form a separate credential ring from the Console ring: `POST /api/v1/food/posts` (create, actor-bound) uses the food-post-create credential, while the public reads, the actor-scoped `GET /api/v1/food/posts/mine`, and the image route use the food-post-read credential; the Console `food.*` credential works on none of them, and neither Post credential works on Console routes. A post is public the moment it is created, is capped at three per actor per calendar day, and its display name is snapshotted at creation and never re-resolved. See ADR-0032.
+
+Issue #589 adds author-only structured edit reads and versioned PUT commands.
+Food checks author_user_id independently; hidden Posts reject author editing.
+The existing create credential writes and read credential reads; no new credential
+is introduced. Updates preserve author identity/creation time/moderation state,
+share Console's optimistic version, and atomically commit fields/photos/replay
+results without consuming the daily create cap. Photo URLs bind their content
+digest; stale image digests fail closed. Legacy Submission review is unchanged.

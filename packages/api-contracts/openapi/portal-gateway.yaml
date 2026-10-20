@@ -1007,6 +1007,37 @@ paths:
         "502":
           $ref: "#/components/responses/ServiceUnavailable"
 
+  /api/v1/food/posts/{post_id}/edit:
+    get:
+      operationId: getAuthorFoodPost
+      summary: Read structured fields for the Portal Session author's visible Post
+      security: [{ portalSession: [] }]
+      parameters:
+        - { name: post_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Editable Post and current version, content: { application/json: { schema: { type: object, required: [post, request_id], properties: { post: { $ref: "./food.yaml#/components/schemas/FoodPostEditData" }, request_id: { type: string } } } } } }
+        "401": { description: Portal Session required }
+        "404": { description: No Post belongs to this actor }
+        "409": { description: Post is hidden }
+        "503": { description: Food unavailable; no legacy fallback }
+  /api/v1/food/posts/{post_id}:
+    put:
+      operationId: updateAuthorFoodPost
+      summary: Replace the Portal Session author's visible Post using an optimistic version
+      security: [{ portalSession: [] }]
+      parameters:
+        - { name: post_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, pattern: "^[A-Za-z0-9._:-]{8,200}$" } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "./food.yaml#/components/schemas/FoodPostUpdateInput" } } } }
+      responses:
+        "200": { description: Saved Post or original committed result, content: { application/json: { schema: { type: object, required: [post, request_id], properties: { post: { $ref: "./food.yaml#/components/schemas/FoodPostWire" }, request_id: { type: string } } } } } }
+        "400": { description: Invalid Post or idempotency key }
+        "401": { description: Portal Session required }
+        "404": { description: No Post belongs to this actor }
+        "409": { description: "Version conflict, hidden Post or reused key" }
+        "413": { description: Body exceeds 20 MiB }
+        "503": { description: Food unavailable; no legacy fallback }
+
 components:
   securitySchemes:
     portalSession:

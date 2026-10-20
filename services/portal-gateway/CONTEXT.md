@@ -97,3 +97,10 @@ and never falls back to Portal API or mock data.
 - **Portal Gateway → Food**: The Food Post boundary only: public post/image/venue reads with the read credential, the signed-in actor's create command with the create credential. Food owns post data, the daily cap, idempotency replay, and image bytes; the Gateway owns neither food facts nor a fallback response.
 - **Portal Gateway → Career**: Signed Career Profile reads/writes plus ADR-0040's exact transient Suification command. Career owns the profile, provider call, rate limit, and replay state; Gateway only binds the verified actor and forwards the required idempotency key.
 - **Portal frontend → Portal Gateway**: Same-origin API calls with session cookie (`credentials: "same-origin"`).
+
+Issue #589 extends only the Food Post boundary with authenticated
+`GET /api/v1/food/posts/{post_id}/edit` and `PUT /api/v1/food/posts/{post_id}`.
+Gateway selects the actor from the Portal Session, forwards the opaque version
+and image selection, and signs with the existing read/write credential rings.
+Food owns the author check, moderation exclusion, versions and replay ledger.
+Image reads retain their digest query in the signed RequestURI.

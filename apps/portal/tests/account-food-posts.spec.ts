@@ -97,8 +97,10 @@ for (const viewport of [
 
     await expect(page.getByRole("heading", { name: "我的投稿" })).toBeVisible();
     await expect(page.getByRole("link", { name: "我的投稿" })).toBeVisible();
-    await expect(page.getByRole("link", { name: /西门鸡腿饭/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /鼓楼灌汤包/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: "西门鸡腿饭", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "编辑投稿：西门鸡腿饭" })).toHaveAttribute("href", `/food/post/${postID}/edit`);
+    expect((await page.getByRole("link", { name: "西门鸡腿饭", exact: true }).boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await expect(page.getByRole("link", { name: "鼓楼灌汤包", exact: true })).toBeVisible();
     await expect(page.getByText("NPC", { exact: true })).toBeVisible();
     await expect(page.getByText("夯", { exact: true })).toBeVisible();
     await expect(page.getByText(/金明校区/)).toBeVisible();
@@ -139,7 +141,7 @@ for (const viewport of [
 
     await page.goto("/account/posts", { waitUntil: "domcontentloaded" });
 
-    const row = page.getByRole("link", { name: /西门鸡腿饭/ });
+    const row = page.getByRole("link", { name: "西门鸡腿饭", exact: true });
     await expect(row).toHaveAttribute("href", `/food/post/${postID}`);
     await row.click();
     await expect(page).toHaveURL(new RegExp(`/food/post/${postID}$`));

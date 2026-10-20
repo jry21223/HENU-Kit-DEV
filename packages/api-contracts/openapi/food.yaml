@@ -165,7 +165,56 @@ paths:
         "200": { description: The actor's own Food Posts, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodPostList" } } }] } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/food/posts/{id}/edit:
+    get:
+      tags: [Food]
+      operationId: getAuthorFoodPost
+      summary: Read structured editable data for the verified author only
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+      responses:
+        "200": { description: Author edit snapshot, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { type: object, required: [post], properties: { post: { $ref: "#/components/schemas/FoodPostEditData" } } } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/v1/food/posts/{id}:
+    put:
+      tags: [Food]
+      operationId: updateAuthorFoodPost
+      summary: Replace the verified author's visible Post using its current version
+      description: Existing write credential only. Retained and new images together are bounded to six. Does not change author, creation time, hidden state or the legacy Submission review workflow. Same actor/key/request replays the committed result.
+      security:
+        - serviceBasic: []
+          serviceSignature: []
+          serviceActor: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/ActorDisplayName"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FoodPostUpdateInput" } } } }
+      responses:
+        "200": { description: Updated Post or original committed result, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodPostCreateResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     get:
       tags: [Food]
       operationId: getFoodPost
@@ -195,6 +244,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: position, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 5 } }
+        - { name: v, in: query, required: false, description: Content digest; stale digests return 404, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
         - $ref: "#/components/parameters/ServiceID"
         - $ref: "#/components/parameters/KeyID"
         - $ref: "#/components/parameters/Timestamp"
@@ -414,6 +464,48 @@ components:
           type: array
           maxItems: 6
           items: { $ref: "#/components/schemas/FoodPostImageInput" }
+    FoodPostUpdateInput:
+      type: object
+      additionalProperties: false
+      required: [expected_version, venue_name, campus, tier, review_text, retained_image_positions]
+      properties:
+        expected_version: { type: integer, minimum: 1 }
+        retained_image_positions: { type: array, maxItems: 6, uniqueItems: true, items: { type: integer, minimum: 0, maximum: 5 } }
+        venue_name: { type: string, minLength: 1, maxLength: 160 }
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+        tier: { $ref: "#/components/schemas/FoodTierKey" }
+        review_text: { type: string, minLength: 2, maxLength: 2000 }
+        price_reference: { type: string, maxLength: 200 }
+        hours_reference: { type: string, maxLength: 200 }
+        dishes:
+          type: array
+          maxItems: 6
+          items: { $ref: "#/components/schemas/FoodPostDishInput" }
+        images:
+          type: array
+          maxItems: 6
+          items: { $ref: "#/components/schemas/FoodPostImageInput" }
+    FoodPostEditData:
+      type: object
+      additionalProperties: false
+      required: [id, version, venue_name, campus, tier, review_text, dishes, images]
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        venue_name: { type: string, minLength: 1, maxLength: 160 }
+        campus: { $ref: "#/components/schemas/FoodCampus" }
+        tier: { $ref: "#/components/schemas/FoodTierKey" }
+        review_text: { type: string, minLength: 2, maxLength: 2000 }
+        price_reference: { type: string, maxLength: 200 }
+        hours_reference: { type: string, maxLength: 200 }
+        dishes:
+          type: array
+          maxItems: 6
+          items: { $ref: "#/components/schemas/FoodPostDishInput" }
+        images:
+          type: array
+          maxItems: 6
+          items: { type: object, additionalProperties: false, required: [position, url], properties: { position: { type: integer, minimum: 0, maximum: 5 }, url: { type: string } } }
     FoodPostDishInput:
       type: object
       additionalProperties: false

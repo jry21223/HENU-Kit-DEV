@@ -30,6 +30,21 @@ describe("Food gateway cache", () => {
     vi.unstubAllGlobals();
   });
 
+  it("updates an older post in place before and after the owner list loads", async () => {
+    const newer = {...post("newer", "新投稿"), time: "2030-01-02T00:00:00Z"};
+    const older = post("older", "旧投稿");
+    const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({posts: [newer, older], request_id: "req_posts"})));
+    vi.stubGlobal("fetch", fetch);
+    const {rememberUpdatedFoodPost, initFoodGateway, getGatewayPosts} = await import("./gateway");
+    rememberUpdatedFoodPost({...older, title: "修改后的旧投稿"});
+    await initFoodGateway();
+    expect(getGatewayPosts()?.map((item) => item.id)).toEqual(["newer", "older"]);
+    expect(getGatewayPosts()?.[1].title).toBe("修改后的旧投稿");
+    rememberUpdatedFoodPost({...older, title: "再次修改的旧投稿"});
+    expect(getGatewayPosts()?.map((item) => item.id)).toEqual(["newer", "older"]);
+    expect(getGatewayPosts()?.[1].title).toBe("再次修改的旧投稿");
+  });
+
   it("loads the board with the posts request alone, without waiting on venue reads", async () => {
     const fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) =>
       String(input) === "/api/v1/food/posts"

@@ -36,6 +36,8 @@ func main() {
 		"ListPostsRoute":  "listFoodPosts",
 		"MyPostsRoute":    "listMyFoodPosts",
 		"PostRoute":       "getFoodPost",
+		"AuthorPostRoute": "getAuthorFoodPost",
+		"UpdatePostRoute": "updateAuthorFoodPost",
 		"PostImageRoute":  "getFoodPostImage",
 		"VenuesRoute":     "listFoodVenues",
 	}
@@ -58,10 +60,12 @@ const (
 	ListPostsRoute = %q
 	MyPostsRoute = %q
 	PostRoute = %q
+ AuthorPostRoute = %q
+ UpdatePostRoute = %q
 	PostImageRoute = %q
 	VenuesRoute = %q
 )
-`, digest, routes["getFoodHealth"], routes["getFoodConsoleSummary"], routes["getFoodWorkspace"], routes["executeFoodCommand"], routes["getFoodOperation"], routes["createFoodPost"], routes["listFoodPosts"], routes["listMyFoodPosts"], routes["getFoodPost"], routes["getFoodPostImage"], routes["listFoodVenues"])
+`, digest, routes["getFoodHealth"], routes["getFoodConsoleSummary"], routes["getFoodWorkspace"], routes["executeFoodCommand"], routes["getFoodOperation"], routes["createFoodPost"], routes["listFoodPosts"], routes["listMyFoodPosts"], routes["getFoodPost"], routes["getAuthorFoodPost"], routes["updateAuthorFoodPost"], routes["getFoodPostImage"], routes["listFoodVenues"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/contract", 0o755))

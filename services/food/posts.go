@@ -365,6 +365,9 @@ func (h *service) storePost(r *http.Request, value actor, key string, input post
 		}
 	}
 	wire := buildPostWire(id, input, displayName, createdAt, len(images))
+	for position, image := range images {
+		wire.Images[position] = postImageURL(id.String(), position, image.SHA256)
+	}
 	encoded, err := json.Marshal(wire)
 	if err != nil {
 		return foodPostWire{}, err
@@ -536,19 +539,19 @@ func (h *service) loadPosts(r *http.Request, campus, authorUserID string) ([]foo
 		return nil, err
 	}
 	dishRows.Close()
-	imageRows, err := h.database.Query(r.Context(), `SELECT post_id::text,position FROM food_post_images WHERE post_id::text = ANY($1) ORDER BY post_id,position`, ids)
+	imageRows, err := h.database.Query(r.Context(), `SELECT post_id::text,position,sha256 FROM food_post_images WHERE post_id::text = ANY($1) ORDER BY post_id,position`, ids)
 	if err != nil {
 		return nil, err
 	}
 	imagesByPost := map[string][]string{}
 	for imageRows.Next() {
-		var postID string
+		var postID, hash string
 		var position int
-		if err := imageRows.Scan(&postID, &position); err != nil {
+		if err := imageRows.Scan(&postID, &position, &hash); err != nil {
 			imageRows.Close()
 			return nil, err
 		}
-		imagesByPost[postID] = append(imagesByPost[postID], fmt.Sprintf(postImagePathFormat, postID, position))
+		imagesByPost[postID] = append(imagesByPost[postID], postImageURL(postID, position, hash))
 	}
 	if err := imageRows.Err(); err != nil {
 		imageRows.Close()
@@ -629,18 +632,19 @@ func (h *service) loadPost(r *http.Request, id string) (foodPostWire, bool, erro
 	if len(dishItems) > 0 {
 		blocks = append(blocks, foodPostBlockWire{Type: "h2", Text: "点什么"}, foodPostBlockWire{Type: "list", Items: dishItems})
 	}
-	imageRows, err := h.database.Query(r.Context(), `SELECT position FROM food_post_images WHERE post_id=$1 ORDER BY position`, id)
+	imageRows, err := h.database.Query(r.Context(), `SELECT position,sha256 FROM food_post_images WHERE post_id=$1 ORDER BY position`, id)
 	if err != nil {
 		return foodPostWire{}, false, err
 	}
 	imagePaths := []string{}
 	for imageRows.Next() {
 		var position int
-		if err := imageRows.Scan(&position); err != nil {
+		var hash string
+		if err := imageRows.Scan(&position, &hash); err != nil {
 			imageRows.Close()
 			return foodPostWire{}, false, err
 		}
-		imagePaths = append(imagePaths, fmt.Sprintf(postImagePathFormat, id, position))
+		imagePaths = append(imagePaths, postImageURL(id, position, hash))
 	}
 	if err := imageRows.Err(); err != nil {
 		imageRows.Close()
@@ -677,7 +681,7 @@ func (h *service) getPostImage(w http.ResponseWriter, r *http.Request) {
 	}
 	var contentType, sha string
 	var bytes []byte
-	err = h.database.QueryRow(r.Context(), `SELECT content_type,sha256,bytes FROM food_post_images WHERE post_id=$1 AND position=$2`, id, position).Scan(&contentType, &sha, &bytes)
+	err = h.database.QueryRow(r.Context(), `SELECT i.content_type,i.sha256,i.bytes FROM food_post_images i JOIN food_posts p ON p.id=i.post_id WHERE i.post_id=$1 AND i.position=$2 AND p.hidden=false`, id, position).Scan(&contentType, &sha, &bytes)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, r, http.StatusNotFound, "IMAGE_NOT_FOUND", "Food post image does not exist")
 		return
@@ -686,8 +690,16 @@ func (h *service) getPostImage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Food post image is unavailable")
 		return
 	}
+	if version := r.URL.Query().Get("v"); version != "" && version != sha {
+		writeError(w, r, http.StatusNotFound, "IMAGE_NOT_FOUND", "Food post image does not exist")
+		return
+	}
 	w.Header().Set("ETag", `"`+sha+`"`)
-	w.Header().Set("Cache-Control", postImageCache)
+	if r.URL.Query().Get("v") == sha {
+		w.Header().Set("Cache-Control", postImageCache)
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "inline")
