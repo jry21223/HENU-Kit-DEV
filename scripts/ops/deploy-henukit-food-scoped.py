@@ -417,9 +417,14 @@ class Release:
         require(
             (self.watch / "last-activated-sha").read_text().strip() == old, "full baseline marker mismatch"
         )
+        pending_approvals = []
+        for entry in (self.watch / "approvals").iterdir():
+            if entry.name in ("consumed", "revoked"):
+                self.trusted_directory(entry)
+            else:
+                pending_approvals.append(entry)
         require(
-            not any((self.watch / "approvals").iterdir())
-            and not any((self.watch / "rollback-contracts/pending").iterdir()),
+            not pending_approvals and not any((self.watch / "rollback-contracts/pending").iterdir()),
             "pending full release must be reconciled first",
         )
         require(not self.marker.exists() and not self.marker.is_symlink(), "a scoped release already exists")

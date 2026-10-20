@@ -115,6 +115,10 @@ class ReleaseCLI(unittest.TestCase):
         state = self.root / "var/lib/henukit-actions-watch"
         state.mkdir(parents=True)
         (state / "approvals").mkdir()
+        for name in ("consumed", "revoked"):
+            directory = state / "approvals" / name
+            directory.mkdir()
+            (directory / "historical-audit").write_text("retained audit")
         (state / "rollback-contracts/pending").mkdir(parents=True)
         (state / "last-activated-sha").write_text(OLD + "\n")
         token = self.root / "etc/henukit/github-actions-read.token"
@@ -453,6 +457,26 @@ class ReleaseCLI(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, url)
             self.assertIn("Food backup target", result.stderr)
         self.assertFalse(any(c[0] == "docker" and "exec" in c[1] for c in self.calls()))
+
+    def test_real_pending_approvals_and_unknown_directories_still_block(self):
+        approvals = self.root / "var/lib/henukit-actions-watch/approvals"
+        for name, directory in (("c" * 40, False), ("unknown", True)):
+            entry = approvals / name
+            entry.mkdir() if directory else entry.write_text("pending")
+            result = self.run_cli("--preflight")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("pending full release", result.stderr)
+            entry.rmdir() if directory else entry.unlink()
+        self.assertFalse(
+            any(c[0] == "docker" and ("up" in c[1] or "load" in c[1] or "exec" in c[1]) for c in self.calls())
+        )
+
+    def test_untrusted_audit_namespace_is_not_ignored(self):
+        directory = self.root / "var/lib/henukit-actions-watch/approvals/consumed"
+        directory.chmod(0o777)
+        result = self.run_cli("--preflight")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("untrusted state directory", result.stderr)
 
     def test_preflight_is_read_only(self):
         r = self.run_cli("--preflight")

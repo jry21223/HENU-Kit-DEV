@@ -36,6 +36,9 @@ Invoke only the helper from the provenance-verified root-owned runtime:
 ```
 
 Use the same identity and proof directory with `--execute` after preflight.
+The root-owned, non-writable `approvals/consumed` and `approvals/revoked`
+directories contain retained audit history. Preflight preserves them and rejects
+untrusted substitutes, every other approval entry, and pending rollback records.
 There is no service override, migration option, health bypass or permission
 override. A test-root option is limited to non-root temporary fixtures whose
 command adapters are inside that fixture; it is refused by a root process.
