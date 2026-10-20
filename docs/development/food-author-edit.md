@@ -54,3 +54,11 @@ remain separate. Never mutate another person's real Post during acceptance.
 Rollback uses the retained fixed-SHA application release. This slice requires
 no schema migration and preserves the existing Console version column and
 idempotency ledger.
+
+## Affected-service build baseline
+
+The required govulncheck scan found nine reachable standard-library advisories
+with Go 1.26.6. The same Food and Gateway source scans with Go 1.26.9 report
+zero reachable vulnerabilities. Pin only these two affected service modules and
+build images to the patched toolchain; third-party dependency versions remain
+unchanged. This is a release prerequisite, not a new product capability.
