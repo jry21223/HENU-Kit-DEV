@@ -62,6 +62,11 @@ personal evidence private. Portal Summary metadata remains on the full baseline;
 actual image identities identify this release. Report those separately from
 the retained full-stack baseline and deferred getWork acceptance.
 
+The retired `/quiz/` path may use Next's exact canonical `308` redirect to
+`https://henukit.cn/quiz`. Acceptance requires that canonical URL to return
+`404`; other redirect destinations are rejected without being requested. The
+bounded request budget is shared across the canonical hop.
+
 ## Rollback and interrupted attempts
 
 Run the same retained helper and identity with `--rollback`. It validates the
@@ -80,3 +85,16 @@ The full approval entry and normal watcher pause while a scoped marker exists.
 Do not remove that marker by hand or relabel a mixed runtime healthy. Once the
 scoped units are rolled back and the deferred dependency is restored, proceed
 through the normal full-release gates.
+
+A provenance-verified successor helper can recover the one predecessor
+source/helper-digest pair pinned in `PREDECESSOR_ROLLBACK`, only for
+`rollback_failed` or repeated `rolled_back` receipts. Invoke that verified
+successor with the retained receipt's SHA, run and proof arguments and
+`--rollback`. It preserves the original helper digest, records
+`recovery_helper_sha256`, and performs all existing configuration, retained
+image, alias, unchanged-container and final HTTP gates before removing its
+owned marker. An active receipt, another source or an unknown helper digest
+cannot use this compatibility path. Never edit a receipt or remove its marker
+by hand. Prepare the successor runtime from its successful main workflow and
+attestation before recovery; after recovery the normal watcher can prepare
+the new candidate images.

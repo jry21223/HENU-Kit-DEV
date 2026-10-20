@@ -15,6 +15,8 @@ SOURCE = Path(__file__).resolve().parents[1] / "deploy-henukit-food-scoped.py"
 OLD = "a" * 40
 NEW = "b" * 40
 SELECTED = ["food", "portal-gateway", "portal"]
+PREDECESSOR_SHA = "c1f4cddabd544bda7511084b499f9e4feb15e8a0"
+PREDECESSOR_HELPER = "ef5e9658045b2b34196fba4bf447b5cdca59772ce726a406eb3a9762937453d8"
 
 FAKE = r"""#!/usr/bin/env python3
 import hashlib,json,os,pathlib,sys
@@ -42,9 +44,13 @@ elif name=='systemctl':
 elif name=='curl':
  url=args[-1]; code=200
  if '/posts/11111111-' in url:code=401 if state.get('deployed') else 404
- if '/quiz/' in url or '/study-api/' in url:code=404
+ if '/quiz' in url or '/study-api/' in url:code=404
+ if url.endswith('/quiz') and state.get('deployed') and os.environ.get('BAD_CANONICAL_STATUS'):code=200
+ redirect=''
+ if url.endswith('/quiz/') and os.environ.get('CANONICAL_QUIZ'):
+  code=308;redirect=os.environ.get('BAD_QUIZ_REDIRECT','https://henukit.cn/quiz') if state.get('deployed') else 'https://henukit.cn/quiz'
  if os.environ.get('FAIL_SMOKE') and state.get('deployed'):code=503
- output=args[args.index('--output')+1];pathlib.Path(output).write_text('{}');print(code,end='')
+ output=args[args.index('--output')+1];pathlib.Path(output).write_text('{}');print(str(code)+(' '+redirect if redirect and '%{redirect_url}' in args[args.index('--write-out')+1] else ''),end='')
 elif name=='docker':
  if args[:2]==['ps','-aq']:print('\n'.join(state['containers']))
  elif args[0]=='inspect':out([state['containers'][n] for n in args[1:]])
@@ -310,12 +316,12 @@ class ReleaseCLI(unittest.TestCase):
         self.assertIn("loaded image identity", result.stderr)
         self.assertFalse(any(c[0] == "docker" and "up" in c[1] for c in self.calls()))
 
-    def run_cli(self, mode, extra=None):
+    def run_cli(self, mode, extra=None, sha=NEW):
         cmd = [
             "python3",
             str(self.runtime / "bin" / SOURCE.name),
             "--sha",
-            NEW,
+            sha,
             "--run-id",
             "123",
             "--proof-dir",
@@ -374,6 +380,100 @@ class ReleaseCLI(unittest.TestCase):
                 state["containers"]["henukit-" + service + "-1"]["Config"]["Image"],
                 "henukit-" + service + ":" + OLD,
             )
+
+    def legacy_failed_receipt(self, already_rolled_back=False):
+        result = self.run_cli("--execute")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        if already_rolled_back:
+            self.assertEqual(self.run_cli("--rollback").returncode, 0)
+        folder = self.root / "var/lib/henukit-scoped-releases/food-author-edit" / NEW
+        legacy = folder.with_name(PREDECESSOR_SHA)
+        folder.rename(legacy)
+        marker = self.root / "var/lib/henukit-actions-watch/scoped-food-release"
+        marker.unlink(missing_ok=True)
+        marker.symlink_to(legacy)
+        record = legacy / "receipt.json"
+        data = json.loads(record.read_text())
+        data.update(
+            sha=PREDECESSOR_SHA,
+            helper_sha256=PREDECESSOR_HELPER,
+            status="rolled_back" if already_rolled_back else "rollback_failed",
+        )
+        record.write_text(json.dumps(data))
+        return record
+
+    def test_verified_predecessor_failed_rollback_records_successor_and_is_repeatable(self):
+        record = self.legacy_failed_receipt()
+        result = self.run_cli("--rollback", {"CANONICAL_QUIZ": "1"}, sha=PREDECESSOR_SHA)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(record.read_text())
+        self.assertEqual(data["status"], "rolled_back")
+        self.assertEqual(data["helper_sha256"], PREDECESSOR_HELPER)
+        self.assertEqual(data["recovery_helper_sha256"], hashlib.sha256(SOURCE.read_bytes()).hexdigest())
+        up_before = sum(tool == "docker" and "up" in args for tool, args in self.calls())
+        result = self.run_cli("--rollback", {"CANONICAL_QUIZ": "1"}, sha=PREDECESSOR_SHA)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(up_before, sum(tool == "docker" and "up" in args for tool, args in self.calls()))
+        self.assertFalse((self.root / "var/lib/henukit-actions-watch/scoped-food-release").is_symlink())
+
+    def test_already_rolled_back_predecessor_persists_recovery_audit_before_marker_removal(self):
+        record = self.legacy_failed_receipt(already_rolled_back=True)
+        self.assertNotIn("recovery_helper_sha256", json.loads(record.read_text()))
+        up_before = sum(tool == "docker" and "up" in args for tool, args in self.calls())
+        result = self.run_cli("--rollback", {"CANONICAL_QUIZ": "1"}, sha=PREDECESSOR_SHA)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(record.read_text())["recovery_helper_sha256"],
+            hashlib.sha256(SOURCE.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(up_before, sum(tool == "docker" and "up" in args for tool, args in self.calls()))
+        self.assertFalse((self.root / "var/lib/henukit-actions-watch/scoped-food-release").is_symlink())
+
+    def test_predecessor_recovery_rejects_unknown_helper_and_active_state_before_mutation(self):
+        record = self.legacy_failed_receipt()
+        original = json.loads(record.read_text())
+        up_before = sum(tool == "docker" and "up" in args for tool, args in self.calls())
+        for change in ({"helper_sha256": "0" * 64}, {"status": "active"}):
+            record.write_text(json.dumps({**original, **change}))
+            result = self.run_cli("--rollback", sha=PREDECESSOR_SHA)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(up_before, sum(tool == "docker" and "up" in args for tool, args in self.calls()))
+        self.assertTrue((self.root / "var/lib/henukit-actions-watch/scoped-food-release").is_symlink())
+
+    def test_predecessor_helper_hash_cannot_authorize_another_source(self):
+        result = self.run_cli("--execute")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = self.root / "var/lib/henukit-scoped-releases/food-author-edit" / NEW / "receipt.json"
+        data = json.loads(record.read_text())
+        data.update(helper_sha256=PREDECESSOR_HELPER, status="rollback_failed")
+        record.write_text(json.dumps(data))
+        up_before = sum(tool == "docker" and "up" in args for tool, args in self.calls())
+        result = self.run_cli("--rollback")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(up_before, sum(tool == "docker" and "up" in args for tool, args in self.calls()))
+
+    def test_known_quiz_canonical_redirect_requires_final_404(self):
+        result = self.run_cli("--execute", {"CANONICAL_QUIZ": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        urls = [args[-1] for tool, args in self.calls() if tool == "curl"]
+        self.assertIn("https://henukit.cn/quiz/", urls)
+        self.assertIn("https://henukit.cn/quiz", urls)
+
+    def test_canonical_quiz_target_must_still_reject_the_legacy_route(self):
+        result = self.run_cli("--execute", {"CANONICAL_QUIZ": "1", "BAD_CANONICAL_STATUS": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        record = self.root / "var/lib/henukit-scoped-releases/food-author-edit" / NEW / "receipt.json"
+        self.assertEqual(json.loads(record.read_text())["status"], "rolled_back")
+
+    def test_foreign_quiz_redirect_is_rejected_without_following_it(self):
+        result = self.run_cli(
+            "--execute", {"CANONICAL_QUIZ": "1", "BAD_QUIZ_REDIRECT": "https://other.invalid/quiz"}
+        )
+        self.assertNotEqual(result.returncode, 0)
+        urls = [args[-1] for tool, args in self.calls() if tool == "curl"]
+        self.assertNotIn("https://other.invalid/quiz", urls)
+        record = self.root / "var/lib/henukit-scoped-releases/food-author-edit" / NEW / "receipt.json"
+        self.assertEqual(json.loads(record.read_text())["status"], "rolled_back")
 
     def test_failed_acceptance_rolls_back_only_selected_services(self):
         r = self.run_cli("--execute", {"FAIL_SMOKE": "1"})

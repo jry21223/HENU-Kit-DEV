@@ -21,6 +21,11 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 SERVICES = ("food", "portal-gateway", "portal")
 DEFERRED = ("career-opportunities", "career-mcp", "getwork-mcp-relay")
 REPO = "jry21223/HENU-Kit-DEV"
+# The one attested predecessor whose first-hop legacy check could fail rollback.
+PREDECESSOR_ROLLBACK = (
+    "c1f4cddabd544bda7511084b499f9e4feb15e8a0",
+    "ef5e9658045b2b34196fba4bf447b5cdca59772ce726a406eb3a9762937453d8",
+)
 
 
 class ReleaseError(Exception):
@@ -783,13 +788,21 @@ class Release:
                         "--output",
                         output.name,
                         "--write-out",
-                        "%{http_code}",
+                        "%{http_code} %{redirect_url}",
                         "--request",
                         method,
                         "https://henukit.cn" + path,
                     )
-                    if int(result) in expected:
+                    status, _, redirect = result.decode().strip().partition(" ")
+                    if int(status) in expected:
                         return
+                    if (
+                        method == "GET"
+                        and path == "/quiz/"
+                        and status == "308"
+                        and redirect == "https://henukit.cn/quiz"
+                    ):
+                        path = "/quiz"
             except (ReleaseError, subprocess.TimeoutExpired):
                 pass
             if not self.testing:
@@ -935,11 +948,18 @@ class Release:
         self.trusted(self.record, private=True)
         data = json.loads(self.record.read_text())
         require(
-            data["sha"] == self.o.sha
-            and data["format"] == "henukit-food-scoped-v1"
-            and data["helper_sha256"] == digest(Path(__file__)),
+            data["sha"] == self.o.sha and data["format"] == "henukit-food-scoped-v1",
             "rollback receipt identity mismatch",
         )
+        current_helper = digest(Path(__file__))
+        recovering_predecessor = data["helper_sha256"] != current_helper
+        if recovering_predecessor:
+            require(
+                (data["sha"], data["helper_sha256"]) == PREDECESSOR_ROLLBACK
+                and data["status"] in ("rollback_failed", "rolled_back"),
+                "rollback receipt helper identity mismatch",
+            )
+            data["recovery_helper_sha256"] = current_helper
         require(
             not self.marker.is_symlink() or self.marker.resolve() == self.record.parent,
             "another scoped release owns the marker",
@@ -947,6 +967,8 @@ class Release:
         with self.lock_watcher():
             if data["status"] == "rolled_back":
                 self.healthy(data, False)
+                if recovering_predecessor:
+                    self.write_receipt(data, "rolled_back")
                 self.remove_owned_marker()
                 return "already_rolled_back"
             try:
