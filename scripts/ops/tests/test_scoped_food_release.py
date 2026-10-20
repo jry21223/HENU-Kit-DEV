@@ -10,6 +10,7 @@ import tempfile
 import tarfile
 import io
 import unittest
+from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "deploy-henukit-food-scoped.py"
 OLD = "a" * 40
@@ -43,6 +44,10 @@ elif name=='systemctl':
  else:sys.exit(0)
 elif name=='curl':
  url=args[-1]; code=200
+ if '/api/v1/library/materials' in url and (os.environ.get('SLOW_PUBLIC') or os.environ.get('INCOMPLETE_PUBLIC')):
+  # This public response needs six seconds to finish, even after its 200 headers.
+  if os.environ.get('INCOMPLETE_PUBLIC') or float(args[args.index('--max-time')+1]) < 6:
+   pathlib.Path(args[args.index('--output')+1]).write_text('partial');print('200 ',end='');sys.exit(28)
  if '/posts/11111111-' in url:code=401 if state.get('deployed') else 404
  if '/quiz' in url or '/study-api/' in url:code=404
  if url.endswith('/quiz') and state.get('deployed') and os.environ.get('BAD_CANONICAL_STATUS'):code=200
@@ -381,13 +386,16 @@ class ReleaseCLI(unittest.TestCase):
                 "henukit-" + service + ":" + OLD,
             )
 
-    def legacy_failed_receipt(self, already_rolled_back=False):
+    def legacy_failed_receipt(
+        self, already_rolled_back=False, predecessor=(PREDECESSOR_SHA, PREDECESSOR_HELPER)
+    ):
+        predecessor_sha, predecessor_helper = predecessor
         result = self.run_cli("--execute")
         self.assertEqual(result.returncode, 0, result.stderr)
         if already_rolled_back:
             self.assertEqual(self.run_cli("--rollback").returncode, 0)
         folder = self.root / "var/lib/henukit-scoped-releases/food-author-edit" / NEW
-        legacy = folder.with_name(PREDECESSOR_SHA)
+        legacy = folder.with_name(predecessor_sha)
         folder.rename(legacy)
         marker = self.root / "var/lib/henukit-actions-watch/scoped-food-release"
         marker.unlink(missing_ok=True)
@@ -395,8 +403,8 @@ class ReleaseCLI(unittest.TestCase):
         record = legacy / "receipt.json"
         data = json.loads(record.read_text())
         data.update(
-            sha=PREDECESSOR_SHA,
-            helper_sha256=PREDECESSOR_HELPER,
+            sha=predecessor_sha,
+            helper_sha256=predecessor_helper,
             status="rolled_back" if already_rolled_back else "rollback_failed",
         )
         record.write_text(json.dumps(data))
@@ -414,6 +422,20 @@ class ReleaseCLI(unittest.TestCase):
         result = self.run_cli("--rollback", {"CANONICAL_QUIZ": "1"}, sha=PREDECESSOR_SHA)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(up_before, sum(tool == "docker" and "up" in args for tool, args in self.calls()))
+        self.assertFalse((self.root / "var/lib/henukit-actions-watch/scoped-food-release").is_symlink())
+
+    def test_deadline_predecessor_recovery_keeps_original_identity_and_allows_slow_body(self):
+        predecessor = (
+            "37225bd5a40456b12bf31924dc2b114598752592",
+            "7161b41894f9c7ca6831b6b2583a8371d519cafa0120abb76c86c4c4a6391c6d",
+        )
+        record = self.legacy_failed_receipt(predecessor=predecessor)
+        result = self.run_cli("--rollback", {"SLOW_PUBLIC": "1"}, sha=predecessor[0])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(record.read_text())
+        self.assertEqual(data["status"], "rolled_back")
+        self.assertEqual(data["helper_sha256"], predecessor[1])
+        self.assertEqual(data["recovery_helper_sha256"], hashlib.sha256(SOURCE.read_bytes()).hexdigest())
         self.assertFalse((self.root / "var/lib/henukit-actions-watch/scoped-food-release").is_symlink())
 
     def test_already_rolled_back_predecessor_persists_recovery_audit_before_marker_removal(self):
@@ -458,6 +480,18 @@ class ReleaseCLI(unittest.TestCase):
         urls = [args[-1] for tool, args in self.calls() if tool == "curl"]
         self.assertIn("https://henukit.cn/quiz/", urls)
         self.assertIn("https://henukit.cn/quiz", urls)
+
+    def test_complete_public_body_can_take_more_than_five_seconds(self):
+        result = self.run_cli("--execute", {"SLOW_PUBLIC": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        marker = self.root / "var/lib/henukit-actions-watch/scoped-food-release"
+        self.assertEqual(json.loads((marker / "receipt.json").read_text())["status"], "active")
+
+    def test_success_headers_with_incomplete_body_still_fail_acceptance(self):
+        result = self.run_cli("--execute", {"INCOMPLETE_PUBLIC": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        marker = self.root / "var/lib/henukit-actions-watch/scoped-food-release"
+        self.assertEqual(json.loads((marker / "receipt.json").read_text())["status"], "rollback_failed")
 
     def test_canonical_quiz_target_must_still_reject_the_legacy_route(self):
         result = self.run_cli("--execute", {"CANONICAL_QUIZ": "1", "BAD_CANONICAL_STATUS": "1"})
@@ -666,6 +700,53 @@ class ReleaseCLI(unittest.TestCase):
             any(c[0] == "docker" and ("up" in c[1] or "load" in c[1] or "exec" in c[1]) for c in self.calls())
         )
         self.assertFalse((self.root / "var/lib/henukit-actions-watch/scoped-food-release").exists())
+
+
+class HTTPProbeBudget(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("scoped_http_contract", SOURCE)
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+        self.release = object.__new__(self.module.Release)
+        self.release.testing = False
+        self.elapsed = 0
+        self.requests = []
+        self.addCleanup(patch.stopall)
+        patch.object(self.module.time, "monotonic", side_effect=lambda: self.elapsed).start()
+        patch.object(self.module.time, "sleep", side_effect=self.advance).start()
+
+    def advance(self, seconds):
+        self.elapsed += seconds
+
+    def request(self, name, *args, **kwargs):
+        duration = float(args[args.index("--max-time") + 1])
+        self.requests.append((args[-1], duration, kwargs["timeout"]))
+        self.advance(duration)
+        raise self.module.ReleaseError("curl command failed (28)")
+
+    def test_repeated_incomplete_transfers_stop_at_total_deadline(self):
+        self.release.run = self.request
+        with self.assertRaisesRegex(self.module.ReleaseError, "public acceptance failed"):
+            self.release.http("/api/v1/library/materials", (200,))
+        self.assertEqual(self.elapsed, 210)
+        self.assertEqual([r[1] for r in self.requests], [60, 60, 60, 24])
+        self.assertEqual(self.requests[-1][2], 24)
+
+    def test_canonical_hop_shares_deadline_and_still_requires_complete_final_response(self):
+        def request(name, *args, **kwargs):
+            try:
+                return self.request(name, *args, **kwargs)
+            except self.module.ReleaseError:
+                if len(self.requests) == 3:
+                    return b"308 https://henukit.cn/quiz"
+                if len(self.requests) == 4:
+                    return b"404 "
+                raise
+
+        self.release.run = request
+        self.release.http("/quiz/", (404,))
+        self.assertEqual(self.elapsed, 210)
+        self.assertEqual(self.requests[-1], ("https://henukit.cn/quiz", 24, 24))
 
 
 class DockerImageInterop(unittest.TestCase):

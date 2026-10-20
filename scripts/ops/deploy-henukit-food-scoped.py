@@ -21,10 +21,16 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 SERVICES = ("food", "portal-gateway", "portal")
 DEFERRED = ("career-opportunities", "career-mcp", "getwork-mcp-relay")
 REPO = "jry21223/HENU-Kit-DEV"
-# The one attested predecessor whose first-hop legacy check could fail rollback.
-PREDECESSOR_ROLLBACK = (
-    "c1f4cddabd544bda7511084b499f9e4feb15e8a0",
-    "ef5e9658045b2b34196fba4bf447b5cdca59772ce726a406eb3a9762937453d8",
+# Attested predecessors whose HTTP probe could fail baseline rollback verification.
+PREDECESSOR_ROLLBACKS = (
+    (
+        "c1f4cddabd544bda7511084b499f9e4feb15e8a0",
+        "ef5e9658045b2b34196fba4bf447b5cdca59772ce726a406eb3a9762937453d8",
+    ),
+    (
+        "37225bd5a40456b12bf31924dc2b114598752592",
+        "7161b41894f9c7ca6831b6b2583a8371d519cafa0120abb76c86c4c4a6391c6d",
+    ),
 )
 
 
@@ -776,7 +782,11 @@ class Release:
         )
 
     def http(self, path, expected, method="GET"):
+        deadline = time.monotonic() + 210
         for _ in range(30):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             try:
                 with tempfile.NamedTemporaryFile() as output:
                     result = self.run(
@@ -784,7 +794,7 @@ class Release:
                         "--silent",
                         "--show-error",
                         "--max-time",
-                        "5",
+                        str(min(60, remaining)),
                         "--output",
                         output.name,
                         "--write-out",
@@ -792,6 +802,7 @@ class Release:
                         "--request",
                         method,
                         "https://henukit.cn" + path,
+                        timeout=min(65, remaining),
                     )
                     status, _, redirect = result.decode().strip().partition(" ")
                     if int(status) in expected:
@@ -806,7 +817,7 @@ class Release:
             except (ReleaseError, subprocess.TimeoutExpired):
                 pass
             if not self.testing:
-                time.sleep(2)
+                time.sleep(max(0, min(2, deadline - time.monotonic())))
         raise ReleaseError("public acceptance failed: " + path)
 
     def healthy(self, data, candidate):
@@ -955,7 +966,7 @@ class Release:
         recovering_predecessor = data["helper_sha256"] != current_helper
         if recovering_predecessor:
             require(
-                (data["sha"], data["helper_sha256"]) == PREDECESSOR_ROLLBACK
+                (data["sha"], data["helper_sha256"]) in PREDECESSOR_ROLLBACKS
                 and data["status"] in ("rollback_failed", "rolled_back"),
                 "rollback receipt helper identity mismatch",
             )
