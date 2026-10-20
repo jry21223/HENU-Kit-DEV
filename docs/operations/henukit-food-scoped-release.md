@@ -45,7 +45,11 @@ command adapters are inside that fixture; it is refused by a root process.
 
 Execution backs up configuration and Food, restores the archive into an
 isolated verification database, and loads only the selected images after their
-archive/image identity checks. It records private intent, switches the three
+archive/image identity checks. Classic-store config IDs and containerd-store
+manifest IDs are accepted only when cryptographically bound to the same archive
+config; OCI descriptor hashes, sizes and config binding must match. The receipt
+records the verified ID actually reported by Docker. No daemon setting changes.
+It records private intent, switches the three
 explicit services, verifies readiness/authentication and unchanged unselected
 containers, then commits the scoped receipt. Existing reverse proxy Docker DNS
 must support service IP convergence; the bounded probes cover that seam.

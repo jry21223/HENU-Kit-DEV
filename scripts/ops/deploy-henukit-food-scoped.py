@@ -37,6 +37,43 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def archive_image_ids(archive, config):
+    config_id = "sha256:" + hashlib.sha256(config).hexdigest()
+    identities = [config_id]
+    if "index.json" not in archive.getnames():
+        return identities
+    index = json.load(archive.extractfile("index.json"))
+    manifests = index.get("manifests", [])
+    require(index.get("schemaVersion") == 2 and len(manifests) == 1, "OCI archive must bind one manifest")
+    descriptor = manifests[0]
+    media_types = (
+        "application/vnd.oci.image.manifest.v1+json",
+        "application/vnd.docker.distribution.manifest.v2+json",
+    )
+    manifest_id = descriptor.get("digest", "")
+    require(
+        descriptor.get("mediaType") in media_types and re.fullmatch(r"sha256:[0-9a-f]{64}", manifest_id),
+        "invalid OCI image descriptor",
+    )
+    raw = archive.extractfile("blobs/sha256/" + manifest_id.removeprefix("sha256:")).read()
+    require(
+        hashlib.sha256(raw).hexdigest() == manifest_id.removeprefix("sha256:")
+        and descriptor.get("size") == len(raw),
+        "OCI manifest digest/size mismatch",
+    )
+    manifest = json.loads(raw)
+    binding = manifest.get("config", {})
+    require(
+        manifest.get("schemaVersion") == 2
+        and manifest.get("mediaType") == descriptor["mediaType"]
+        and binding.get("digest") == config_id
+        and binding.get("size") == len(config),
+        "OCI manifest config binding mismatch",
+    )
+    identities.append(manifest_id)
+    return identities
+
+
 class Release:
     def __init__(self, options):
         self.o = options
@@ -303,7 +340,7 @@ class Release:
                     (platform["os"], platform["architecture"]) == ("linux", "amd64"),
                     "image must be linux/amd64",
                 )
-                images[service] = "sha256:" + hashlib.sha256(config).hexdigest()
+                images[service] = archive_image_ids(archive, config)
         return images
 
     def containers(self):
@@ -486,7 +523,8 @@ class Release:
             "runtime": str(self.runtime),
             "selected": self.snapshot(containers, True),
             "unselected": self.snapshot(containers),
-            "images": images,
+            "image_candidates": images,
+            "images": {},
             "environment_sha256": digest(self.envfile),
             "old_version": version,
             "baseline_compose_sha256": digest(baseline / "docker-compose.henukit.release.yml"),
@@ -851,10 +889,11 @@ class Release:
                     self.run("docker", "image", "inspect", "henukit-" + service + ":" + self.o.sha)
                 )[0]
                 require(
-                    (image["Id"], image["Os"], image["Architecture"])
-                    == (data["images"][service], "linux", "amd64"),
+                    image["Id"] in data["image_candidates"][service]
+                    and (image["Os"], image["Architecture"]) == ("linux", "amd64"),
                     "loaded image identity/platform differs from archive",
                 )
+                data["images"][service] = image["Id"]
             self.source()
             self.unchanged(data)
             require(
