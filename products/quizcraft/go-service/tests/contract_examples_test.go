@@ -33,3 +33,18 @@ func TestQuizCraftImportContractExamples(t *testing.T) {
 		}
 	}
 }
+
+func TestConsoleManagementContract(t *testing.T) {
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	document, err := loader.LoadFromFile("../../../../packages/api-contracts/openapi/quizcraft-console-management.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = document.Validate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if document.Paths.Find("/api/v1/console/workshop/banks/{bank_id}/imports").Post == nil || document.Paths.Find("/api/v1/quizcraft/workshop/catalog").Get == nil {
+		t.Fatal("management seam missing")
+	}
+}

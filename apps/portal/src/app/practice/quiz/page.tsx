@@ -26,6 +26,7 @@ import type {
 import { authStore } from "@/lib/auth/store";
 import { useDeferredFetch } from "@/lib/api/use-deferred-fetch";
 import SessionSetup, { type SessionSelection } from "@/components/practice/session-setup/session-setup";
+import QuestionContent from "@/components/practice/question-content";
 import { createIdempotencyKey, readPracticeSessionHandoff } from "@/lib/practice/session-handoff";
 import { isValidQuestionCount } from "@/lib/practice/question-count";
 import { useIdempotencyKey } from "@/lib/practice/use-idempotency-key";
@@ -795,7 +796,9 @@ export default function QuizPage() {
                 </p>
               )}
             </div>
-            <h1 className={cn("text-xl font-medium leading-relaxed md:text-2xl", result ? "mt-4" : "mt-5")}>{question.content}</h1>
+            <h1 className={cn("text-xl font-medium leading-relaxed md:text-2xl", result ? "mt-4" : "mt-5")}>
+              <QuestionContent content={question.content} />
+            </h1>
 
             <div className="mt-8 space-y-3">
               {(question.type === "single" || question.type === "multi") && options.map((option, optionIndex) => {
@@ -824,7 +827,7 @@ export default function QuizPage() {
                     )}
                   >
                     <span className="font-mono text-xs">{OPTION_LABEL[optionIndex] ?? optionIndex + 1}</span>
-                    <span className="flex-1 text-sm md:text-base">{option}</span>
+                    <span className="min-w-0 flex-1 text-sm md:text-base"><QuestionContent content={option} openImages={false} /></span>
                     {feedback && <OptionFeedbackMark state={feedback} />}
                   </button>
                 );
@@ -882,7 +885,7 @@ export default function QuizPage() {
                     解析 / <span className="tracking-[0.25em]">EXPLAIN</span>
                   </p>
                   <p className="mt-2 font-mono text-xs text-ink/60">参考答案：{expectedAnswerText(result.expected_answer, question)}</p>
-                  <p className="mt-2 text-sm leading-7 text-ink/80">{result.analysis || "本题暂无补充解析。"}</p>
+                  <div className="mt-2 text-sm leading-7 text-ink/80"><QuestionContent content={result.analysis || "本题暂无补充解析。"} /></div>
                   {result.replayed && <p className="mt-2 font-mono text-xs text-ink/60">这次作答之前已提交成功，显示的是当时的判题结果。</p>}
                 </div>
               )}

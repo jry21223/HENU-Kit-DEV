@@ -10,6 +10,7 @@ on:
       - packages/api-contracts/openapi/library.yaml
       - packages/api-contracts/openapi/food.yaml
       - packages/api-contracts/openapi/account-portfolio.yaml
+      - packages/api-contracts/openapi/quizcraft-console-management.yaml
       - .github/workflows/console-gateway.yml
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - packages/api-contracts/openapi/library.yaml
       - packages/api-contracts/openapi/food.yaml
       - packages/api-contracts/openapi/account-portfolio.yaml
+      - packages/api-contracts/openapi/quizcraft-console-management.yaml
       - .github/workflows/console-gateway.yml
 
 permissions:

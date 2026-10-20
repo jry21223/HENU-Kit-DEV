@@ -193,3 +193,44 @@ func TestAccountLookupMapsPlatformCoreErrorsWithoutEchoingTheEmail(t *testing.T)
 		t.Fatalf("lookup error=%v, want a non-echoing transport error", err)
 	}
 }
+
+func TestCheckQuizcraftUsesExactPermissionAndBankScope(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body struct {
+			Session    string            `json:"session_exchange_token"`
+			Permission string            `json:"permission_code"`
+			Scope      map[string]string `json:"scope"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Session != "console-session-test-token-at-least-32" || body.Permission != "quizcraft.workshop.write" || body.Scope["product_code"] != "quizcraft" {
+			t.Errorf("incorrect authorization subject")
+		}
+		if calls == 1 && body.Scope["kind"] != "product" {
+			t.Errorf("create not product-scoped")
+		}
+		if calls == 2 && (body.Scope["kind"] != "resource" || body.Scope["resource_type"] != "bank" || body.Scope["resource_id"] != "171f1c6f-7b10-4c92-91a2-b39bf5af5302") {
+			t.Errorf("bank not resource-scoped")
+		}
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "console-gateway", "console-platform-secret-at-least-32-bytes", "console-key", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bank := range []string{"", "171f1c6f-7b10-4c92-91a2-b39bf5af5302"} {
+		if err = client.CheckQuizcraft(t.Context(), "console-session-test-token-at-least-32", "quizcraft.workshop.write", bank); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = client.CheckQuizcraft(t.Context(), "console-session-test-token-at-least-32", "quizcraft.workshop.admin", ""); err != ErrInvalid {
+		t.Fatal("unbounded permission accepted")
+	}
+	if calls != 2 {
+		t.Fatal("invalid permission reached Platform")
+	}
+}

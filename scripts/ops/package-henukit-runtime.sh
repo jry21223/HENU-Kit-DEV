@@ -102,6 +102,7 @@ install -d \
   "$runtime/migrations/account-portfolio" \
   "$runtime/migrations/notice" \
   "$runtime/migrations/food" \
+  "$runtime/migrations/quizcraft" \
   "$runtime/migrations/library" \
   "$runtime/migrations/career" \
   "$runtime/migrations/portal" \
@@ -128,6 +129,7 @@ cp "$source_root"/services/platform-core/db/migrations/*.up.sql "$runtime/migrat
 cp "$source_root"/services/account-portfolio/db/migrations/*.up.sql "$runtime/migrations/account-portfolio/"
 cp "$source_root"/services/notice/db/migrations/*.up.sql "$runtime/migrations/notice/"
 cp "$source_root"/services/food/db/migrations/*.up.sql "$runtime/migrations/food/"
+cp "$source_root"/products/quizcraft/go-service/db/migrations/*.sql "$runtime/migrations/quizcraft/"
 cp "$source_root"/services/library/db/migrations/*.up.sql "$runtime/migrations/library/"
 cp -a "$source_root"/services/getwork-mcp/deploy/. "$runtime/getwork-node-deploy/"
 cp "$source_root"/services/career-opportunities/db/migrations/*.up.sql "$runtime/migrations/career/"
@@ -194,6 +196,7 @@ install -m 0444 "$source_root"/services/deploy-webhook/deploy/systemd/henukit-ma
 
 for helper in \
   deploy-henukit-food-scoped.py \
+  deploy-henukit-practice-scoped.py \
   deploy-henukit-artifact.sh \
   watch-henukit-actions.sh \
   activate-henukit-release.sh \

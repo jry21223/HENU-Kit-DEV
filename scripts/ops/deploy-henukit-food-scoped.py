@@ -86,6 +86,13 @@ def archive_image_ids(archive, config):
 
 
 class Release:
+    # Subclasses are reviewed, fixed cohorts; there is no operator scope option.
+    services = SERVICES
+    helper_file = Path(__file__)
+    state_scope = "food-author-edit"
+    receipt_format = "henukit-food-scoped-v1"
+    predecessor_rollbacks = PREDECESSOR_ROLLBACKS
+
     def __init__(self, options):
         self.o = options
         self.prefix = Path(options.test_root).resolve() if options.test_root else Path("/")
@@ -104,10 +111,10 @@ class Release:
                 "production host must be Linux amd64",
             )
         self.uid = os.geteuid()
-        self.runtime = Path(__file__).resolve().parent.parent
+        self.runtime = self.helper_file.resolve().parent.parent
         self.envfile = self.path("/opt/henukit/.env.henukit")
         self.watch = self.path("/var/lib/henukit-actions-watch")
-        self.state = self.path("/var/lib/henukit-scoped-releases/food-author-edit")
+        self.state = self.path("/var/lib/henukit-scoped-releases/" + self.state_scope)
         self.record = self.state / options.sha / "receipt.json"
         self.marker = self.watch / "scoped-food-release"
         self.artifacts = self.path("/opt/henukit-staging") / options.sha
@@ -270,6 +277,7 @@ class Release:
         return archive
 
     def provenance(self):
+        self.trusted(self.helper_file.absolute())
         self.trusted(Path(__file__).absolute())
         self.trusted(self.runtime / "RELEASE_SHA")
         require((self.runtime / "RELEASE_SHA").read_text().strip() == self.o.sha, "runtime SHA mismatch")
@@ -312,6 +320,11 @@ class Release:
                 hashlib.sha256(source).hexdigest() == digest(Path(__file__)),
                 "executed helper differs from attested runtime",
             )
+            entry = archive.extractfile("./bin/" + self.helper_file.name).read()
+            require(
+                hashlib.sha256(entry).hexdigest() == digest(self.helper_file),
+                "scope entry differs from attested runtime",
+            )
             critical = {"RELEASE_SHA", "docker-compose.henukit.release.yml"}
             critical.update({"bin/watch-henukit-actions.sh", "bin/activate-henukit-release.sh"})
             critical.update("migrations/food/" + p.name for p in (self.runtime / "migrations/food").iterdir())
@@ -339,7 +352,7 @@ class Release:
                 "installed full-release guard differs from attested runtime",
             )
         images = {}
-        for service in SERVICES:
+        for service in self.services:
             tag = "henukit-" + service + ":" + self.o.sha
             path = self.archive("henukit-" + service + "-" + self.o.sha + ".docker.tar.gz")
             with self.safe_tar(path) as archive:
@@ -359,8 +372,8 @@ class Release:
         require(ids, "no current containers")
         return {item["Name"].lstrip("/"): item for item in json.loads(self.run("docker", "inspect", *ids))}
 
-    @staticmethod
-    def snapshot(containers, selected=False):
+    @classmethod
+    def snapshot(cls, containers, selected=False):
         return {
             name: {
                 "id": item["Id"],
@@ -375,7 +388,7 @@ class Release:
                 "pid": item["State"].get("Pid", 0),
             }
             for name, item in containers.items()
-            if (name in {"henukit-" + s + "-1" for s in SERVICES}) == selected
+            if (name in {"henukit-" + s + "-1" for s in cls.services}) == selected
         }
 
     def compose(self, runtime, sha, version, deployed_at, *args):
@@ -405,7 +418,7 @@ class Release:
             )
 
     def running_configuration(self, containers, baseline, old, version, deployed_at, rendered):
-        for service in SERVICES:
+        for service in self.services:
             item = containers["henukit-" + service + "-1"]
             actual = self.container_environment(item)
             expected = rendered["services"][service].get("environment", {})
@@ -424,6 +437,9 @@ class Release:
                 and item["Config"].get("Labels", {}).get("com.docker.compose.config-hash") == hashes[1],
                 "running configuration contract differs from retained Compose: " + service,
             )
+        self.database_target(containers)
+
+    def database_target(self, containers):
         # This deliberately supports only the existing local Food database.
         # Never claim a successful backup of a configurable remote/alternate DB.
         food = self.container_environment(containers["henukit-food-1"])
@@ -440,6 +456,9 @@ class Release:
             and parse_qsl(target.query, keep_blank_values=True) in ([], [("sslmode", "disable")]),
             "Food backup target does not match the running local database",
         )
+
+    def compatible_configuration(self, baseline, candidate):
+        return baseline == candidate
 
     def preflight(self):
         attempt = self.source()
@@ -478,7 +497,7 @@ class Release:
         require(not self.marker.exists() and not self.marker.is_symlink(), "a scoped release already exists")
         require(not self.record.parent.exists(), "prior attempt requires explicit rollback or inspection")
         containers = self.containers()
-        for service in SERVICES:
+        for service in self.services:
             item = containers["henukit-" + service + "-1"]
             require(
                 item["State"]["Running"] and item["Config"]["Image"] == "henukit-" + service + ":" + old,
@@ -503,11 +522,11 @@ class Release:
         for runtime, sha in ((baseline, old), (self.runtime, self.o.sha)):
             data = json.loads(self.compose(runtime, sha, version, deployed_at, "config", "--format", "json"))
             config = {key: data.get(key) for key in ("name", "networks", "volumes", "configs", "secrets")}
-            config["services"] = {s: dict(data["services"][s]) for s in SERVICES}
+            config["services"] = {s: dict(data["services"][s]) for s in self.services}
             for value in config["services"].values():
                 value.pop("image", None)
             configs.append(config)
-        require(configs[0] == configs[1], "selected service configuration is incompatible")
+        require(self.compatible_configuration(*configs), "selected service configuration is incompatible")
         self.running_configuration(containers, baseline, old, version, deployed_at, configs[0])
         self.rollback_images(self.snapshot(containers, True))
 
@@ -525,7 +544,7 @@ class Release:
         )
         require(shutil.disk_usage(self.artifacts).free >= 4096 * 1024 * 1024, "less than 4096 MiB free")
         return {
-            "format": "henukit-food-scoped-v1",
+            "format": self.receipt_format,
             "sha": self.o.sha,
             "run_id": self.o.run_id,
             "attempt": attempt,
@@ -539,7 +558,7 @@ class Release:
             "environment_sha256": digest(self.envfile),
             "old_version": version,
             "baseline_compose_sha256": digest(baseline / "docker-compose.henukit.release.yml"),
-            "helper_sha256": digest(Path(__file__)),
+            "helper_sha256": digest(self.helper_file),
             "old_deployed_at": deployed_at,
             "getwork_acceptance": "deferred",
             "whole_application_release": False,
@@ -781,7 +800,7 @@ class Release:
             "unselected container identity/state changed",
         )
 
-    def http(self, path, expected, method="GET"):
+    def http(self, path, expected, method="GET", origin="https://henukit.cn"):
         deadline = time.monotonic() + 210
         for _ in range(30):
             remaining = deadline - time.monotonic()
@@ -801,7 +820,7 @@ class Release:
                         "%{http_code} %{redirect_url}",
                         "--request",
                         method,
-                        "https://henukit.cn" + path,
+                        origin + path,
                         timeout=min(65, remaining),
                     )
                     status, _, redirect = result.decode().strip().partition(" ")
@@ -825,7 +844,7 @@ class Release:
         for _ in range(30):
             containers = self.containers()
             ready = True
-            for service in SERVICES:
+            for service in self.services:
                 item = containers["henukit-" + service + "-1"]
                 image = (
                     data["images"][service]
@@ -850,6 +869,9 @@ class Release:
         self.http("/api/v1/account/summary", (200, 401, 403))
         self.http("/quiz/", (404,))
         self.http("/study-api/healthz", (404,))
+        self.scope_acceptance(data, candidate)
+
+    def scope_acceptance(self, data, candidate):
         if candidate:
             probe = "/api/v1/food/posts/11111111-1111-4111-8111-111111111111"
             self.http(probe + "/edit", (401,))
@@ -875,7 +897,7 @@ class Release:
             "up",
             "-d",
             "--no-deps",
-            *SERVICES,
+            *self.services,
         )
         self.healthy(data, False)
         self.write_receipt(data, "rolled_back")
@@ -891,7 +913,7 @@ class Release:
             self.trusted(self.record, private=True)
             data = json.loads(self.record.read_text())
             require(
-                data["sha"] == self.o.sha and data["helper_sha256"] == digest(Path(__file__)),
+                data["sha"] == self.o.sha and data["helper_sha256"] == digest(self.helper_file),
                 "active receipt identity mismatch",
             )
             require(data["status"] == "active", "interrupted attempt requires explicit rollback")
@@ -906,7 +928,7 @@ class Release:
             self.write_receipt(data, "preparing")
             self.backup(data)
             self.write_receipt(data, "prepared")
-            for service in SERVICES:
+            for service in self.services:
                 archive = self.archive("henukit-" + service + "-" + self.o.sha + ".docker.tar.gz")
                 self.run("docker", "load", "--input", archive, timeout=180)
                 image = json.loads(
@@ -939,7 +961,7 @@ class Release:
                     "up",
                     "-d",
                     "--no-deps",
-                    *SERVICES,
+                    *self.services,
                 )
                 self.healthy(data, True)
                 self.source()
@@ -959,14 +981,14 @@ class Release:
         self.trusted(self.record, private=True)
         data = json.loads(self.record.read_text())
         require(
-            data["sha"] == self.o.sha and data["format"] == "henukit-food-scoped-v1",
+            data["sha"] == self.o.sha and data["format"] == self.receipt_format,
             "rollback receipt identity mismatch",
         )
-        current_helper = digest(Path(__file__))
+        current_helper = digest(self.helper_file)
         recovering_predecessor = data["helper_sha256"] != current_helper
         if recovering_predecessor:
             require(
-                (data["sha"], data["helper_sha256"]) in PREDECESSOR_ROLLBACKS
+                (data["sha"], data["helper_sha256"]) in self.predecessor_rollbacks
                 and data["status"] in ("rollback_failed", "rolled_back"),
                 "rollback receipt helper identity mismatch",
             )

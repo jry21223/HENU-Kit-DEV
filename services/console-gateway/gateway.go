@@ -1,6 +1,7 @@
 package consolegateway
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,10 +15,14 @@ import (
 	"henukit.dev/console-gateway/internal/notice"
 	"henukit.dev/console-gateway/internal/overview"
 	"henukit.dev/console-gateway/internal/platformcore"
+	"henukit.dev/console-gateway/internal/quizcraft"
 	"henukit.dev/console-gateway/internal/session"
 )
 
 type Config struct {
+	QuizcraftManagementEnabled                 bool
+	QuizcraftAPIURL                            string
+	QuizcraftCredentials                       overview.Credentials
 	PlatformCoreURL, PlatformAccountOrigin     string
 	ClientID, ClientSecret, KeyID, RedirectURI string
 	SessionKey                                 []byte
@@ -79,6 +84,22 @@ func New(config Config) (http.Handler, error) {
 			return nil, err
 		}
 	}
+	var quizcraftClient *quizcraft.Client
+	if config.QuizcraftManagementEnabled {
+		secret := config.QuizcraftCredentials.ClientSecret
+		if secret == config.ClientSecret || secret == string(config.SessionKey) || secret == base64.StdEncoding.EncodeToString(config.SessionKey) || secret == config.AccountPortfolioCredentials.ClientSecret || secret == config.NoticeCredentials.ClientSecret || secret == config.LibraryCredentials.ClientSecret || secret == config.FoodCredentials.ClientSecret {
+			return nil, fmt.Errorf("QuizCraft management secret must be separate from browser Session and owner/OAuth credentials")
+		}
+		for _, credential := range config.OverviewCredentials {
+			if credential.ClientSecret == secret {
+				return nil, fmt.Errorf("QuizCraft management secret must be separate from summary credentials")
+			}
+		}
+		quizcraftClient, err = quizcraft.New(config.QuizcraftAPIURL, config.QuizcraftCredentials.ClientID, secret, config.QuizcraftCredentials.KeyID, config.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for id, credential := range config.OverviewCredentials {
 		if credential.ClientSecret == config.ClientSecret {
 			return nil, fmt.Errorf("%s summary secret must be separate from Platform Core OAuth credentials", id)
@@ -88,5 +109,5 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient, foodClient, accountPortfolioClient)
+	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient, foodClient, accountPortfolioClient, quizcraftClient)
 }

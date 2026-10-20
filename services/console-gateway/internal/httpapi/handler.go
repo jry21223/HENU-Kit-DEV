@@ -147,6 +147,7 @@ type overviewClient interface {
 }
 
 type Handler struct {
+	quizcraft                             quizcraftClient
 	platformOrigin, clientID, redirectURI string
 	platform                              platformClient
 	notice                                noticeClient
@@ -193,9 +194,13 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 		account, _ = ownerClients[2].(accountPortfolioClient)
 	}
 	handler := &Handler{platformOrigin: strings.TrimRight(platformOrigin, "/"), clientID: clientID, redirectURI: redirectURI, platform: platform, notice: notice, library: library, food: food, account: account, overview: overview, redis: redisClient, codec: codec, logger: logger, now: time.Now}
+	if len(ownerClients) > 3 {
+		handler.quizcraft, _ = ownerClients[3].(quizcraftClient)
+	}
 	router := chi.NewRouter()
 	router.Use(handler.requestContext)
 	router.Use(securityHeaders)
+	router.Handle("/api/v1/quizcraft/workshop/*", http.HandlerFunc(handler.quizcraftManagement))
 	router.Get(contract.HealthRoute, handler.health)
 	router.Get(contract.LoginRoute, handler.login)
 	router.Get(contract.CallbackRoute, handler.callback)
