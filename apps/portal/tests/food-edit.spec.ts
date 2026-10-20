@@ -112,6 +112,11 @@ for (const width of [360, 1440]) {
     await page.goto(`/food/post/${id}/edit`);
     await expect(page.getByLabel("店铺名")).toHaveValue("西门小馆");
     await expect(page.getByPlaceholder("菜名")).toHaveValue("牛肉面");
+    await page.getByPlaceholder("菜名").fill("");
+    await page.getByRole("button", {name: "保存修改 →"}).click();
+    await expect(page.locator("main").getByRole("alert")).toContainText("补充菜名");
+    expect(writes).toBe(0);
+    await page.getByPlaceholder("菜名").fill("牛肉面");
     await page.getByLabel("锐评正文").fill("牛肉面也值得来。");
     await page.getByRole("button", { name: "删除图 1" }).click();
     await page

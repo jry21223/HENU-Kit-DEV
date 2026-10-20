@@ -219,6 +219,11 @@ export default function FoodPostForm({
       return;
     }
 
+    if (dishes.some((dish) => !dish.name.trim() && (dish.price.trim() || dish.reason.trim()))) {
+      setError("请为已填写价格或理由的菜品补充菜名。");
+      return;
+    }
+
     const venueError =
       textLength(cleanedVenue) > 160 ? "店铺名不能超过 160 字" : undefined;
     const reviewLength = textLength(cleanedReview);
