@@ -42,9 +42,15 @@ activate that group or imply its acceptance.
   Prove the running QuizCraft database target and unchanged migrations. Back
   up that existing database with the installed matching PostgreSQL tools and
   restore it into an isolated verification database before replacing a service.
-  The owner URL's host-gateway route, host loopback route, and existing
+  The owner URL's host-gateway route from its exact running container network
+  namespace, host loopback route, and existing
   postgres admin connection must identify the same PostgreSQL 16 instance and
-  database. Preserve every URL component except the derived host route. Use an
+  database. Pin the network namespace FD to the container ID/PID/start time and
+  Docker sandbox device/inode, verify the kernel network type, and recheck the
+  binding around the read-only query. Trusted host `nsenter` enters only that
+  network namespace and executes the installed host PG16 tool. Do not change HBA,
+  roles, credentials, grants or container configuration to make a host-origin
+  gateway probe pass. Preserve every URL component except the derived host route. Use an
   exported repeatable-read snapshot for the dump and comparison counts so new
   student attempts cannot race the backup check. Never migrate or publish
   content through SQL in this path. Retain QuizCraft's digest, bytes and counts

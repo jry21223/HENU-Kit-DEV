@@ -1,13 +1,16 @@
 """Fixed Practice CLI: real subprocess seam with private local command fixtures."""
 import hashlib
+import importlib.util
 import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import unittest
+from unittest.mock import patch
 
 import test_scoped_food_release as food
 
@@ -49,6 +52,14 @@ class PracticeCLI(unittest.TestCase):
         quiz["HostsPath"] = str(hosts)
         quiz["HostConfig"] = {"ExtraHosts": ["host.docker.internal:host-gateway"]}
         quiz["NetworkSettings"] = {"Networks": {"henukit_default": {"Gateway": "172.18.0.1", "IPAddress": "172.18.0.9"}}}
+        quiz["State"].update(Pid=4242, StartedAt="2026-10-01T00:00:00Z")
+        namespace = self.root / "proc/4242/ns/net"
+        namespace.parent.mkdir(parents=True)
+        namespace.write_bytes(b"fixture network namespace")
+        sandbox = self.root / "run/docker/netns/fixture-quizcraft"
+        sandbox.parent.mkdir(parents=True)
+        os.link(namespace, sandbox)
+        quiz["NetworkSettings"]["SandboxKey"] = str(sandbox)
         state_file.write_text(json.dumps(state))
         migrations = self.runtime / "migrations/quizcraft"
         migrations.mkdir(parents=True)
@@ -91,7 +102,32 @@ class PracticeCLI(unittest.TestCase):
         fake = fake.replace("if os.environ.get('FAIL_BACKUP'):sys.exit(3)\n   print('database archive')", "if os.environ.get('FAIL_FOOD_BACKUP'):sys.exit(3)\n   print('database archive')")
         fake = fake.replace("elif any('pg_restore' in a for a in args):sys.stdin.buffer.read()", "elif any('pg_restore' in a for a in args):\n   sys.stdin.buffer.read()\n   if os.environ.get('FAIL_FOOD_RESTORE'):sys.exit(3)")
         fake = fake.replace("elif any('psql' in a for a in args):print('1')", "elif any('psql' in a for a in args):print('bad' if os.environ.get('BAD_FOOD_COUNTS') else '1')")
-        fake = fake.replace("elif name=='docker':", """elif name in ['psql','pg_dump','pg_restore','runuser','createdb','dropdb']:
+        fake = fake.replace("elif args[0]=='inspect':out([state['containers'][n] for n in args[1:]])", """elif args[0]=='inspect':
+  items=[next(c for key,c in state['containers'].items() if n in (key,c['Id'])) for n in args[1:]]
+  if len(args)==2 and args[1]==state['containers']['henukit-quizcraft-1']['Id']:
+   count=state.get('namespace_inspects',0)+1;state['namespace_inspects']=count;save()
+   if count==int(os.environ.get('DRIFT_INSPECT_PHASE','0')):
+    q=items[0];kind=os.environ['DRIFT_CONTAINER']
+    if kind=='id':q['Id']='3'*64
+    elif kind=='pid':q['State']['Pid']=4343
+    elif kind=='started':q['State']['StartedAt']='2026-10-02T00:00:00Z'
+    elif kind=='stopped':q['State']['Running']=False
+    elif kind=='sandbox':q['NetworkSettings']['SandboxKey']=str(root/'run/docker/netns/other')
+    elif kind=='network':q['NetworkSettings']['Networks']['henukit_default']['IPAddress']='172.18.0.10'
+  out(items)""")
+        fake = fake.replace("elif name=='docker':", """elif name=='nsenter':
+ assert len(args)>3 and args[0].startswith('--net=/proc/self/fd/') and args[1]=='--'
+ assert pathlib.Path(args[2])==root/'bin/psql'
+ fd=int(args[0].rsplit('/',1)[1]);opened=os.fstat(fd);expected=(root/'proc/4242/ns/net').stat()
+ assert (opened.st_dev,opened.st_ino)==(expected.st_dev,expected.st_ino)
+ with (root/'namespace-commands.jsonl').open('a') as stream:stream.write(json.dumps({'args':args,'pg':{k:v for k,v in os.environ.items() if k.startswith('PG')}})+'\\n')
+ if os.environ.get('FAIL_NSENTER'):
+  print('fixture password=password DATABASE_URL must not escape',file=sys.stderr);sys.exit(2)
+ for key,relative in [('REPLACE_PROC_NAMESPACE','proc/4242/ns/net'),('REPLACE_SANDBOX_NAMESPACE','run/docker/netns/fixture-quizcraft')]:
+  if os.environ.get(key):
+   changed=root/relative;changed.unlink();changed.write_bytes(b'other namespace')
+ print(json.dumps({'database':'quizcraft_v2','oid':99 if os.environ.get('BAD_NAMESPACE_IDENTITY') else 42,'started':'2026-10-01','port':5432,'version':160015}))
+elif name in ['psql','pg_dump','pg_restore','runuser','createdb','dropdb']:
  if '--version' in args:print(name+' (PostgreSQL) 16.15')
  elif name=='runuser':
   tool=pathlib.Path(args[args.index('--')+1]).name
@@ -99,6 +135,7 @@ class PracticeCLI(unittest.TestCase):
   if tool=='pg_restore' and os.environ.get('FAIL_RESTORE'):sys.exit(3)
   if tool=='psql' and any('quizcraft_banks' in a for a in args):print('') if False else None
  elif name=='psql':
+  if os.environ.get('REJECT_HOST_GATEWAY') and os.environ.get('PGHOST')=='172.17.0.1':sys.exit(2)
   if '--command' not in args:
    import time
    line=sys.stdin.readline()
@@ -116,7 +153,7 @@ elif name=='docker':""")
         # Admin count queries must return the same snapshot facts after restore.
         fake = fake.replace("if tool=='psql':print(json.dumps({'database'", "if tool=='psql' and not any('quizcraft_banks' in a for a in args):print(json.dumps({'database'")
         fake = fake.replace("if tool=='psql' and any('quizcraft_banks' in a for a in args):print('') if False else None", "if tool=='psql' and any('quizcraft_banks' in a for a in args):print(json.dumps({'banks':1,'versions':2,'questions':3,'question_versions':4,'memberships':4,'attempts':9 if os.environ.get('BAD_COUNTS') else 5,'sessions':6,'audit':7}))")
-        for name in ("docker", "gh", "systemctl", "curl", "psql", "pg_dump", "pg_restore", "runuser", "createdb", "dropdb"):
+        for name in ("docker", "gh", "systemctl", "curl", "psql", "pg_dump", "pg_restore", "runuser", "createdb", "dropdb", "nsenter"):
             path = self.root / "bin" / name; path.write_text(fake); path.chmod(0o755)
 
     def checksum(self, path):
@@ -146,6 +183,112 @@ elif name=='docker':""")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.record.parent.exists())
         self.assertFalse(any(name in ("pg_dump", "createdb", "dropdb") and "--version" not in args or name == "runuser" and any(Path(a).name in ("createdb", "dropdb", "pg_restore") for a in args) or name == "docker" and ("load" in args or "up" in args) for name, args in self.calls()))
+
+    def test_namespace_drift_failure_and_wrong_database_stop_before_backup_or_activation(self):
+        for flags in (
+            {"FAIL_NSENTER": "1"}, {"BAD_NAMESPACE_IDENTITY": "1"},
+            {"REPLACE_PROC_NAMESPACE": "1"}, {"REPLACE_SANDBOX_NAMESPACE": "1"},
+            *({"DRIFT_INSPECT_PHASE": str(phase), "DRIFT_CONTAINER": kind}
+              for phase in (1, 2) for kind in ("id", "pid", "started", "stopped", "sandbox", "network")),
+        ):
+            with self.subTest(flags=flags):
+                case = PracticeCLI()
+                case.setUp()
+                try:
+                    result = case.run_cli("--execute", flags)
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertNotIn("password=password", result.stderr + result.stdout)
+                    self.assertFalse(case.record.parent.exists())
+                    self.assertFalse(any(tool in ("pg_dump", "createdb", "dropdb") and "--version" not in args
+                                         or tool == "docker" and ("load" in args or "up" in args)
+                                         for tool, args in case.calls()))
+                finally:
+                    case.doCleanups()
+
+    def test_invalid_pid_namespace_binding_and_untrusted_tools_are_rejected(self):
+        for kind in ("pid-zero", "pid-one", "pid-string", "pid-bool", "pid-missing", "no-start-time",
+                     "sandbox-inode", "sandbox-path", "sandbox-symlink", "proc-symlink", "proc-directory",
+                     "nsenter-writable", "psql-writable"):
+            with self.subTest(kind=kind):
+                case = PracticeCLI()
+                case.setUp()
+                try:
+                    state_path = case.root / "fake-state.json"
+                    state = json.loads(state_path.read_text())
+                    item = state["containers"]["henukit-quizcraft-1"]
+                    if kind.startswith("pid-"):
+                        item["State"]["Pid"] = {"pid-zero": 0, "pid-one": 1, "pid-string": "4242", "pid-bool": True, "pid-missing": None}[kind]
+                    elif kind == "no-start-time":
+                        item["State"]["StartedAt"] = ""
+                    elif kind == "sandbox-inode":
+                        path = Path(item["NetworkSettings"]["SandboxKey"])
+                        path.unlink()
+                        path.write_bytes(b"different namespace")
+                    elif kind == "sandbox-path":
+                        item["NetworkSettings"]["SandboxKey"] = str(case.root / "unexpected-namespace")
+                    elif kind == "sandbox-symlink":
+                        path = Path(item["NetworkSettings"]["SandboxKey"])
+                        path.unlink()
+                        path.symlink_to(case.root / "proc/4242/ns/net")
+                    elif kind.startswith("proc-"):
+                        path = case.root / "proc/4242/ns/net"
+                        path.unlink()
+                        if kind == "proc-directory":
+                            path.mkdir()
+                        else:
+                            path.symlink_to(Path(item["NetworkSettings"]["SandboxKey"]))
+                    else:
+                        (case.root / "bin" / kind.removesuffix("-writable")).chmod(0o777)
+                    state_path.write_text(json.dumps(state))
+                    result = case.run_cli("--preflight")
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertFalse(case.record.parent.exists())
+                    self.assertFalse(any(tool == "nsenter" for tool, _ in case.calls()))
+                finally:
+                    case.doCleanups()
+
+    def test_production_rejects_plain_file_disguised_as_proc_namespace(self):
+        # Non-root CLI fixtures model namespace mounts with regular hardlinks.
+        # The production branch additionally requires the kernel namespace ioctl.
+        with patch.object(sys, "argv", ["test", "--test-root", str(self.root)]):
+            spec = importlib.util.spec_from_file_location("practice_namespace_contract", self.runtime / "bin" / SOURCE.name)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        release = object.__new__(module.Release)
+        release.prefix = self.root
+        release.uid = os.geteuid()
+        release.testing = False
+        item = json.loads((self.root / "fake-state.json").read_text())["containers"]["henukit-quizcraft-1"]
+        path = self.root / "proc/4242/ns/net"
+        target = path.with_name("net:[12345]")
+        path.rename(target)
+        path.symlink_to(target.name)
+        with self.assertRaises(OSError):
+            with release.owner_network_namespace(item):
+                self.fail("ordinary file was accepted as a kernel network namespace")
+        with patch.object(module.fcntl, "ioctl", return_value=0x20000000):
+            with self.assertRaisesRegex(module.engine.ReleaseError, "not a Linux network namespace"):
+                with release.owner_network_namespace(item):
+                    self.fail("PID namespace was accepted as a network namespace")
+
+    def test_gateway_identity_uses_pinned_container_network_with_unchanged_owner_credentials(self):
+        result = self.run_cli("--preflight", {"REJECT_HOST_GATEWAY": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = [json.loads(line) for line in (self.root / "namespace-commands.jsonl").read_text().splitlines()]
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0]["pg"], {
+            "PGHOST": "172.17.0.1", "PGPORT": "5432", "PGDATABASE": "quizcraft_v2",
+            "PGUSER": "quizcraft_v2", "PGPASSWORD": "password", "PGSSLMODE": "disable",
+            "PGCONNECT_TIMEOUT": "10",
+        })
+        self.assertEqual(commands[0]["args"][1:3], ["--", str(self.root / "bin/psql")])
+        owner_queries = [args for tool, args in self.calls() if tool == "psql" and "--command" in args]
+        self.assertEqual(len(owner_queries), 1)
+        self.assertEqual(commands[0]["args"][3:], owner_queries[0])
+        self.assertEqual(sum(tool == "runuser" and any(Path(a).name == "psql" for a in args)
+                             for tool, args in self.calls()), 1)
+        self.assertFalse(any(name == "psql" and "172.17.0.1" in args for name, args in self.calls()))
+        self.assertFalse(self.record.parent.exists())
 
     def test_execute_uses_only_fixed_scope_and_keeps_private_key_after_backup(self):
         before = json.loads((self.root / "fake-state.json").read_text())["containers"]

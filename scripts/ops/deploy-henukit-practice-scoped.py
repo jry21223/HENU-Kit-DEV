@@ -3,6 +3,7 @@
 
 import argparse
 import contextlib
+import fcntl
 import hashlib
 import importlib.util
 import ipaddress
@@ -12,6 +13,7 @@ from pathlib import Path
 import re
 import secrets
 import select
+import stat
 import subprocess
 import sys
 import tarfile
@@ -56,6 +58,9 @@ IDENTITY = """SELECT json_build_object('database',current_database(),
 'oid',(SELECT oid FROM pg_database WHERE datname=current_database()),
 'started',pg_postmaster_start_time(),'port',current_setting('port')::int,
 'version',current_setting('server_version_num')::int)"""
+# Linux UAPI: NS_GET_NSTYPE and CLONE_NEWNET. A regular file is not a namespace.
+NS_GET_NSTYPE = 0xB703
+CLONE_NEWNET = 0x40000000
 
 
 def canonical(value):
@@ -76,6 +81,9 @@ class Release(engine.Release):
             path = self.prefix / "bin" / name if self.testing else Path("/usr/sbin/runuser") if name == "runuser" else Path("/usr/lib/postgresql/16/bin") / name
             self.trusted(path)
             self.tools[name] = str(path)
+        namespace_tool = self.prefix / "bin/nsenter" if self.testing else Path("/usr/bin/nsenter")
+        self.trusted(namespace_tool)
+        self.tools["nsenter"] = str(namespace_tool)
         # Caller-supplied bridge/PG values are never authority for either side.
         self.env = {k: v for k, v in self.env.items() if not k.startswith(("PG", "QUIZCRAFT_CONSOLE_"))}
 
@@ -130,13 +138,81 @@ class Release(engine.Release):
                 env["PGSSLMODE"] = value
         return env
 
-    def psql(self, query, *, url=None, database=None):
+    def psql(self, query, *, url=None, database=None, namespace=None):
         args = ["--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1", "--tuples-only", "--no-align"]
         if database:
             output = self.run("runuser", "-u", "postgres", "--", self.tools["psql"], "--dbname", database, *args, "--command", query, env=self.pg_environment())
-        else:
+        elif namespace is None:
             output = self.run("psql", *args, "--command", query, env=self.pg_environment(url))
+        else:
+            # Pin the already-open network namespace across exec. No mount,
+            # user or PID namespace is entered; the trusted host PG16 tool and
+            # exact owner credentials remain the same.
+            result = subprocess.run(
+                [self.tools["nsenter"], "--net=/proc/self/fd/" + str(namespace), "--",
+                 self.tools["psql"], *args, "--command", query],
+                env=self.pg_environment(url), pass_fds=(namespace,),
+                capture_output=True, timeout=60,
+            )
+            require(result.returncode == 0, "QuizCraft container-network psql command failed (" + str(result.returncode) + ")")
+            output = result.stdout
         return json.loads(output)
+
+    @staticmethod
+    def namespace_container_identity(item):
+        state = item.get("State", {})
+        pid = state.get("Pid")
+        require(re.fullmatch(r"[0-9a-f]{64}", item.get("Id", ""))
+                and item.get("Name") == "/henukit-quizcraft-1"
+                and state.get("Running") is True and not state.get("Paused", False)
+                and not state.get("Restarting", False)
+                and type(pid) is int and pid > 1 and state.get("StartedAt"),
+                "QuizCraft container is not a stable running namespace owner")
+        return {"id": item["Id"], "pid": pid, "started": state["StartedAt"],
+                "restarts": item["RestartCount"], "hosts": item["HostsPath"],
+                "network": item["NetworkSettings"],
+                "extra_hosts": item["HostConfig"].get("ExtraHosts"),
+                "database_url": Release.container_environment(item).get("DATABASE_URL")}
+
+    @contextlib.contextmanager
+    def owner_network_namespace(self, item):
+        expected = self.namespace_container_identity(item)
+        namespace_path = self.path("/proc/" + str(expected["pid"]) + "/ns/net")
+        sandbox = Path(item["NetworkSettings"].get("SandboxKey", ""))
+        require(sandbox.parent in {self.path("/run/docker/netns"), self.path("/var/run/docker/netns")}
+                and not sandbox.is_symlink(), "unreviewed QuizCraft Docker sandbox path")
+        # /var/run may be the system's root-owned /run alias. Validate the
+        # resolved retained mount and every parent before using its identity.
+        sandbox = sandbox.resolve(strict=True)
+        self.trusted(sandbox)
+        if self.testing:
+            self.trusted(namespace_path)
+        else:
+            require(namespace_path.is_symlink()
+                    and re.fullmatch(r"net:\[[0-9]+\]", os.readlink(namespace_path)),
+                    "QuizCraft proc entry is not a kernel network namespace")
+        descriptor = os.open(namespace_path, os.O_RDONLY | os.O_CLOEXEC)
+        try:
+            opened = os.fstat(descriptor)
+            require(stat.S_ISREG(opened.st_mode), "QuizCraft network namespace is not a regular namespace handle")
+            if not self.testing:
+                require(fcntl.ioctl(descriptor, NS_GET_NSTYPE) == CLONE_NEWNET,
+                        "QuizCraft handle is not a Linux network namespace")
+
+            def unchanged():
+                actual = json.loads(self.run("docker", "inspect", item["Id"]))
+                require(len(actual) == 1 and self.namespace_container_identity(actual[0]) == expected,
+                        "QuizCraft container changed during namespace binding")
+                for path in (namespace_path, sandbox):
+                    current = path.stat()
+                    require((current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino),
+                            "QuizCraft process and Docker sandbox namespaces differ or changed")
+
+            unchanged()
+            yield descriptor
+            unchanged()
+        finally:
+            os.close(descriptor)
 
     def database_target(self, containers):
         # The new Portal exposes Food author editing, so the retained Food
@@ -175,7 +251,8 @@ class Release(engine.Release):
             return urlunsplit((target.scheme, authority.replace("host.docker.internal", host), target.path, target.query, ""))
         self.database_url = routed("127.0.0.1")
         host_identity = self.psql(IDENTITY, url=self.database_url)
-        gateway_identity = self.psql(IDENTITY, url=routed(gateway))
+        with self.owner_network_namespace(item) as namespace:
+            gateway_identity = self.psql(IDENTITY, url=routed(gateway), namespace=namespace)
         admin_identity = self.psql(IDENTITY, database="quizcraft_v2")
         require(host_identity == gateway_identity == admin_identity, "QuizCraft owner route and host admin target differ")
         require(host_identity["database"] == "quizcraft_v2" and host_identity["port"] == 5432 and 160000 <= host_identity["version"] < 170000, "QuizCraft requires installed PostgreSQL 16 target")
