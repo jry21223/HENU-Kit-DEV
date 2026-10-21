@@ -10,14 +10,16 @@ import cpp from "highlight.js/lib/languages/cpp";
 import sql from "highlight.js/lib/languages/sql";
 import { cn } from "@/lib/cn";
 import { PracticeFigure } from "./question-content";
+import rehypeFigureRows from "./rehype-figure-rows";
 
 const remarkPlugins = [remarkGfm];
 const rehypePlugins: NonNullable<React.ComponentProps<typeof Markdown>["rehypePlugins"]> = [
+  rehypeFigureRows,
   [rehypeHighlight, { languages: { java, javascript, typescript, python, cpp, sql }, detect: false, ignoreMissing: true }],
 ];
 
 const components: Components = {
-  img: ({ src, alt }) => <PracticeFigure src={typeof src === "string" ? src : ""} alt={alt} />,
+  img: ({ src, alt, node }) => <PracticeFigure src={typeof src === "string" ? src : ""} alt={alt} grouped={node?.properties["data-practice-grouped"] === true} />,
   pre: ({ children }) => (
     <pre data-no-question-swipe tabIndex={0} aria-label="代码，可横向滚动" className="question-code">
       {children}
@@ -33,13 +35,13 @@ const components: Components = {
 // Options live inside native answer buttons: use only phrasing content and no
 // nested links, focusable scrollers, inputs or other interactive nodes.
 function OptionBlock({ children }: { children?: ReactNode }) {
-  return <span className="block">{children}</span>;
+  return <span className="block whitespace-pre-wrap">{children}</span>;
 }
 const optionComponents: Components = {
   p: OptionBlock,
   pre: ({ children }) => <span data-no-question-swipe className="question-code block">{children}</span>,
   a: ({ children }) => <span>{children}</span>,
-  img: ({ src, alt }) => <PracticeFigure src={typeof src === "string" ? src : ""} alt={alt} openImage={false} />,
+  img: ({ src, alt, node }) => <PracticeFigure src={typeof src === "string" ? src : ""} alt={alt} openImage={false} grouped={node?.properties["data-practice-grouped"] === true} />,
   table: ({ children }) => <span data-no-question-swipe className="block max-w-full overflow-x-auto"><span role="table" className="table text-sm">{children}</span></span>,
   thead: ({ children }) => <span role="rowgroup" className="table-header-group">{children}</span>,
   tbody: ({ children }) => <span role="rowgroup" className="table-row-group">{children}</span>,

@@ -50,6 +50,7 @@
     "@henukit/oauth-continuation-e2e": "workspace:*",
     "@playwright/test": "1.61.0",
     "@tailwindcss/postcss": "^4",
+    "@types/hast": "3.0.5",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",

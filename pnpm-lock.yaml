@@ -145,6 +145,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3
+      '@types/hast':
+        specifier: 3.0.5
+        version: 3.0.5
       '@types/node':
         specifier: ^20
         version: 20.19.43

@@ -3,6 +3,35 @@ import { describe, expect, it } from "vitest";
 import QuestionMarkdown from "./question-markdown";
 
 describe("question Markdown", () => {
+  it("preserves configuration indentation around figure rows in the actual Markdown renderer", () => {
+    const path = `/practice-assets/h3c/${"a".repeat(64)}.png`;
+    const html = renderToStaticMarkup(<QuestionMarkdown content={`检查配置。\n\n[MSR] interface GE1/0\n ip address 10.1.1.1 24\n\n![配置](${path})\n\n  [MSR] ospf 1\n area 0\n  network 10.1.1.0 0.0.0.255\n\n请选择正确描述。`} />);
+    expect(html).toContain("[MSR] interface GE1/0\n ip address 10.1.1.1 24");
+    expect(html).toContain("  [MSR] ospf 1\n area 0\n  network 10.1.1.0 0.0.0.255");
+    expect(html).toContain("检查配置。");
+    expect(html).toContain("请选择正确描述。");
+  });
+
+  it("does not pull figures across real paragraphs or fenced configuration", () => {
+    const first = `/practice-assets/h3c/${"a".repeat(64)}.png`;
+    const second = `/practice-assets/h3c/${"b".repeat(64)}.png`;
+    const html = renderToStaticMarkup(<QuestionMarkdown content={`![前图](${first})\n\n**保留中间说明**\n\n\`\`\`text\n[MSR] ospf 1\n area 0\n\`\`\`\n\n![后图](${second})`} />);
+    const body = html.slice(html.indexOf("<div"));
+    expect(body.indexOf(`<img src="${first}"`)).toBeLessThan(body.indexOf("<strong>保留中间说明</strong>"));
+    expect(body.indexOf("<strong>保留中间说明</strong>")).toBeLessThan(body.indexOf("<pre"));
+    expect(body.indexOf("<pre")).toBeLessThan(body.indexOf(`<img src="${second}"`));
+    expect(body).toContain("[MSR] ospf 1\n area 0");
+  });
+
+  it("preserves an explicit backslash line break between figures", () => {
+    const first = `/practice-assets/h3c/${"a".repeat(64)}.png`;
+    const second = `/practice-assets/h3c/${"b".repeat(64)}.png`;
+    const html = renderToStaticMarkup(<QuestionMarkdown content={`![前图](${first})` + "\\\n" + `![后图](${second})`} />);
+    const body = html.slice(html.indexOf("<div"));
+    expect(body.indexOf(`<img src="${first}"`)).toBeLessThan(body.indexOf("<br"));
+    expect(body.indexOf("<br")).toBeLessThan(body.indexOf(`<img src="${second}"`));
+  });
+
   it("renders Java fences with indentation and generic type characters intact", () => {
     const html = renderToStaticMarkup(<QuestionMarkdown content={'阅读代码：\n\n```java\nList<String> list = new ArrayList<>();\n  list.add("aaa");\n```'} />);
     expect(html).toContain("<pre");

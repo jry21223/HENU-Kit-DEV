@@ -116,7 +116,7 @@ are local integration results, not a production deployment claim.
 
 ## Current-main compatibility and release hold
 
-The next integration baseline is main
+The previous integration baseline was main
 `27b922825452f46fa1678170b6b1f20ef6180c94` (PR #601). Keep its self-service
 statistics/favorites authorization and Food author editing unchanged. The shared
 figure renderer retains #601's responsive maximum height of `min(28svh,280px)`,
@@ -130,3 +130,30 @@ configuration already exists, but the current fixed-five helper generates a
 new key for each new release. Existing configuration is not authorization to
 create or rotate a credential. Investigating a path that preserves credentials
 in place does not authorize changing the helper or production configuration.
+
+## Consecutive-figure compatibility after PR #603
+
+Current integration baseline: main
+`687df17e2a34fb917efe267017db2e0ef1ad0df2`. Its legacy `QuestionContent`
+figure rows alone are insufficient because the actual #588 page uses
+`QuestionMarkdown` for stems, options and explanations. A rehype transform now
+groups reviewed adjacent images and image-only paragraphs on that real path,
+including images separated only by blank Markdown lines or two-space hard
+breaks. Exact source positions distinguish whitespace-generated breaks from
+explicit backslash breaks, which remain intact. Rows share the
+legacy component's proportional sizing and separator ownership; real text or
+fenced code stops a group. Options remain free of interactive image links.
+
+CommonMark removes leading whitespace in plain paragraphs. The transform
+restores only original whitespace from exact source positions in root
+paragraphs; it never guesses commands or rewrites code. List/blockquote syntax
+and fenced code retain their normal parser handling. A regression first proved
+the raw configuration indentation was lost, then passed after restoration.
+
+The exact two-figure source sample first failed at all three viewports on the
+old Markdown path. Targeted browser regressions now exercise stems, options
+and explanations through the actual page. These fixtures are compatibility
+tests only: #602's 134-question, three-size audit and production acceptance
+remain the other owner's task. No full-coverage or production claim follows
+from the local suite. The no-merge, no-deploy and no-credential-change holds
+remain in effect.
