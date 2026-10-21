@@ -167,6 +167,49 @@ test("judge: a wrong pick shows ✗ and marks the other side as the answer", asy
 });
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1366, height: 768 }, { width: 360, height: 800 }]) {
+test(`Markdown figure rows work in options and explanations at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  const sources = [
+    "/practice-assets/h3c/dbcf2c743d6de5fdfc8f39eaaf8bfa061975eb3957968464ece706afc5d39c4d.png",
+    "/practice-assets/h3c/55b82f46ab0d1734faad4f8df5d543ea5af361680e40dd4c6a554ddd5c8ab52e.png",
+  ];
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openScoredQuestion(page, {
+    name: "markdown-figure-rows",
+    type: "single", correct: true, expected: 0,
+    content: "选择配置。",
+    options: [`配置甲\n\n![选项左图](${sources[0]})  \n![选项右图](${sources[1]})`, "配置乙"],
+    analysis: `配置说明。\n\n![解析左图](${sources[0]})\n\n![解析右图](${sources[1]})\n\n\`\`\`text\n[MSR] ospf 1\n area 0\n  network 10.1.1.0 0.0.0.255\n\`\`\`\n\n配置结束。`,
+  });
+  await page.setViewportSize(viewport);
+  const option = page.getByRole("button", { name: /配置甲/ });
+  const left = option.getByRole("img", { name: "选项左图" });
+  const right = option.getByRole("img", { name: "选项右图" });
+  await expect(left).toHaveJSProperty("naturalWidth", 646);
+  await expect(right).toHaveJSProperty("naturalWidth", 649);
+  const a = (await left.boundingBox())!;
+  const b = (await right.boundingBox())!;
+  expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
+  expect(b.x).toBeGreaterThanOrEqual(a.x + a.width);
+  expect(b.x + b.width).toBeLessThanOrEqual(viewport.width);
+  await expect(option.getByRole("link")).toHaveCount(0);
+  await option.click();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(page.getByTestId("practice-verdict")).toHaveText(/回答正确/);
+  const analysisLeft = page.getByRole("img", { name: "解析左图" });
+  const analysisRight = page.getByRole("img", { name: "解析右图" });
+  await expect(analysisLeft).toHaveJSProperty("naturalWidth", 646);
+  await expect(analysisRight).toHaveJSProperty("naturalWidth", 649);
+  const c = (await analysisLeft.boundingBox())!;
+  const d = (await analysisRight.boundingBox())!;
+  expect(Math.abs(c.y - d.y)).toBeLessThanOrEqual(1);
+  expect(d.x).toBeGreaterThanOrEqual(c.x + c.width);
+  expect(d.x + d.width).toBeLessThanOrEqual(viewport.width);
+  await expect(page.getByRole("link", { name: "打开解析左图原图" })).toHaveAttribute("href", sources[0]);
+  await expect(page.getByRole("link", { name: "打开解析右图原图" })).toHaveAttribute("href", sources[1]);
+  await expect(page.getByLabel("代码，可横向滚动")).toContainText("[MSR] ospf 1\n area 0\n  network 10.1.1.0 0.0.0.255");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+});
+
 test(`consecutive source figures share a compact row at ${viewport.width}×${viewport.height}`, async ({ page }) => {
   // Frozen GB0-192 source question gb0192_main_q0028, including its image separators.
   const sources = [

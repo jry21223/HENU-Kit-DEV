@@ -2,6 +2,37 @@ import Img from "@/components/ui/img";
 
 /** Only reviewed, content-addressed Practice figures become network requests. */
 const FIGURE = /!\[([^\]\n]*)\]\((\/practice-assets\/h3c\/[a-f0-9]{64}\.png)\)/g;
+const FIGURE_SOURCE = /^\/practice-assets\/h3c\/[a-f0-9]{64}\.png$/;
+export const PRACTICE_FIGURE_ROW_CLASS = "my-4 flex min-w-0 items-start gap-2 whitespace-normal";
+
+export function isPracticeFigureSource(src: unknown): src is string {
+  return typeof src === "string" && FIGURE_SOURCE.test(src);
+}
+
+export function PracticeFigure({ src, alt, openImage = true, grouped = false }: { src: string; alt?: string; openImage?: boolean; grouped?: boolean }) {
+  const label = alt?.trim() || "题图";
+  if (!isPracticeFigureSource(src)) return <span>{label}</span>;
+  const figure = (
+    <Img
+      key={src}
+      src={src}
+      alt={label}
+      loading="eager"
+      className="block h-auto max-h-[min(28svh,17.5rem)] w-auto max-w-full bg-white object-contain p-2"
+    />
+  );
+  return openImage ? (
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`打开${label}原图`}
+      className={`${grouped ? "block min-w-0 max-w-full shrink" : "my-4 block max-w-full"} rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring`}
+    >
+      {figure}
+    </a>
+  ) : <span className={grouped ? "block min-w-0 max-w-full shrink" : "my-4 block max-w-full"}>{figure}</span>;
+}
 
 export default function QuestionContent({ content, openImages = true }: { content: string; openImages?: boolean }) {
   const parts: React.ReactNode[] = [];
@@ -10,8 +41,7 @@ export default function QuestionContent({ content, openImages = true }: { conten
 
   for (let index = 0; index < figures.length;) {
     const first = figures[index];
-    // A figure row supplies its own spacing. Only its separator lines are removed;
-    // newlines and indentation inside the surrounding question text stay intact.
+    // Remove only row separator lines, retaining text paragraphs and indentation.
     let text = content.slice(end, first.index);
     if (index > 0) text = text.replace(/^(?:[ \t]*\r?\n)+/, "");
     text = text.replace(/\r?\n[ \t\r\n]*$/, "");
@@ -25,33 +55,9 @@ export default function QuestionContent({ content, openImages = true }: { conten
       end = figures[index].index + figures[index][0].length;
       index++;
     }
-
     parts.push(
-      <span key={`figures-${first.index}`} className="my-4 flex min-w-0 items-start gap-2 whitespace-normal">
-        {group.map((match) => {
-          const label = match[1].trim() || "题图";
-          const src = match[2];
-          const figure = (
-            <Img
-              src={src}
-              alt={label}
-              loading="eager"
-              className="block h-auto max-h-[min(28svh,17.5rem)] w-auto max-w-full bg-white object-contain p-2"
-            />
-          );
-          return openImages ? (
-            <a
-              key={`figure-${src}-${match.index}`}
-              href={src}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`打开${label}原图`}
-              className="block min-w-0 max-w-full shrink rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring"
-            >
-              {figure}
-            </a>
-          ) : <span key={`figure-${src}-${match.index}`} className="block min-w-0 max-w-full shrink">{figure}</span>;
-        })}
+      <span key={`figures-${first.index}`} className={PRACTICE_FIGURE_ROW_CLASS}>
+        {group.map((match) => <PracticeFigure key={`figure-${match[2]}-${match.index}`} src={match[2]} alt={match[1]} openImage={openImages} grouped />)}
       </span>
     );
   }
