@@ -167,6 +167,71 @@ test("judge: a wrong pick shows ✗ and marks the other side as the answer", asy
 });
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1366, height: 768 }, { width: 360, height: 800 }]) {
+test(`consecutive source figures share a compact row at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  // Frozen GB0-192 source question gb0192_main_q0028, including its image separators.
+  const sources = [
+    "/practice-assets/h3c/dbcf2c743d6de5fdfc8f39eaaf8bfa061975eb3957968464ece706afc5d39c4d.png",
+    "/practice-assets/h3c/55b82f46ab0d1734faad4f8df5d543ea5af361680e40dd4c6a554ddd5c8ab52e.png",
+  ];
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openScoredQuestion(page, {
+    name: "consecutive-source-figures",
+    type: "multi",
+    options: ["电路交换延迟小，传输实时性强", "电路交换网络资源利用率高", "分组交换延迟大，传输实时性差", "分组交换网络资源利用率低"],
+    correct: true,
+    expected: [0, 2],
+    content: `以下关于电路交换和分组交换的描述正确的是____。（选择一项或多项）\n\n![题图](${sources[0]})\n![题图](${sources[1]})`,
+  });
+  await page.setViewportSize(viewport);
+  await page.evaluate(() => document.fonts.ready);
+  const figures = page.getByRole("img", { name: "题图", exact: true });
+  await expect(figures).toHaveCount(2);
+  const geometry = [];
+  for (let index = 0; index < 2; index++) {
+    const image = figures.nth(index);
+    await expect(image).toHaveJSProperty("complete", true);
+    geometry.push(await image.evaluate((element) => {
+      const img = element as HTMLImageElement;
+      const rect = img.getBoundingClientRect();
+      const style = getComputedStyle(img);
+      return {
+        x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom,
+        width: rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
+        height: rect.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth),
+        naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight, objectFit: style.objectFit,
+      };
+    }));
+    await expect(page.getByRole("link", { name: "打开题图原图", exact: true }).nth(index)).toHaveAttribute("href", sources[index]);
+  }
+  expect(geometry.map(({ naturalWidth, naturalHeight }) => [naturalWidth, naturalHeight])).toEqual([[646, 434], [649, 539]]);
+  expect(Math.abs(geometry[0].y - geometry[1].y)).toBeLessThanOrEqual(1);
+  expect(geometry[1].x).toBeGreaterThanOrEqual(geometry[0].right);
+  const textBottom = await page.getByRole("heading").filter({ hasText: "以下关于电路交换和分组交换的描述正确的是" }).evaluate((heading) => {
+    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+    let lastText: Node | null = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.textContent?.trim()) lastText = node;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(lastText!);
+    return range.getBoundingClientRect().bottom;
+  });
+  expect(geometry[0].y - textBottom).toBeLessThanOrEqual(24);
+  for (const image of geometry) {
+    expect(image.x).toBeGreaterThanOrEqual(0);
+    expect(image.right).toBeLessThanOrEqual(viewport.width);
+    expect(image.objectFit).toBe("contain");
+    expect(image.width).toBeLessThanOrEqual(image.naturalWidth + 1);
+    expect(image.height).toBeLessThanOrEqual(image.naturalHeight + 1);
+    expect(Math.abs(image.width / image.height - image.naturalWidth / image.naturalHeight)).toBeLessThan(0.03);
+  }
+  const firstOption = await page.getByRole("button", { name: /电路交换延迟小，传输实时性强/ }).boundingBox();
+  expect(firstOption).not.toBeNull();
+  expect(firstOption!.y - Math.max(...geometry.map((image) => image.bottom))).toBeLessThanOrEqual(64);
+  if (viewport.width >= 1024) expect(firstOption!.y + firstOption!.height).toBeLessThanOrEqual(viewport.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+});
+
 test(`source figures stay compact without cropping or upscaling at ${viewport.width}×${viewport.height}`, async ({ page }) => {
   const src = "/practice-assets/h3c/c8cb43031248931995bb1e9eef62b59c10dc96f33acbdad50cda1eb47377b413.png";
   const small = "/practice-assets/h3c/f55e6873ac899a02f2bed67dffcb9da6ce367dff5db112d8d40f2e0a8976c507.png";
