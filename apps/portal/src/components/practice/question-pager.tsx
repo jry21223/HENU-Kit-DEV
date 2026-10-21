@@ -61,7 +61,11 @@ export default function QuestionPager({ count, index, disabled, onChange, render
   useEffect(() => {
     const swiper = swiperRef.current;
     if (!swiper || swiper.destroyed) return;
-    if (swiper.activeIndex !== index) swiper.slideTo(index, reducedMotion ? 0 : 240);
+    const speed = reducedMotion ? 0 : 240;
+    swiper.params.speed = speed;
+    // Leaving a breakpoint restores originalParams, including gesture speed.
+    swiper.originalParams.speed = speed;
+    if (swiper.activeIndex !== index) swiper.slideTo(index, speed);
     // Explanation, errors and correction forms change height independently of
     // navigation. Observe the active card so autoHeight does not clip them.
     swiper.updateAutoHeight(0);
