@@ -234,6 +234,68 @@ test("reduced motion reaches the same swipe destination while mouse drag does no
   await context.close();
 });
 
+test("runtime reduced motion survives viewport changes and restores normal swipe animation", async ({ browser, browserName, baseURL }) => {
+  test.skip(browserName !== "chromium", "CDP supplies real touchscreen input in Chromium");
+  const { context, page } = await newMobilePage(browser, baseURL);
+  await page.setViewportSize({ width: 1366, height: 844 });
+  await mockPractice(page);
+  await startPractice(page);
+  const session = await context.newCDPSession(page);
+  const track = page.locator(".practice-question-track .swiper-wrapper");
+  const settleFrames = () => page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  const swipeAndSampleAnimations = async () => {
+    const card = page.getByTestId("practice-question-card");
+    const stem = card.getByRole("heading");
+    await stem.scrollIntoViewIfNeeded();
+    const cardBox = (await card.boundingBox())!;
+    const stemBox = (await stem.boundingBox())!;
+    const x = cardBox.x + cardBox.width - 30;
+    const y = stemBox.y + 12;
+    await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    for (const offset of [20, 70, 120]) {
+      await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - offset, y }] });
+    }
+    const samples = await track.evaluateHandle((element) => {
+      const frames: number[][] = [];
+      const sample = () => {
+        frames.push(element.getAnimations().flatMap((animation) => {
+          const duration = animation.effect?.getTiming().duration;
+          return animation.playState === "running" && typeof duration === "number" && duration > 0 ? [duration] : [];
+        }));
+        if (frames.length < 20) requestAnimationFrame(sample);
+      };
+      document.addEventListener("touchend", () => requestAnimationFrame(sample), { once: true });
+      return frames;
+    });
+    await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => samples.evaluate((frames) => frames.length)).toBe(20);
+    const durations = (await samples.jsonValue()).flat();
+    await samples.dispose();
+    return durations;
+  };
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await settleFrames();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await settleFrames();
+  const reducedDurations = await swipeAndSampleAnimations();
+  await expect(page.getByRole("heading", { name: questions[1].content })).toBeVisible();
+  expect(reducedDurations).toEqual([]);
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await settleFrames();
+  await page.setViewportSize({ width: 1366, height: 844 });
+  await settleFrames();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await settleFrames();
+  const normalDurations = await swipeAndSampleAnimations();
+  await expect(page.getByRole("heading", { name: questions[2].content })).toBeVisible();
+  expect(normalDurations).toContain(240);
+  await context.close();
+});
+
 test("real mobile touch follows the finger and scrolls code without changing questions", async ({ browser, browserName, baseURL }, testInfo) => {
   test.skip(browserName !== "chromium", "CDP supplies real touchscreen input in Chromium");
   const { context, page } = await newMobilePage(browser, baseURL);
