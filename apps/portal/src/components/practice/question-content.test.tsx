@@ -29,6 +29,18 @@ describe("Practice question content", () => {
     expect(html).toContain("https://outside.example/a.png");
   });
 
+  it("preserves paragraph breaks and command indentation around figure rows", () => {
+    const path = `/practice-assets/h3c/${"a".repeat(64)}.png`;
+    const before = "检查配置。\n\n[MSR] interface GE1/0\n ip address 10.1.1.1 24";
+    const after = "  [MSR] ospf 1\n area 0\n  network 10.1.1.0 0.0.0.255\n\n请选择正确描述。";
+    const html = renderToStaticMarkup(
+      <QuestionContent content={`${before}\n\n![配置](${path})\n\n${after}\n\n![拓扑](${path})`} />
+    );
+
+    expect(html).toContain(before);
+    expect(html).toContain(after);
+  });
+
   it("does not nest an interactive image link inside an answer button", () => {
     const path = `/practice-assets/h3c/${"b".repeat(64)}.png`;
     const html = renderToStaticMarkup(
