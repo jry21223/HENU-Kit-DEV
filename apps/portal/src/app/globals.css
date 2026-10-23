@@ -194,6 +194,10 @@ body {
 
 /* reduced-motion：01 资料卡轨道回退为手动横向滚动 */
 @media (prefers-reduced-motion: reduce) {
+  /* 等待数据的骨架保留静态占位，不继续脉冲。 */
+  .animate-pulse {
+    animation: none;
+  }
   .lib-track-wrap {
     overflow-x: auto;
   }

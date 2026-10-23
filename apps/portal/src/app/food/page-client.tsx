@@ -29,31 +29,31 @@ export default function FoodBoardPage() {
   return (
     <main>
       <section className="border-b border-ink bg-ink text-paper">
-        <div className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
+        <div className="mx-auto max-w-site px-5 py-6 md:px-8 md:py-16">
+          <div className="grid gap-4 md:gap-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
             <div data-enter>
               <p className="font-mono text-xs tracking-[0.3em] text-paper/55">
                 <span className="text-accent">F-01</span>
                 <span className="mx-2">/</span>
                 FIVE-TIER BOARD
               </p>
-              <h1 className="mt-4 font-display text-5xl font-bold tracking-tight sm:text-6xl md:text-7xl">
+              <h1 className="mt-3 font-display text-4xl font-bold tracking-tight sm:text-6xl md:mt-4 md:text-7xl">
                 从夯到拉
               </h1>
-              <p className="mt-5 max-w-2xl text-sm leading-7 text-paper/65 md:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-paper/65 md:mt-5 md:text-base md:leading-7">
                 夯、顶级、人上人、NPC、拉完了。学生视角分档，档内按最新投稿展示；
                 不接受充值，不接受公关。
               </p>
             </div>
 
-            <div data-enter className="border-t border-paper/25 pt-5 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
-              <p className="font-mono text-xs tracking-[0.28em] text-paper/50">
+            <div data-enter className="md:border-t md:border-paper/25 md:pt-5 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
+              <p className="hidden font-mono text-xs tracking-[0.28em] text-paper/50 md:block">
                 STUDENT FOOD DESK
               </p>
-              <p className="mt-2 font-display text-2xl font-bold">你吃到的好店，也该上榜。</p>
+              <p className="mt-2 hidden font-display text-2xl font-bold md:block">你吃到的好店，也该上榜。</p>
               <Link
                 href="/food/publish"
-                className="mt-5 inline-flex min-h-11 items-center border border-paper px-5 font-mono text-xs transition-colors hover:border-accent hover:bg-accent hover:text-ink"
+                className="inline-flex min-h-11 items-center border border-paper px-5 font-mono text-xs transition-colors hover:border-accent hover:bg-accent hover:text-ink md:mt-5"
               >
                 投稿一家好店
                 <span aria-hidden className="ml-3">
@@ -65,19 +65,19 @@ export default function FoodBoardPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-site px-5 py-10 md:px-8 md:py-12">
-        <div data-enter className="flex flex-col gap-5 border-b border-ink pb-6 md:flex-row md:items-end md:justify-between">
+      <div className="mx-auto max-w-site px-5 py-5 md:px-8 md:py-12">
+        <div data-enter className="flex flex-col gap-3 border-b border-ink pb-4 md:flex-row md:items-end md:justify-between md:gap-5 md:pb-6">
           <div>
             <p className="font-mono text-xs tracking-[0.28em] text-ink/60">
               CAMPUS FILTER
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 grid grid-cols-4 gap-1 md:mt-3 md:flex md:flex-wrap md:gap-2">
               <button
                 type="button"
                 aria-pressed={campus === "all"}
                 onClick={() => setCampus("all")}
                 className={cn(
-                  "min-h-11 border px-4 font-mono text-xs transition-colors",
+                  "min-h-11 border px-2 font-mono text-xs transition-colors md:px-4",
                   campus === "all"
                     ? "border-ink bg-ink text-paper"
                     : "border-line text-ink/60 hover:border-ink"
@@ -92,7 +92,7 @@ export default function FoodBoardPage() {
                   aria-pressed={campus === key}
                   onClick={() => setCampus(key)}
                   className={cn(
-                    "min-h-11 border px-4 font-mono text-xs transition-colors",
+                    "min-h-11 border px-2 font-mono text-xs transition-colors md:px-4",
                     campus === key
                       ? "border-ink bg-ink text-paper"
                       : "border-line text-ink/60 hover:border-ink"
@@ -131,19 +131,19 @@ export default function FoodBoardPage() {
                 data-enter
                 aria-label="五档榜单导览"
                 onFocus={revealKeyboardFocus}
-                className="mt-8 flex max-w-full gap-px overflow-x-auto border border-ink bg-ink"
+                className="mt-4 flex max-w-full gap-px overflow-x-auto border border-ink bg-ink md:mt-8"
               >
                 {groups.map(({ tier, posts: tierPosts }) => (
                   <a
                     key={tier.key}
                     href={`#tier-${tier.key}`}
-                    className={cn("group min-w-28 flex-1 bg-paper px-4 py-3 transition-colors hover:bg-accent", INSET_FOCUS_RING)}
+                    className={cn("group min-h-11 min-w-0 flex-1 bg-paper px-1 py-2 transition-colors hover:bg-accent md:min-w-28 md:px-4 md:py-3", INSET_FOCUS_RING)}
                   >
                     {/* 悬停时整格变强调橙，小字跟着转成墨色，在橙底上才够清楚。 */}
-                    <span className="block font-mono text-xs tracking-[0.2em] text-ink/60 group-hover:text-ink">
+                    <span className="hidden font-mono text-xs tracking-[0.2em] text-ink/60 group-hover:text-ink md:block">
                       {tier.index}
                     </span>
-                    <span className="mt-1 block font-display text-lg font-bold">{tier.label}</span>
+                    <span className="block font-display text-sm font-bold md:mt-1 md:text-lg">{tier.label}</span>
                     <span className="mt-1 block font-mono text-xs text-ink/60 group-hover:text-ink">
                       {tierPosts.length} 条
                     </span>
@@ -151,28 +151,28 @@ export default function FoodBoardPage() {
                 ))}
               </nav>
 
-              <div className="mt-16">
+              <div className="mt-6 md:mt-16">
                 {groups.map(({ tier, posts: tierPosts }) => (
                   <section
                     key={tier.key}
                     id={`tier-${tier.key}`}
                     data-food-tier={tier.key}
-                    className="grid scroll-mt-20 border-t border-ink py-8 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10 md:py-12"
+                    className="grid scroll-mt-28 border-t border-ink py-5 md:scroll-mt-20 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10 md:py-12"
                   >
-                    <header data-enter className="pb-6 md:pb-0">
+                    <header data-enter className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 pb-3 md:block md:pb-0">
                       <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
                         {tier.index} / {tier.en}
                       </p>
                       <h2
                         data-food-tier-label
                         className={cn(
-                          "mt-2 font-display text-5xl font-bold tracking-tight md:text-6xl",
+                          "font-display text-2xl font-bold tracking-tight md:mt-2 md:text-6xl",
                           tier.key === HANG_TIER_KEY && "text-accent-text"
                         )}
                       >
                         {tier.label}
                       </h2>
-                      <p className="mt-3 font-mono text-xs text-ink/60">{tier.blurb}</p>
+                      <p className="col-span-2 mt-2 font-mono text-xs text-ink/60 md:mt-3">{tier.blurb}</p>
                     </header>
 
                     {tierPosts.length === 0 ? (
@@ -188,7 +188,7 @@ export default function FoodBoardPage() {
                           <li key={post.id} data-enter>
                             <Link
                               href={`/food/post/${post.id}`}
-                              className="group grid grid-cols-[2rem_5.5rem_minmax(0,1fr)] gap-3 border-b border-line py-5 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:items-center md:gap-5"
+                              className="group grid grid-cols-[1.5rem_4rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-line py-4 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:gap-5 md:py-5"
                             >
                               <span className="font-mono text-sm text-ink/60">
                                 {String(index + 1).padStart(2, "0")}
@@ -208,17 +208,17 @@ export default function FoodBoardPage() {
                                 )}
                               </div>
                               <span className="min-w-0">
-                                <span className="block font-display text-xl font-bold transition-colors group-hover:text-accent-text">
+                                <span className="block break-words font-display text-base font-bold transition-colors group-hover:text-accent-text md:text-xl">
                                   {post.shop.name}
                                 </span>
-                                <span className="mt-1 block truncate text-sm text-ink/65">
-                                  {post.title}
-                                </span>
+                                {post.title.trim() !== post.shop.name.trim() && (
+                                  <span className="mt-1 block truncate text-sm text-ink/65">{post.title}</span>
+                                )}
                                 <span className="mt-2 block font-mono text-xs text-ink/60">
                                   {CAMPUSES[post.campus].name} · {post.tags.join(" / ")}
                                 </span>
                               </span>
-                              <span className="col-start-3 flex items-center gap-4 font-mono text-xs text-ink/50 md:col-start-auto">
+                              <span className="flex items-center font-mono text-xs text-ink/50">
                                 <span className="transition-transform group-hover:translate-x-1" aria-hidden>
                                   →
                                 </span>

@@ -19,9 +19,9 @@ const PHOTO = Buffer.from(
 
 const TIER_TAGS = ["夯", "顶级", "人上人", "NPC", "拉完了"];
 
-// 五档各四家店，每家一张图：最后一档远在首屏以下。
-const FOOD_POSTS = TIER_TAGS.flatMap((tag, tier) =>
-  Array.from({ length: 4 }, (_, index) => {
+// 每家一张图；懒加载用例使用更长目录，避开浏览器在视口附近的预取范围。
+const foodPosts = (perTier: number) => TIER_TAGS.flatMap((tag, tier) =>
+  Array.from({ length: perTier }, (_, index) => {
     const id = `food-${tier + 1}-${index + 1}`;
     return {
       id,
@@ -40,6 +40,7 @@ const FOOD_POSTS = TIER_TAGS.flatMap((tag, tier) =>
     };
   })
 );
+const FOOD_POSTS = foodPosts(4);
 
 const CAMPUS_ITEMS = Array.from({ length: 12 }, (_, index) => ({
   id: `campus-${index + 1}`,
@@ -115,9 +116,9 @@ const CAMPUS_DETAIL = {
 const FOOD_IMAGE = /^\/api\/v1\/food\/posts\/([^/]+)\/images\/0$/;
 const CAMPUS_IMAGE = /^\/campus\/(campus-\d+)\.png$/;
 
-async function mockFood(page: Page) {
+async function mockFood(page: Page, posts = FOOD_POSTS) {
   await page.route("**/api/v1/food/posts", (route) =>
-    route.fulfill({ json: { posts: FOOD_POSTS, request_id: "req_image_food" } })
+    route.fulfill({ json: { posts, request_id: "req_image_food" } })
   );
   await page.route("**/api/v1/food/posts/*/images/0", (route) =>
     route.fulfill({ contentType: "image/png", body: PHOTO })
@@ -238,20 +239,23 @@ async function layoutShiftTotal(page: Page): Promise<number> {
 test.use({ viewport: MOBILE, contextOptions: { reducedMotion: "reduce" } });
 
 test("/food requests a below-the-fold thumbnail only once it is scrolled near", async ({ page }) => {
-  await mockFood(page);
+  const posts = foodPosts(12);
+  await mockFood(page, posts);
   const requested = recordImageRequests(page, FOOD_IMAGE);
 
   await page.goto("/food");
   await settle(page);
 
-  const first = FOOD_POSTS[0].id;
-  const last = FOOD_POSTS[FOOD_POSTS.length - 1].id;
+  const first = posts[0].id;
+  const last = posts[posts.length - 1].id;
+  const lastImage = page.locator(`img[src="/api/v1/food/posts/${last}/images/0"]`);
+  await expect(lastImage).toHaveAttribute("loading", "lazy");
+  expect(await lastImage.evaluate((image) => image.getBoundingClientRect().top / window.innerHeight)).toBeGreaterThan(5);
   await expect(page.locator(`img[src="/api/v1/food/posts/${first}/images/0"]`)).toHaveJSProperty("complete", true);
   expect(requested.has(first)).toBe(true);
   expect(requested.has(last)).toBe(false);
-  expect(requested.size).toBeLessThan(FOOD_POSTS.length);
+  expect(requested.size).toBeLessThan(posts.length);
 
-  const lastImage = page.locator(`img[src="/api/v1/food/posts/${last}/images/0"]`);
   await lastImage.scrollIntoViewIfNeeded();
   await expect.poll(() => requested.has(last)).toBe(true);
   await expect(lastImage).toHaveJSProperty("complete", true);

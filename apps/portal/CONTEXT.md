@@ -67,7 +67,10 @@ Gateway. Its collection count comes from that full snapshot and its cumulative
 download count comes from Library's append-only Download Start ledger; browser
 search and filters change only visible cards. Loading and failed reads expose
 no numeric claim, while an empty successful owner snapshot may truthfully show
-zero.
+zero. Browser filtering still covers the full snapshot; the directory renders
+24 matching materials at a time. During same-tab soft navigation, returning
+from a detail retains filters, the displayed range, and reading position.
+Hard reloads and new tabs start with the default directory view.
 
 The Campus market is browse-only until posting, taking orders, and settlement
 exist (#568). `/campus` stays; its sub-site navigation lists no unopened tabs,

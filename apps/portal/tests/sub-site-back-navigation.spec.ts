@@ -196,6 +196,8 @@ async function returnToSlowLibrary(page: Page, delayMs: number): Promise<number>
 
   await page.goto("/library", { waitUntil: "domcontentloaded" });
   await expect(materialCards(page).first()).toBeVisible();
+  await page.getByRole("button", { name: "加载更多资料" }).click();
+  await expect(materialCards(page)).toHaveCount(LIBRARY_MATERIALS.length);
   await waitForClientShell(page);
 
   await scrollTo(page, 1600);
