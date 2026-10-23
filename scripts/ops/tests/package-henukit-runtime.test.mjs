@@ -23,12 +23,6 @@ function createCleanSourceCheckout() {
     encoding: "buffer",
     maxBuffer: 20 * 1024 * 1024,
   });
-  const newHelper = "scripts/ops/deploy-henukit-practice-scoped.py";
-  const includeNewHelper = existsSync(join(repoRoot, newHelper)) && !existsSync(join(checkout, newHelper));
-  if (includeNewHelper) {
-    copyFileSync(join(repoRoot, newHelper), join(checkout, newHelper));
-    execFileSync("git", ["add", newHelper], { cwd: checkout });
-  }
   if (diff.byteLength > 0) {
     const applied = spawnSync("git", ["apply", "--index", "--binary"], {
       cwd: checkout,
@@ -37,7 +31,17 @@ function createCleanSourceCheckout() {
     });
     assert.equal(applied.status, 0, applied.stderr);
   }
-  if (diff.byteLength > 0 || includeNewHelper) {
+  // A staged addition is already in the patch. Only copy helpers still absent
+  // after applying it, so untracked and staged working trees both work.
+  const newHelpers = [
+    "scripts/ops/deploy-henukit-practice-scoped.py",
+    "scripts/ops/deploy-henukit-portal-successor.py",
+  ].filter((path) => existsSync(join(repoRoot, path)) && !existsSync(join(checkout, path)));
+  for (const helper of newHelpers) {
+    copyFileSync(join(repoRoot, helper), join(checkout, helper));
+    execFileSync("git", ["add", helper], { cwd: checkout });
+  }
+  if (diff.byteLength > 0 || newHelpers.length > 0) {
     execFileSync(
       "git",
       [
@@ -223,6 +227,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./bin/deploy-henukit-artifact.sh",
     "./bin/deploy-henukit-food-scoped.py",
     "./bin/deploy-henukit-practice-scoped.py",
+    "./bin/deploy-henukit-portal-successor.py",
     "./migrations/quizcraft/000001_quizcraft_content.up.sql",
     "./migrations/quizcraft/000001_quizcraft_content.down.sql",
     "./bin/watch-henukit-actions.sh",
