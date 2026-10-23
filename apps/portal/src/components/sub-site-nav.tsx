@@ -29,11 +29,14 @@ export default function SubSiteNav({
   brand,
   tabs,
   linkAs: TabLinkComponent = Link,
+  compactTabsOnMobile = false,
 }: {
   brand: string;
   tabs: SubSiteTab[];
   /** 刷题用带形变过渡的链接，其余子站用普通 Link。 */
   linkAs?: TabLink;
+  /** 多任务工具页在手机优先完整呈现中文名，编号留给桌面。 */
+  compactTabsOnMobile?: boolean;
 }) {
   const pathname = usePathname();
   const showTabs = tabs.length > 1;
@@ -72,14 +75,17 @@ export default function SubSiteNav({
             ref={navRef}
             // 键盘聚焦的标签同样整个滑进来：浏览器聚焦时只要标签露出一截就不再横滑，焦点框会被裁掉一边。
             onFocus={revealKeyboardFocus}
-            className="order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto scroll-smooth border-t border-line px-5 scrollbar-none motion-reduce:scroll-auto md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0"
+            className={cn(
+              "order-3 -mx-5 flex w-[calc(100%+2.5rem)] min-w-0 items-center gap-5 overflow-x-auto scroll-smooth border-t border-line px-5 scrollbar-none motion-reduce:scroll-auto md:order-none md:mx-0 md:w-auto md:gap-8 md:overflow-visible md:border-t-0 md:px-0",
+              compactTabsOnMobile && "max-md:gap-0"
+            )}
           >
             {tabs.map((tab, index) => {
               const active = index === activeIndex;
               // 宽字距只加在编号上，中文标签不拉开（DESIGN_SYSTEM.md 第 4 节）。
               const content = (
                 <>
-                  <span className={cn("mr-1 tracking-widest", active ? "text-accent-text" : "text-ink/60")}>{tab.index}</span>
+                  <span className={cn("mr-1 tracking-widest", compactTabsOnMobile && "hidden md:inline", active ? "text-accent-text" : "text-ink/60")}>{tab.index}</span>
                   {tab.label}
                   <span
                     aria-hidden
@@ -100,12 +106,13 @@ export default function SubSiteNav({
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "relative shrink-0 py-1 font-mono text-xs md:shrink",
+                      compactTabsOnMobile && "max-md:flex max-md:min-h-11 max-md:flex-1 max-md:flex-col max-md:items-center max-md:justify-center",
                       active ? "text-ink" : "cursor-not-allowed text-ink/60"
                     )}
                   >
                     {content}
                     {active ? null : (
-                      <span className="ml-2 border border-line px-1 text-ink/70">未开放</span>
+                      <span className={cn("ml-2 border border-line px-1 text-ink/70", compactTabsOnMobile && "max-md:ml-0")}>未开放</span>
                     )}
                   </span>
                 );
@@ -121,6 +128,7 @@ export default function SubSiteNav({
                   className={cn(
                     // 只在手机的横向滑动行里不收缩；md 起标签行不滑动，放不下时允许折行，页面不横向溢出。
                     "group -mx-1.5 inline-flex min-h-11 shrink-0 items-center px-1.5 font-mono text-xs transition-colors md:shrink",
+                    compactTabsOnMobile && "max-md:mx-0 max-md:flex-1 max-md:justify-center max-md:px-1",
                     INSET_FOCUS_RING,
                     active ? "text-ink" : "text-ink/60 hover:text-ink"
                   )}

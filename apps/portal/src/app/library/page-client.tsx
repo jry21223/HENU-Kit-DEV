@@ -19,6 +19,16 @@ import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
 
 const TYPE_KEYS = Object.keys(MATERIAL_TYPES) as MaterialType[];
+const PAGE_SIZE = 24;
+type LibraryView = {
+  query: string;
+  type: MaterialType | "all";
+  subject: string;
+  visibleCount: number;
+};
+const DEFAULT_VIEW: LibraryView = { query: "", type: "all", subject: "all", visibleCount: PAGE_SIZE };
+// 仅 effect 写入：同一标签页内返回目录时立即恢复，不进入服务端共享状态。
+let rememberedView = DEFAULT_VIEW;
 
 function toMaterial(m: ApiMaterial): Material {
   return {
@@ -46,9 +56,8 @@ type LibraryStatistics = {
 };
 
 export default function LibraryHomePage() {
-  const [query, setQuery] = useState("");
-  const [type, setType] = useState<MaterialType | "all">("all");
-  const [subject, setSubject] = useState("all");
+  const [view, setView] = useState(rememberedView);
+  const { query, type, subject, visibleCount } = view;
   const [materials, setMaterials] = useState<Material[]>([]);
   const [statistics, setStatistics] = useState<LibraryStatistics | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -56,6 +65,12 @@ export default function LibraryHomePage() {
   const filtersRef = useRef<HTMLDivElement>(null);
   useReveal();
   useScrollRestoration(loadState === "ready");
+
+  useEffect(() => { rememberedView = view; }, [view]);
+
+  function changeFilters(filters: Partial<Pick<LibraryView, "query" | "type" | "subject">>) {
+    setView((current) => ({ ...current, ...filters, visibleCount: PAGE_SIZE }));
+  }
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -108,9 +123,7 @@ export default function LibraryHomePage() {
   );
   const hasActiveFilter = query.trim() !== "" || type !== "all" || subject !== "all";
   const clearFilters = () => {
-    setQuery("");
-    setType("all");
-    setSubject("all");
+    setView(DEFAULT_VIEW);
     // 清除筛选按钮会随空状态一起消失；焦点交给刚复位的搜索与筛选区，键盘和读屏用户不丢位置。
     // 不直接聚焦搜索框：手机上会弹出输入法，挡住刚恢复的书架。
     filtersRef.current?.focus();
@@ -175,9 +188,9 @@ export default function LibraryHomePage() {
                 id="library-query"
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => changeFilters({ query: e.target.value })}
                 placeholder="如：真题 / 高数 / 课件"
-                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-focus-ring"
+                className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-base outline-none placeholder:text-ink/60 focus:border-focus-ring md:text-sm"
               />
             </div>
             <div className="max-w-[45%]">
@@ -186,7 +199,7 @@ export default function LibraryHomePage() {
                 id="library-subject"
                 aria-label="按科目筛选"
                 value={subject}
-                onChange={(e) => setSubject(e.target.value)}
+                onChange={(e) => changeFilters({ subject: e.target.value })}
                 className="min-h-11 w-full border border-line bg-paper px-3 py-2 font-mono text-xs text-ink/70 outline-none focus:border-ink"
               >
                 <option value="all">全部科目</option>
@@ -202,7 +215,7 @@ export default function LibraryHomePage() {
               <button
                 key={t}
                 type="button"
-                onClick={() => setType(t)}
+                onClick={() => changeFilters({ type: t })}
                 aria-pressed={type === t}
                 className={cn(
                   "min-h-11 min-w-11 border px-3 py-1.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
@@ -216,7 +229,7 @@ export default function LibraryHomePage() {
         </div>
 
         {/* 书架网格 */}
-        <div data-enter className="mt-8">
+        <div data-enter className="mt-4 md:mt-8">
           {loadState === "loading" ? (
             <LoadingBlock label="加载资料" />
           ) : loadState === "error" ? null : items.length === 0 ? (
@@ -225,11 +238,25 @@ export default function LibraryHomePage() {
               action={hasActiveFilter ? { label: "清除筛选", onClick: clearFilters } : undefined}
             />
           ) : (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {items.map((m) => (
-                <MaterialCard key={m.id} material={m} />
-              ))}
-            </div>
+            <>
+              <p role="status" className="mb-3 font-mono text-xs text-ink/60">
+                已显示 {Math.min(visibleCount, items.length)} / {items.length} 份
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 md:gap-5 lg:grid-cols-4">
+                {items.slice(0, visibleCount).map((m) => (
+                  <MaterialCard key={m.id} material={m} />
+                ))}
+              </div>
+              {visibleCount < items.length && (
+                <button
+                  type="button"
+                  onClick={() => setView((current) => ({ ...current, visibleCount: current.visibleCount + PAGE_SIZE }))}
+                  className="mt-5 inline-flex min-h-11 items-center border border-ink px-5 font-mono text-sm transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+                >
+                  加载更多资料
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

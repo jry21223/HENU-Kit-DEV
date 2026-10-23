@@ -28,5 +28,5 @@ const TABS: SubSiteTab[] = [
 ];
 
 export default function PracticeNav() {
-  return <SubSiteNav brand="PRACTICE" tabs={TABS} linkAs={TransitionLink} />;
+  return <SubSiteNav brand="PRACTICE" tabs={TABS} linkAs={TransitionLink} compactTabsOnMobile />;
 }

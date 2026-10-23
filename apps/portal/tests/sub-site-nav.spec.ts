@@ -228,11 +228,10 @@ test.describe("390px 手机", () => {
     expect(box?.height ?? 0).toBeLessThanOrEqual(57);
   });
 
-  test("标签行放不下时，当前标签被滑进可见范围", async ({ page }) => {
-    // 刷题四个标签加上「未开放」标注，390px 放不下，最右边的「数据」原本会被裁掉。
+  test("中文任务优先的手机导航完整显示当前标签", async ({ page }) => {
     await page.goto("/practice/stats", { waitUntil: "domcontentloaded" });
     const nav = page.locator("header nav");
-    const current = nav.getByRole("link", { name: /P-04/ });
+    const current = nav.getByRole("link", { name: "数据", exact: true });
     await expect(current).toBeVisible({ timeout: 30_000 });
 
     await expect
@@ -242,7 +241,7 @@ test.describe("390px 手机", () => {
         return tabBox.x + tabBox.width - (navBox.x + navBox.width);
       })
       .toBeLessThanOrEqual(0);
-    // 标签行是自己横向滑动的，页面本身不横向溢出。
+    // 紧凑标签行和页面都不横向溢出。
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
@@ -256,12 +255,11 @@ test.describe("390px 手机", () => {
       await page.goto("/practice/stats", { waitUntil: "domcontentloaded" });
       await expect(page.locator("html[data-scroll-memory='ready']")).toHaveCount(1, { timeout: 30_000 });
       const nav = page.locator("header nav");
-      // 先确认标签行确实为「数据」往右滑过，否则测不到左缘。
-      await expect.poll(() => nav.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+      await expect(nav.getByRole("link", { name: "数据", exact: true })).toBeInViewport({ ratio: 1 });
 
       await backLink(page).click();
       await expect(page).toHaveURL(/\/practice$/);
-      const current = nav.getByRole("link", { name: /P-01/ });
+      const current = nav.getByRole("link", { name: "题库", exact: true });
       await expect
         .poll(async () => {
           const [navBox, tabBox] = await Promise.all([nav.boundingBox(), current.boundingBox()]);
