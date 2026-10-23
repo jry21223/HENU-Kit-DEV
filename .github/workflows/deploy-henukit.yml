@@ -33,6 +33,7 @@ jobs:
             python3 -m unittest discover -s scripts/ops/tests -p 'test_scoped*.py' -v
             node --test \
               scripts/ops/tests/deploy-henukit-workflow.test.mjs \
+              scripts/ops/tests/build-henukit-actions-image.test.mjs \
               scripts/ops/tests/import-legacy-portal-food-images.test.mjs \
               scripts/ops/tests/retired-henukit-materials-sync.test.mjs \
               scripts/ops/tests/deploy-henukit-artifact.test.mjs \
@@ -70,7 +71,8 @@ jobs:
     name: portal-responsive
     needs: validate-release-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Leave room for slow Chromium installation before the complete suite.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Enable pnpm
@@ -101,9 +103,43 @@ jobs:
       - name: Verify Library owner download behavior
         run: pnpm --filter @henukit/portal test:e2e:library-download
 
+      - name: Retain bounded Portal failure context
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path("apps/portal/test-results")
+          contexts = [] if root.is_symlink() else sorted(
+              path for path in root.rglob("error-context.md")
+              if path.is_file() and not path.is_symlink()
+          )[:12]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## Portal browser failure context\n")
+              if not contexts:
+                  summary.write("No saved error-context files were found.\n")
+              for path in contexts:
+                  summary.write(f"\n### {path.relative_to(root)}\n\n````text\n")
+                  with path.open(encoding="utf-8", errors="replace") as context:
+                      summary.write(context.read(8000))
+                  summary.write("\n````\n")
+          PY
+
+      # Main artifacts are consumed as a strict production inventory. Full
+      # diagnostics remain PR-only; main failures use the summary above.
+      - name: Upload Portal failure traces for PR diagnosis
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: portal-browser-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: apps/portal/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The QuizCraft catalog and QQ binding groups each start their own dev
   # server; Practice uses the default one. All three run here, beside
-  # portal-responsive, so that job stays within its 20-minute limit (#553).
+  # portal-responsive, keeping the test groups independently bounded (#553).
   portal-practice-and-binding:
     name: portal-practice-and-binding
     needs: validate-release-contract
@@ -212,8 +248,11 @@ jobs:
           BUILD_ARGS: ${{ matrix.build_args }}
         run: |
           set -euo pipefail
-          source_root="$(mktemp -d)"
-          trap 'rm -rf -- "$source_root"' EXIT
+          build_root="$(mktemp -d)"
+          source_root="$build_root/source"
+          build_log="$build_root/build.log"
+          trap 'rm -rf -- "$build_root"' EXIT
+          mkdir "$source_root"
           git -c tar.umask=0022 archive --format=tar "$GITHUB_SHA" |
             tar -xf - -C "$source_root"
           cd "$source_root"
@@ -223,12 +262,25 @@ jobs:
               args+=(--build-arg "$arg")
             fi
           done <<< "$BUILD_ARGS"
-          docker build \
-            --platform linux/amd64 \
-            "${args[@]}" \
-            --file "$DOCKERFILE" \
-            --tag "$IMAGE:$GITHUB_SHA" \
-            "$CONTEXT"
+          metadata_timeout='^#[0-9]+ ERROR: failed to do request: Head "https://[^"]+/v2/[^"]+": .*TLS handshake timeout'
+          for attempt in 1 2 3; do
+            if docker build \
+              --platform linux/amd64 \
+              "${args[@]}" \
+              --file "$DOCKERFILE" \
+              --tag "$IMAGE:$GITHUB_SHA" \
+              "$CONTEXT" 2>&1 | tee "$build_log"; then
+              break
+            else
+              build_status=$?
+            fi
+            if [[ "$attempt" -eq 3 ]] ||
+              ! grep -Eq "$metadata_timeout" "$build_log"; then
+              exit "$build_status"
+            fi
+            printf 'Retrying base-image metadata request (%s/3)\n' "$((attempt + 1))" >&2
+            sleep "$((attempt * 5))"
+          done
           test "$(docker image inspect "$IMAGE:$GITHUB_SHA" --format '{{.Os}}/{{.Architecture}}')" = "linux/amd64"
 
       - name: Verify getWork MCP release image
