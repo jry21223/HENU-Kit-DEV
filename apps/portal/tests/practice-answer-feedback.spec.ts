@@ -342,6 +342,12 @@ test(`source figures stay compact without cropping or upscaling at ${viewport.wi
 }
 
 test("a failed figure does not hide the next question's valid figure", async ({ page }) => {
+  const nestingErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /cannot be a descendant|cannot contain a nested/.test(message.text())) {
+      nestingErrors.push(message.text());
+    }
+  });
   const missing = `/practice-assets/h3c/${"a".repeat(64)}.png`;
   const present = `/practice-assets/h3c/${"b".repeat(64)}.png`;
   await page.route(`**${missing}`, (route) => route.fulfill({ status: 404, body: "missing" }));
@@ -360,4 +366,5 @@ test("a failed figure does not hide the next question's valid figure", async ({ 
   const recovered = page.getByRole("img", { name: "网络拓扑", exact: true });
   await expect(recovered).toHaveAttribute("src", present);
   await expect(recovered).toHaveJSProperty("naturalWidth", 1);
+  expect(nestingErrors).toEqual([]);
 });
