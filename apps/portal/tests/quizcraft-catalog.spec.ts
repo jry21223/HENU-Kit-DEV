@@ -172,41 +172,50 @@ test("390px catalog cards keep every control at least 44×44 (#543)", async ({ p
 });
 
 // 生产配置（目录开关开启）下的手机首屏（#542）：搜索框和第一组题库——或它的加载占位——都在第一屏里。
-test("390×844 first screen shows the search box and the first bank (#542)", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  let releaseCatalog: () => void = () => {};
-  const catalogHeld = new Promise<void>((resolve) => {
-    releaseCatalog = resolve;
-  });
-  await page.route("**/api/v1/practice/catalog", async (route) => {
-    await catalogHeld;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        banks: [
-          {
-            bank_id: "11111111-1111-4111-8111-111111111111",
-            bank_version_id: "22222222-2222-4222-8222-222222222222",
-            name: "计算机基础",
-            question_count: 42,
-            available: true,
-            chapters: [],
-          },
-        ],
-        request_id: "req_catalog_first_screen",
-      }),
+for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }]) {
+  test(`${viewport.width}px first screen shows the complete first bank action`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    let releaseCatalog: () => void = () => {};
+    const catalogHeld = new Promise<void>((resolve) => {
+      releaseCatalog = resolve;
     });
+    await page.route("**/api/v1/practice/catalog", async (route) => {
+      await catalogHeld;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          banks: [
+            {
+              bank_id: "11111111-1111-4111-8111-111111111111",
+              bank_version_id: "22222222-2222-4222-8222-222222222222",
+              name: "2026新华三杯大赛网络安全赛道模拟题（团队赛）",
+              question_count: 42,
+              available: true,
+              chapters: [],
+            },
+          ],
+          request_id: "req_catalog_first_screen",
+        }),
+      });
+    });
+
+    await page.goto("/practice", { waitUntil: "domcontentloaded" });
+
+    const search = page.getByLabel("SEARCH / 搜索科目");
+    await expect(search).toBeInViewport({ ratio: 1 });
+    await expect(page.getByText("加载题库…", { exact: true })).toBeInViewport({ ratio: 1 });
+
+    releaseCatalog();
+    await expect(page.getByTestId("quizcraft-catalog-start")).toBeInViewport({ ratio: 1 });
+    await expect(search).toHaveAttribute("placeholder", "输入题库名称中的关键词");
+    await search.fill("网络安全");
+    await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(1);
+    await search.fill("不存在的课程");
+    await expect(page.getByText("无匹配题库", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "清除搜索", exact: true }).click();
+    await expect(page.getByTestId("quizcraft-catalog-start")).toHaveCount(1);
   });
-
-  await page.goto("/practice", { waitUntil: "domcontentloaded" });
-
-  const search = page.getByPlaceholder("如：数据结构 / 高等数学");
-  await expect(search).toBeInViewport({ ratio: 1 });
-  await expect(page.getByText("加载题库…", { exact: true })).toBeInViewport({ ratio: 1 });
-
-  releaseCatalog();
-  await expect(page.getByRole("heading", { name: "计算机基础", exact: true })).toBeInViewport({ ratio: 1 });
-});
+}
 
 /** 目录里一套可练习、一套暂不可用的题库。 */
 async function mockCatalogBanks(page: Page) {
@@ -248,7 +257,7 @@ test("a search with no matching bank offers to clear it and brings the catalog b
   await expect(computing).toBeVisible();
   await expect(page.getByRole("button", { name: "清除搜索" })).toHaveCount(0);
 
-  const search = page.getByPlaceholder("如：数据结构 / 高等数学");
+  const search = page.getByLabel("SEARCH / 搜索科目");
   await search.fill("高等数学");
   await expect(page.getByText("无匹配题库", { exact: true })).toBeVisible();
   await expect(computing).toHaveCount(0);

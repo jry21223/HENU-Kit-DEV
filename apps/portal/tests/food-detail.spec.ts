@@ -1,6 +1,44 @@
 import { expect, test } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
+test.beforeEach(async ({ page }) => {
+  await page.route("https://images.example.com/**", (route) => route.fulfill({
+    contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  }));
+});
+
+test("a short owner post presents each fact and photo once in a compact dossier", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const post = {
+    id: "compact", campus: "jinming", title: "同学面馆", shop: { name: "同学面馆" },
+    excerpt: "便宜、好吃，晚课后也能吃上热饭。", author: "同学", time: "10-24",
+    tags: ["夯"], likes: 0, stars: 0, hidden: false,
+    blocks: [
+      { type: "p", text: "价格参考：18元" },
+      { type: "p", text: "营业时间参考：11:00–21:00" },
+      { type: "h2", text: "点什么" },
+      { type: "list", items: ["牛肉面：汤浓", "番茄面：清淡", "炸酱面：酱香", "炒面：现炒"] },
+    ],
+    images: ["/api/v1/food/posts/compact/images/0"],
+  };
+  await page.route("**/api/v1/food/posts/compact", (route) => route.fulfill({ json: { post, comments: [] } }));
+  await page.route("**/api/v1/food/posts/compact/images/0", (route) => route.fulfill({
+    contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  }));
+  await page.goto("/food/post/compact");
+  await expect(page.getByText(post.excerpt, { exact: true })).toHaveCount(1);
+  await expect(page.getByText("18元", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("11:00–21:00", { exact: true })).toHaveCount(1);
+  await expect(page.locator('img[src="/api/v1/food/posts/compact/images/0"]')).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "为什么是这一档" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "学生锐评" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "图片与环境" })).toHaveCount(0);
+  const dishes = page.getByRole("list", { name: "推荐菜品" });
+  await expect(dishes.getByRole("listitem")).toHaveCount(4);
+  expect((await dishes.boundingBox())!.height).toBeLessThan(360);
+  await expect(page.getByText("汤浓", { exact: true })).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+});
 
 const DETAIL = {
   post: {
@@ -70,7 +108,11 @@ for (const viewport of [
       page.getByRole("heading", { name: "推荐菜品" }).first()
     ).toBeVisible();
     await expect(page.getByText("灌汤包", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "图片与环境" })).toBeVisible();
+    // The second photo stays in the article, without another gallery copy.
+    await expect(page.locator('img[src="https://images.example.com/gulou-environment.jpg"]')).toHaveCount(1);
+    await expect(page.locator('img[src="https://images.example.com/gulou-cover.jpg"]')).toHaveCount(1);
+    await expect(page.getByText("选择多、烟火气足，人均 ¥25–50。", { exact: true })).toHaveCount(1);
+    await expect(page.getByRole("heading", { name: "推荐菜品", exact: true })).toHaveCount(1);
     await expect(page.getByRole("link", { name: "在高德地图打开" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "投稿一家好店" })).toBeVisible();
 

@@ -133,7 +133,7 @@ for (const viewport of [
   });
 }
 
-test("an empty real response keeps the fixed five-tier frame", async ({
+test("an empty real response keeps compact tier orientation and one recovery state", async ({
   page,
 }) => {
   await page.route("**/api/v1/food/posts", async (route) => {
@@ -145,13 +145,25 @@ test("an empty real response keeps the fixed five-tier frame", async ({
 
   await page.goto("/food", { waitUntil: "domcontentloaded" });
 
-  await expect(page.locator("[data-food-tier]")).toHaveCount(5);
-  await expect(page.locator("[data-food-tier-label]")).toHaveText([
-    "夯",
-    "顶级",
-    "人上人",
-    "NPC",
-    "拉完了",
-  ]);
-  await expect(page.getByText("暂无上榜条目", { exact: true })).toHaveCount(5);
+  await expect(page.getByRole("navigation", { name: "五档榜单导览" }).getByRole("link")).toHaveCount(5);
+  await expect(page.locator("[data-food-tier]")).toHaveCount(0);
+  await expect(page.getByText("美食榜当前暂无上榜条目", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "投稿一家好店" }).first()).toBeVisible();
+});
+
+test("an empty campus shows one state and lets the reader return to all campuses", async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 844 });
+  await page.route("**/api/v1/food/posts", (route) => route.fulfill({ json: {
+    posts: POSTS.filter((post) => post.campus !== "longzihu"), request_id: "campus-empty",
+  } }));
+  await page.goto("/food");
+  await expect(page.locator('a[href^="/food/post/"]')).toHaveCount(3);
+  await page.getByRole("button", { name: "龙子湖校区", exact: true }).click();
+  await expect(page.getByText("该校区暂未收录", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("暂无上榜条目", { exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-food-tier]")).toHaveCount(0);
+  await page.getByRole("button", { name: "查看全部校区", exact: true }).click();
+  await expect(page.getByRole("button", { name: "全部校区", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('a[href^="/food/post/"]')).toHaveCount(3);
+  await expect(page.getByText("该校区暂未收录", { exact: true })).toHaveCount(0);
 });

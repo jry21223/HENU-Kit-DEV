@@ -184,10 +184,10 @@ export default function PostDetail({ id }: { id: string }) {
             ))}
           </div>
 
-          {detail.gallery[0] && (
+          {detail.heroImage && (
             <div className="mt-8">
               <Img
-                src={detail.gallery[0]}
+                src={detail.heroImage}
                 alt={`${post.shop.name}参考图`}
                 label="VENUE / REFERENCE"
                 loading="eager"
@@ -199,53 +199,27 @@ export default function PostDetail({ id }: { id: string }) {
 
           <section className="mt-12">
             <p className="font-mono text-xs tracking-[0.28em] text-accent-text">
-              WHY WE PICKED IT
-            </p>
-            <h2 className="mt-2 font-display text-3xl font-bold">
-              为什么是这一档
-            </h2>
-            {detail.reasons.length ? (
-              <ol className="mt-6 border-t border-line">
-                {detail.reasons.map((reason, index) => (
-                  <li
-                    key={`${reason}-${index}`}
-                    className="grid gap-3 border-b border-line py-4 sm:grid-cols-[3rem_1fr]"
-                  >
-                    <span className="font-display text-2xl font-bold text-accent-text">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <span className="leading-7 text-ink/75">{reason}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyBlock label="投稿未附推荐理由" announce={false} />
-            )}
-          </section>
-
-          <section className="mt-12">
-            <p className="font-mono text-xs tracking-[0.28em] text-accent-text">
               WHAT TO ORDER
             </p>
             <h2 className="mt-2 font-display text-3xl font-bold">推荐菜品</h2>
             {detail.dishes.length ? (
-              <div className="mt-6 grid gap-px bg-line border border-line sm:grid-cols-2">
+              <ol aria-label="推荐菜品" className="mt-4 divide-y divide-line border-y border-line">
                 {detail.dishes.map((dish, index) => (
-                  <article key={`${dish.name}-${index}`} className="bg-paper p-5">
+                  <li key={`${dish.name}-${index}`} className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 py-3">
                     <p className="font-mono text-xs tracking-[0.2em] text-ink/60">
-                      DISH {String(index + 1).padStart(2, "0")}
+                      {String(index + 1).padStart(2, "0")}
                     </p>
-                    <h3 className="mt-2 font-display text-xl font-bold">
+                    <h3 className="min-w-0 break-words font-display text-base font-bold md:text-xl">
                       {dish.name}
                     </h3>
                     {dish.note && (
-                      <p className="mt-2 text-sm leading-6 text-ink/65">
+                      <p className="col-start-2 mt-1 min-w-0 break-words text-sm leading-6 text-ink/65">
                         {dish.note}
                       </p>
                     )}
-                  </article>
+                  </li>
                 ))}
-              </div>
+              </ol>
             ) : (
               <div className="mt-6">
                 <EmptyBlock label="推荐菜品待补充" announce={false} />
@@ -276,24 +250,26 @@ export default function PostDetail({ id }: { id: string }) {
                 ))}
               </div>
             </section>
-          ) : (
+          ) : !detail.heroImage && !detail.bodyBlocks.some((block) => block.type === "img" && block.src?.trim()) ? (
             <p className="mt-12 border-t border-line pt-4 font-mono text-xs leading-6 text-ink/70">
               图片与环境：投稿未附图片
             </p>
-          )}
+          ) : null}
 
-          <section className="mt-12 border-t border-ink pt-8">
-            <p className="font-mono text-xs tracking-[0.28em] text-accent-text">
-              FIELD NOTES
-            </p>
-            <h2 className="mt-2 font-display text-3xl font-bold">学生锐评</h2>
-            <article className="mt-6 max-w-[70ch]">
-              <PostBlocks blocks={post.blocks} />
-            </article>
-            <p className="mt-5 font-mono text-xs leading-5 text-ink/60">
-              投稿人 / {post.author}
-            </p>
-          </section>
+          {detail.bodyBlocks.length > 0 && (
+            <section className="mt-12 border-t border-ink pt-8">
+              <p className="font-mono text-xs tracking-[0.28em] text-accent-text">
+                FIELD NOTES
+              </p>
+              <h2 className="mt-2 font-display text-3xl font-bold">学生锐评</h2>
+              <article className="mt-6 max-w-[70ch]">
+                <PostBlocks blocks={detail.bodyBlocks} />
+              </article>
+              <p className="mt-5 font-mono text-xs leading-5 text-ink/60">
+                投稿人 / {post.author}
+              </p>
+            </section>
+          )}
 
           <section className="mt-12">
             <p className="font-mono text-xs tracking-[0.28em] text-accent-text">

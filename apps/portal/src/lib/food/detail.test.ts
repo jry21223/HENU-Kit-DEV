@@ -42,15 +42,13 @@ describe("buildFoodVenueDetail", () => {
       author: "学生编辑部",
       publishedAt: "2026-07-16",
     });
-    expect(detail.reasons).toEqual([BASE_POST.excerpt]);
     expect(detail.dishes[0]).toEqual({
       name: "灌汤包",
       note: "开封代表性面点",
     });
-    expect(detail.gallery).toEqual([
-      "https://example.com/cover.jpg",
-      "https://example.com/environment.jpg",
-    ]);
+    expect(detail.heroImage).toBe("https://example.com/cover.jpg");
+    expect(detail.gallery).toEqual([]);
+    expect(detail.bodyBlocks).toEqual([BASE_POST.blocks[0], BASE_POST.blocks[3]]);
   });
 
   it("does not reinterpret an arbitrary editorial list as recommended dishes", () => {
@@ -109,5 +107,33 @@ describe("buildFoodVenueDetail", () => {
     expect(detail).not.toHaveProperty("coordinates");
     expect(detail).not.toHaveProperty("mapUrl");
     expect(detail.source.publishedAt).toBe("2026-08-18 08:30");
+  });
+
+  it("preserves unique rich text and ambiguous dish lists instead of dropping partial content", () => {
+    const blocks: FoodPost["blocks"] = [
+      { type: "p", text: "价格参考：18元" },
+      { type: "p", text: "价格参考：晚餐20元" },
+      { type: "p", text: "人均 ¥18，但周末排队较久。" },
+      { type: "quote", text: "同学提醒：避开饭点。" },
+      { type: "list", items: ["路线：南门进入", "座位：二楼"] },
+      { type: "h2", text: "点什么" },
+      { type: "list", items: ["：尚待补充的菜名", "烩面：汤浓：可加辣"] },
+    ];
+    const detail = buildFoodVenueDetail({ ...BASE_POST, blocks });
+    expect(detail.priceReference).toBe("18元");
+    expect(detail.dishes).toEqual([]);
+    expect(detail.bodyBlocks).toEqual(blocks.slice(1));
+  });
+
+  it("leaves inline photos in place and distinguishes photo versions while avoiding gallery copies", () => {
+    const inline = { type: "img" as const, src: "https://example.com/photo?v=1" };
+    const detail = buildFoodVenueDetail({
+      ...BASE_POST,
+      blocks: [{ type: "p", text: "这张图是南门入口。" }, inline],
+      images: ["https://example.com/photo?v=1", "https://example.com/photo?v=2", "https://example.com/extra", "https://example.com/extra"],
+    });
+    expect(detail.bodyBlocks).toEqual([{ type: "p", text: "这张图是南门入口。" }, inline]);
+    expect(detail.heroImage).toBe("https://example.com/photo?v=2");
+    expect(detail.gallery).toEqual(["https://example.com/extra"]);
   });
 });

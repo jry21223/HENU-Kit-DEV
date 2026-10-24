@@ -290,7 +290,17 @@ test("detail pages load the lead photo right away and leave the rest of the gall
   await expect(cover).toHaveAttribute("loading", "eager");
   await expect(cover).toHaveAttribute("fetchpriority", "high");
   const gallery = page.getByRole("img", { name: /^鼓楼夜市稿件参考图 \d+$/ });
-  await expect(gallery).toHaveCount(3);
+  await expect(gallery).toHaveCount(1);
+  // Three distinct owner photos: cover, extra photo and inline illustration.
+  // No source disappears or returns as a duplicate gallery copy.
+  await expect(page.locator("main img")).toHaveCount(3);
+  for (const src of [
+    "https://images.example.com/food/cover.png",
+    "https://images.example.com/food/second.png",
+    "https://images.example.com/food/body.png",
+  ]) {
+    await expect(page.locator(`main img[src="${src}"]`)).toHaveCount(1);
+  }
   for (const photo of await gallery.all()) {
     await expect(photo).toHaveAttribute("loading", "lazy");
   }

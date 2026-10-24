@@ -72,6 +72,14 @@ zero. Browser filtering still covers the full snapshot; the directory renders
 from a detail retains filters, the displayed range, and reading position.
 Hard reloads and new tabs start with the default directory view.
 
+The Food directory likewise retains its campus filter and reading position
+during same-tab returns from a venue; hard reloads and new tabs start with all
+campuses. An empty campus shows one recovery state with compact five-tier
+orientation. The venue dossier presents each structured fact and photo once:
+the complete review and unique editorial blocks remain available, while
+extracted price, hours and dish lists are not repeated in the body. Inline
+illustrations keep their editorial position.
+
 The Campus market is browse-only until posting, taking orders, and settlement
 exist (#568). `/campus` stays; its sub-site navigation lists no unopened tabs,
 the homepage module 04 is labelled 即将开放, and `/campus/deals` and
