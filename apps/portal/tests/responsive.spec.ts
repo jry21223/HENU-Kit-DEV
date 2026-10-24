@@ -87,7 +87,7 @@ test.describe("Portal mobile layout", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/practice", { waitUntil: "domcontentloaded" });
 
-    const search = page.getByPlaceholder("如：数据结构 / 高等数学");
+    const search = page.getByLabel("SEARCH / 搜索科目");
     await expect(search).toBeVisible();
     expect(await bottomEdge(search)).toBeLessThan(844);
     await expect(page.getByText("暂无题库", { exact: true })).toBeInViewport({ ratio: 1 });

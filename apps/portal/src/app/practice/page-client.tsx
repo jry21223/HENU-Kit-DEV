@@ -142,11 +142,11 @@ export default function PracticeBankPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-site px-5 pt-6 md:px-8">
-        {loadState === "error" && error && (
+      {loadState === "error" && error && (
+        <div className="mx-auto max-w-site px-5 pt-6 md:px-8">
           <ErrorBanner message={error.message} requestId={error.requestId} onRetry={() => void load()} className="mb-6" />
-        )}
-      </div>
+        </div>
+      )}
 
       {loadState === "loading" ? (
         <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">

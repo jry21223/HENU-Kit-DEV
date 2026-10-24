@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useReveal } from "@/components/account/use-reveal";
-import { ErrorBanner, LoadingBlock } from "@/components/data-state";
+import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import Img from "@/components/ui/img";
 import { useScrollRestoration } from "@/components/use-scroll-restoration";
 import { cn } from "@/lib/cn";
@@ -13,9 +13,15 @@ import { HANG_TIER_KEY, groupFoodPostsByTier } from "@/lib/food/ranking";
 import { useFoodPosts } from "@/lib/food/use-food-posts";
 import { INSET_FOCUS_RING, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 
+// Like Library, retain only view state in this tab; owner data is always reread.
+// Effects never run on the server, and a new document starts at all campuses.
+let rememberedCampus: CampusKey | "all" = "all";
+
 export default function FoodBoardPage() {
   const { posts, loadState, error, requestId, load } = useFoodPosts();
-  const [campus, setCampus] = useState<CampusKey | "all">("all");
+  const [campus, setCampus] = useState<CampusKey | "all">(rememberedCampus);
+  const allCampusRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { rememberedCampus = campus; }, [campus]);
 
   useReveal([campus, loadState]);
   useScrollRestoration(loadState === "ready");
@@ -73,6 +79,7 @@ export default function FoodBoardPage() {
             </p>
             <div className="mt-2 grid grid-cols-4 gap-1 md:mt-3 md:flex md:flex-wrap md:gap-2">
               <button
+                ref={allCampusRef}
                 type="button"
                 aria-pressed={campus === "all"}
                 onClick={() => setCampus("all")}
@@ -115,7 +122,7 @@ export default function FoodBoardPage() {
             和页脚就露在首屏里，五档一到就被挤下去（1440 × 900 下 0.15 的布局偏移）；只在加载时留、
             失败时收起，又会把它们拉回首屏（0.1）。/campus、/library 把这条下限放在 <main> 上；
             这里列表下面还有榜单说明，要连它一起推到首屏以下，所以放在榜单区。 */}
-        <div className="min-h-svh">
+        <div className={loadState !== "ready" || visibleCount > 0 ? "min-h-svh" : undefined}>
           {loadState === "error" && error && (
             <ErrorBanner message={error} requestId={requestId} onRetry={() => void load()} className="mt-8" />
           )}
@@ -136,7 +143,7 @@ export default function FoodBoardPage() {
                 {groups.map(({ tier, posts: tierPosts }) => (
                   <a
                     key={tier.key}
-                    href={`#tier-${tier.key}`}
+                    href={visibleCount ? `#tier-${tier.key}` : "#food-empty"}
                     className={cn("group min-h-11 min-w-0 flex-1 bg-paper px-1 py-2 transition-colors hover:bg-accent md:min-w-28 md:px-4 md:py-3", INSET_FOCUS_RING)}
                   >
                     {/* 悬停时整格变强调橙，小字跟着转成墨色，在橙底上才够清楚。 */}
@@ -151,86 +158,101 @@ export default function FoodBoardPage() {
                 ))}
               </nav>
 
-              <div className="mt-6 md:mt-16">
-                {groups.map(({ tier, posts: tierPosts }) => (
-                  <section
-                    key={tier.key}
-                    id={`tier-${tier.key}`}
-                    data-food-tier={tier.key}
-                    className="grid scroll-mt-28 border-t border-ink py-5 md:scroll-mt-20 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10 md:py-12"
-                  >
-                    <header data-enter className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 pb-3 md:block md:pb-0">
-                      <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
-                        {tier.index} / {tier.en}
-                      </p>
-                      <h2
-                        data-food-tier-label
-                        className={cn(
-                          "font-display text-2xl font-bold tracking-tight md:mt-2 md:text-6xl",
-                          tier.key === HANG_TIER_KEY && "text-accent-text"
-                        )}
-                      >
-                        {tier.label}
-                      </h2>
-                      <p className="col-span-2 mt-2 font-mono text-xs text-ink/60 md:mt-3">{tier.blurb}</p>
-                    </header>
+              {visibleCount === 0 ? (
+                <div id="food-empty" className="mt-6 scroll-mt-28 border-t border-line py-6">
+                  <EmptyBlock
+                    label={campus === "all" ? "美食榜当前暂无上榜条目" : "该校区暂未收录"}
+                    action={campus === "all" ? undefined : {
+                      label: "查看全部校区",
+                      onClick: () => { setCampus("all"); allCampusRef.current?.focus(); },
+                    }}
+                  />
+                  <Link href="/food/publish" className="mt-4 inline-flex min-h-11 items-center border border-ink px-4 font-mono text-xs transition-colors hover:bg-ink hover:text-paper">
+                    推荐一家好店 →
+                  </Link>
+                </div>
+              ) : (
+                <div className="mt-6 md:mt-16">
+                  {groups.map(({ tier, posts: tierPosts }) => (
+                    <section
+                      key={tier.key}
+                      id={`tier-${tier.key}`}
+                      data-food-tier={tier.key}
+                      className="grid scroll-mt-28 border-t border-ink py-5 md:scroll-mt-20 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10 md:py-12"
+                    >
+                      <header data-enter className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 pb-3 md:block md:pb-0">
+                        <p className="font-mono text-xs tracking-[0.25em] text-ink/60">
+                          {tier.index} / {tier.en}
+                        </p>
+                        <h2
+                          data-food-tier-label
+                          className={cn(
+                            "font-display text-2xl font-bold tracking-tight md:mt-2 md:text-6xl",
+                            tier.key === HANG_TIER_KEY && "text-accent-text"
+                          )}
+                        >
+                          {tier.label}
+                        </h2>
+                        <p className="col-span-2 mt-2 font-mono text-xs text-ink/60 md:mt-3">{tier.blurb}</p>
+                      </header>
 
-                    {tierPosts.length === 0 ? (
-                      <p
-                        data-enter
-                        className="border-t border-dashed border-line py-8 font-mono text-xs text-ink/60"
-                      >
-                        暂无上榜条目
-                      </p>
-                    ) : (
-                      <ol className="border-t border-ink">
-                        {tierPosts.map((post, index) => (
-                          <li key={post.id} data-enter>
-                            <Link
-                              href={`/food/post/${post.id}`}
-                              className="group grid grid-cols-[1.5rem_4rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-line py-4 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:gap-5 md:py-5"
-                            >
-                              <span className="font-mono text-sm text-ink/60">
-                                {String(index + 1).padStart(2, "0")}
-                              </span>
-                              <div className="h-16 overflow-hidden bg-ink/[0.04] md:h-20">
-                                {post.images?.[0] ? (
-                                  <Img
-                                    src={post.images[0]}
-                                    alt=""
-                                    label={tier.index}
-                                    className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
-                                  />
-                                ) : (
-                                  <span aria-hidden className="flex h-full items-center justify-center font-display text-4xl font-bold text-ink/12">
-                                    {tier.label}
+                      {tierPosts.length === 0 ? (
+                        <p
+                          data-enter
+                          className="border-t border-dashed border-line py-8 font-mono text-xs text-ink/60"
+                        >
+                          暂无上榜条目
+                        </p>
+                      ) : (
+                        <ol className="border-t border-ink">
+                          {tierPosts.map((post, index) => (
+                            <li key={post.id} data-enter>
+                              <Link
+                                href={`/food/post/${post.id}`}
+                                className="group grid grid-cols-[1.5rem_4rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-line py-4 md:grid-cols-[3rem_7.5rem_minmax(0,1fr)_auto] md:gap-5 md:py-5"
+                              >
+                                <span className="font-mono text-sm text-ink/60">
+                                  {String(index + 1).padStart(2, "0")}
+                                </span>
+                                <div className="h-16 overflow-hidden bg-ink/[0.04] md:h-20">
+                                  {post.images?.[0] ? (
+                                    <Img
+                                      src={post.images[0]}
+                                      alt=""
+                                      label={tier.index}
+                                      className="h-full w-full transition-transform duration-500 group-hover:scale-[1.04]"
+                                    />
+                                  ) : (
+                                    <span aria-hidden className="flex h-full items-center justify-center font-display text-4xl font-bold text-ink/12">
+                                      {tier.label}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="min-w-0">
+                                  <span className="block break-words font-display text-base font-bold transition-colors group-hover:text-accent-text md:text-xl">
+                                    {post.shop.name}
                                   </span>
-                                )}
-                              </div>
-                              <span className="min-w-0">
-                                <span className="block break-words font-display text-base font-bold transition-colors group-hover:text-accent-text md:text-xl">
-                                  {post.shop.name}
+                                  {post.title.trim() !== post.shop.name.trim() && (
+                                    <span className="mt-1 block truncate text-sm text-ink/65">{post.title}</span>
+                                  )}
+                                  <span className="mt-2 block font-mono text-xs text-ink/60">
+                                    {CAMPUSES[post.campus].name} · {post.tags.join(" / ")}
+                                  </span>
                                 </span>
-                                {post.title.trim() !== post.shop.name.trim() && (
-                                  <span className="mt-1 block truncate text-sm text-ink/65">{post.title}</span>
-                                )}
-                                <span className="mt-2 block font-mono text-xs text-ink/60">
-                                  {CAMPUSES[post.campus].name} · {post.tags.join(" / ")}
+                                <span className="flex items-center font-mono text-xs text-ink/50">
+                                  <span className="transition-transform group-hover:translate-x-1" aria-hidden>
+                                    →
+                                  </span>
                                 </span>
-                              </span>
-                              <span className="flex items-center font-mono text-xs text-ink/50">
-                                <span className="transition-transform group-hover:translate-x-1" aria-hidden>
-                                  →
-                                </span>
-                              </span>
-                            </Link>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </section>
-                ))}
-              </div>
+                              </Link>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </section>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>

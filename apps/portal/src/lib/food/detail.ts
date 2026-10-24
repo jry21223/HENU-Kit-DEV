@@ -25,8 +25,9 @@ export interface FoodVenueDetail {
     author: string;
     publishedAt: string;
   };
-  reasons: string[];
   dishes: FoodDishView[];
+  bodyBlocks: PostBlock[];
+  heroImage: string | null;
   gallery: string[];
 }
 
@@ -72,7 +73,7 @@ function toDish(item: string): FoodDishView {
  * when an explicit dish heading gives it that meaning. Gallery images may sit
  * between that heading and its list; any other block ends the association.
  */
-function findDishes(blocks: PostBlock[]): FoodDishView[] {
+function findDishes(blocks: PostBlock[]): { dishes: FoodDishView[]; displayedBlocks: number[] } {
   for (let headingIndex = 0; headingIndex < blocks.length; headingIndex += 1) {
     const heading = blocks[headingIndex];
     if (
@@ -90,16 +91,37 @@ function findDishes(blocks: PostBlock[]): FoodDishView[] {
       const candidate = blocks[candidateIndex];
       if (candidate.type === "img") continue;
       if (candidate.type === "list" && candidate.items?.length) {
-        return candidate.items.map(toDish).filter((dish) => dish.name);
+        const dishes = candidate.items.map(toDish);
+        // Only replace a whole, valid dish section. Keep ambiguous lists intact.
+        if (dishes.every((dish) => dish.name)) {
+          return { dishes, displayedBlocks: [headingIndex, candidateIndex] };
+        }
       }
       break;
     }
   }
-  return [];
+  return { dishes: [], displayedBlocks: [] };
 }
 
 export function buildFoodVenueDetail(post: FoodPost): FoodVenueDetail {
   const tierKey = resolveFoodTier(post);
+  const priceReference = findPrice(post);
+  const hoursReference = findHours(post);
+  const { dishes, displayedBlocks } = findDishes(post.blocks);
+  const bodyBlocks = post.blocks.filter((block, index) => {
+    if (displayedBlocks.includes(index)) return false;
+    if (block.type !== "p") return true;
+    const text = block.text?.trim() ?? "";
+    if (text && text === post.excerpt.trim()) return false;
+    // Only standalone, explicit metadata is redundant; narrative price mentions stay.
+    if (text.match(PRICE_REFERENCE_PATTERN)?.[1]?.trim() === priceReference) return false;
+    if (text.match(HOURS_PATTERN)?.[1]?.trim() === hoursReference) return false;
+    return true;
+  });
+  // Inline illustrations keep their editorial position, not a second gallery copy.
+  const bodyImages = new Set(bodyBlocks.flatMap((block) =>
+    block.type === "img" && block.src?.trim() ? [block.src.trim()] : []
+  ));
   const gallery = [
     ...(post.images ?? []),
     ...post.blocks.flatMap((block) =>
@@ -107,22 +129,24 @@ export function buildFoodVenueDetail(post: FoodPost): FoodVenueDetail {
     ),
   ]
     .map((src) => src.trim())
-    .filter(Boolean);
+    .filter((src) => src && !bodyImages.has(src));
+  const [heroImage, ...additionalImages] = [...new Set(gallery)];
 
   return {
     tier: tierKey
       ? FOOD_TIERS.find((tier) => tier.key === tierKey) ?? null
       : null,
     location: post.shop.name,
-    priceReference: findPrice(post),
-    hoursReference: findHours(post),
+    priceReference,
+    hoursReference,
     source: {
       author: post.author,
       publishedAt: formatFoodPostTime(post.time),
     },
-    reasons: post.excerpt.trim() ? [post.excerpt.trim()] : [],
-    dishes: findDishes(post.blocks),
-    gallery: [...new Set(gallery)],
+    dishes,
+    bodyBlocks,
+    heroImage: heroImage ?? null,
+    gallery: additionalImages,
   };
 }
 

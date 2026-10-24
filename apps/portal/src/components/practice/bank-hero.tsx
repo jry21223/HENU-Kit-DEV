@@ -258,29 +258,29 @@ export default function BankHero({
               id="practice-query"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
-              placeholder="如：数据结构 / 高等数学"
+              placeholder="输入题库名称中的关键词"
               className="h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-ink/60 focus:border-focus-ring"
             />
           </div>
 
           <div
             data-hero-title
-            className="enter-rise mt-5 grid max-w-md grid-cols-2 gap-4 lg:mt-10"
+            className="enter-rise mt-4 grid max-w-md grid-cols-2 gap-x-4 gap-y-2 lg:mt-10 lg:gap-4"
             style={{ animationDelay: "0.25s" }}
           >
-            <div className="border border-line px-4 py-3">
+            <div className="flex items-baseline justify-between gap-2 border-b border-line py-2 lg:block lg:border lg:px-4 lg:py-3">
               <p className="font-mono text-xs text-ink/60">
                 已确认作答
               </p>
-              <p className="mt-1 font-display text-3xl font-bold tabular-nums">
+              <p className="font-display text-xl font-bold tabular-nums lg:mt-1 lg:text-3xl">
                 {personalData ? personalData.total_answers : "—"}
               </p>
             </div>
-            <div className="border border-line px-4 py-3">
+            <div className="flex items-baseline justify-between gap-2 border-b border-line py-2 lg:block lg:border lg:px-4 lg:py-3">
               <p className="font-mono text-xs text-ink/60">
                 正确率
               </p>
-              <p className="mt-1 font-display text-3xl font-bold tabular-nums">
+              <p className="font-display text-xl font-bold tabular-nums lg:mt-1 lg:text-3xl">
                 {personalData ? `${personalData.accuracy}%` : "—"}
               </p>
             </div>
@@ -372,7 +372,7 @@ export default function BankHero({
         </div>
       </div>
 
-      <div className="relative border-t border-line py-2.5">
+      <div className="relative hidden border-t border-line py-2.5 lg:block">
         <div className="mx-auto flex max-w-site items-center gap-3 px-5 font-mono text-xs tracking-[0.2em] text-ink/60 md:px-8">
           <span className="text-accent-text">DATA</span>
           <span aria-hidden>+</span>

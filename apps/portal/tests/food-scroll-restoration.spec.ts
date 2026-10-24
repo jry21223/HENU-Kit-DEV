@@ -108,3 +108,44 @@ test("arriving fresh from another page still starts at the top", async ({
     .poll(async () => page.evaluate(() => Math.round(window.scrollY)))
     .toBeLessThan(100);
 });
+
+for (const returnVia of ["parent", "history"] as const) {
+  test(`campus and reading position survive ${returnVia} return with a slow directory`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const posts = POSTS.map((post, index) => ({ ...post, campus: index % 2 ? "jinming" : "minglun" }));
+    let reads = 0;
+    await page.route("**/api/v1/food/posts", async (route) => {
+      if (++reads > 1) await new Promise((resolve) => setTimeout(resolve, 2000));
+      await route.fulfill({ json: { posts, request_id: "campus-return" } });
+    });
+    await page.route("**/api/v1/food/posts/*", (route) => route.fulfill({
+      json: { post: posts[1], comments: [], request_id: "campus-detail" },
+    }));
+    await page.goto("/food");
+    const cards = page.locator('a[href^="/food/post/"]');
+    await expect(cards).toHaveCount(40);
+    await page.getByRole("button", { name: "金明校区", exact: true }).click();
+    await expect(cards).toHaveCount(20);
+    await page.evaluate(() => window.scrollTo(0, 1600));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(1500);
+    const offset = await page.evaluate(() => window.scrollY);
+    await page.evaluate(() => {
+      const link = [...document.querySelectorAll<HTMLAnchorElement>('a[href^="/food/post/"]')]
+        .find((item) => { const box = item.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; });
+      if (!link) throw new Error("no venue in viewport");
+      link.click();
+    });
+    await expect(page.getByRole("heading", { level: 1, name: posts[1].shop.name })).toBeVisible();
+    if (returnVia === "parent") await page.locator('header [data-back-link]').click();
+    else await page.goBack();
+    await expect(page.getByRole("button", { name: "金明校区", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(cards).toHaveCount(20);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(offset - 100);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(offset + 100);
+
+    await page.reload();
+    await expect(page.getByRole("button", { name: "全部校区", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(cards).toHaveCount(40);
+  });
+}
