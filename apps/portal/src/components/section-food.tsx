@@ -107,7 +107,9 @@ export default function SectionFood() {
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
-        gsap.from(gsap.utils.toArray("[data-rank-row]"), {
+        const targets = gsap.utils.toArray<HTMLElement>("[data-rank-row]");
+        if (targets.length === 0) return;
+        gsap.from(targets, {
           x: -60,
           opacity: 0,
           duration: 0.7,
@@ -122,7 +124,7 @@ export default function SectionFood() {
       });
       return () => mm.revert();
     },
-    { scope: sectionRef, dependencies: [loadState] }
+    { scope: sectionRef, dependencies: [loadState], revertOnUpdate: true }
   );
 
   return (

@@ -104,15 +104,15 @@ export default function SectionLibrary() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  const ready = cards !== null && !error;
-
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
       mm.add(FINE_MOTION, () => {
-        const track = trackRef.current!;
+        const track = trackRef.current;
+        const cards = gsap.utils.toArray<HTMLElement>("[data-lib-card]");
+        if (!track || cards.length === 0) return;
         // 进入视觉中心后自动播放：卡片依次入场 → 缓慢往返巡检（非线性、循环）
-        const entrance = gsap.from(gsap.utils.toArray("[data-lib-card]"), {
+        const entrance = gsap.from(cards, {
           x: 140,
           opacity: 0,
           duration: 0.8,
@@ -146,7 +146,7 @@ export default function SectionLibrary() {
       });
       return () => mm.revert();
     },
-    { scope: sectionRef, dependencies: [ready] }
+    { scope: sectionRef, dependencies: [cards, error], revertOnUpdate: true }
   );
 
   return (
