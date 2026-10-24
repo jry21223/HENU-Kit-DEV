@@ -53,6 +53,7 @@ class PortalCLI(unittest.TestCase):
             "engine_sha256": self.digest(self.previous_runtime / "bin" / food.SOURCE.name),
             "candidate_compose_sha256": self.digest(self.previous_runtime / "docker-compose.henukit.release.yml"),
             "environment_sha256": "historic-before-authorized-mail-migration",
+            "baseline_compose_sha256": self.digest(self.root / "opt/henukit-releases" / food.OLD / "docker-compose.henukit.release.yml"),
         }))
         self.previous_receipt.chmod(0o600)
         self.marker = self.root / "var/lib/henukit-actions-watch/scoped-food-release"
@@ -99,6 +100,186 @@ class PortalCLI(unittest.TestCase):
         self.assertEqual(self.marker.resolve(), self.previous)
         self.assertFalse(self.record.exists())
         self.assertFalse(any(c[0] == "docker" and any(a in c[1] for a in ("load", "up", "exec")) for c in self.calls()))
+
+    def portal_predecessor(self, receipt_format="henukit-portal-successor-v1", sha="d" * 40):
+        previous_record = self.marker.resolve() / "receipt.json"
+        previous = json.loads(previous_record.read_text())
+        previous_runtime = Path(previous["runtime"])
+        runtime = self.root / ("retained-portal-" + sha)
+        (runtime / "bin").mkdir(parents=True)
+        for name in (SOURCE.name, food.SOURCE.name):
+            shutil.copy(self.runtime / "bin" / name, runtime / "bin" / name)
+        (runtime / "RELEASE_SHA").write_text(sha + "\n")
+        shutil.copy(self.runtime / "docker-compose.henukit.release.yml", runtime)
+        state_path = self.root / "fake-state.json"
+        state = json.loads(state_path.read_text())
+        item = state["containers"]["henukit-portal-1"]
+
+        def snapshot(containers):
+            return {name: {
+                "id": c["Id"], "image": c["Image"], "tag": c["Config"]["Image"],
+                "status": c["State"]["Status"], "running": c["State"]["Running"],
+                "restarts": c["RestartCount"], "started_at": c["State"].get("StartedAt", ""),
+                "finished_at": c["State"].get("FinishedAt", ""), "exit_code": c["State"].get("ExitCode", 0),
+                "pid": c["State"].get("Pid", 0),
+            } for name, c in containers.items()}
+
+        selected = snapshot({"henukit-portal-1": item})
+        tag = "henukit-portal:" + sha
+        image = "sha256:" + hashlib.sha256(tag.encode()).hexdigest()
+        item.update({"Id": "previous-portal-" + sha, "Image": image})
+        item["Config"]["Image"] = tag
+        state["images"][tag] = image
+        state_path.write_text(json.dumps(state))
+        folder = self.root / "var/lib/henukit-scoped-releases/portal-successor" / sha
+        folder.mkdir(parents=True)
+        backup = folder / "configuration.backup"
+        shutil.copy(self.envfile, backup)
+        backup.chmod(0o600)
+        record = folder / "receipt.json"
+        record.write_text(json.dumps({
+            "format": receipt_format, "status": "active", "scope": ["portal"], "sha": sha,
+            "run_id": "122", "baseline": food.OLD, "baseline_runtime": previous["baseline_runtime"],
+            "runtime": str(runtime), "deployed_at": "2026-10-24T01:00:00Z",
+            "baseline_compose_sha256": previous["baseline_compose_sha256"],
+            "helper_sha256": self.digest(runtime / "bin" / SOURCE.name),
+            "engine_sha256": self.digest(runtime / "bin" / food.SOURCE.name),
+            "candidate_compose_sha256": self.digest(runtime / "docker-compose.henukit.release.yml"),
+            "predecessor_record": str(previous_record),
+            "predecessor_receipt_sha256": self.digest(previous_record),
+            "predecessor_runtime": str(previous_runtime), "predecessor_sha": previous["sha"],
+            "predecessor_compose_sha256": previous["candidate_compose_sha256"],
+            "old_version": previous["sha"], "old_deployed_at": previous["deployed_at"],
+            "selected": selected,
+            "unselected": snapshot({n: c for n, c in state["containers"].items() if n != "henukit-portal-1"}),
+            "images": {"portal": image}, "environment_sha256": self.digest(self.envfile),
+            "configuration_backup_sha256": self.digest(backup),
+        }))
+        record.chmod(0o600)
+        self.marker.unlink()
+        self.marker.symlink_to(folder)
+        return record
+
+    def test_preflight_accepts_retained_portal_without_mutating_either_receipt(self):
+        previous = self.portal_predecessor()
+        snapshots = {p: p.read_bytes() for p in (previous, self.previous_receipt, self.envfile)}
+        result = self.run_cli("--preflight")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.marker.resolve(), previous.parent)
+        self.assertFalse(self.record.exists())
+        self.assertEqual(snapshots, {p: p.read_bytes() for p in snapshots})
+        self.assert_no_replacement()
+
+    def test_consecutive_v2_activation_and_repeated_rollback_preserve_the_entire_chain(self):
+        first = self.portal_predecessor()
+        previous = self.portal_predecessor("henukit-portal-successor-v2", "e" * 40)
+        retained = {p: p.read_bytes() for p in (first, previous, self.previous_receipt, self.envfile)}
+        before = json.loads((self.root / "fake-state.json").read_text())["containers"]
+        for expected in ("active", "already_active"):
+            result = self.run_cli("--execute")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["status"], expected)
+        receipt = json.loads(self.record.read_text())
+        self.assertEqual(receipt["format"], "henukit-portal-successor-v2")
+        self.assertEqual(receipt["predecessor_sha"], "e" * 40)
+        self.assertEqual(self.marker.resolve(), self.record.parent)
+        state = json.loads((self.root / "fake-state.json").read_text())
+        for name, original in before.items():
+            if name != "henukit-portal-1":
+                self.assertEqual(state["containers"][name], original, name)
+        self.assertEqual(state["containers"]["henukit-portal-1"]["Config"]["Image"], "henukit-portal:" + food.NEW)
+        receipt["status"] = "applying"
+        self.record.write_text(json.dumps(receipt))
+        for expected in ("rolled_back", "already_rolled_back"):
+            result = self.run_cli("--rollback")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["status"], expected)
+        self.assertEqual(self.marker.resolve(), previous.parent)
+        state = json.loads((self.root / "fake-state.json").read_text())
+        restored = state["containers"]["henukit-portal-1"]
+        original = before["henukit-portal-1"]
+        self.assertNotEqual(restored["Id"], original["Id"])
+        self.assertEqual({k: v for k, v in restored.items() if k != "Id"},
+                         {k: v for k, v in original.items() if k != "Id"})
+        self.assertEqual(retained, {p: p.read_bytes() for p in retained})
+        self.assertEqual(sum(c[0] == "docker" and "up" in c[1] for c in self.calls()), 2)
+        self.assertFalse(any(c[0] == "docker" and "exec" in c[1] for c in self.calls()))
+
+    def test_failed_consecutive_acceptance_restores_immediately_previous_portal(self):
+        previous = self.portal_predecessor()
+        retained = {p: p.read_bytes() for p in (previous, self.previous_receipt, self.envfile)}
+        result = self.run_cli("--execute", {"FAIL_SMOKE": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("public acceptance failed", result.stderr)
+        self.assertEqual(json.loads(self.record.read_text())["status"], "rolled_back")
+        self.assertEqual(self.marker.resolve(), previous.parent)
+        state = json.loads((self.root / "fake-state.json").read_text())
+        self.assertEqual(state["containers"]["henukit-portal-1"]["Config"]["Image"], "henukit-portal:" + "d" * 40)
+        self.assertEqual(retained, {p: p.read_bytes() for p in retained})
+
+    def test_consecutive_preflight_rejects_full_baseline_compose_drift(self):
+        self.portal_predecessor()
+        baseline = self.root / "opt/henukit-releases" / food.OLD / "docker-compose.henukit.release.yml"
+        baseline.write_text(baseline.read_text() + "# changed baseline\n")
+        result = self.run_cli("--preflight")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("retained full baseline Compose changed", result.stderr)
+        self.assert_no_replacement()
+
+    def test_consecutive_preflight_rejects_missing_or_retagged_ancestor_images(self):
+        self.portal_predecessor()
+        self.portal_predecessor("henukit-portal-successor-v2", "e" * 40)
+        state_path = self.root / "fake-state.json"
+        state = json.loads(state_path.read_text())
+        tag = "henukit-portal:" + "d" * 40
+        for missing in (False, True):
+            with self.subTest(missing=missing):
+                if missing:
+                    state["images"].pop(tag)
+                else:
+                    state["images"][tag] = "sha256:" + "0" * 64
+                state_path.write_text(json.dumps(state))
+                result = self.run_cli("--preflight")
+                self.assertNotEqual(result.returncode, 0)
+                self.assert_no_replacement()
+
+    def test_consecutive_preflight_rejects_retained_file_and_non_portal_drift(self):
+        previous = self.portal_predecessor()
+        data = json.loads(previous.read_text())
+        for path in (
+            Path(data["runtime"]) / "bin" / SOURCE.name,
+            Path(data["runtime"]) / "docker-compose.henukit.release.yml",
+            previous.parent / "configuration.backup",
+            self.previous_receipt,
+        ):
+            original = path.read_bytes()
+            path.write_bytes(original + b"\nchanged\n")
+            result = self.run_cli("--preflight")
+            self.assertNotEqual(result.returncode, 0, path)
+            path.write_bytes(original)
+        state_path = self.root / "fake-state.json"
+        state = json.loads(state_path.read_text())
+        state["containers"]["henukit-nginx-1"]["Id"] = "foreign-replacement"
+        state_path.write_text(json.dumps(state))
+        self.assertNotEqual(self.run_cli("--preflight").returncode, 0)
+        self.assert_no_replacement()
+
+    def test_consecutive_preflight_rejects_cycles_and_outside_parent_paths(self):
+        previous = self.portal_predecessor()
+        original = json.loads(previous.read_text())
+        for path, sha in ((str(previous), "d" * 40), (str(self.root / "foreign/receipt.json"), PREVIOUS)):
+            data = {**original, "predecessor_record": path, "predecessor_sha": sha}
+            previous.write_text(json.dumps(data))
+            self.assertNotEqual(self.run_cli("--preflight").returncode, 0, path)
+        self.assert_no_replacement()
+
+    def test_consecutive_preflight_rejects_unbounded_history(self):
+        for index in range(1, 65):
+            self.portal_predecessor("henukit-portal-successor-v2", f"{index:040x}")
+        result = self.run_cli("--preflight")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("exceeds 64", result.stderr)
+        self.assert_no_replacement()
 
     def test_execute_only_portal_and_repeat_without_another_replacement(self):
         before = json.loads((self.root / "fake-state.json").read_text())["containers"]
