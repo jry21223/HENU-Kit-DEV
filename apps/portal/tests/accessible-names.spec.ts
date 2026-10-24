@@ -4,7 +4,7 @@ import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 
 /**
  * 读屏软件读得出名字和状态：
- * - 输入框由看得见的标签命名，placeholder 不代替标签，搜索框的 placeholder 只举例（DESIGN_SYSTEM §11）；
+ * - 输入框由看得见的标签命名，placeholder 不代替标签，只给例子或输入格式（DESIGN_SYSTEM §11）；
  * - 子站页头的标签行和账户中心的菜单用 aria-current 标出当前页；
  * - 资料目录的展开按钮用 aria-expanded 报告开合；
  * - 已登录时页头的账户入口读出完整昵称，而不只是头像块上的一个字。
@@ -51,8 +51,8 @@ test("资料库、互助和题库的搜索框由看得见的标签命名", async
   await page.getByText("搜索科目").click();
   await expect(practiceSearch).toBeFocused();
 
-  // 标签已经说了「搜索什么」，placeholder 只举例子，不再重复「搜索」。
-  await expect(practiceSearch).toHaveAttribute("placeholder", /^如：/);
+  // 题库随真实目录变化，只说明关键词格式，不承诺固定示例科目。
+  await expect(practiceSearch).toHaveAttribute("placeholder", "输入题库名称中的关键词");
   await page.goto("/campus");
   await waitForHydration(page);
   await expect(campusSearch).toHaveAttribute("placeholder", /^如：/);
