@@ -1,4 +1,124 @@
 import { expect, test } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
+import { libraryCountsFor } from "./support/library-counts";
+
+test.describe("asynchronous homepage animation targets", () => {
+  test.use({ viewport: { width: 375, height: 812 }, contextOptions: { reducedMotion: "no-preference" } });
+
+  test("waits for real cards and rows before creating their entrance animations", async ({ page }) => {
+    const warnings: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "warning" && message.text().includes("GSAP target")) warnings.push(message.text());
+    });
+    await mockGuestGateway(page);
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/v1/library/material-counts", async (route) => {
+      await waiting;
+      await route.fulfill({ json: libraryCountsFor([{ type: "note" }, { type: "exam" }]) });
+    });
+    await page.route("**/api/v1/library/courses", (route) => route.fulfill({ json: { courses: [], request_id: "animation-courses" } }));
+    await page.route("**/api/v1/food/posts", async (route) => {
+      await waiting;
+      await route.fulfill({ json: { posts: [{
+        id: "animation-food", campus: "minglun", title: "校内食堂", excerpt: "日常午餐。",
+        blocks: [], author: "学生", likes: 0, stars: 0, tags: ["夯"],
+        shop: { name: "校内食堂" }, time: "10-24", hidden: false, images: [],
+      }], request_id: "animation-food" } });
+    });
+    try {
+      await page.goto("/");
+      await expect(page.locator("html")).toHaveAttribute("data-scroll-memory", "ready");
+      await expect(page.getByText("榜单加载中…", { exact: true })).toBeVisible();
+      await expect(page.locator("[data-lib-card], [data-rank-row]")).toHaveCount(0);
+      expect(warnings).toEqual([]);
+      release();
+      const cards = page.locator("[data-lib-card]");
+      const rows = page.locator("[data-rank-row]");
+      await expect(cards).toHaveCount(3);
+      await expect(rows).toHaveCount(1);
+      await cards.first().scrollIntoViewIfNeeded();
+      await expect(cards.first()).toHaveCSS("opacity", "1");
+      const track = cards.first().locator("..");
+      const transform = await track.evaluate((element) => getComputedStyle(element).transform);
+      await expect.poll(() => track.evaluate((element) => getComputedStyle(element).transform)).not.toBe(transform);
+      await rows.first().scrollIntoViewIfNeeded();
+      await expect(rows.first()).toHaveCSS("opacity", "1");
+      await expect(rows.first().getByRole("link", { name: "校内食堂", exact: true })).toBeVisible();
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect(rows.first()).toHaveCSS("opacity", "1");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await rows.first().scrollIntoViewIfNeeded();
+      await expect(rows.first()).toHaveCSS("opacity", "1");
+      expect(warnings).toEqual([]);
+    } finally {
+      release();
+    }
+  });
+
+  for (const outcome of ["empty", "unavailable"] as const) {
+    test(`creates no empty-target animation for ${outcome} data or motion changes`, async ({ page }) => {
+      const warnings: string[] = [];
+      page.on("console", (message) => {
+        if (message.type() === "warning" && message.text().includes("GSAP target")) warnings.push(message.text());
+      });
+      await mockGuestGateway(page);
+      if (outcome === "empty") {
+        await page.route("**/api/v1/library/material-counts", (route) => route.fulfill({ json: libraryCountsFor([]) }));
+        await page.route("**/api/v1/library/courses", (route) => route.fulfill({ json: { courses: [], request_id: "empty-courses" } }));
+        await page.route("**/api/v1/food/posts", (route) => route.fulfill({ json: { posts: [], request_id: "empty-food" } }));
+      }
+      await page.goto("/");
+      await expect(page.getByText(outcome === "empty" ? "还没有上榜条目。" : "榜单暂时加载不出来，请稍后刷新试试。", { exact: true })).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      await expect(page.locator("[data-lib-card], [data-rank-row]")).toHaveCount(0);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      expect(warnings).toEqual([]);
+    });
+  }
+
+  test("restores the card sweep after a failed read is retried successfully", async ({ page }) => {
+    const warnings: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "warning" && message.text().includes("GSAP target")) warnings.push(message.text());
+    });
+    await mockGuestGateway(page);
+    await page.goto("/");
+    const library = page.locator("section").filter({ has: page.getByRole("heading", { level: 2, name: "资料库", exact: true }) });
+    await expect(library.getByRole("alert")).toBeVisible();
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/v1/library/material-counts", async (route) => {
+      await waiting;
+      await route.fulfill({ json: libraryCountsFor([{ type: "note" }, { type: "exam" }]) });
+    });
+    await page.route("**/api/v1/library/courses", (route) => route.fulfill({ json: { courses: [], request_id: "retry-courses" } }));
+    try {
+      await library.getByRole("button", { name: "重试", exact: true }).click();
+      await expect(library.getByRole("alert")).toHaveCount(0);
+      await expect(library.locator("[data-lib-card]")).toHaveCount(0);
+      release();
+      const cards = library.locator("[data-lib-card]");
+      await expect(cards).toHaveCount(3);
+      await cards.first().scrollIntoViewIfNeeded();
+      await expect(cards.first()).toHaveCSS("opacity", "1");
+      const track = cards.first().locator("..");
+      const transform = await track.evaluate((element) => getComputedStyle(element).transform);
+      await expect.poll(() => track.evaluate((element) => getComputedStyle(element).transform)).not.toBe(transform);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect(cards.first()).toHaveCSS("opacity", "1");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await cards.first().scrollIntoViewIfNeeded();
+      await expect(cards.first()).toHaveCSS("opacity", "1");
+      const restoredTransform = await track.evaluate((element) => getComputedStyle(element).transform);
+      await expect.poll(() => track.evaluate((element) => getComputedStyle(element).transform)).not.toBe(restoredTransform);
+      expect(warnings).toEqual([]);
+    } finally {
+      release();
+    }
+  });
+});
 
 test.describe("Homepage task entry", () => {
   test.use({ viewport: { width: 390, height: 800 }, contextOptions: { reducedMotion: "reduce" } });
