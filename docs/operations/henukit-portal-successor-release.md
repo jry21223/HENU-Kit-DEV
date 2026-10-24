@@ -1,6 +1,7 @@
 # Portal successor over the active Practice cohort
 
-This implements [ADR-0053](../adr/0053-portal-successor-release.md) and #612.
+This implements [ADR-0053](../adr/0053-portal-successor-release.md) and
+[ADR-0054](../adr/0054-consecutive-portal-releases.md) (#612, #615).
 Read [the artifact runbook](henukit-artifact-deployment.md) and the existing
 [Practice runbook](henukit-practice-scoped-release.md) first. This releases only
 Portal; it does not deploy backend changes or accept deferred Career/getWork.
@@ -38,12 +39,21 @@ installation are part of this entry.
 
 ## Preflight and activate
 
-Capture the full aliases/marker, active Practice marker/receipt, all container
+Capture the full aliases/marker, active scoped marker/receipt, all container
 identities/states, current environment hash (never values), watcher state and
-available disk. The Practice receipt must still identify its exact five active
-images and retained helper/engine/Compose. The actual Portal environment and
-Compose hash must agree with the retained Practice runtime rendered using
-the current environment. An historical SMTP hash difference is not repaired.
+available disk. The marker may identify the original Practice v1 receipt or an
+active Portal v1/v2 successor. Follow the retained Portal predecessors to the
+same Practice v1 root: at most 64 predecessor receipts including that root,
+exact canonical private paths,
+unchanged receipt links, helper/engine/Compose hashes and baseline. Preserve
+all retained receipts, runtimes, images and configuration backups. Cycles,
+unknown formats, other scopes or missing/tampered history fail closed.
+
+The actual Portal image must match the immediate active predecessor; the four
+other Practice images must match the root. Non-Portal container snapshots must
+still agree with the retained Portal predecessor. The actual Portal environment
+and Compose hash must agree with that predecessor rendered using the current
+environment. An historical SMTP hash difference is not repaired.
 
 Invoke only the provenance-verified runtime entry:
 
@@ -65,6 +75,8 @@ loads only the Portal image, verifies its archive ID/platform, then atomically
 advances the shared scoped marker and runs `up -d --no-deps portal`.
 The new root-private receipt is under
 `/var/lib/henukit-scoped-releases/portal-successor/<sha>`.
+New receipts use `henukit-portal-successor-v2`; they bind the immediate
+predecessor receipt/runtime/Compose and retain the original Practice baseline.
 
 Require the new Portal image/configuration, byte-identical current environment,
 full aliases/marker, unchanged other containers, and public homepage, Library,
@@ -77,9 +89,9 @@ Record browser viewport simulation separately from real-device acceptance.
 ## Rollback and interrupted attempts
 
 On mandatory activation failure the entry restores only the immediately
-previous Portal image, using the retained Practice Compose and unchanged
-current environment, verifies health/configuration, and atomically restores
-the old Practice marker. It leaves the original receipt and all other
+previous Portal image, using the immediate predecessor's retained Compose and
+unchanged current environment, verifies health/configuration, and atomically
+restores that predecessor's scoped marker (Practice or Portal). It leaves the original receipt and all other
 containers intact. A nonzero activation result remains a failed release even
 if rollback succeeds.
 

@@ -47,4 +47,7 @@ the scoped marker, receipt and actual image identify this Portal release.
 Career/getWork acceptance remains deferred. The old Practice rollback must
 not be invoked while the successor owns the marker.
 
+ADR-0054 supplies the reviewed, bounded extension for consecutive Portal-only
+releases; deployed v1 receipts retain this original meaning and helper.
+
 See [the operations runbook](../operations/henukit-portal-successor-release.md).

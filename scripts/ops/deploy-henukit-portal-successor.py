@@ -43,7 +43,7 @@ class Release(engine.Release):
     services = SERVICES
     helper_file = Path(__file__)
     state_scope = "portal-successor"
-    receipt_format = "henukit-portal-successor-v1"
+    receipt_format = "henukit-portal-successor-v2"
     predecessor_rollbacks = ()
 
     def database_target(self, containers):
@@ -73,31 +73,85 @@ class Release(engine.Release):
                 pending.append(path)
         require(not pending and not any((self.watch / "rollback-contracts/pending").iterdir()), "pending full release must be reconciled first")
 
+    def predecessor_link(self, data, record, previous):
+        require(
+            data["predecessor_record"] == str(record)
+            and data["predecessor_receipt_sha256"] == engine.digest(record)
+            and data["predecessor_runtime"] == previous["runtime"]
+            and data["predecessor_sha"] == data["old_version"] == previous["sha"]
+            and data["old_deployed_at"] == previous["deployed_at"]
+            and data["predecessor_compose_sha256"] == previous["candidate_compose_sha256"],
+            "retained predecessor binding changed",
+        )
+        require(set(data["selected"]) == {"henukit-portal-1"}, "predecessor selection differs")
+        selected = data["selected"]["henukit-portal-1"]
+        require(selected["tag"] == "henukit-portal:" + previous["sha"] and selected["image"] == previous["images"]["portal"], "retained predecessor Portal image differs")
+        if previous["scope"] == list(SERVICES):
+            require(data["unselected"] == previous["unselected"], "retained non-Portal containers changed")
+
+    def predecessor_chain(self, record):
+        chain, seen = [], set()
+        for _ in range(64):
+            self.trusted(record, private=True)
+            data = json.loads(record.read_text())
+            practice = data.get("format") == "henukit-practice-scoped-v1"
+            portal = data.get("format") in ("henukit-portal-successor-v1", self.receipt_format)
+            scope = PREDECESSOR_SCOPE if practice else SERVICES
+            require((practice or portal) and data.get("status") == "active" and data.get("scope") == list(scope), "unsupported predecessor scope/state")
+            sha = data["sha"]
+            require(re.fullmatch(r"[0-9a-f]{40}", sha) and sha != self.o.sha and record not in seen, "invalid or cyclic predecessor SHA")
+            folder = "practice-console" if practice else "portal-successor"
+            require(record == self.path("/var/lib/henukit-scoped-releases/" + folder) / sha / "receipt.json", "unexpected predecessor receipt path")
+            seen.add(record)
+            runtime = Path(data["runtime"])
+            helper = "deploy-henukit-practice-scoped.py" if practice else self.helper_file.name
+            for name, key in {
+                "bin/" + helper: "helper_sha256",
+                "bin/deploy-henukit-food-scoped.py": "engine_sha256",
+                "docker-compose.henukit.release.yml": "candidate_compose_sha256",
+            }.items():
+                self.trusted(runtime / name)
+                require(engine.digest(runtime / name) == data[key], "predecessor runtime identity changed: " + name)
+            self.trusted(runtime / "RELEASE_SHA")
+            require((runtime / "RELEASE_SHA").read_text().strip() == sha, "predecessor runtime SHA mismatch")
+            require(set(data["images"]) == set(scope), "predecessor image scope mismatch")
+            chain.append((record, data))
+            if practice:
+                break
+            backup = record.parent / "configuration.backup"
+            self.trusted(backup, private=True)
+            require(engine.digest(backup) == data["configuration_backup_sha256"] == data["environment_sha256"], "retained configuration backup changed")
+            previous_sha = data["predecessor_sha"]
+            require(re.fullmatch(r"[0-9a-f]{40}", previous_sha), "invalid retained predecessor SHA")
+            record = Path(data["predecessor_record"])
+            require(record in {self.path("/var/lib/henukit-scoped-releases/" + kind) / previous_sha / "receipt.json" for kind in ("practice-console", "portal-successor")}, "unexpected retained predecessor path")
+        else:
+            raise engine.ReleaseError("Portal predecessor chain exceeds 64 receipts")
+        root = chain[-1][1]
+        baseline_compose = Path(root["baseline_runtime"]) / "docker-compose.henukit.release.yml"
+        self.trusted(baseline_compose)
+        baseline_digest = engine.digest(baseline_compose)
+        for _, data in chain:
+            require(data["baseline_compose_sha256"] == baseline_digest, "retained full baseline Compose changed")
+            self.rollback_images({service: {
+                "tag": "henukit-" + service + ":" + data["sha"], "image": image,
+            } for service, image in data["images"].items()})
+            require(data["baseline"] == root["baseline"] and data["baseline_runtime"] == root["baseline_runtime"], "retained full baseline differs")
+        for (_, data), (record, previous) in zip(chain, chain[1:]):
+            self.predecessor_link(data, record, previous)
+        return chain
+
     def predecessor(self, containers):
-        require(self.marker.is_symlink() and self.marker.lstat().st_uid == self.uid, "active Practice marker required")
-        folder = self.marker.resolve()
-        record = folder / "receipt.json"
-        self.trusted(record, private=True)
-        data = json.loads(record.read_text())
-        require(data.get("format") == "henukit-practice-scoped-v1" and data.get("status") == "active" and data.get("scope") == list(PREDECESSOR_SCOPE), "unsupported predecessor scope/state")
-        sha = data["sha"]
-        require(re.fullmatch(r"[0-9a-f]{40}", sha) and sha != self.o.sha, "invalid predecessor SHA")
-        require(folder == self.path("/var/lib/henukit-scoped-releases/practice-console") / sha, "unexpected Practice receipt path")
-        runtime = Path(data["runtime"])
-        bindings = {
-            "bin/deploy-henukit-practice-scoped.py": "helper_sha256",
-            "bin/deploy-henukit-food-scoped.py": "engine_sha256",
-            "docker-compose.henukit.release.yml": "candidate_compose_sha256",
-        }
-        for name, key in bindings.items():
-            self.trusted(runtime / name)
-            require(engine.digest(runtime / name) == data[key], "predecessor runtime identity changed: " + name)
-        self.trusted(runtime / "RELEASE_SHA")
-        require((runtime / "RELEASE_SHA").read_text().strip() == sha, "predecessor runtime SHA mismatch")
-        require(set(data["images"]) == set(PREDECESSOR_SCOPE), "predecessor image scope mismatch")
+        require(self.marker.is_symlink() and self.marker.lstat().st_uid == self.uid, "active scoped marker required")
+        chain = self.predecessor_chain(self.marker.resolve() / "receipt.json")
+        record, data = chain[0]
+        practice = chain[-1][1]
         for service in PREDECESSOR_SCOPE:
+            previous = data if service == "portal" else practice
             item = containers["henukit-" + service + "-1"]
-            require(item["Config"]["Image"] == "henukit-" + service + ":" + sha and item["Image"] == data["images"][service], "active predecessor image mismatch: " + service)
+            require(item["Config"]["Image"] == "henukit-" + service + ":" + previous["sha"] and item["Image"] == previous["images"][service], "active predecessor image mismatch: " + service)
+        if data["scope"] == list(SERVICES):
+            require(self.snapshot(containers) == data["unselected"], "active non-Portal containers changed")
         return record, data
 
     @staticmethod
@@ -158,8 +212,8 @@ class Release(engine.Release):
         ):
             self.trusted(path)
             require(engine.digest(path) == checksum, "retained release identity changed: " + path.name)
-        expected = self.path("/var/lib/henukit-scoped-releases/practice-console") / data["predecessor_sha"] / "receipt.json"
-        require(Path(data["predecessor_record"]) == expected, "unexpected predecessor receipt path")
+        expected, previous = self.predecessor_chain(Path(data["predecessor_record"]))[0]
+        self.predecessor_link(data, expected, previous)
         require(self.marker.is_symlink() and self.marker.lstat().st_uid == self.uid and self.marker.resolve() in (expected.parent, self.record.parent), "foreign scoped marker")
         baseline, sha = self.full_baseline()
         require(str(baseline) == data["baseline_runtime"] and sha == data["baseline"], "full release baseline changed")
