@@ -1,4 +1,44 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { mockGuestGateway } from "./support/gateway";
+
+test("question pager styles load only when a session shows questions", async ({ page }) => {
+  await mockGuestGateway(page);
+  await mockPractice(page);
+  const styles: Array<Promise<string>> = [];
+  page.on("response", (response) => {
+    if (response.headers()["content-type"]?.includes("text/css")) {
+      styles.push(response.text());
+    }
+  });
+
+  await page.goto("/practice/quiz");
+  await expect(page.getByRole("heading", { name: "请先选择题库" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+
+  expect((await Promise.all(styles)).some((css) => css.includes(".swiper-wrapper"))).toBe(false);
+
+  await page.goto(`/practice/quiz?bank_id=${bankID}&bank_version_id=${bankVersionID}`);
+  await expect(page.getByRole("heading", { name: "组卷设置" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  expect((await Promise.all(styles)).some((css) => css.includes(".swiper-wrapper"))).toBe(false);
+
+  let releaseStyles = () => {};
+  const styleGate = new Promise<void>((resolve) => { releaseStyles = resolve; });
+  await page.route(/\.css(?:\?|$)/, async (route) => {
+    await styleGate;
+    await route.continue();
+  });
+  await page.getByLabel("题数 / COUNT").fill("3");
+  try {
+    await page.getByTestId("practice-session-start").click();
+    await expect(page.getByRole("status").filter({ hasText: "加载题目" })).toBeVisible();
+  } finally {
+    releaseStyles();
+  }
+  await expect(page.getByRole("heading", { name: questions[0].content })).toBeVisible();
+  await expect.poll(async () => (await Promise.all(styles)).some((css) => css.includes(".swiper-wrapper"))).toBe(true);
+  await expect(page.locator(".swiper")).toHaveCSS("overflow-x", "hidden");
+});
 
 const bankID = "33333333-3333-4333-8333-333333333333";
 const bankVersionID = "44444444-4444-4444-8444-444444444444";

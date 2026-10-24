@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   createPracticeFeedback,
@@ -33,9 +34,15 @@ import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import QuestionMarkdown from "@/components/practice/question-markdown";
-import QuestionPager from "@/components/practice/question-pager";
+import { LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
 import { choiceOptionState, judgeOptionState, type OptionFeedbackState } from "@/lib/practice/answer-feedback";
+
+// The pager owns Swiper's CSS; catalog prefetch and setup do not need it.
+const QuestionPager = dynamic(() => import("@/components/practice/question-pager"), {
+  ssr: false,
+  loading: () => <LoadingBlock label="加载题目" />,
+});
 
 const OPTION_LABEL = ["A", "B", "C", "D", "E", "F", "G", "H"];
 // Match the canonical UUID text form accepted by Gateway and QuizCraft Core;

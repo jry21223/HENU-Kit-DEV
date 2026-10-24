@@ -30,7 +30,7 @@ export default function Img({
 
   if (!src || failed) {
     return (
-      <div
+      <span
         className={cn(
           "bg-blueprint flex items-center justify-center border border-line",
           className
@@ -42,7 +42,7 @@ export default function Img({
         <span className="font-mono text-xs text-ink/65">
           <span className="tracking-[0.3em]">{label}</span> / 暂无图片
         </span>
-      </div>
+      </span>
     );
   }
 
