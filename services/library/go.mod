@@ -1,6 +1,6 @@
 module henukit.dev/library
 
-go 1.26.6
+go 1.26.10
 
 require (
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
