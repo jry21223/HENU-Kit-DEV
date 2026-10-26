@@ -1,6 +1,6 @@
 module henukit.dev/deploy-webhook
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
