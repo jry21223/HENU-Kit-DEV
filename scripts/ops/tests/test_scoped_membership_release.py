@@ -128,7 +128,7 @@ class MembershipCLI(portal.PortalCLI):
         )
         fake = fake.replace(
             "c['Config']['Env']=c['Config']['Env']",
-            "c['Config']['Env']=[k+'='+str(v) for k,v in config['services'][service].get('environment',{}).items()];c['Mounts']=[{'Type':v['type'],'Source':v['source'],'Destination':v['target'],'RW':not v.get('read_only',False)} for v in config['services'][service].get('volumes',[])]",
+            "c['State'].update(Running=True,Status='running');c['Config']['Env']=[k+'='+str(v) for k,v in config['services'][service].get('environment',{}).items()];c['Mounts']=[{'Type':v['type'],'Source':v['source'],'Destination':v['target'],'RW':not v.get('read_only',False)} for v in config['services'][service].get('volumes',[])]",
         )
         fake = fake.replace(
             "   if os.environ.get('CHANGE_UNSELECTED')",
