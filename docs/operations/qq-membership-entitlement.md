@@ -28,3 +28,9 @@ Roll out the owner endpoint and dedicated credential before enabling plugin
 plans. One active plugin runtime owns the durable scheduler registry; active
 replicas require a storage-level compare-and-set lease before enabling.
 No deployment or membership change is performed by this implementation.
+
+The runtime and prebuilt Compose contracts forward the three optional Bot keys
+only to Account Portfolio. The public edge proxies exactly
+`/api/v1/bot/membership-entitlement` to that owner; the existing authenticated
+route rejects unsigned requests and other client roles. No broader owner routes
+are exposed. The public HTTPS origin is the plugin entitlement URL.

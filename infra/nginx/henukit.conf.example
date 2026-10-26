@@ -41,6 +41,19 @@ server {
     proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
   }
 
+  # Dedicated Bot key authorizes this exact read-only owner endpoint only.
+  # Preserve signed headers; no Portal/Console owner routes are exposed here.
+  location = /api/v1/bot/membership-entitlement {
+    set $account_portfolio_upstream account-portfolio:8097;
+    proxy_pass http://$account_portfolio_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $henukit_forwarded_proto;
+    add_header Cache-Control "no-store" always;
+  }
+
   # EasyPay callback enters the Account Portfolio owner through one exact,
   # unauthenticated Provider route. No user-owned /api/v1/account/* route is
   # exposed directly; those continue through the signed Portal Gateway.

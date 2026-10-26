@@ -6,12 +6,18 @@ on:
       - services/account-portfolio/**
       - packages/api-contracts/openapi/account-portfolio.yaml
       - .github/workflows/account-portfolio.yml
+      - docker-compose.henukit*.yml
+      - infra/nginx/henukit.conf.example
+      - scripts/ops/tests/bot-membership-wiring.test.mjs
   push:
     branches: [main]
     paths:
       - services/account-portfolio/**
       - packages/api-contracts/openapi/account-portfolio.yaml
       - .github/workflows/account-portfolio.yml
+      - docker-compose.henukit*.yml
+      - infra/nginx/henukit.conf.example
+      - scripts/ops/tests/bot-membership-wiring.test.mjs
 
 permissions:
   contents: read
@@ -78,6 +84,9 @@ jobs:
             postgres:17-alpine \
             pg_restore -h 127.0.0.1 -U account_portfolio -d account_portfolio_recovery --no-owner /tmp/account-portfolio-recovery.dump
           test "$(psql -h localhost -U account_portfolio -d account_portfolio_recovery -Atc "SELECT to_regclass('public.account_portfolio_tickets') IS NOT NULL AND to_regclass('public.account_portfolio_ticket_events') IS NOT NULL AND to_regclass('public.account_portfolio_command_idempotency') IS NOT NULL AND to_regclass('public.account_portfolio_membership_orders') IS NOT NULL")" = t
+
+      - name: Verify Bot membership deployment wiring
+        run: node --test scripts/ops/tests/bot-membership-wiring.test.mjs
 
       - name: Verify Account Portfolio contract
         run: |
