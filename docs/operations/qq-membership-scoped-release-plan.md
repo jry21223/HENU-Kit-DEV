@@ -30,3 +30,12 @@ Future Portal releases must first add and review membership-checkpoint support;
 do not bypass the marker or rewrite old receipts to make them proceed.
 The retained full aliases and full-release SHA remain unchanged. A successful
 scope receipt is not full-stack or getWork acceptance.
+
+The owner image uses its own Actions OIDC attestation. Download its proof with
+`gh attestation download <owner-archive> --repo jry21223/HENU-Kit-DEV
+--predicate-type https://github.com/jry21223/HENU-Kit-DEV/attestations/account-membership-image-v1`
+in the private proof directory; retain the resulting digest-named JSONL as
+`henukit-membership-image-<sha>.attestation.json`. Verify repository, workflow,
+source ref/digest, predicate and hosted-runner identity before use. Do not add
+an extra Actions artifact for this proof: the existing full-release watcher
+downloads every artifact and correctly rejects unrecognized files.

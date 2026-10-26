@@ -24,3 +24,12 @@ test('the exact Bot entitlement edge route cannot expose other owner routes', ()
   assert.match(block, /Cache-Control "no-store" always/);
   assert.doesNotMatch(nginx, /location (?:\^~ )?\/api\/v1\/bot\//);
 });
+
+
+test('owner image attestation does not add unsupported files to full-release downloads', () => {
+  const workflow = readFileSync(new URL('../../../.github/workflows/deploy-henukit.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /name: Attest the membership owner image/);
+  assert.match(workflow, /subject-path: release\/henukit-account-portfolio-\$\{\{ github.sha \}\}\.docker\.tar\.gz/);
+  assert.match(workflow, /predicate-type: https:\/\/github.com\/jry21223\/HENU-Kit-DEV\/attestations\/account-membership-image-v1/);
+  assert.doesNotMatch(workflow, /name: membership-reader-provenance-/);
+});
