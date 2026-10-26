@@ -45,6 +45,8 @@ type Config struct {
 	Keys            map[string]string
 	ConsoleClientID string
 	ConsoleKeys     map[string]string
+	BotClientID     string
+	BotKeys         map[string]string
 	// PaymentProvider is nil in every production configuration until the
 	// separately authorized provider Spike supplies a real implementation.
 	PaymentProvider PaymentProvider
@@ -59,6 +61,7 @@ type service struct {
 	database        *pgxpool.Pool
 	clientID        string
 	consoleClientID string
+	botClientID     string
 	clientKeys      map[string]map[string]string
 	paymentProvider PaymentProvider
 	pointCursors    *pointCursorCodec
@@ -160,12 +163,16 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, errors.New("account portfolio point cursor encryption key is invalid")
 	}
-	if pointCursorKeyReusesServiceSecret(config.PointCursorKey, config.Keys, config.ConsoleKeys) {
+	if pointCursorKeyReusesServiceSecret(config.PointCursorKey, config.Keys, config.ConsoleKeys, config.BotKeys) {
 		return nil, errors.New("account portfolio point cursor encryption key must be independent from service credentials")
 	}
 	consoleConfigured := strings.TrimSpace(config.ConsoleClientID) != "" || len(config.ConsoleKeys) != 0
 	if consoleConfigured && (strings.TrimSpace(config.ConsoleClientID) == "" || config.ConsoleClientID == config.ClientID || !validClientKeys(config.ConsoleKeys) || sharedServiceSecret(config.Keys, config.ConsoleKeys)) {
 		return nil, errors.New("account portfolio Console service credentials are invalid")
+	}
+	botConfigured := strings.TrimSpace(config.BotClientID) != "" || len(config.BotKeys) != 0
+	if botConfigured && (strings.TrimSpace(config.BotClientID) == "" || config.BotClientID == config.ClientID || config.BotClientID == config.ConsoleClientID || !validClientKeys(config.BotKeys) || sharedServiceSecret(config.Keys, config.BotKeys) || sharedServiceSecret(config.ConsoleKeys, config.BotKeys)) {
+		return nil, errors.New("account portfolio Bot reader credentials are invalid")
 	}
 	if config.PaymentProvider != nil && !validPaymentProviderName(config.PaymentProvider.Name()) {
 		return nil, errors.New("account portfolio payment provider is invalid")
@@ -178,13 +185,17 @@ func New(config Config) (http.Handler, error) {
 	if consoleConfigured {
 		clientKeys[config.ConsoleClientID] = config.ConsoleKeys
 	}
-	h := &service{database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, clientKeys: clientKeys, paymentProvider: config.PaymentProvider, pointCursors: pointCursors, now: now}
+	if botConfigured {
+		clientKeys[config.BotClientID] = config.BotKeys
+	}
+	h := &service{database: config.Database, clientID: config.ClientID, consoleClientID: config.ConsoleClientID, botClientID: config.BotClientID, clientKeys: clientKeys, paymentProvider: config.PaymentProvider, pointCursors: pointCursors, now: now}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, h.health)
 	router.Post(contract.PaymentProviderNotificationRoute, h.paymentProviderNotification)
 	router.Group(func(protected chi.Router) {
 		protected.Use(h.authenticate)
+		protected.Get(contract.BotMembershipRoute, h.botMembershipEntitlement)
 		protected.Get(contract.SummaryRoute, h.summary)
 		protected.Get(contract.PointsRoute, h.points)
 		protected.Get(contract.MembershipRoute, h.membership)
@@ -1624,4 +1635,20 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+// botMembershipEntitlement reads only the durable entitlement; it never initializes account rows.
+func (h *service) botMembershipEntitlement(w http.ResponseWriter, r *http.Request) {
+	value := authenticatedActor(r)
+	if h.botClientID == "" || value.clientID != h.botClientID {
+		writeError(w, r, http.StatusForbidden, "ACCESS_DENIED", "Membership entitlement requires the Bot reader")
+		return
+	}
+	var lifetime bool
+	err := h.database.QueryRow(r.Context(), `SELECT COALESCE((SELECT plan='lifetime' FROM account_portfolio_memberships WHERE user_id=$1),false)`, value.userID).Scan(&lifetime)
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Membership entitlement is unavailable")
+		return
+	}
+	writeData(w, r, http.StatusOK, map[string]any{"user_id": value.userID, "lifetime": lifetime})
 }
