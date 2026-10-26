@@ -27,6 +27,19 @@ func main() {
 	consoleClientID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_CLIENT_ID")
 	consoleKeyID := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_KEY_ID")
 	consoleSecret := os.Getenv("ACCOUNT_PORTFOLIO_CONSOLE_SECRET")
+	botClientID := os.Getenv("ACCOUNT_PORTFOLIO_BOT_CLIENT_ID")
+	botKeyID := os.Getenv("ACCOUNT_PORTFOLIO_BOT_KEY_ID")
+	botSecret := os.Getenv("ACCOUNT_PORTFOLIO_BOT_SECRET")
+	var botKeys map[string]string
+	if botClientID != "" || botKeyID != "" || botSecret != "" {
+		if botClientID == "" || botKeyID == "" || botSecret == "" {
+			log.Fatal("Account Portfolio Bot reader configuration is incomplete")
+		}
+		if os.Getenv("ACCOUNT_PORTFOLIO_REQUIRE_STRONG_SECRET") == "1" && isPlaceholderSecret(botSecret) {
+			log.Fatal("Account Portfolio Bot reader secret is a deployment placeholder")
+		}
+		botKeys = map[string]string{botKeyID: botSecret}
+	}
 	pointCursorKey, err := pointCursorKeyFromEnv()
 	if err != nil {
 		log.Fatal(err)
@@ -67,6 +80,8 @@ func main() {
 		Keys:            map[string]string{keyID: secret},
 		ConsoleClientID: consoleClientID,
 		ConsoleKeys:     consoleKeys,
+		BotClientID:     botClientID,
+		BotKeys:         botKeys,
 		PointCursorKey:  pointCursorKey,
 		PaymentProvider: paymentProvider,
 	})

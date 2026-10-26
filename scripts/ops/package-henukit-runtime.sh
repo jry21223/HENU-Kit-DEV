@@ -145,7 +145,7 @@ docker run --rm --platform linux/amd64 \
   --volume "$runtime/materials-runtime/bin:/out" \
   --volume "$runtime/bin:/host-out" \
   --workdir /src \
-  golang:1.26.9-alpine \
+  golang:1.26.10-alpine \
   sh -ceu '
     cd /src/services/deploy-webhook
     go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/henukit-deploy-webhook ./cmd/server
@@ -198,6 +198,7 @@ for helper in \
   deploy-henukit-food-scoped.py \
   deploy-henukit-practice-scoped.py \
   deploy-henukit-portal-successor.py \
+  deploy-henukit-account-membership.py \
   deploy-henukit-artifact.sh \
   watch-henukit-actions.sh \
   activate-henukit-release.sh \

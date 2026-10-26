@@ -36,6 +36,7 @@ function createCleanSourceCheckout() {
   const newHelpers = [
     "scripts/ops/deploy-henukit-practice-scoped.py",
     "scripts/ops/deploy-henukit-portal-successor.py",
+    "scripts/ops/deploy-henukit-account-membership.py",
   ].filter((path) => existsSync(join(repoRoot, path)) && !existsSync(join(checkout, path)));
   for (const helper of newHelpers) {
     copyFileSync(join(repoRoot, helper), join(checkout, helper));
@@ -228,6 +229,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./bin/deploy-henukit-food-scoped.py",
     "./bin/deploy-henukit-practice-scoped.py",
     "./bin/deploy-henukit-portal-successor.py",
+    "./bin/deploy-henukit-account-membership.py",
     "./migrations/quizcraft/000001_quizcraft_content.up.sql",
     "./migrations/quizcraft/000001_quizcraft_content.down.sql",
     "./bin/watch-henukit-actions.sh",

@@ -13,6 +13,36 @@ security:
     serviceSignature: []
     serviceActor: []
 paths:
+  /api/v1/bot/membership-entitlement:
+    get:
+      operationId: getBotMembershipEntitlement
+      summary: Read one actor entitlement using the isolated Bot reader credential
+      description: Does not initialize account rows; Portal and Console credentials are rejected.
+      parameters:
+        - $ref: '#/components/parameters/ServiceID'
+        - $ref: '#/components/parameters/KeyID'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Nonce'
+        - $ref: '#/components/parameters/ActorUserID'
+      responses:
+        '200':
+          description: Current durable membership entitlement
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user_id, lifetime]
+                    properties:
+                      user_id: { type: string, format: uuid }
+                      lifetime: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ReplayDetected' }
+        '503': { $ref: '#/components/responses/DependencyUnavailable' }
   /healthz:
     get:
       operationId: getAccountPortfolioHealth

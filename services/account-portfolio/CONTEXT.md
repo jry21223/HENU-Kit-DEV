@@ -170,3 +170,9 @@ sorting boundary, expires after ten minutes, and uses Account Portfolio's
 independent cursor key. Portal forwards it only as an uninspected bounded
 query value; clients do not derive it from an identifier or timestamp.
 _Avoid_: Offset pagination, exposed audit identifier
+
+The QQ Bot has a separately keyed Membership Entitlement read boundary. It may
+read only whether its actor has lifetime membership; it cannot initialize an
+Account Portfolio or access Portal owner or Console operations. Platform Core
+still owns the current QQ Binding and active-user status; the Bot resolves that
+identity afresh before asking the membership owner.
