@@ -37,6 +37,8 @@ require = engine.require
 
 SERVICES = ("portal",)
 PREDECESSOR_SCOPE = ("portal", "portal-gateway", "food", "console-gateway", "quizcraft")
+MEMBERSHIP_SCOPE = ("account-portfolio", "nginx")
+CHECKPOINT_FORMAT = "henukit-portal-successor-v3"
 
 
 class Release(engine.Release):
@@ -73,6 +75,91 @@ class Release(engine.Release):
                 pending.append(path)
         require(not pending and not any((self.watch / "rollback-contracts/pending").iterdir()), "pending full release must be reconciled first")
 
+    def membership_checkpoint(self, anchor):
+        require(set(anchor) == {"record", "sha256"}, "invalid membership checkpoint binding")
+        record = Path(anchor["record"])
+        self.trusted(record, private=True)
+        require(engine.digest(record) == anchor["sha256"], "membership checkpoint receipt changed")
+        data = json.loads(record.read_text())
+        sha = data["sha"]
+        require(
+            re.fullmatch(r"[0-9a-f]{40}", sha)
+            and record == self.path("/var/lib/henukit-scoped-releases/account-membership") / sha / "receipt.json"
+            and data["format"] == "henukit-account-membership-v1"
+            and data["status"] == "active"
+            and data["scope"] == list(MEMBERSHIP_SCOPE),
+            "unsupported membership checkpoint",
+        )
+        runtime = Path(data["runtime"])
+        for name, key in {
+            "bin/deploy-henukit-account-membership.py": "helper_sha256",
+            "bin/deploy-henukit-food-scoped.py": "engine_sha256",
+            "bin/deploy-henukit-portal-successor.py": "portal_helper_sha256",
+            "docker-compose.henukit.release.yml": "candidate_compose_sha256",
+        }.items():
+            self.trusted(runtime / name)
+            require(engine.digest(runtime / name) == data[key], "membership runtime identity changed: " + name)
+        self.trusted(runtime / "RELEASE_SHA")
+        require((runtime / "RELEASE_SHA").read_text().strip() == sha, "membership runtime SHA mismatch")
+        require(set(data["configuration_hashes"]) == {"before.compose.json", "after.compose.json", "nginx.conf"}, "membership configuration inventory differs")
+        for name, checksum in data["configuration_hashes"].items():
+            path = record.parent / name
+            self.trusted(path, private=True)
+            require(engine.digest(path) == checksum, "membership configuration changed")
+        backup = record.parent / "configuration.backup"
+        self.trusted(backup, private=True)
+        self.trusted(self.envfile, private=True)
+        require(engine.digest(backup) == data["environment_sha256"] == engine.digest(self.envfile), "membership environment changed")
+        source = Path(data["nginx_source"])
+        self.trusted(source)
+        require(source.read_text() == data["nginx_before"], "retained membership Nginx source changed")
+
+        # Reuse only the retained, hash-bound helper's read-only configuration
+        # check. Its old whole-cohort check would reject the newer Portal.
+        path = runtime / "bin/deploy-henukit-account-membership.py"
+        spec = importlib.util.spec_from_file_location("henukit_retained_membership", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        options = argparse.Namespace(**vars(self.o))
+        options.sha, options.run_id, options.rollback = sha, data["run_id"], True
+        try:
+            retained = module.Release(options)
+            containers = self.containers()
+            require(all(containers["henukit-" + s + "-1"]["State"]["Running"] and containers["henukit-" + s + "-1"]["State"].get("Health", {}).get("Status", "healthy") == "healthy" for s in MEMBERSHIP_SCOPE), "membership checkpoint service unhealthy")
+            checkpoint = retained.snapshot(containers, True)
+            retained.selected_configuration(data, True)
+        except module.engine.ReleaseError as error:
+            raise engine.ReleaseError("retained membership configuration failed: " + str(error)) from error
+        require(set(checkpoint) == {"henukit-" + s + "-1" for s in MEMBERSHIP_SCOPE} and checkpoint == data["selected_checkpoint"], "membership checkpoint containers changed")
+        images = data["images"]
+        require(set(images) == set(MEMBERSHIP_SCOPE) and all(checkpoint["henukit-" + s + "-1"]["image"] == images[s] for s in MEMBERSHIP_SCOPE), "membership checkpoint image differs")
+        return data
+
+    @staticmethod
+    def membership_projection(data):
+        return {**{n: v for n, v in data["unselected"].items() if n != "henukit-portal-1"}, **data["selected_checkpoint"]}
+
+    def membership_predecessor(self, anchor, record, previous):
+        data = self.membership_checkpoint(anchor)
+        require(
+            data["predecessor_record"] == str(record)
+            and data["predecessor_receipt_sha256"] == engine.digest(record)
+            and data["baseline"] == previous["baseline"]
+            and data["baseline_runtime"] == previous["baseline_runtime"]
+            and data["baseline_compose_sha256"] == previous["baseline_compose_sha256"]
+            and previous["scope"] == list(SERVICES),
+            "membership predecessor binding changed",
+        )
+        selected = data["unselected"]["henukit-portal-1"]
+        require(selected["tag"] == "henukit-portal:" + previous["sha"] and selected["image"] == previous["images"]["portal"], "membership predecessor Portal differs")
+        excluded = {"henukit-" + s + "-1" for s in MEMBERSHIP_SCOPE}
+        require(
+            {n: v for n, v in data["unselected"].items() if n != "henukit-portal-1"}
+            == {n: v for n, v in previous["unselected"].items() if n not in excluded},
+            "membership changed unrelated predecessor containers",
+        )
+        return data
+
     def predecessor_link(self, data, record, previous):
         require(
             data["predecessor_record"] == str(record)
@@ -86,7 +173,19 @@ class Release(engine.Release):
         require(set(data["selected"]) == {"henukit-portal-1"}, "predecessor selection differs")
         selected = data["selected"]["henukit-portal-1"]
         require(selected["tag"] == "henukit-portal:" + previous["sha"] and selected["image"] == previous["images"]["portal"], "retained predecessor Portal image differs")
-        if previous["scope"] == list(SERVICES):
+        if data["format"] == CHECKPOINT_FORMAT:
+            anchor = data["membership_checkpoint"]
+            if previous.get("membership_checkpoint"):
+                require(anchor == previous["membership_checkpoint"] and data["marker_before"] == str(record.parent), "retained membership checkpoint binding changed")
+                expected = previous["unselected"]
+            else:
+                checkpoint = self.membership_predecessor(anchor, record, previous)
+                require(data["marker_before"] == str(Path(anchor["record"]).parent), "membership marker binding changed")
+                require(data["selected"]["henukit-portal-1"] == checkpoint["unselected"]["henukit-portal-1"], "retained Portal checkpoint changed")
+                expected = self.membership_projection(checkpoint)
+            require(data["unselected"] == expected, "retained non-Portal containers changed")
+        elif previous["scope"] == list(SERVICES):
+            require(not previous.get("membership_checkpoint") and not data.get("membership_checkpoint"), "membership checkpoint cannot be discarded")
             require(data["unselected"] == previous["unselected"], "retained non-Portal containers changed")
 
     def predecessor_chain(self, record):
@@ -95,7 +194,7 @@ class Release(engine.Release):
             self.trusted(record, private=True)
             data = json.loads(record.read_text())
             practice = data.get("format") == "henukit-practice-scoped-v1"
-            portal = data.get("format") in ("henukit-portal-successor-v1", self.receipt_format)
+            portal = data.get("format") in ("henukit-portal-successor-v1", self.receipt_format, CHECKPOINT_FORMAT)
             scope = PREDECESSOR_SCOPE if practice else SERVICES
             require((practice or portal) and data.get("status") == "active" and data.get("scope") == list(scope), "unsupported predecessor scope/state")
             sha = data["sha"]
@@ -116,8 +215,12 @@ class Release(engine.Release):
             require((runtime / "RELEASE_SHA").read_text().strip() == sha, "predecessor runtime SHA mismatch")
             require(set(data["images"]) == set(scope), "predecessor image scope mismatch")
             chain.append((record, data))
+            checkpoint = bool(getattr(self, "checkpoint_anchor", None)) or any(item.get("membership_checkpoint") for _, item in chain)
+            require(len(chain) + int(checkpoint) <= 64, "Portal predecessor chain exceeds 64 receipts")
             if practice:
                 break
+            if data["format"] == CHECKPOINT_FORMAT:
+                self.membership_checkpoint(data["membership_checkpoint"])
             backup = record.parent / "configuration.backup"
             self.trusted(backup, private=True)
             require(engine.digest(backup) == data["configuration_backup_sha256"] == data["environment_sha256"], "retained configuration backup changed")
@@ -143,7 +246,16 @@ class Release(engine.Release):
 
     def predecessor(self, containers):
         require(self.marker.is_symlink() and self.marker.lstat().st_uid == self.uid, "active scoped marker required")
-        chain = self.predecessor_chain(self.marker.resolve() / "receipt.json")
+        marker = self.marker.resolve()
+        record = marker / "receipt.json"
+        self.trusted(record, private=True)
+        current = json.loads(record.read_text())
+        membership = current.get("format") == "henukit-account-membership-v1"
+        if membership:
+            self.checkpoint_anchor = {"record": str(record), "sha256": engine.digest(record)}
+            self.membership_checkpoint(self.checkpoint_anchor)
+            record = Path(current["predecessor_record"])
+        chain = self.predecessor_chain(record)
         record, data = chain[0]
         practice = chain[-1][1]
         for service in PREDECESSOR_SCOPE:
@@ -151,7 +263,15 @@ class Release(engine.Release):
             item = containers["henukit-" + service + "-1"]
             require(item["Config"]["Image"] == "henukit-" + service + ":" + previous["sha"] and item["Image"] == previous["images"][service], "active predecessor image mismatch: " + service)
         if data["scope"] == list(SERVICES):
-            require(self.snapshot(containers) == data["unselected"], "active non-Portal containers changed")
+            expected = data["unselected"]
+            if membership:
+                checkpoint = self.membership_predecessor(self.checkpoint_anchor, record, data)
+                expected = self.membership_projection(checkpoint)
+                require(checkpoint["unselected"]["henukit-portal-1"] == self.snapshot(containers, True)["henukit-portal-1"], "membership Portal checkpoint changed")
+            require(self.snapshot(containers) == expected, "active non-Portal containers changed")
+        if data.get("membership_checkpoint"):
+            self.checkpoint_anchor = data["membership_checkpoint"]
+        self.marker_before = str(marker)
         return record, data
 
     @staticmethod
@@ -185,7 +305,7 @@ class Release(engine.Release):
         self.running_configuration(containers, runtime, old_sha, old_sha, deployed, before)
         self.rollback_images(self.snapshot(containers, True))
         require(shutil.disk_usage(self.artifacts).free >= 4096 * 1024 * 1024, "less than 4096 MiB free")
-        return {
+        data = {
             "format": self.receipt_format, "scope": list(SERVICES), "sha": self.o.sha,
             "run_id": self.o.run_id, "attempt": attempt, "baseline": full_sha,
             "baseline_runtime": str(baseline), "runtime": str(self.runtime),
@@ -200,9 +320,16 @@ class Release(engine.Release):
             "image_candidates": images, "images": {}, "environment_sha256": engine.digest(self.envfile),
             "getwork_acceptance": "deferred", "whole_application_release": False,
         }
+        if getattr(self, "checkpoint_anchor", None):
+            data.update(format=CHECKPOINT_FORMAT, membership_checkpoint=self.checkpoint_anchor, marker_before=self.marker_before)
+        return data
+
+    @staticmethod
+    def previous_marker(data):
+        return Path(data["marker_before"]) if data["format"] == CHECKPOINT_FORMAT else Path(data["predecessor_record"]).parent
 
     def validate(self, data):
-        require(data.get("format") == self.receipt_format and data.get("scope") == list(SERVICES) and data.get("sha") == self.o.sha and data.get("run_id") == self.o.run_id, "successor receipt identity mismatch")
+        require(data.get("format") in (self.receipt_format, CHECKPOINT_FORMAT) and data.get("scope") == list(SERVICES) and data.get("sha") == self.o.sha and data.get("run_id") == self.o.run_id, "successor receipt identity mismatch")
         require(data["helper_sha256"] == engine.digest(self.helper_file) and data["engine_sha256"] == engine.digest(BASE), "successor helper identity changed")
         for path, checksum in (
             (self.runtime / "docker-compose.henukit.release.yml", data["candidate_compose_sha256"]),
@@ -212,9 +339,10 @@ class Release(engine.Release):
         ):
             self.trusted(path)
             require(engine.digest(path) == checksum, "retained release identity changed: " + path.name)
+        self.checkpoint_anchor = data.get("membership_checkpoint") if data["format"] == CHECKPOINT_FORMAT else None
         expected, previous = self.predecessor_chain(Path(data["predecessor_record"]))[0]
         self.predecessor_link(data, expected, previous)
-        require(self.marker.is_symlink() and self.marker.lstat().st_uid == self.uid and self.marker.resolve() in (expected.parent, self.record.parent), "foreign scoped marker")
+        require(self.marker.is_symlink() and self.marker.lstat().st_uid == self.uid and self.marker.resolve() in (self.previous_marker(data), self.record.parent), "foreign scoped marker")
         baseline, sha = self.full_baseline()
         require(str(baseline) == data["baseline_runtime"] and sha == data["baseline"], "full release baseline changed")
 
@@ -271,8 +399,15 @@ class Release(engine.Release):
         require(engine.digest(backup) == data["environment_sha256"] == data["configuration_backup_sha256"], "current configuration backup changed")
         self.compose(Path(data["predecessor_runtime"]), data["predecessor_sha"], data["old_version"], data["old_deployed_at"], "up", "-d", "--no-deps", "portal")
         self.healthy(data, False)
+        if data["format"] == CHECKPOINT_FORMAT:
+            # The old membership receipt binds the original Portal container ID.
+            # A rollback recreates that container; retain our own blocking record
+            # instead of making the immutable membership checkpoint claim it.
+            data["rollback_portal_checkpoint"] = self.snapshot(self.containers(), True)
+            self.write_receipt(data, "rolled_back")
+            return
         temporary = self.watch / (".portal-successor-rollback-" + secrets.token_hex(8))
-        temporary.symlink_to(Path(data["predecessor_record"]).parent)
+        temporary.symlink_to(self.previous_marker(data))
         os.replace(temporary, self.marker)
         self.durable_directory(self.watch)
         self.write_receipt(data, "rolled_back")
@@ -284,12 +419,15 @@ class Release(engine.Release):
         with self.lock_watcher():
             self.unchanged(data)
             if data["status"] in ("preparing", "prepared"):
-                require(self.marker.resolve() == Path(data["predecessor_record"]).parent and self.snapshot(self.containers(), True) == data["selected"], "pre-activation intent no longer matches original Portal")
+                require(self.marker.resolve() == self.previous_marker(data) and self.snapshot(self.containers(), True) == data["selected"], "pre-activation intent no longer matches original Portal")
                 self.healthy(data, False)
                 self.write_receipt(data, "rolled_back")
                 return "rolled_back"
             if data["status"] == "rolled_back":
-                require(self.marker.resolve() == Path(data["predecessor_record"]).parent, "rolled-back marker differs")
+                if data.get("rollback_portal_checkpoint"):
+                    require(self.marker.resolve() == self.record.parent and self.snapshot(self.containers(), True) == data["rollback_portal_checkpoint"], "rolled-back Portal checkpoint changed")
+                else:
+                    require(self.marker.resolve() == self.previous_marker(data), "rolled-back marker differs")
                 self.healthy(data, False)
                 return "already_rolled_back"
             try:

@@ -1,7 +1,9 @@
 # Portal successor over the active Practice cohort
 
 This implements [ADR-0053](../adr/0053-portal-successor-release.md) and
-[ADR-0054](../adr/0054-consecutive-portal-releases.md) (#612, #615).
+[ADR-0054](../adr/0054-consecutive-portal-releases.md) (#612, #615), extended by
+[ADR-0055](../adr/0055-portal-membership-checkpoint.md) for an active membership
+checkpoint (#627).
 Read [the artifact runbook](henukit-artifact-deployment.md) and the existing
 [Practice runbook](henukit-practice-scoped-release.md) first. This releases only
 Portal; it does not deploy backend changes or accept deferred Career/getWork.
@@ -49,6 +51,14 @@ unchanged receipt links, helper/engine/Compose hashes and baseline. Preserve
 all retained receipts, runtimes, images and configuration backups. Cycles,
 unknown formats, other scopes or missing/tampered history fail closed.
 
+An active `henukit-account-membership-v1` marker may retain that Portal chain.
+Verify its private receipt/runtime/configuration hashes, current environment,
+exact Account Portfolio/Nginx checkpoint, effective configuration and Nginx
+mount before accepting it. New Portal v3 receipts bind this checkpoint
+separately from the actual predecessor Portal and preserve it on consecutive
+releases. Membership is included in the 64-receipt limit. Inactive membership
+records or a second membership transition remain unsupported.
+
 The actual Portal image must match the immediate active predecessor; the four
 other Practice images must match the root. Non-Portal container snapshots must
 still agree with the retained Portal predecessor. The actual Portal environment
@@ -77,6 +87,9 @@ The new root-private receipt is under
 `/var/lib/henukit-scoped-releases/portal-successor/<sha>`.
 New receipts use `henukit-portal-successor-v2`; they bind the immediate
 predecessor receipt/runtime/Compose and retain the original Practice baseline.
+When an active membership checkpoint is present they instead use
+`henukit-portal-successor-v3`, retaining that checkpoint and the prior Portal
+as separate immutable bindings.
 
 Require the new Portal image/configuration, byte-identical current environment,
 full aliases/marker, unchanged other containers, and public homepage, Library,
@@ -99,6 +112,12 @@ Use the identical candidate runtime/arguments with `--rollback` for an
 interrupted applying attempt or failed independent acceptance. Retain that
 runtime, the predecessor runtime/image, receipt and current environment backup.
 A repeated rollback verifies the restored state without replacing again.
+For a membership-aware v3 attempt that actually switched Portal, rollback
+retains its own `rolled_back` marker and verified Portal snapshot. The original
+membership receipt includes the old Portal container ID, which cannot truthfully
+be restored after container recreation. Repeated rollback verifies the new
+checkpoint; a fresh deployment requires reviewed reconciliation. A pre-switch
+rollback may keep the original marker while its Portal snapshot is unchanged.
 The current environment, full baseline, predecessor receipt/Compose and
 unselected containers must still match the successor's captured baseline.
 Foreign marker or drift fails closed; do not rewrite receipts, replace the

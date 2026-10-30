@@ -25,9 +25,11 @@ by digest; never restore a marker that falsely claims its old container IDs.
 A pre-switch rollback may retain the original marker only while its original
 selected snapshot still matches.
 
-The current Portal-only successor helper intentionally rejects this new scope.
-Future Portal releases must first add and review membership-checkpoint support;
-do not bypass the marker or rewrite old receipts to make them proceed.
+Portal-only releases can continue over an active, verified membership checkpoint
+through [ADR-0055](../adr/0055-portal-membership-checkpoint.md) and the
+[Portal successor entry](henukit-portal-successor-release.md). Inactive or
+interrupted membership checkpoints remain blocked. Do not bypass the marker
+or rewrite old receipts to make a release proceed.
 The retained full aliases and full-release SHA remain unchanged. A successful
 scope receipt is not full-stack or getWork acceptance.
 
