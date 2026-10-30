@@ -24,12 +24,12 @@ import {
   foodPostDailyCapMessage,
   foodPostPlaceholderMessage,
   foodPostImageFromFile,
+  foodPostImagePreview,
   isFoodPostDailyCapError,
   isFoodPostPlaceholderError,
   type FoodPostCampus,
   type FoodPostImageInput,
 } from "@/lib/food/submit";
-import { fileToDataUrl } from "@/lib/image";
 
 const MAX_DISHES = 6;
 const MAX_IMAGES = 6;
@@ -162,8 +162,7 @@ export default function FoodPostForm({
     imageReadingRef.current = true;
     setImageReading(true);
     try {
-      // fileToDataUrl 校验类型与单张 ≤2MiB
-      const preview = await fileToDataUrl(file);
+      const preview = await foodPostImagePreview(file);
       setImages((current) => [...current, { file, preview }]);
       noteEdit();
       setError("");

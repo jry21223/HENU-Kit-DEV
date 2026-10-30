@@ -157,6 +157,32 @@ export async function createFoodPost(
 
 // ---- 图片转换 ----
 
+/** 只把浏览器能够解码的图片加入投稿，避免坏图在提交时才被 Food 拒绝。 */
+export async function foodPostImagePreview(file: File): Promise<string> {
+  const preview = await fileToDataUrl(file);
+  const image = new Image();
+  image.src = preview;
+  try {
+    await image.decode();
+  } catch {
+    throw new Error("图片无法读取，请重新选择 JPG / PNG / WebP 图片");
+  }
+  // 浏览器会自动识别真实格式，Food 则要求它与声明的 content_type 一致。
+  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const matchesType = file.type === "image/jpeg"
+    ? [0xff, 0xd8, 0xff].every((byte, index) => header[index] === byte)
+    : file.type === "image/png"
+      ? [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+          (byte, index) => header[index] === byte,
+        )
+      : String.fromCharCode(...header.slice(0, 4)) === "RIFF" &&
+        String.fromCharCode(...header.slice(8, 12)) === "WEBP";
+  if (!matchesType) {
+    throw new Error("图片格式与文件类型不一致，请重新导出 JPG / PNG / WebP 图片");
+  }
+  return preview;
+}
+
 /**
  * File → {content_type, data}:复用 fileToDataUrl 的类型/大小预检
  * (JPG/PNG/WebP、单张 ≤2MiB),再从 dataURL 去掉 data: 前缀得到纯 base64。

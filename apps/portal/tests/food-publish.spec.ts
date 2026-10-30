@@ -4,6 +4,10 @@ test.describe.configure({ mode: "serial" });
 
 const userID = "22222222-2222-4222-8222-222222222222";
 const postID = "33333333-3333-4333-8333-333333333333";
+const PHOTO = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAADAAAAAkCAIAAABAJy5dAAAAM0lEQVR42u3OAQkAAAgDsMcxhP0xljUUBguwTNcpERISEhISEhISEhISEhISEhISEhISEhISEvoUWoiW6WpoFdbUAAAAAElFTkSuQmCC",
+  "base64",
+);
 
 const POST = {
   id: postID,
@@ -46,7 +50,10 @@ async function installSessionRoute(page: Page, signedIn = true) {
   );
 }
 
-async function installCreateRoute(page: Page) {
+async function installCreateRoute(
+  page: Page,
+  images: { content_type: string; data: string }[] = [],
+) {
   let createHits = 0;
   await page.route("**/api/v1/food/posts", async (route) => {
     if (route.request().method() !== "POST") {
@@ -69,7 +76,7 @@ async function installCreateRoute(page: Page) {
       price_reference: "",
       hours_reference: "",
       dishes: [],
-      images: [],
+      images,
     });
     await route.fulfill({
       status: 200,
@@ -319,6 +326,77 @@ test("an image above 2MiB is rejected client-side with a clear message", async (
   expect(createHits).toBe(1);
 });
 
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 1000 },
+  { name: "mobile", width: 360, height: 800 },
+]) {
+  test(`${viewport.name} rejects an unreadable photo before submission`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await installSessionRoute(page);
+    const createRoute = await installCreateRoute(page);
+    await page.goto("/food/publish", { waitUntil: "domcontentloaded" });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "damaged.jpg",
+      mimeType: "image/jpeg",
+      buffer: Buffer.from("not an image"),
+    });
+
+    await expect(page.getByRole("alert").filter({ hasText: "图片无法读取" })).toHaveText("图片无法读取，请重新选择 JPG / PNG / WebP 图片");
+    await expect(page.getByText("图片（0/6，单张 ≤2MB，可选）")).toBeVisible();
+    await expect(page.getByRole("img", { name: "图 1", exact: true })).toHaveCount(0);
+    await page.getByRole("alert").filter({ hasText: "图片无法读取" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`${viewport.name}.png`) });
+    await fillValidForm(page);
+    await page.getByRole("button", { name: "提交投稿" }).click();
+    await page.waitForURL(`**/food/post/${postID}`);
+    expect(createRoute.createHitCount()).toBe(1);
+  });
+}
+
+test("a photo with a mismatched file type is rejected before submission", async ({ page }) => {
+  await installSessionRoute(page);
+  await page.goto("/food/publish", { waitUntil: "domcontentloaded" });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "renamed.jpg",
+    mimeType: "image/jpeg",
+    buffer: PHOTO,
+  });
+
+  await expect(page.getByText("图片格式与文件类型不一致，请重新导出 JPG / PNG / WebP 图片")).toBeVisible();
+  await expect(page.getByText("图片（0/6，单张 ≤2MB，可选）")).toBeVisible();
+});
+
+for (const contentType of ["image/jpeg", "image/png", "image/webp"]) {
+  test(`a valid ${contentType} photo previews and enters the submission`, async ({ page }) => {
+    await installSessionRoute(page);
+    await page.goto("/food/publish", { waitUntil: "domcontentloaded" });
+    const data = await page.evaluate((type) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 48;
+      canvas.height = 36;
+      const context = canvas.getContext("2d")!;
+      context.fillStyle = "#cc6633";
+      context.fillRect(0, 0, 48, 36);
+      return canvas.toDataURL(type).split(",")[1];
+    }, contentType);
+    const createRoute = await installCreateRoute(page, [{ content_type: contentType, data }]);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: `meal.${contentType.split("/")[1]}`,
+      mimeType: contentType,
+      buffer: Buffer.from(data, "base64"),
+    });
+
+    const preview = page.getByRole("img", { name: "图 1", exact: true });
+    await preview.scrollIntoViewIfNeeded();
+    await expect(preview).toHaveJSProperty("naturalWidth", 48);
+    await expect(preview).toHaveJSProperty("naturalHeight", 36);
+    await fillValidForm(page);
+    await page.getByRole("button", { name: "提交投稿" }).click();
+    await page.waitForURL(`**/food/post/${postID}`);
+    expect(createRoute.createHitCount()).toBe(1);
+  });
+}
+
 test("only six images can be attached; the upload slot disappears", async ({
   page,
 }) => {
@@ -328,9 +406,9 @@ test("only six images can be attached; the upload slot disappears", async ({
   const input = page.locator('input[type="file"]');
   for (let i = 0; i < 6; i += 1) {
     await input.setInputFiles({
-      name: `img-${i + 1}.jpg`,
-      mimeType: "image/jpeg",
-      buffer: Buffer.from([i + 1]),
+      name: `img-${i + 1}.png`,
+      mimeType: "image/png",
+      buffer: PHOTO,
     });
     await expect(
       page.getByText(`图片（${i + 1}/6，单张 ≤2MB，可选）`)
