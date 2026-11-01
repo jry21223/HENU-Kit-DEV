@@ -37,11 +37,11 @@ getWork acceptance as deferred and does not advance the full-stack version.
    ```bash
    docker compose --env-file /opt/henukit/.env.henukit \
      -f /opt/henukit-releases/<sha>/docker-compose.henukit.release.yml ps
-   curl --fail --silent --show-error https://superhuazai.me/
-   curl --fail --silent --show-error https://superhuazai.me/practice
-   curl --fail --silent --show-error https://superhuazai.me/library
-   test "$(curl --location --max-redirs 3 -s -o /dev/null -w '%{http_code}' https://superhuazai.me/quiz/)" = 404
-   test "$(curl --location --max-redirs 3 -s -o /dev/null -w '%{http_code}' https://superhuazai.me/study-api/healthz)" = 404
+   curl --fail --silent --show-error https://henukit.cn/
+   curl --fail --silent --show-error https://henukit.cn/practice
+   curl --fail --silent --show-error https://henukit.cn/library
+   test "$(curl --location --max-redirs 3 -s -o /dev/null -w '%{http_code}' https://henukit.cn/quiz/)" = 404
+   test "$(curl --location --max-redirs 3 -s -o /dev/null -w '%{http_code}' https://henukit.cn/study-api/healthz)" = 404
    ```
 
 > 2026-08-19 更新（服务器实测）：superhuazai.me 现已全站 **301 到 henukit.cn 栈**；旧 smoke 预期 404 的 `/quiz/` 现为 **308 跳转**（`--location` 跟随后最终落到 henukit.cn 栈目标）。命令主体未改；验收主域口径统一见 `ALL_NEW_STACK_CUTOVER.md` M4 §6。
@@ -564,7 +564,7 @@ only watcher configuration; application secrets stay in the referenced file:
 ```bash
 sudo sh -c 'umask 077; cat > /etc/henukit/actions-watch.env' <<'EOF'
 HENUKIT_ENV_FILE=/opt/henukit/.env.henukit
-HENUKIT_PUBLIC_BASE_URL=https://superhuazai.me
+HENUKIT_PUBLIC_BASE_URL=https://henukit.cn
 HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE=operations-operator
 # Override only when Docker Compose uses a non-default container name.
 HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER=henukit-account-portfolio-1

@@ -183,6 +183,7 @@ function fixture({
   careerSuifyAllowInsecureAIHTTP = false,
   careerDigestSecret = "fixture-career-digest-random-credential-48bytes",
   getWorkToken = "fixture-getwork-mcp-random-credential-48bytes",
+  careerGetWorkEnabled = "1",
   runConclusion = "success",
   runStatus = "completed",
   runAttempt = 1,
@@ -249,7 +250,7 @@ function fixture({
   chmodSync(token, 0o600);
   writeFileSync(
     envFile,
-    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nGETWORK_MCP_ACCESS_TOKEN=${getWorkToken}\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nCAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=${careerSuifyAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
+    `POSTGRES_USER=test\nPORTAL_API_MODE=${portalApiMode}\nNEXT_PUBLIC_PORTAL_ALLOW_MOCK=${portalAllowMock ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_ENABLED=${easypayEnabled ? "1" : "0"}\nACCOUNT_PORTFOLIO_EASYPAY_BASE_URL=https://metaview.top/epay\nACCOUNT_PORTFOLIO_EASYPAY_PID=henukit-production\nACCOUNT_PORTFOLIO_EASYPAY_KEY=henukit-production-secret-32bytes\nACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL=https://henukit.cn/api/v1/payment-providers/easypay/notifications\nACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL=https://henukit.cn/account/membership\nGETWORK_MCP_ACCESS_TOKEN=${getWorkToken}\nCAREER_GETWORK_ENABLED=${careerGetWorkEnabled}\nCAREER_AI_BASE_URL=${careerAIBaseURL}\nCAREER_AI_API_KEY=${careerAIKey}\nCAREER_AI_MODEL=qwen3.6-plus\nCAREER_ALLOW_INSECURE_AI_HTTP=${careerAllowInsecureAIHTTP ? "1" : "0"}\nCAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=${careerSuifyAllowInsecureAIHTTP ? "1" : "0"}\nPLATFORM_CORE_CAREER_DIGEST_CLIENT_ID=career-opportunities\nPLATFORM_CORE_CAREER_DIGEST_KEY_ID=career-digest-key-1\nPLATFORM_CORE_CAREER_DIGEST_SECRET=${careerDigestSecret}\n`,
   );
   writeFileSync(rollbackEnvFile, "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=0\n", { mode: 0o600 });
   writeFileSync(log, "");
@@ -2477,6 +2478,35 @@ test("one-shot accepts the Suification plaintext exception only for the exact ap
   assert.notEqual(httpsResult.status, 0);
   assert.match(httpsResult.stderr, /CAREER_SUIFY_ALLOW_INSECURE_AI_HTTP=1 is valid only/i);
   assert.doesNotMatch(readFileSync(httpsWithException.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+test("explicitly disabled job scanning does not require a getWork credential or contact the WSL relay", () => {
+  const setup = fixture({ careerGetWorkEnabled: "0", getWorkToken: "" });
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /activated and deterministic smoke checks passed/);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /18100|18101|getwork-mcp-relay/);
+});
+
+test("job scanning requires an explicit production mode before backup or activation", () => {
+  for (const careerGetWorkEnabled of ["", "false", "2"]) {
+    const setup = fixture({ careerGetWorkEnabled });
+    const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /CAREER_GETWORK_ENABLED must explicitly be 0.*or 1/);
+    assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+  }
+});
+
+test("disabled job scanning retains all independent Career credential gates", () => {
+  const setup = fixture({ careerGetWorkEnabled: "0", getWorkToken: "", careerDigestSecret: "" });
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Career digest credentials are missing or invalid/);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
 });
 
 test("one-shot refuses Career LLM, digest, and getWork MCP placeholder credentials", () => {

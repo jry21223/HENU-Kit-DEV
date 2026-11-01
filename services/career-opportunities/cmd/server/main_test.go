@@ -7,12 +7,49 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	career "henukit.dev/career"
 )
+
+func TestBuildWorkExplicitlyDisabledNeverContactsConfiguredMCP(t *testing.T) {
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(w, "source must not be contacted", http.StatusServiceUnavailable)
+	}))
+	defer upstream.Close()
+	t.Setenv("CAREER_GETWORK_ENABLED", "0")
+	t.Setenv("CAREER_GETWORK_MCP_URL", upstream.URL+"/mcp")
+	t.Setenv("CAREER_GETWORK_MCP_ACCESS_TOKEN", "retained-getwork-access-token-32-bytes")
+	work, err := buildWork()
+	if err != nil || work == nil {
+		t.Fatalf("disabled startup work=%v err=%v", work != nil, err)
+	}
+	result, err := work(context.Background(), map[string]any{"target_roles": "后端"})
+	if !errors.Is(err, career.ErrJobSourceDisabled) || result.Payload != nil || result.SourceCount != 0 {
+		t.Fatalf("disabled source reported successful work: result=%+v err=%v", result, err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("disabled source received %d requests", requests.Load())
+	}
+}
+
+func TestBuildWorkRejectsUnknownGetWorkMode(t *testing.T) {
+	for _, value := range []string{"false", "2", "enabled"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("CAREER_GETWORK_ENABLED", value)
+			t.Setenv("CAREER_GETWORK_MCP_URL", "")
+			t.Setenv("CAREER_GETWORK_MCP_ACCESS_TOKEN", "")
+			if _, err := buildWork(); err == nil {
+				t.Fatalf("accepted unknown getWork mode %q", value)
+			}
+		})
+	}
+}
 
 func TestBuildWorkUsesAuthorizedGetWorkMCP(t *testing.T) {
 	mcpServer := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "getwork-test", Version: "0.1.0"}, nil)
@@ -50,16 +87,19 @@ func TestBuildWorkUsesAuthorizedGetWorkMCP(t *testing.T) {
 	t.Setenv("CAREER_GETWORK_MCP_URL", upstream.URL+"/mcp")
 	t.Setenv("CAREER_GETWORK_MCP_ACCESS_TOKEN", "getwork-test-access-token-32-bytes")
 	t.Setenv("CAREER_GETWORK_SINCE_DAYS", "7")
-	work, err := buildWork()
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := work(context.Background(), map[string]any{"target_roles": "后端", "tech_stack": "Go", "locations": "北京", "job_type": "daily_intern"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.SourceCount != 1 || result.JobCount != 1 || result.MatchedCount != 1 {
-		t.Fatalf("MCP result = %+v", result)
+	for _, flag := range []string{"", "1"} {
+		t.Setenv("CAREER_GETWORK_ENABLED", flag)
+		work, err := buildWork()
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := work(context.Background(), map[string]any{"target_roles": "后端", "tech_stack": "Go", "locations": "北京", "job_type": "daily_intern"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.SourceCount != 1 || result.JobCount != 1 || result.MatchedCount != 1 {
+			t.Fatalf("mode %q MCP result = %+v", flag, result)
+		}
 	}
 }
 

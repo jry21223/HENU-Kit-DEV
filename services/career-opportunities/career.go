@@ -37,6 +37,9 @@ type Config struct {
 	ClientID string
 	Keys     map[string]string
 	Work     WorkFunc
+	// JobSourceDisabled explicitly stops new scans and fails retained queued
+	// scans. Profile, history and resume features remain available.
+	JobSourceDisabled bool
 	// Extract runs the resume AI extraction seam. Nil is the production-safe
 	// off state: uploads are rejected with a clear error until an operator
 	// configures a provider (or mock mode).
@@ -71,6 +74,7 @@ type service struct {
 	clientID          string
 	keys              map[string]string
 	work              WorkFunc
+	jobSourceDisabled bool
 	extract           ExtractFunc
 	suify             SuifyFunc
 	extractRateLimit  int
@@ -102,7 +106,9 @@ func New(config Config) (*Service, error) {
 		}
 	}
 	work := config.Work
-	if work == nil {
+	if config.JobSourceDisabled {
+		work = DisabledJobSourceWork
+	} else if work == nil {
 		work = NewGetWorkWork(GetWorkConfig{})
 	}
 	rateLimit := config.ExtractRateLimit
@@ -124,11 +130,11 @@ func New(config Config) (*Service, error) {
 	if config.DigestResultURL != "" && !validDigestResultURL(config.DigestResultURL) {
 		return nil, errors.New("career digest result URL must be an http(s) URL")
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, extract: config.Extract, suify: config.Suify, extractRateLimit: rateLimit, suifyRateLimit: suifyRateLimit, searchRateLimit: searchRateLimit, searchActiveLimit: searchActiveLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, jobSourceDisabled: config.JobSourceDisabled, extract: config.Extract, suify: config.Suify, extractRateLimit: rateLimit, suifyRateLimit: suifyRateLimit, searchRateLimit: searchRateLimit, searchActiveLimit: searchActiveLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
-		writeData(w, r, http.StatusOK, map[string]bool{"ok": true})
+		writeData(w, r, http.StatusOK, map[string]bool{"ok": true, "job_source_enabled": !h.jobSourceDisabled})
 	})
 	router.Group(func(protected chi.Router) {
 		protected.Use(h.authenticate)

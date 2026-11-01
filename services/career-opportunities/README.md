@@ -50,6 +50,19 @@ at the operator-configured `CAREER_GETWORK_MCP_URL`. The relay exposes only
 `/mcp` and `/healthz`; tunnel loss returns a stable unavailable response and
 never starts a local crawler fallback.
 
+Set `CAREER_GETWORK_ENABLED=0` to explicitly pause Job Source access while
+retaining Career history, profiles and resume features. Startup does not contact
+the MCP, even when its URL and token remain configured. Authenticated requests
+to create a scan return `503 JOB_SOURCE_DISABLED`; they create no search or
+rate-limit operation. Previously queued scans become failed with the same code
+without a result or success digest. The application's health response reports
+`job_source_enabled=false`; application readiness does not claim that getWork
+is healthy. Request authentication and nonce validation remain required.
+
+An unset value or `1` preserves the existing enabled behavior. Other values
+are configuration errors; connection failure never silently switches to the
+disabled state. Re-enabling requires a configured, verified Job Source MCP.
+
 The older direct-source registry remains available for local/degraded tests.
 Every source explicitly registered in code is enabled; an empty registry runs
 no direct source.

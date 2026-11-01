@@ -201,6 +201,7 @@ for helper in \
   deploy-henukit-practice-scoped.py \
   deploy-henukit-portal-successor.py \
   deploy-henukit-account-membership.py \
+  deploy-henukit-stack-transition.py \
   deploy-henukit-artifact.sh \
   watch-henukit-actions.sh \
   auto-deploy-henukit-actions.sh \

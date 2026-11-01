@@ -33,15 +33,19 @@ unit and Nginx configuration. Preserve the existing webhook secret.
 
 Do not enable automatic full activation while a scoped marker or pending
 rollback exists. The current membership-aware Portal release is mixed with
-other independently released services. It has no supported full-baseline
-adoption entry today. Preserve its receipts, Practice Console credentials and
-membership Nginx mount until a reviewed transition establishes a real full
+other independently released services. Use the reviewed
+[first full-stack transition](henukit-stack-transition.md). Preserve its receipts,
+Practice Console credentials and membership Nginx mount until that transition establishes a real full
 rollback baseline. Never delete the marker, relabel mixed images healthy, or
 invoke ordinary degraded recovery over that mixed state.
 
-Restore and verify the required WSL Job Source MCP/tunnel before that transition.
-All required service, schema, environment, backup and disk gates still apply.
-`jerry-wsl` was offline during the 2026-11-02 audit; that audit is not a release.
+Set `CAREER_GETWORK_ENABLED=0` for the operator-requested disabled job-source
+mode. Career remains available for retained history, profiles and resume tools;
+new scans return `503 JOB_SOURCE_DISABLED` after authentication. The primary
+runtime omits both crawler and relay, so unavailable WSL networking does not
+block that mode. Keep every other service, schema, secret, backup and disk gate.
+Changing the source mode back to `1` requires a separately verified relay and
+credential contract. Do not report a disabled source as a successful scan.
 
 ## Install from a verified runtime
 
@@ -92,10 +96,14 @@ at a safe boundary, then disable it. Do not stop an active deployment. The new
 scheduler refuses to run a release while the old watcher is active or ambiguous.
 Use the existing direct-deployment lock for operator releases.
 
-Start the new receiver and verify its loopback readiness. In the existing HTTPS
-webhook vhost change only the exact `/webhooks/github` upstream from port 10090
+Start the new receiver and verify its loopback readiness. In the `henukit.cn` HTTPS
+vhost change only the exact `/webhooks/github` upstream from port 10090
 to 10091. Keep TLS verification and the original secret; validate Nginx before
 reloading, and keep operational status loopback-only.
+
+The canonical hook URL is `https://henukit.cn/webhooks/github`; the scheduler's
+`HENUKIT_PUBLIC_BASE_URL` is `https://henukit.cn`. Verify both the GitHub hook
+configuration and the running scheduler environment after changing them.
 
 Change the existing GitHub hook subscription from `push` to `workflow_run`.
 Use GitHub's Ping delivery first. The receiver accepts only `completed/success`
@@ -129,5 +137,5 @@ After it has stopped, the new path can be disabled and the prior scheduler
 restored only after any pending release state is reconciled.
 
 No production install or end-to-end deployment is claimed by this document.
-The current WSL availability and mixed-baseline transition must be resolved
-before this setup is enabled on production.
+The disabled source mode and reviewed mixed-baseline transition must be
+verified before this setup is enabled on production.
