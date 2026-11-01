@@ -30,7 +30,12 @@ function fixture(overrides = {}) {
 if [ "$2" = "%u" ]; then
   if [ "$3" = "$TEST_POLICY" ]; then printf '%s' "$TEST_POLICY_OWNER"; else printf 0; fi
 elif [ "$2" = "%a" ]; then
-  if [ "$(uname)" = Darwin ]; then /usr/bin/stat -f '%Lp' "$3"; else /usr/bin/stat -c '%a' "$3"; fi
+  # Model trusted production ancestors, not Linux's world-writable /tmp.
+  # The fixture root and files keep real modes so unsafe parent/file tests fail.
+  fixture_path=0
+  case "$3" in "$TEST_FIXTURE_ROOT"|"$TEST_FIXTURE_ROOT"/*) fixture_path=1;; esac
+  if [ -d "$3" ] && [ "$fixture_path" = 0 ]; then printf 700
+  elif [ "$(uname)" = Darwin ]; then /usr/bin/stat -f '%Lp' "$3"; else /usr/bin/stat -c '%a' "$3"; fi
 fi
 `,
     systemctl: `#!/bin/sh
@@ -58,7 +63,7 @@ printf '%s\n' "$1" > "$HENUKIT_STATE_ROOT/last-activated-sha"
   };
   for (const [name, contents] of Object.entries(executables)) writeFileSync(join(bin, name), contents, { mode: 0o755 });
   return { root, state, watcher, policy, log, env: {
-    ...process.env, PATH: `${bin}:${process.env.PATH}`, TEST_POLICY: policy, TEST_POLICY_OWNER: "0",
+    ...process.env, PATH: `${bin}:${process.env.PATH}`, TEST_FIXTURE_ROOT: root, TEST_POLICY: policy, TEST_POLICY_OWNER: "0",
     TEST_OLD_WATCHER_STATE: "inactive", TEST_SHA: sha, TEST_BRANCH_SHA: sha,
     TEST_RUN_STATUS: "completed", TEST_RUN_CONCLUSION: "success", TEST_ACTIVATE_FAILS: "0", TEST_LOG: log,
     TEST_POLL_LOG: join(root, "poll.log"), TEST_ACTIVATE_DELAY: "0", TEST_REAL_FLOCK: "0",
@@ -191,10 +196,13 @@ test("an unresolved scoped marker or pending rollback blocks scheduling", () => 
 });
 
 test("automatic policy must be explicit, private, root-owned, canonical and match the pinned repository", () => {
-  for (const kind of ["missing", "mode", "owner", "symlink", "repository"]) {
+  for (const kind of ["missing", "mode", "parent", "helper parent", "state", "owner", "symlink", "repository"]) {
     const s = fixture();
     if (kind === "missing") s.env.HENUKIT_AUTO_DEPLOY_POLICY = "";
     if (kind === "mode") chmodSync(s.policy, 0o644);
+    if (kind === "parent") chmodSync(s.root, 0o777);
+    if (kind === "helper parent") chmodSync(join(s.root, "bin"), 0o777);
+    if (kind === "state") chmodSync(s.state, 0o777);
     if (kind === "owner") s.env.TEST_POLICY_OWNER = "1000";
     if (kind === "symlink") {
       symlinkSync(s.policy, join(s.root, "policy-link"));

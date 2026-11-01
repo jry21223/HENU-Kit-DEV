@@ -180,10 +180,16 @@ while [[ "$stopping" == 0 ]]; do
   check_once || log 'automatic activation stopped; retaining its attempt audit'
   [[ "$stopping" == 0 ]] || break
   if [[ "$wakeup" == 1 ]]; then wakeup=0; continue; fi
-  sleep "$poll_seconds" &
-  sleeper=$!
-  wait "$sleeper" || true
-  kill "$sleeper" 2>/dev/null || true
-  wait "$sleeper" 2>/dev/null || true
+  # A signal can arrive just before wait begins. Bound idle waits so that
+  # this race cannot delay a stop or notification for the full poll interval.
+  remaining="$poll_seconds"
+  while [[ "$remaining" -gt 0 && "$stopping" == 0 && "$wakeup" == 0 ]]; do
+    sleep 1 &
+    sleeper=$!
+    wait "$sleeper" || true
+    # Drain an interrupted wait without signalling any child of a release.
+    wait "$sleeper" 2>/dev/null || true
+    remaining=$((remaining - 1))
+  done
   wakeup=0
 done
