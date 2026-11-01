@@ -5,6 +5,7 @@ import argparse
 import base64
 import contextlib
 import copy
+from datetime import datetime
 import fcntl
 import importlib.util
 import hashlib
@@ -31,6 +32,9 @@ def options():
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--proof-dir", required=True)
     parser.add_argument("--test-root")
+    parser.add_argument("--materials-baseline-sha")
+    parser.add_argument("--materials-baseline-runtime")
+    parser.add_argument("--materials-baseline-proof-dir")
     parser.add_argument(
         "--acknowledge-getwork-disabled", action="store_true", required=True
     )
@@ -42,6 +46,27 @@ def options():
         r"[1-9][0-9]*", result.run_id
     ):
         parser.error("a full lowercase SHA and numeric Actions run ID are required")
+    selection = (
+        result.materials_baseline_sha,
+        result.materials_baseline_runtime,
+        result.materials_baseline_proof_dir,
+    )
+    if any(selection) and not all(selection):
+        parser.error(
+            "independent materials baseline requires SHA, runtime and proof directory together"
+        )
+    if result.materials_baseline_sha and not re.fullmatch(
+        r"[0-9a-f]{40}", result.materials_baseline_sha
+    ):
+        parser.error("materials baseline SHA must be a full lowercase Git SHA")
+    if result.materials_baseline_sha:
+        for name in ("materials_baseline_runtime", "materials_baseline_proof_dir"):
+            value = Path(getattr(result, name))
+            if not value.is_absolute():
+                parser.error(
+                    "materials baseline runtime and proof directory must be absolute"
+                )
+            setattr(result, name, str(value))
     return result
 
 
@@ -150,15 +175,17 @@ class Release(engine.Release):
         member = self.guard.membership_checkpoint(anchor)
         prior = chain[-1][1]
         self.trusted(self.envfile, private=True)
+        environment_sha256 = engine.digest(self.envfile)
         application = self.application(prior)
         before, sources = self.mixed_configuration(
             baseline, baseline_sha, current, prior, member, application
         )
+        candidate_deployed_at = self.timestamp()
         after = self.render(
             self.runtime,
             self.o.sha,
             self.o.sha,
-            self.timestamp(),
+            candidate_deployed_at,
             application,
             candidate=True,
         )
@@ -231,6 +258,10 @@ class Release(engine.Release):
                 *(Path(value["runtime"]) for value in migrations.values()),
             }
         }
+        require(
+            engine.digest(self.envfile) == environment_sha256,
+            "production environment changed during preflight",
+        )
         return {
             "format": FORMAT,
             "scope": list(SCOPE),
@@ -241,8 +272,8 @@ class Release(engine.Release):
             "helper_sha256": engine.digest(self.helper_file),
             "baseline": baseline_sha,
             "baseline_runtime": str(baseline),
-            "deployed_at": self.timestamp(),
-            "environment_sha256": engine.digest(self.envfile),
+            "deployed_at": candidate_deployed_at,
+            "environment_sha256": environment_sha256,
             "marker_before": str(record.parent),
             "retained_receipts": retained,
             "retained_runtimes": retained_runtimes,
@@ -297,6 +328,28 @@ class Release(engine.Release):
     @staticmethod
     def timestamp():
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def full_deployment_time(self):
+        values = re.findall(
+            r"^[ \t]*PORTAL_DEPLOYED_AT[ \t]*=(.*)$", self.envfile.read_text(), re.M
+        )
+        require(len(values) == 1, "full release timestamp must be uniquely configured")
+        value = values[0].strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        require(
+            re.fullmatch(
+                r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", value
+            ),
+            "full release timestamp must be a valid UTC timestamp",
+        )
+        try:
+            datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError as error:
+            raise engine.ReleaseError(
+                "full release timestamp must be a valid UTC timestamp"
+            ) from error
+        return value
 
     def provenance(self):
         self.services = IMAGES
@@ -419,7 +472,7 @@ class Release(engine.Release):
             target["services"][name] = copy.deepcopy(addition["services"][name])
 
     def mixed_configuration(self, baseline, sha, current, prior, member, application):
-        deployed = prior["deployed_at"]
+        deployed = self.full_deployment_time()
         before = self.render(baseline, sha, sha, deployed)
         sources = {
             s: {
@@ -973,6 +1026,297 @@ printf gateway_ready
                 self.run("ssh", *args, "rm -rf -- " + staging)
         return hashlib.sha256(manifest.encode()).hexdigest()
 
+    def materials_payload(self, runtime):
+        """Read the complete checksum inventory and fixed installer target map."""
+        installer = runtime / "materials-runtime/install.sh"
+        self.trusted(installer)
+        payload = installer.parent
+        manifest = payload / "SHA256SUMS"
+        self.trusted(manifest)
+        checksums = {}
+        for line in manifest.read_text().splitlines():
+            match = re.fullmatch(r"([0-9a-f]{64})  ([^\s]+)", line)
+            require(
+                match and match[2] not in checksums,
+                "invalid materials checksum manifest",
+            )
+            checksums[match[2]] = match[1]
+        actual = {
+            str(p.relative_to(payload)): engine.digest(p)
+            for p in payload.rglob("*")
+            if p.is_file() and p != manifest
+        }
+        require(
+            actual == checksums, "materials payload differs from its checksum manifest"
+        )
+        table = re.search(
+            r"declare -a install_records=\(\n(.*?)\n\)", installer.read_text(), re.S
+        )
+        require(table, "materials installer has no fixed target table")
+        records = []
+        for line in table[1].splitlines():
+            match = re.fullmatch(r'\s*"([^|"\s]+)\|(/[^|"\s]+)\|(0[0-7]{3})"', line)
+            require(match, "unreviewed materials installer target table")
+            source, target, mode = match.groups()
+            require(
+                not Path(source).is_absolute()
+                and not any(p in ("..", ".") for p in Path(source).parts)
+                and not any(p in ("..", ".") for p in Path(target).parts)
+                and target.startswith(
+                    (
+                        "/usr/local/bin/henukit-",
+                        "/usr/local/libexec/henukit/",
+                        "/etc/systemd/system/henukit-",
+                    )
+                ),
+                "materials target is outside constrained replay scope",
+            )
+            self.trusted(payload / source)
+            records.append({"source": source, "target": target, "mode": int(mode, 8)})
+        require(
+            records and len({r["target"] for r in records}) == len(records),
+            "duplicate materials installation targets",
+        )
+        return records, engine.digest(manifest), set(checksums)
+
+    def file_identity(self, path):
+        self.trusted(path)
+        info = path.stat()
+        return {
+            "sha256": engine.digest(path),
+            "mode": info.st_mode & 0o7777,
+            "uid": info.st_uid,
+            "gid": info.st_gid,
+        }
+
+    def attested_materials_baseline(self, candidate_records):
+        """Authenticate historical bytes without importing or running old code."""
+        sha = self.o.materials_baseline_sha
+        runtime = Path(self.o.materials_baseline_runtime)
+        proof = Path(self.o.materials_baseline_proof_dir)
+        self.trusted_directory(runtime)
+        self.trusted_directory(proof)
+        marker = runtime / "RELEASE_SHA"
+        self.trusted(marker)
+        require(
+            marker.read_text().strip() == sha, "materials baseline runtime SHA differs"
+        )
+        archive = proof / ("henukit-runtime-" + sha + ".tar.gz")
+        sidecar = Path(str(archive) + ".sha256")
+        manifest = proof / ("henukit-getwork-actions-" + sha + ".manifest")
+        bundle = proof / ("henukit-getwork-actions-" + sha + ".attestation.json")
+        trusted_root = proof / "trusted_root.jsonl"
+        files = (archive, sidecar, manifest, bundle, trusted_root)
+        for path in files:
+            self.trusted(path)
+        proof_identities = {str(path): self.file_identity(path) for path in files}
+        require(
+            sidecar.read_text().split() == [engine.digest(archive), archive.name],
+            "materials baseline archive checksum mismatch",
+        )
+        lines = manifest.read_text().splitlines()
+        headers = [
+            "format=henukit-getwork-actions-release-v1",
+            "release_sha=" + sha,
+            "source_repository=" + engine.REPO,
+            "source_ref=refs/heads/main",
+            "signer_workflow=.github/workflows/deploy-henukit.yml",
+            "builder_platform=linux/amd64",
+        ]
+        require(
+            len(lines) == 8
+            and lines[:6] == headers
+            and re.fullmatch(
+                r"artifact_sha256=[0-9a-f]{64}  henukit-getwork-mcp-"
+                + sha
+                + r"\.docker\.tar\.gz",
+                lines[6],
+            )
+            and lines[7]
+            == "artifact_sha256=" + engine.digest(archive) + "  " + archive.name,
+            "materials baseline v1 manifest does not bind its historical runtime",
+        )
+        verified = json.loads(
+            self.run(
+                "gh",
+                "attestation",
+                "verify",
+                manifest,
+                "--repo",
+                engine.REPO,
+                "--bundle",
+                bundle,
+                "--signer-workflow",
+                engine.REPO + "/.github/workflows/deploy-henukit.yml",
+                "--source-ref",
+                "refs/heads/main",
+                "--source-digest",
+                sha,
+                "--predicate-type",
+                "https://github.com/jry21223/HENU-Kit-DEV/attestations/getwork-actions-release-v1",
+                "--deny-self-hosted-runners",
+                "--custom-trusted-root",
+                trusted_root,
+                "--format",
+                "json",
+            )
+        )
+        require(
+            isinstance(verified, list) and len(verified) == 1,
+            "historical materials attestation must verify exactly one signer",
+        )
+        certificate = (
+            verified[0]
+            .get("verificationResult", {})
+            .get("signature", {})
+            .get("certificate", {})
+        )
+        require(
+            certificate.get("sourceRepositoryDigest")
+            == certificate.get("buildConfigDigest")
+            == sha
+            and certificate.get("sourceRepositoryRef") == "refs/heads/main"
+            and certificate.get("runnerEnvironment") == "github-hosted"
+            and certificate.get("buildConfigURI")
+            == "https://github.com/"
+            + engine.REPO
+            + "/.github/workflows/deploy-henukit.yml@refs/heads/main",
+            "historical materials signer/source identity differs",
+        )
+        invocation = certificate.get("runInvocationURI", "")
+        source = re.fullmatch(
+            r"https://github\.com/"
+            + re.escape(engine.REPO)
+            + r"/actions/runs/([1-9][0-9]*)/attempts/([1-9][0-9]*)",
+            invocation,
+        )
+        require(source, "verified historical materials invocation is missing")
+        run_id, attempt = map(int, source.groups())
+        run = json.loads(
+            self.run(
+                "gh",
+                "api",
+                "repos/"
+                + engine.REPO
+                + "/actions/runs/"
+                + str(run_id)
+                + "/attempts/"
+                + str(attempt),
+            )
+        )
+        require(
+            all(
+                run.get(key) == value
+                for key, value in {
+                    "id": run_id,
+                    "run_attempt": attempt,
+                    "head_sha": sha,
+                    "head_branch": "main",
+                    "event": "push",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "path": ".github/workflows/deploy-henukit.yml",
+                }.items()
+            ),
+            "historical materials workflow attempt did not complete successfully on main",
+        )
+        ancestry = json.loads(
+            self.run(
+                "gh",
+                "api",
+                "repos/" + engine.REPO + "/compare/" + sha + "..." + self.o.sha,
+            )
+        )
+        require(
+            ancestry.get("status") in ("ahead", "identical")
+            and ancestry.get("behind_by") == 0
+            and ancestry.get("base_commit", {}).get("sha")
+            == ancestry.get("merge_base_commit", {}).get("sha")
+            == sha,
+            "historical materials source is not a merged-main ancestor",
+        )
+        inventory = self.runtime_inventory(runtime)
+        with self.safe_tar(archive) as packaged:
+            names = {
+                member.name.removeprefix("./")
+                for member in packaged.getmembers()
+                if member.isfile()
+            }
+            require(
+                names == set(inventory),
+                "historical materials runtime inventory differs from its attested archive",
+            )
+            for name, checksum in inventory.items():
+                raw = packaged.extractfile("./" + name).read()
+                require(
+                    hashlib.sha256(raw).hexdigest() == checksum,
+                    "historical materials runtime bytes differ from its attested archive",
+                )
+        records, payload_manifest, payload_files = self.materials_payload(runtime)
+        require(
+            {r["target"]: r for r in records}
+            == {r["target"]: r for r in candidate_records},
+            "historical/candidate materials installer target maps differ",
+        )
+        require(
+            payload_files == {"install.sh", *(r["source"] for r in records)},
+            "historical materials payload contains an unknown installation inventory",
+        )
+        runtime_identities = {
+            name: self.file_identity(runtime / name) for name in inventory
+        }
+        require(
+            all(
+                identity["sha256"] == inventory[name]
+                for name, identity in runtime_identities.items()
+            ),
+            "historical materials runtime changed during verification",
+        )
+        require(
+            all(
+                self.file_identity(Path(name)) == identity
+                for name, identity in proof_identities.items()
+            ),
+            "historical materials proof changed during verification",
+        )
+        return runtime, {
+            "kind": "attested-retained",
+            "sha": sha,
+            "runtime": str(runtime),
+            "proof_dir": str(proof),
+            "archive": str(archive),
+            "archive_sha256": engine.digest(archive),
+            "payload_manifest_sha256": payload_manifest,
+            "target_map": records,
+            "run_id": run_id,
+            "attempt": attempt,
+            "invocation": invocation,
+            "proof_files": proof_identities,
+            "runtime_files": runtime_identities,
+        }
+
+    def materials_baseline_unchanged(self, data):
+        if data["kind"] == "full-release":
+            return
+        require(
+            data["kind"] == "attested-retained", "unknown materials baseline authority"
+        )
+        runtime = Path(data["runtime"])
+        require(
+            set(self.runtime_inventory(runtime)) == set(data["runtime_files"]),
+            "retained materials baseline inventory changed",
+        )
+        for name, expected in data["runtime_files"].items():
+            require(
+                self.file_identity(runtime / name) == expected,
+                "retained materials baseline runtime changed",
+            )
+        for name, expected in data["proof_files"].items():
+            require(
+                self.file_identity(Path(name)) == expected,
+                "retained materials baseline proof changed",
+            )
+
     def materials_preflight(self, baseline):
         config = self.path("/etc/henukit-deploy/materials-activate.env")
         self.trusted(config, private=True)
@@ -995,46 +1339,18 @@ printf gateway_ready
                 not path.exists() and not path.is_symlink(),
                 "modern materials baseline required; retired source still exists",
             )
-        installer = self.runtime / "materials-runtime/install.sh"
-        self.trusted(installer)
-        payload = installer.parent
-        manifest = payload / "SHA256SUMS"
-        self.trusted(manifest)
-        checksums = {}
-        for line in manifest.read_text().splitlines():
-            match = re.fullmatch(r"([0-9a-f]{64})  ([^\s]+)", line)
-            require(
-                match and match[2] not in checksums,
-                "invalid materials checksum manifest",
-            )
-            checksums[match[2]] = match[1]
-        actual = {
-            str(p.relative_to(payload)): engine.digest(p)
-            for p in payload.rglob("*")
-            if p.is_file() and p != manifest
-        }
-        require(
-            actual == checksums, "materials payload differs from its checksum manifest"
-        )
-        text = installer.read_text()
-        table = re.search(r"declare -a install_records=\(\n(.*?)\n\)", text, re.S)
-        require(table, "materials installer has no fixed target table")
+        candidate_records, _, _ = self.materials_payload(self.runtime)
+        if self.o.materials_baseline_sha:
+            baseline, authority = self.attested_materials_baseline(candidate_records)
+        else:
+            authority = {
+                "kind": "full-release",
+                "sha": (baseline / "RELEASE_SHA").read_text().strip(),
+                "runtime": str(baseline),
+            }
         records = []
-        for line in table[1].splitlines():
-            match = re.fullmatch(r'\s*"([^|"\s]+)\|(/[^|"\s]+)\|(0[0-7]{3})"', line)
-            require(match, "unreviewed materials installer target table")
-            source, target, mode = match.groups()
-            require(
-                not any(p in ("..", ".") for p in Path(target).parts)
-                and target.startswith(
-                    (
-                        "/usr/local/bin/henukit-",
-                        "/usr/local/libexec/henukit/",
-                        "/etc/systemd/system/henukit-",
-                    )
-                ),
-                "materials target is outside constrained replay scope",
-            )
+        for entry in candidate_records:
+            source, target, mode = entry["source"], entry["target"], entry["mode"]
             current = self.path(target)
             old = baseline / "materials-runtime" / source
             new = self.runtime / "materials-runtime" / source
@@ -1044,12 +1360,22 @@ printf gateway_ready
                 engine.digest(current) == engine.digest(old),
                 "installed materials runtime differs from full baseline",
             )
+            info = current.stat()
+            if authority["kind"] == "attested-retained":
+                require(
+                    info.st_mode & 0o7777 == mode
+                    and info.st_uid == self.uid
+                    and info.st_gid == os.getegid(),
+                    "installed materials target mode/owner differs from the selected historical baseline",
+                )
             records.append(
                 {
                     "source": source,
                     "target": target,
-                    "mode": int(mode, 8),
-                    "before_mode": current.stat().st_mode & 0o777,
+                    "mode": mode,
+                    "before_mode": current.stat().st_mode & 0o7777,
+                    "before_uid": info.st_uid,
+                    "before_gid": info.st_gid,
                     "before_sha256": engine.digest(current),
                     "after_sha256": engine.digest(new),
                 }
@@ -1070,6 +1396,7 @@ printf gateway_ready
         )
         plane = self.control_plane()
         return {
+            "baseline": authority,
             "targets": records,
             "control_plane": plane,
             "activation_config_sha256": engine.digest(config),
@@ -1209,6 +1536,8 @@ printf gateway_ready
         )
 
     def retained_unchanged(self, data):
+        self.materials_baseline_unchanged(data["materials"]["baseline"])
+        self.materials_owned(data)
         for name, checksum in data["retained_files"].items():
             path = Path(name)
             self.trusted(path, private=True)
@@ -1487,6 +1816,7 @@ printf gateway_ready
         root.mkdir(parents=True, mode=0o700)
         self.trusted_directory(root)
         self.durable_directory(root.parent)
+        data["materials_record_created"] = True
         self.checkpoint(data, "materials_installing")
         self.run("systemctl", "disable", "--now", "henukit-materials-webhook.path")
         require(
@@ -1511,13 +1841,20 @@ printf gateway_ready
         for target in data["materials"]["targets"]:
             path = self.path(target["target"])
             self.trusted(path)
+            info = path.stat()
+            require(
+                info.st_uid == (self.uid if candidate else target["before_uid"])
+                and info.st_gid
+                == (os.getegid() if candidate else target["before_gid"]),
+                "installed materials runtime owner differs",
+            )
             require(
                 engine.digest(path)
                 == target["after_sha256" if candidate else "before_sha256"],
                 "installed materials runtime identity differs",
             )
             require(
-                path.stat().st_mode & 0o777
+                path.stat().st_mode & 0o7777
                 == target["mode" if candidate else "before_mode"],
                 "installed materials runtime mode differs",
             )
@@ -1526,6 +1863,62 @@ printf gateway_ready
             == data["materials"]["activation_config_sha256"],
             "materials activation config drift",
         )
+
+    @staticmethod
+    def before_materials_identity(target):
+        return {
+            "sha256": target["before_sha256"],
+            "mode": target["before_mode"],
+            "uid": target["before_uid"],
+            "gid": target["before_gid"],
+        }
+
+    def materials_recovery_record(self, data):
+        root = Path(data["materials"]["backup"])
+        targets = {target["target"]: target for target in data["materials"]["targets"]}
+        backups = {}
+        if root.exists() or root.is_symlink():
+            self.trusted_directory(root)
+            for path in sorted(root.rglob("*")):
+                if path.is_dir() and not path.is_symlink():
+                    self.trusted_directory(path)
+                    continue
+                name = "/" + str(path.relative_to(root))
+                require(
+                    name in targets
+                    and self.file_identity(path)
+                    == self.before_materials_identity(targets[name]),
+                    "materials installer backup identity changed",
+                )
+                backups[name] = path
+        else:
+            require(
+                not data.get("materials_record_created"),
+                "materials installer backup record is missing",
+            )
+        return backups
+
+    def materials_owned(self, data):
+        # Interrupted installation may be a known B/candidate mixture. A later
+        # independently installed C must never be adopted or overwritten.
+        backups = self.materials_recovery_record(data)
+        for target in data["materials"]["targets"]:
+            current = self.file_identity(self.path(target["target"]))
+            before = self.before_materials_identity(target)
+            candidate = {
+                "sha256": target["after_sha256"],
+                "mode": target["mode"],
+                "uid": self.uid,
+                "gid": os.getegid(),
+            }
+            require(
+                current in (before, candidate),
+                "installed materials target drifted outside the owned transition",
+            )
+            require(
+                current == before or target["target"] in backups,
+                "changed materials target has no verified original backup",
+            )
 
     @contextlib.contextmanager
     def materials_lock(self):
@@ -1547,6 +1940,7 @@ printf gateway_ready
             self.replay_materials(data)
 
     def replay_materials(self, data):
+        self.materials_owned(data)
         root = Path(data["materials"]["backup"])
         self.trusted_directory(root)
         targets = {t["target"]: t for t in data["materials"]["targets"]}
@@ -1559,11 +1953,12 @@ printf gateway_ready
             target = "/" + str(path.relative_to(root))
             require(
                 target in targets
-                and engine.digest(path) == targets[target]["before_sha256"],
+                and self.file_identity(path)
+                == self.before_materials_identity(targets[target]),
                 "materials installer record is not replayable",
             )
             copies.append(
-                (self.path(target), path.read_bytes(), path.stat().st_mode & 0o777)
+                (self.path(target), path.read_bytes(), targets[target]["before_mode"])
             )
         # An interrupted install may have copied only a prefix. Every changed
         # target must have its own original backup before any replay begins.
@@ -1753,6 +2148,15 @@ printf gateway_ready
         )
 
     def validate(self, data):
+        if self.o.materials_baseline_sha:
+            selected = data.get("materials", {}).get("baseline", {})
+            require(
+                selected.get("kind") == "attested-retained"
+                and selected.get("sha") == self.o.materials_baseline_sha
+                and selected.get("runtime") == self.o.materials_baseline_runtime
+                and selected.get("proof_dir") == self.o.materials_baseline_proof_dir,
+                "materials baseline selection differs from the durable transition",
+            )
         require(
             data.get("status")
             in (
@@ -1962,6 +2366,7 @@ printf gateway_ready
             return self.restore_mixed(data)
 
     def restore_mixed(self, data):
+        self.materials_owned(data)
         self.rollback_images(data["selected"])
         self.run("systemctl", "disable", "--now", "henukit-materials-webhook.path")
         require(

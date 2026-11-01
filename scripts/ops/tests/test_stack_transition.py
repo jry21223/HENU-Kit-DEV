@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -37,6 +38,8 @@ IMAGES = (
     "console",
 )
 SCOPE = (*IMAGES, "nginx")
+MATERIALS_SHA = "9" * 40
+FULL_DEPLOYED_AT = "2026-10-18T05:05:00Z"
 
 FAKE = r"""#!/usr/bin/env python3
 import copy,hashlib,json,os,pathlib,sys
@@ -67,15 +70,29 @@ def config():
   result['services']['nginx']['volumes'][0]['source']=str(root/'opt/henukit-releases'/sha/'infra/nginx/henukit.conf.example')
   if os.environ.get('UNKNOWN_SCOPE'):result['services']['unexpected']={}
   if os.environ.get('BAD_DATA_ROUTE'):result['services']['platform-core']['environment']['PLATFORM_CORE_DATABASE_URL']='postgres://henukit:password@postgres:5432/unbacked_database?sslmode=disable'
+ if fixture.get('strict_metadata'):
+  for service in ['portal','portal-summary']:result['services'][service]['environment'].update(PORTAL_VERSION=sha,PORTAL_DEPLOYED_AT=os.environ['PORTAL_DEPLOYED_AT'])
  return result
+def config_hash(service,spec):
+ suffix=''
+ if fixture.get('strict_metadata') and service in ['portal','portal-summary']:suffix='-'+spec['environment']['PORTAL_VERSION']+'-'+spec['environment']['PORTAL_DEPLOYED_AT']
+ return 'config-'+service+suffix
 if name=='gh':
  if args[:2]==['run','list']:out([{'databaseId':123,'attempt':state.get('attempt',1)}])
  elif args[:2]==['run','view']:out({'headSha':'b'*40,'headBranch':'main','event':'push','status':'completed','conclusion':'success','workflowName':'Build HENU Kit release artifacts','attempt':state.get('attempt',1)})
  elif args[0]=='api':
   if '/issues/166' in args[1]:print('open' if os.environ.get('BLOCKER_OPEN') else 'closed')
+  elif '/actions/runs/456/attempts/2' in args[1]:out({'id':456,'run_attempt':2,'head_sha':'9'*40,'head_branch':'main','event':'push','status':'completed','conclusion':'failure' if os.environ.get('B_ATTEMPT_FAILED') else 'success','path':'.github/workflows/deploy-henukit.yml'})
+  elif '/compare/' in args[1]:out({'status':'ahead','behind_by':0,'base_commit':{'sha':'9'*40},'merge_base_commit':{'sha':'9'*40}})
   elif '/git/commits/' in args[1]:print('d'*40)
   else:print(state.get('source_sha',('c' if os.environ.get('STALE_SOURCE') else 'b')*40))
- elif args[:2]==['attestation','verify']:out([{'verified':True}])
+ elif args[:2]==['attestation','verify']:
+  if args[args.index('--source-digest')+1]=='9'*40:
+   value=json.loads(pathlib.Path(args[args.index('--bundle')+1]).read_text())
+   if value.get('fixture_sha')!='9'*40:sys.exit(2)
+   if os.environ.get('B_PROOF_DRIFT_DURING_VERIFY'):pathlib.Path(args[args.index('--bundle')+1]).write_text('{"fixture_sha":"swapped after verification"}')
+   out([{'verificationResult':{'signature':{'certificate':{'runInvocationURI':'https://github.com/jry21223/HENU-Kit-DEV/actions/runs/456/attempts/2','sourceRepositoryDigest':'9'*40,'buildConfigDigest':'9'*40,'sourceRepositoryRef':'refs/heads/main','runnerEnvironment':'github-hosted','buildConfigURI':'https://github.com/jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml@refs/heads/main'}}}}])
+  else:out([{'verified':True}])
  else:sys.exit(92)
 elif name=='systemctl':
  if args[0]=='is-active':sys.exit(3)
@@ -102,6 +119,9 @@ elif name=='ssh':
  if args[-1]=='-s':sys.stdin.buffer.read();print('gateway_ready')
  elif args[-1].startswith('mktemp'):print('/tmp/henukit-transition-check.abcdefgh')
  elif args[-1].startswith('tar '):sys.stdin.buffer.read()
+ elif '--check' in args[-1] and os.environ.get('DELAY_GATE_METADATA'):
+  import time
+  time.sleep(1.2)
 elif name=='docker':
  if args[:2]==['ps','-aq']:print('\n'.join(state['containers']))
  elif args[0]=='inspect':out([next(c for key,c in state['containers'].items() if n in (key,c['Id'])) for n in args[1:]])
@@ -111,10 +131,11 @@ elif name=='docker':
   if os.environ.get('DRIFT_DURING_LOAD')=='attempt':state['attempt']=2;save()
   if os.environ.get('DRIFT_ENV_DURING_LOAD'):
    envfile=root/'opt/henukit/.env.henukit'
-   if 'FOREIGN_CHANGE=1' not in envfile.read_text():envfile.write_text(envfile.read_text()+'FOREIGN_CHANGE=1\n')
+   if os.environ.get('DRIFT_ENV_DURING_LOAD')=='timestamp':envfile.write_text(envfile.read_text().replace('PORTAL_DEPLOYED_AT=2026-10-18T05:05:00Z','PORTAL_DEPLOYED_AT=2026-10-19T05:05:00Z'))
+   elif 'FOREIGN_CHANGE=1' not in envfile.read_text():envfile.write_text(envfile.read_text()+'FOREIGN_CHANGE=1\n')
   print('loaded')
  elif args[0]=='compose':
-  if 'config' in args and '--hash' in args:print(args[-1]+' config-'+args[-1])
+  if 'config' in args and '--hash' in args:print(args[-1]+' '+config_hash(args[-1],config()['services'][args[-1]]))
   elif 'config' in args:out(config())
   elif 'up' in args:
    selected=args[args.index('--no-deps')+1:]
@@ -124,6 +145,7 @@ elif name=='docker':
    for s in selected:
     c=state['containers']['henukit-'+s+'-1'];spec=cfg['services'][s]
     c['Id']='transition-'+s+('-new' if state['deployed'] else '-old');c['Image']=state['images'][spec['image']];c['Config']['Image']=spec['image'];c['Config']['Env']=[k+'='+str(v) for k,v in spec.get('environment',{}).items()]
+    c['Config']['Labels']['com.docker.compose.config-hash']=config_hash(s,spec)
     c['Mounts']=[{'Type':'bind','Destination':m['target'],'Source':m['source'],'RW':not m.get('read_only',False)} for m in spec.get('volumes',[]) if m.get('type')=='bind']
     c['State'].update(Running='--no-start' not in args,Status='created' if '--no-start' in args else 'running',Health={'Status':'healthy'})
    save()
@@ -147,6 +169,30 @@ SOURCE = Path(__file__).resolve().parents[1] / "deploy-henukit-stack-transition.
 
 
 class StackTransitionCLI(unittest.TestCase):
+    def test_independent_materials_selection_requires_all_three_arguments(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SOURCE),
+                "--sha",
+                food.NEW,
+                "--run-id",
+                "123",
+                "--proof-dir",
+                "/missing",
+                "--acknowledge-getwork-disabled",
+                "--materials-baseline-sha",
+                MATERIALS_SHA,
+                "--preflight",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "requires SHA, runtime and proof directory together", result.stderr
+        )
+
     def test_explicit_disabled_source_acknowledgement_is_required(self):
         result = subprocess.run(
             [
@@ -204,7 +250,7 @@ class StackTransitionCheckpoint(checkpoint.PortalMembershipCLI):
         )
         self.repack()
 
-    def transition(self, mode, extra=None):
+    def transition(self, mode, extra=None, arguments=()):
         return subprocess.run(
             [
                 sys.executable,
@@ -219,6 +265,7 @@ class StackTransitionCheckpoint(checkpoint.PortalMembershipCLI):
                 str(self.root),
                 "--acknowledge-getwork-disabled",
                 mode,
+                *arguments,
             ],
             env={**self.env, **(extra or {})},
             capture_output=True,
@@ -542,6 +589,7 @@ if os.environ.get('INTERRUPT_INSTALL'):
             + "\n".join(
                 (
                     "PORTAL_API_MODE=live",
+                    "PORTAL_DEPLOYED_AT=" + FULL_DEPLOYED_AT,
                     "NEXT_PUBLIC_PORTAL_ALLOW_MOCK=0",
                     "ACCOUNT_PORTFOLIO_EASYPAY_ENABLED=1",
                     "ACCOUNT_PORTFOLIO_EASYPAY_PID=henukit",
@@ -650,6 +698,351 @@ if os.environ.get('INTERRUPT_INSTALL'):
         self.repack()
         self.full_record = record
 
+    def separate_materials_fixture(self):
+        """A full application baseline plus a real, coherent 19-target B."""
+        self.full_fixture()
+        self.materials_runtime = self.root / "opt/henukit-releases" / MATERIALS_SHA
+        shutil.copytree(self.runtime, self.materials_runtime)
+        (self.materials_runtime / "RELEASE_SHA").write_text(MATERIALS_SHA + "\n")
+        text = (
+            SOURCE.parents[2]
+            / "services/deploy-webhook/deploy/install-materials-runtime.sh"
+        ).read_text()
+        table = re.search(r"declare -a install_records=\(\n(.*?)\n\)", text, re.S)[1]
+        records = [
+            re.fullmatch(r'\s*"([^|]+)\|([^|]+)\|([0-7]+)"', line).groups()
+            for line in table.splitlines()
+        ]
+        self.assertEqual(len(records), 19)
+        self.materials_targets = {}
+        for source, target, mode in records:
+            before = ("delivered B: " + source).encode()
+            candidate = ("candidate: " + source).encode()
+            for runtime, content in (
+                (self.materials_runtime, before),
+                (self.runtime, candidate),
+            ):
+                path = runtime / "materials-runtime" / source
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+            live = self.root / target.lstrip("/")
+            live.parent.mkdir(parents=True, exist_ok=True)
+            live.write_bytes(before)
+            live.chmod(int(mode, 8))
+            self.materials_targets[live] = (before, int(mode, 8))
+        for runtime in (self.materials_runtime, self.runtime):
+            installer = runtime / "materials-runtime/install.sh"
+            script = (
+                "#!/usr/bin/env python3\nimport os,pathlib,shutil\ntable='''declare -a install_records=(\n"
+                + table
+                + "\n)'''\n"
+            )
+            if runtime == self.materials_runtime:
+                script += "raise SystemExit('historical code must never execute')\n"
+            else:
+                script += (
+                    "records="
+                    + repr(records)
+                    + "\nroot=pathlib.Path(os.environ['FIXTURE'])\n"
+                )
+                script += "for source,target,mode in records:\n live=root/target.lstrip('/')\n backup=root/'opt/henukit-materials/runtime-backups'/('b'*40)/target.lstrip('/')\n backup.parent.mkdir(parents=True,exist_ok=True)\n shutil.copy2(live,backup)\n live.write_bytes((pathlib.Path(__file__).parent/source).read_bytes())\n live.chmod(int(mode,8))\n"
+                script += "if os.environ.get('INTERRUPT_INSTALL'):\n import signal\n os.kill(os.getppid(),signal.SIGKILL)\n"
+            installer.write_text(script)
+            installer.chmod(0o755)
+            manifest = installer.parent / "SHA256SUMS"
+            manifest.unlink()
+            manifest.write_text(
+                "".join(
+                    self.digest(p) + "  " + str(p.relative_to(installer.parent)) + "\n"
+                    for p in sorted(installer.parent.rglob("*"))
+                    if p.is_file()
+                )
+            )
+        self.materials_proof = self.root / "historical-materials-proof"
+        self.materials_proof.mkdir()
+        archive = self.materials_proof / (
+            "henukit-runtime-" + MATERIALS_SHA + ".tar.gz"
+        )
+        with tarfile.open(archive, "w:gz") as stream:
+            for entry in self.materials_runtime.rglob("*"):
+                if entry.is_file():
+                    stream.add(
+                        entry,
+                        arcname="./" + str(entry.relative_to(self.materials_runtime)),
+                    )
+        Path(str(archive) + ".sha256").write_text(
+            self.digest(archive) + "  " + archive.name + "\n"
+        )
+        image = self.materials_proof / (
+            "henukit-getwork-mcp-" + MATERIALS_SHA + ".docker.tar.gz"
+        )
+        image.write_bytes(b"unused historical getWork image")
+        Path(str(image) + ".sha256").write_text(
+            self.digest(image) + "  " + image.name + "\n"
+        )
+        result = subprocess.run(
+            [
+                "bash",
+                str(SOURCE.with_name("create-getwork-actions-manifest.sh")),
+                "--sha",
+                MATERIALS_SHA,
+                "--artifact-dir",
+                str(self.materials_proof),
+                "--output",
+                str(
+                    self.materials_proof
+                    / ("henukit-getwork-actions-" + MATERIALS_SHA + ".manifest")
+                ),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (
+            self.materials_proof
+            / ("henukit-getwork-actions-" + MATERIALS_SHA + ".attestation.json")
+        ).write_text(json.dumps({"fixture_sha": MATERIALS_SHA}))
+        (self.materials_proof / "trusted_root.jsonl").write_text(
+            "historical public trust root\n"
+        )
+        self.materials_arguments = (
+            "--materials-baseline-sha",
+            MATERIALS_SHA,
+            "--materials-baseline-runtime",
+            str(self.materials_runtime),
+            "--materials-baseline-proof-dir",
+            str(self.materials_proof),
+        )
+        self.repack()
+
+    def test_explicit_materials_baseline_preserves_independent_delivered_capabilities(
+        self,
+    ):
+        self.separate_materials_fixture()
+        before = (self.root / "fake-state.json").read_bytes(), self.envfile.read_bytes()
+        rejected = self.transition("--preflight")
+        self.assertNotEqual(rejected.returncode, 0)
+        result = self.transition("--preflight", arguments=self.materials_arguments)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            before,
+            ((self.root / "fake-state.json").read_bytes(), self.envfile.read_bytes()),
+        )
+        self.assertEqual((self.root / "opt/henukit/current").resolve().name, food.OLD)
+
+    def test_independent_materials_rejects_missing_unverified_or_failed_attempt_proof(
+        self,
+    ):
+        self.separate_materials_fixture()
+        path = self.materials_proof / (
+            "henukit-getwork-actions-" + MATERIALS_SHA + ".attestation.json"
+        )
+        original = path.read_bytes()
+        before = (self.root / "fake-state.json").read_bytes()
+        for fault in ("missing", "unverified", "failed_attempt", "during_verify"):
+            with self.subTest(fault):
+                if path.exists():
+                    path.unlink()
+                if fault != "missing":
+                    path.write_bytes(
+                        original
+                        if fault in ("failed_attempt", "during_verify")
+                        else b'{"fixture_sha":"wrong"}'
+                    )
+                result = self.transition(
+                    "--execute",
+                    {"B_ATTEMPT_FAILED": "1"}
+                    if fault == "failed_attempt"
+                    else {"B_PROOF_DRIFT_DURING_VERIFY": "1"}
+                    if fault == "during_verify"
+                    else None,
+                    arguments=self.materials_arguments,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.root / "fake-state.json").read_bytes(), before)
+                self.assertFalse(
+                    (
+                        self.root / "var/lib/henukit-scoped-releases/stack-transition"
+                    ).exists()
+                )
+
+    def test_independent_materials_rejects_partial_live_target_drift(self):
+        self.separate_materials_fixture()
+        path = self.root / "usr/local/libexec/henukit/henukit-materials-control"
+        path.write_bytes(b"unknown partial install")
+        before = (self.root / "fake-state.json").read_bytes()
+        result = self.transition("--execute", arguments=self.materials_arguments)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("materials runtime differs", result.stderr)
+        self.assertEqual(path.read_bytes(), b"unknown partial install")
+        self.assertEqual((self.root / "fake-state.json").read_bytes(), before)
+        content, mode = self.materials_targets[path]
+        path.write_bytes(content)
+        for changed in (mode ^ 0o100, mode | 0o4000, mode | 0o2000):
+            with self.subTest(mode=oct(changed)):
+                path.chmod(changed)
+                result = self.transition(
+                    "--execute", arguments=self.materials_arguments
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("mode/owner differs", result.stderr)
+                self.assertEqual(path.stat().st_mode & 0o7777, changed)
+        path.chmod(mode)
+
+    def test_independent_materials_retained_bytes_drift_after_preflight_is_refused(
+        self,
+    ):
+        self.separate_materials_fixture()
+        self.assertEqual(
+            self.transition(
+                "--preflight", arguments=self.materials_arguments
+            ).returncode,
+            0,
+        )
+        path = (
+            self.materials_runtime
+            / "materials-runtime/libexec/henukit-materials-control"
+        )
+        path.write_bytes(b"changed retained baseline")
+        before = (self.root / "fake-state.json").read_bytes()
+        result = self.transition("--execute", arguments=self.materials_arguments)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("runtime bytes differ", result.stderr)
+        self.assertEqual((self.root / "fake-state.json").read_bytes(), before)
+        for live, (content, mode) in self.materials_targets.items():
+            self.assertEqual(live.read_bytes(), content)
+            self.assertEqual(live.stat().st_mode & 0o777, mode)
+
+    def test_failed_transition_restores_the_independent_materials_cohort(self):
+        self.separate_materials_fixture()
+        arguments = list(self.materials_arguments)
+        arguments[3] += "/"
+        arguments[5] += "/"
+        result = self.transition("--execute", {"FAIL_SMOKE": "1"}, arguments=arguments)
+        self.assertNotEqual(result.returncode, 0)
+        record = (
+            self.root
+            / "var/lib/henukit-scoped-releases/stack-transition"
+            / food.NEW
+            / "receipt.json"
+        )
+        data = json.loads(record.read_text())
+        self.assertEqual(data["status"], "rolled_back", result.stderr)
+        self.assertEqual(data["baseline"], food.OLD)
+        self.assertEqual(data["materials"]["baseline"]["sha"], MATERIALS_SHA)
+        self.assertEqual(len(data["materials"]["targets"]), 19)
+        for live, (content, mode) in self.materials_targets.items():
+            self.assertEqual(live.read_bytes(), content)
+            self.assertEqual(live.stat().st_mode & 0o777, mode)
+        self.assertEqual((self.root / "opt/henukit/current").resolve().name, food.OLD)
+        result = self.transition("--rollback")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "already_rolled_back")
+        retained = (
+            self.materials_runtime
+            / "materials-runtime/libexec/henukit-materials-control"
+        )
+        saved = retained.read_bytes()
+        retained.write_bytes(b"drift after durable receipt")
+        result = self.transition("--rollback")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("retained materials baseline runtime changed", result.stderr)
+        retained.write_bytes(saved)
+
+    def test_interrupted_independent_materials_refuses_foreign_identity_then_restores_B(
+        self,
+    ):
+        self.separate_materials_fixture()
+        result = self.transition(
+            "--execute", {"INTERRUPT_INSTALL": "1"}, arguments=self.materials_arguments
+        )
+        self.assertEqual(result.returncode, -9, result.stderr)
+        record = (
+            self.root
+            / "var/lib/henukit-scoped-releases/stack-transition"
+            / food.NEW
+            / "receipt.json"
+        )
+        data = json.loads(record.read_text())
+        self.assertEqual(data["status"], "materials_installing")
+        baseline = data["materials"]["baseline"]
+        self.assertEqual((baseline["run_id"], baseline["attempt"]), (456, 2))
+        self.assertEqual(
+            baseline["archive_sha256"], self.digest(Path(baseline["archive"]))
+        )
+        self.assertEqual(
+            baseline["payload_manifest_sha256"],
+            self.digest(self.materials_runtime / "materials-runtime/SHA256SUMS"),
+        )
+        live = self.root / "usr/local/libexec/henukit/henukit-materials-control"
+        candidate = live.read_bytes()
+        before_state = (self.root / "fake-state.json").read_bytes()
+        environment = self.envfile.read_bytes()
+        backup = (
+            Path(data["materials"]["backup"])
+            / "usr/local/libexec/henukit/henukit-materials-control"
+        )
+        proof = self.materials_proof / "trusted_root.jsonl"
+        original_proof = proof.read_bytes()
+        correct_mode = self.materials_targets[live][1]
+        for fault in (
+            "foreign_bytes",
+            "foreign_mode",
+            "foreign_suid",
+            "foreign_sgid",
+            "backup_mode",
+            "backup_suid",
+            "backup_sgid",
+            "proof",
+        ):
+            with self.subTest(fault):
+                if fault == "foreign_bytes":
+                    live.write_bytes(b"independently installed foreign C")
+                if fault == "foreign_mode":
+                    live.chmod(0o600)
+                if fault == "foreign_suid":
+                    live.chmod(correct_mode | 0o4000)
+                if fault == "foreign_sgid":
+                    live.chmod(correct_mode | 0o2000)
+                if fault == "backup_mode":
+                    backup.chmod(0o600)
+                if fault == "backup_suid":
+                    backup.chmod(correct_mode | 0o4000)
+                if fault == "backup_sgid":
+                    backup.chmod(correct_mode | 0o2000)
+                if fault == "proof":
+                    proof.write_bytes(b"unapproved replacement root")
+                changed_identity = (live.read_bytes(), live.stat().st_mode & 0o7777)
+                (self.root / "calls.jsonl").unlink()
+                result = self.transition("--rollback")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(
+                    (self.root / "fake-state.json").read_bytes(), before_state
+                )
+                self.assertEqual(self.envfile.read_bytes(), environment)
+                self.assertEqual(
+                    (live.read_bytes(), live.stat().st_mode & 0o7777), changed_identity
+                )
+                self.assertFalse(
+                    any(
+                        name == "docker" and ("up" in args or "stop" in args)
+                        for name, args in self.calls()
+                    )
+                )
+                live.write_bytes(candidate)
+                live.chmod(0o700)
+                backup.chmod(0o700)
+                proof.write_bytes(original_proof)
+        result = self.transition("--rollback")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "rolled_back")
+        for live, (content, mode) in self.materials_targets.items():
+            self.assertEqual(live.read_bytes(), content)
+            self.assertEqual(live.stat().st_mode & 0o7777, mode)
+            self.assertEqual(
+                (live.stat().st_uid, live.stat().st_gid), (os.geteuid(), os.getegid())
+            )
+
     def test_complete_preflight_binds_real_mixed_checkpoint_without_mutation(self):
         self.full_fixture()
         before = (
@@ -670,6 +1063,111 @@ if os.environ.get('INTERRUPT_INSTALL'):
         )
         self.assertFalse(
             (self.root / "var/lib/henukit-scoped-releases/stack-transition").exists()
+        )
+
+    def strict_metadata_fixture(self):
+        self.full_fixture()
+        fixture_path = self.root / "transition-fixture.json"
+        fixture = json.loads(fixture_path.read_text())
+        fixture["strict_metadata"] = True
+        current = json.loads(self.full_record.read_text())
+        state_path = self.root / "fake-state.json"
+        state = json.loads(state_path.read_text())
+        for service, sha, deployed in (
+            ("portal", current["sha"], current["deployed_at"]),
+            ("portal-summary", food.OLD, FULL_DEPLOYED_AT),
+        ):
+            spec = fixture["base"]["services"][service]
+            spec["environment"].update(PORTAL_VERSION=sha, PORTAL_DEPLOYED_AT=deployed)
+            actual = state["containers"]["henukit-" + service + "-1"]
+            actual["Config"]["Env"] = [
+                key + "=" + str(value) for key, value in spec["environment"].items()
+            ]
+            actual["Config"]["Labels"]["com.docker.compose.config-hash"] = (
+                "config-" + service + "-" + sha + "-" + deployed
+            )
+        fixture_path.write_text(json.dumps(fixture))
+        state_path.write_text(json.dumps(state))
+
+    def test_mixed_base_uses_full_metadata_and_candidate_timestamp_is_one_value(self):
+        self.strict_metadata_fixture()
+        environment = self.envfile.read_bytes()
+        result = self.transition("--execute", {"DELAY_GATE_METADATA": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = (
+            self.root
+            / "var/lib/henukit-scoped-releases/stack-transition"
+            / food.NEW
+            / "receipt.json"
+        )
+        data = json.loads(record.read_text())
+        self.assertEqual(
+            data["sources"]["portal-summary"]["deployed"], FULL_DEPLOYED_AT
+        )
+        self.assertEqual(
+            data["before"]["services"]["portal-summary"]["environment"][
+                "PORTAL_DEPLOYED_AT"
+            ],
+            FULL_DEPLOYED_AT,
+        )
+        for service in ("portal", "portal-summary"):
+            self.assertEqual(
+                data["after"]["services"][service]["environment"]["PORTAL_DEPLOYED_AT"],
+                data["deployed_at"],
+            )
+        self.assertTrue(self.envfile.read_bytes().startswith(environment))
+
+    def test_unknown_or_missing_full_metadata_fails_closed(self):
+        self.strict_metadata_fixture()
+        original = self.envfile.read_text()
+        for value in (
+            None,
+            "2026-02-30T05:05:00Z",
+            "2026-10-18T13:05:00+08:00",
+            "duplicate",
+        ):
+            with self.subTest(value):
+                line = "PORTAL_DEPLOYED_AT=" + FULL_DEPLOYED_AT
+                changed = original.replace(
+                    line,
+                    ""
+                    if value is None
+                    else line + "\nPORTAL_DEPLOYED_AT=" + FULL_DEPLOYED_AT
+                    if value == "duplicate"
+                    else "PORTAL_DEPLOYED_AT=" + value,
+                )
+                self.envfile.write_text(changed)
+                member = json.loads(self.membership_record.read_text())
+                member["environment_sha256"] = self.digest(self.envfile)
+                (self.membership_record.parent / "configuration.backup").write_bytes(
+                    self.envfile.read_bytes()
+                )
+                self.membership_record.write_text(json.dumps(member))
+                current = json.loads(self.full_record.read_text())
+                current["membership_checkpoint"]["sha256"] = self.digest(
+                    self.membership_record
+                )
+                self.full_record.write_text(json.dumps(current))
+                result = self.transition("--preflight")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("full release timestamp", result.stderr)
+                self.assertEqual(self.envfile.read_text(), changed)
+
+    def test_full_metadata_rotation_during_loading_is_preserved_and_refused(self):
+        self.strict_metadata_fixture()
+        (self.root / "calls.jsonl").unlink()
+        result = self.transition("--execute", {"DRIFT_ENV_DURING_LOAD": "timestamp"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("environment", result.stderr)
+        self.assertIn(
+            "PORTAL_DEPLOYED_AT=2026-10-19T05:05:00Z", self.envfile.read_text()
+        )
+        self.assertFalse(
+            any(name == "docker" and "up" in args for name, args in self.calls())
+        )
+        self.assertEqual(
+            (self.root / "usr/local/bin/henukit-deploy-webhook").read_bytes(),
+            b"previous materials runtime",
         )
 
     def test_success_commits_full_aliases_and_same_candidate_does_not_replay(self):
@@ -966,6 +1464,15 @@ def load_tests(loader, tests, pattern):
         "test_recovery_refuses_foreign_selected_configuration_without_overwriting_it",
         "test_existing_production_gate_rejects_mock_or_disabled_payments",
         "test_environment_change_during_image_loading_is_preserved_and_blocks_cutover",
+        "test_explicit_materials_baseline_preserves_independent_delivered_capabilities",
+        "test_independent_materials_rejects_missing_unverified_or_failed_attempt_proof",
+        "test_independent_materials_rejects_partial_live_target_drift",
+        "test_independent_materials_retained_bytes_drift_after_preflight_is_refused",
+        "test_failed_transition_restores_the_independent_materials_cohort",
+        "test_interrupted_independent_materials_refuses_foreign_identity_then_restores_B",
+        "test_mixed_base_uses_full_metadata_and_candidate_timestamp_is_one_value",
+        "test_unknown_or_missing_full_metadata_fails_closed",
+        "test_full_metadata_rotation_during_loading_is_preserved_and_refused",
     ):
         suite.addTest(StackTransitionCheckpoint(name))
     return suite
