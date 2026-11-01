@@ -197,6 +197,16 @@ fi
   };
 }
 
+test("automatic activation refuses a workflow attempt different from its authorization", () => {
+  const setup = fixture({ runAttempt: "2" });
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8", env: { ...setup.env, HENUKIT_EXPECTED_ACTIONS_IDENTITY: "actions:123:1" },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /identity differs from the automatic authorization/);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /ssh |watcher /);
+});
+
 test("one command prepares, exact-SHA approves, and activates a release", () => {
   const setup = fixture();
 

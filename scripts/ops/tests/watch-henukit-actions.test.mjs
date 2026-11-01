@@ -878,6 +878,16 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
   };
 }
 
+test("the watcher refuses an Actions attempt different from automatic authorization", () => {
+  const setup = fixture({ runAttempt: 2, approved: false });
+  const result = spawnSync(script, ["--once"], {
+    encoding: "utf8", env: { ...setup.env, HENUKIT_EXPECTED_ACTIONS_IDENTITY: "actions:123:1" },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /identity differs from the automatic authorization/);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
 test("one-shot downloads, verifies, backs up, and deploys one successful main artifact set", () => {
   const setup = fixture();
   setup.env.HENUKIT_PLATFORM_MIGRATIONS = "000021_future_reviewed.up.sql";

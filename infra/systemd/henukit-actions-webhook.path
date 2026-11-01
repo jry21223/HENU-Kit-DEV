@@ -1,0 +1,10 @@
+[Unit]
+Description=Wake HENU Kit release controller after a verified workflow notification
+After=henukit-actions-webhook-receiver.service
+
+[Path]
+PathChanged=/var/lib/henukit-actions-webhook/latest-notification.json
+Unit=henukit-actions-webhook.service
+
+[Install]
+WantedBy=multi-user.target

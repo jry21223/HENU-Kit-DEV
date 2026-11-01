@@ -124,6 +124,8 @@ docker compose \
 
 cp "$source_root/infra/nginx/henukit.conf.example" "$runtime/infra/nginx/"
 cp "$source_root/infra/systemd/henukit-actions-watch.service" "$runtime/infra/systemd/"
+cp "$source_root/infra/systemd/henukit-actions-auto-deploy.service" "$runtime/infra/systemd/"
+cp "$source_root"/infra/systemd/henukit-actions-webhook* "$runtime/infra/systemd/"
 cp "$source_root"/infra/epay-gateway/patches/*.patch "$runtime/infra/epay-gateway/patches/"
 cp "$source_root"/services/platform-core/db/migrations/*.up.sql "$runtime/migrations/platform-core/"
 cp "$source_root"/services/account-portfolio/db/migrations/*.up.sql "$runtime/migrations/account-portfolio/"
@@ -201,6 +203,7 @@ for helper in \
   deploy-henukit-account-membership.py \
   deploy-henukit-artifact.sh \
   watch-henukit-actions.sh \
+  auto-deploy-henukit-actions.sh \
   activate-henukit-release.sh \
   adopt-henukit-degraded-baseline.sh \
   rotate-henukit-release-signers.sh \

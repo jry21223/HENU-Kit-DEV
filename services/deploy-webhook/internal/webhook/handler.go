@@ -36,9 +36,10 @@ type Config struct {
 }
 
 type Handler struct {
-	config Config
-	queue  Queue
-	logger *slog.Logger
+	config  Config
+	queue   Queue
+	logger  *slog.Logger
+	actions bool
 }
 
 func New(config Config, queue Queue, logger *slog.Logger) (*Handler, error) {
@@ -140,6 +141,10 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	if eventType == "ping" {
 		h.logger.Info("github_webhook_ping", "delivery", delivery)
 		writeJSON(writer, http.StatusOK, map[string]any{"accepted": true, "event": "ping"})
+		return
+	}
+	if h.actions {
+		h.handleActions(writer, eventType, delivery, body)
 		return
 	}
 	if eventType != "push" {

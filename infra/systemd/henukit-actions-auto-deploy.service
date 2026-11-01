@@ -1,0 +1,32 @@
+[Unit]
+Description=Automatically activate successful current-main HENU Kit releases
+Documentation=https://github.com/jry21223/HENU-Kit-DEV/blob/main/docs/operations/henukit-actions-auto-deploy.md
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+EnvironmentFile=/etc/henukit/actions-watch.env
+Environment=HENUKIT_AUTO_DEPLOY_POLICY=/etc/henukit/auto-deploy-policy.json
+LoadCredential=github-token:/etc/henukit/github-actions-read.token
+Environment=GH_TOKEN_FILE=%d/github-token
+ExecStart=/usr/local/sbin/auto-deploy-henukit-actions --watch
+StateDirectory=henukit-actions-auto-deploy
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=30s
+# Finish the current activation/rollback before stopping the scheduler.
+KillMode=process
+TimeoutStopSec=infinity
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/opt/henukit /opt/henukit-staging /opt/henukit-releases /opt/henukit-backups /var/lib/henukit-actions-watch /var/lib/henukit-actions-auto-deploy /opt/henukit-materials /usr/local/bin /usr/local/libexec /etc/systemd/system
+
+[Install]
+WantedBy=multi-user.target

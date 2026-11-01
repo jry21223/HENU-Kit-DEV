@@ -224,6 +224,11 @@ blocker_state="$(gh api "repos/$repo/issues/$blocker_issue" --jq '.state')"
 [[ "$blocker_state" == "closed" ]] || die "blocker issue #$blocker_issue must be closed before Account Portfolio deployment"
 
 verified_artifact_identity=""
+expected_actions_identity="${HENUKIT_EXPECTED_ACTIONS_IDENTITY:-}"
+if [[ -n "$expected_actions_identity" ]]; then
+  [[ "$release_source" == actions && "$expected_actions_identity" =~ ^actions:[1-9][0-9]*:[1-9][0-9]*$ ]] ||
+    die "expected Actions identity is invalid for this release source"
+fi
 verify_release_current() {
   local branch_head run_row run_id run_attempt run_sha run_status run_conclusion current_identity manifest
   branch_head="$(gh api "repos/$repo/branches/$branch" --jq '.commit.sha')"
@@ -241,6 +246,9 @@ verify_release_current() {
     [[ "$run_sha" == "$release_sha" && "$run_status" == "completed" && "$run_conclusion" == "success" ]] ||
       die "requested release is not the newest completed successful $workflow run"
     current_identity="actions:${run_id}:${run_attempt}"
+  fi
+  if [[ -n "$expected_actions_identity" && "$expected_actions_identity" != "$current_identity" ]]; then
+    die "release Actions identity differs from the automatic authorization"
   fi
   if [[ -n "$verified_artifact_identity" && "$verified_artifact_identity" != "$current_identity" ]]; then
     die "release artifact identity changed during activation"

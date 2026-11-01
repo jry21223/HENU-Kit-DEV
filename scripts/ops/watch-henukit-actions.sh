@@ -2183,6 +2183,10 @@ check_once() {
   IFS=$'\t' read -r run_id run_attempt release_sha run_status run_conclusion run_url <<<"$run_row"
   [[ "$run_id" =~ ^[0-9]+$ ]] || die "GitHub returned an invalid workflow run id"
   [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || die "GitHub returned an invalid workflow run attempt"
+  if [[ -n "${HENUKIT_EXPECTED_ACTIONS_IDENTITY:-}" &&
+        "$HENUKIT_EXPECTED_ACTIONS_IDENTITY" != "actions:${run_id}:${run_attempt}" ]]; then
+    die "release Actions identity differs from the automatic authorization"
+  fi
   if [[ "$run_status" != "completed" || "$run_conclusion" != "success" ]]; then
     log "latest $branch workflow run $run_id is not successfully completed; refusing stale artifacts"
     return

@@ -479,6 +479,11 @@ that exact branch head; local artifacts never relax the main-only check.
 
 ## Server-side GitHub Actions watcher
 
+For explicitly authorized unattended main releases, use the opt-in
+[Actions automatic scheduler](henukit-actions-auto-deploy.md). It invokes the
+existing full activation command and retains all technical gates. The manual
+watcher described below remains the default and must not run concurrently.
+
 The production host can poll GitHub Actions and download successful `main`
 artifacts directly. The watcher never checks out the repository and never runs
 `docker build`, package managers, or language compilers.

@@ -23,13 +23,14 @@ import (
 
 const materialsOrchestrationCommand = "/usr/local/libexec/henukit/henukit-materials-orchestrate"
 
-const usage = `usage: henukit-deploy-webhook [serve|run|retry <sha>|materials-serve|materials-run]
+const usage = `usage: henukit-deploy-webhook [serve|run|retry <sha>|materials-serve|materials-run|actions-serve]
 
 serve        receive and persist verified GitHub webhook deliveries
 run          process all persisted deliveries with the fixed deploy command
 retry <sha>  requeue the newest failed delivery for an approved full SHA
 materials-serve receive materials deliveries with latest-arrival coalescing
 materials-run process materials through the fixed privileged orchestration wrapper
+actions-serve receive successful release-workflow notifications without deploying
 `
 
 type commonConfig struct {
@@ -59,6 +60,8 @@ func main() {
 		err = serveMaterials(logger)
 	case "materials-run":
 		err = runMaterials(logger)
+	case "actions-serve":
+		err = serveActions(logger)
 	case "retry":
 		if len(os.Args) != 3 {
 			fmt.Fprint(os.Stderr, usage)
@@ -87,7 +90,7 @@ func serve(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	return serveStore(logger, store)
+	return serveStore(logger, store, false)
 }
 
 func serveMaterials(logger *slog.Logger) error {
@@ -99,10 +102,18 @@ func serveMaterials(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	return serveStore(logger, store)
+	return serveStore(logger, store, false)
 }
 
-func serveStore(logger *slog.Logger, store *state.Store) error {
+func serveActions(logger *slog.Logger) error {
+	store, err := state.NewActionsNotifications(envOr("HENUKIT_WEBHOOK_STATE_DIR", "/var/lib/henukit-actions-webhook"))
+	if err != nil {
+		return err
+	}
+	return serveStore(logger, store, true)
+}
+
+func serveStore(logger *slog.Logger, store webhook.Queue, actions bool) error {
 	secretPath, err := requiredEnv("HENUKIT_WEBHOOK_SECRET_FILE")
 	if err != nil {
 		return err
@@ -115,13 +126,18 @@ func serveStore(logger *slog.Logger, store *state.Store) error {
 	if err != nil {
 		return err
 	}
-	handler, err := webhook.New(webhook.Config{
+	config := webhook.Config{
 		Path:         envOr("HENUKIT_WEBHOOK_PATH", "/webhooks/github"),
 		Repository:   envOr("HENUKIT_WEBHOOK_REPOSITORY", "jry21223/HENU-Kit-DEV"),
 		Branch:       envOr("HENUKIT_WEBHOOK_BRANCH", "main"),
 		Secret:       secret,
 		MaxBodyBytes: maxBody,
-	}, store, logger)
+	}
+	constructor := webhook.New
+	if actions {
+		constructor = webhook.NewActions
+	}
+	handler, err := constructor(config, store, logger)
 	if err != nil {
 		return err
 	}
