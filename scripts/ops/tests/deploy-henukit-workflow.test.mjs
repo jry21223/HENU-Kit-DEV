@@ -653,9 +653,14 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "Career must resolve the production-private relay on the Docker host",
   );
   assert.equal(
-    config.services["career-opportunities"].depends_on["getwork-mcp-relay"].condition,
-    "service_healthy",
-    "Career must wait for the private relay rather than a local browser crawler",
+    config.services["career-opportunities"].environment.CAREER_GETWORK_ENABLED,
+    "0",
+    "production job scanning stays explicitly disabled while the WSL source is unavailable",
+  );
+  assert.equal(
+    config.services["career-opportunities"].depends_on["getwork-mcp-relay"],
+    undefined,
+    "Career must start without the optional WSL relay while scanning is disabled",
   );
   assert.equal(
     config.services["career-opportunities"].depends_on["getwork-mcp"],
@@ -663,36 +668,9 @@ test("runtime artifact starts HENU images without compiling or replacing Study",
     "production Career must not require the browser-bearing local crawler",
   );
   assert.equal(
-    config.services["getwork-mcp-relay"].image,
-    `henukit-career-opportunities:${releaseSha}`,
-    "the relay reuses the small Career image instead of the browser crawler image",
-  );
-  assert.equal(
-    config.services["getwork-mcp-relay"].network_mode,
-    "host",
-    "the relay must bridge host loopback to the private Docker gateway without publishing a port",
-  );
-  assert.equal(
-    config.services["getwork-mcp-relay"].restart,
-    "no",
-    "production relay must not auto-start before the watcher restores ingress firewall rules",
-  );
-  assert.equal(
-    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_ADDR,
-    "172.17.0.1:18101",
-  );
-  assert.equal(
-    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_UPSTREAM_URL,
-    "http://127.0.0.1:18100",
-  );
-  assert.equal(
-    config.services["getwork-mcp-relay"].environment.GETWORK_RELAY_HEALTH_ADDR,
-    "127.0.0.1:18100",
-  );
-  assert.equal(
-    config.services["getwork-mcp-relay"].ports,
+    config.services["getwork-mcp-relay"],
     undefined,
-    "the relay must not publish a host port",
+    "the WSL relay stays outside the default production runtime",
   );
   assert.equal(
     config.services["getwork-mcp"],

@@ -95,7 +95,7 @@ materials_runtime_prefix="${HENUKIT_MATERIALS_RUNTIME_PREFIX:-}"
 poll_seconds="${HENUKIT_POLL_SECONDS:-60}"
 active_release_attempts="${HENUKIT_ACTIVE_RELEASE_ATTEMPTS:-30}"
 minimum_activation_free_mib="${HENUKIT_MIN_ACTIVATION_FREE_MIB:-4096}"
-public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://superhuazai.me}"
+public_base_url="${HENUKIT_PUBLIC_BASE_URL:-https://henukit.cn}"
 account_public_origin="https://henukit.cn"
 postgres_container="${HENUKIT_POSTGRES_CONTAINER:-henukit-postgres-1}"
 account_portfolio_container="${HENUKIT_ACCOUNT_PORTFOLIO_CONTAINER:-henukit-account-portfolio-1}"
@@ -291,7 +291,7 @@ verify_production_data_boundary() {
   local easypay_base_url easypay_notify_url easypay_return_url
   local career_ai_base career_ai_key career_ai_model career_ai_insecure career_suify_ai_insecure career_digest_secret
   local career_digest_client career_digest_key normalized_secret normalized_ai
-  local getwork_token normalized_getwork_token
+  local getwork_token normalized_getwork_token getwork_enabled
   portal_api_mode="$(environment_value PORTAL_API_MODE)"
   portal_allow_mock="$(environment_value NEXT_PUBLIC_PORTAL_ALLOW_MOCK)"
   [[ "$portal_api_mode" == "live" ]] ||
@@ -320,6 +320,9 @@ verify_production_data_boundary() {
   career_digest_key="$(environment_value PLATFORM_CORE_CAREER_DIGEST_KEY_ID)"
   career_digest_secret="$(environment_value PLATFORM_CORE_CAREER_DIGEST_SECRET)"
   getwork_token="$(environment_value GETWORK_MCP_ACCESS_TOKEN)"
+  getwork_enabled="$(environment_value CAREER_GETWORK_ENABLED)"
+  [[ "$getwork_enabled" == 0 || "$getwork_enabled" == 1 ]] ||
+    die "CAREER_GETWORK_ENABLED must explicitly be 0 (disabled) or 1 (enabled)"
   if [[ "$career_ai_base" == "http://125.46.96.207:30000/v1" ]]; then
     [[ "$career_ai_insecure" == "1" ]] || die "the approved plaintext Career LLM requires CAREER_ALLOW_INSECURE_AI_HTTP=1"
     [[ -z "$career_suify_ai_insecure" || "$career_suify_ai_insecure" == "0" || "$career_suify_ai_insecure" == "1" ]] ||
@@ -344,6 +347,7 @@ verify_production_data_boundary() {
     die "Career digest secret contains a deployment placeholder"
   [[ ! "$normalized_secret" =~ (replace|example|change-me|changeme|test-secret|for-test|test-only) ]] ||
     die "Career digest secret contains a deployment placeholder"
+  [[ "$getwork_enabled" != 0 ]] || return 0
   [[ ${#getwork_token} -ge 32 && "$getwork_token" != *[[:space:]]* ]] ||
     die "getWork MCP access token is missing or invalid"
   normalized_getwork_token="$(printf '%s' "$getwork_token" | tr '[:upper:]' '[:lower:]')"
@@ -2183,6 +2187,10 @@ check_once() {
   IFS=$'\t' read -r run_id run_attempt release_sha run_status run_conclusion run_url <<<"$run_row"
   [[ "$run_id" =~ ^[0-9]+$ ]] || die "GitHub returned an invalid workflow run id"
   [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] || die "GitHub returned an invalid workflow run attempt"
+  if [[ -n "${HENUKIT_EXPECTED_ACTIONS_IDENTITY:-}" &&
+        "$HENUKIT_EXPECTED_ACTIONS_IDENTITY" != "actions:${run_id}:${run_attempt}" ]]; then
+    die "release Actions identity differs from the automatic authorization"
+  fi
   if [[ "$run_status" != "completed" || "$run_conclusion" != "success" ]]; then
     log "latest $branch workflow run $run_id is not successfully completed; refusing stale artifacts"
     return

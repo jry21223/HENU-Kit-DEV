@@ -5,6 +5,9 @@ on:
     paths:
       - docker-compose.henukit.yml
       - infra/nginx/henukit.conf.example
+      - infra/systemd/henukit-actions-*
+      - scripts/ops/auto-deploy-henukit-actions.sh
+      - scripts/ops/tests/auto-deploy-henukit-actions.test.mjs
       - services/deploy-webhook/**
       - scripts/ops/prepare-henukit-materials.mjs
       - scripts/ops/resync-henukit-materials.mjs
@@ -59,6 +62,9 @@ on:
     paths:
       - docker-compose.henukit.yml
       - infra/nginx/henukit.conf.example
+      - infra/systemd/henukit-actions-*
+      - scripts/ops/auto-deploy-henukit-actions.sh
+      - scripts/ops/tests/auto-deploy-henukit-actions.test.mjs
       - services/deploy-webhook/**
       - scripts/ops/prepare-henukit-materials.mjs
       - scripts/ops/resync-henukit-materials.mjs
@@ -192,7 +198,9 @@ jobs:
           sudo install -m 0755 /bin/true /usr/local/bin/henukit-deploy-webhook
           sudo install -d -m 0755 /usr/local/libexec/henukit
           sudo install -m 0700 services/deploy-webhook/deploy/henukit-materials-control /usr/local/libexec/henukit/henukit-materials-control
-          sudo systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path
+          sudo install -m 0755 /bin/true /usr/local/sbin/auto-deploy-henukit-actions
+          sudo install -m 0755 /bin/true /usr/local/sbin/watch-henukit-actions
+          sudo systemd-analyze verify services/deploy-webhook/deploy/systemd/*.service services/deploy-webhook/deploy/systemd/*.path infra/systemd/henukit-actions-*.service infra/systemd/henukit-actions-*.path
       - name: Verify materials runner can drop preparation privileges
         run: |
           set -euo pipefail

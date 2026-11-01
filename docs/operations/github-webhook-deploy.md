@@ -8,6 +8,9 @@
 > [固定制品监听器](./henukit-artifact-deployment.md#server-side-github-actions-watcher)。
 > 本文保留的是旧的源码/Webhook Hook 方案，不应重新启用其服务器端编译路径。
 
+> `main` 成功构建后的全站自动发布使用 [Actions 通知与自动调度](./henukit-actions-auto-deploy.md)。
+> 它复用完整制品激活门禁；存在局部发布检查点时仍拒绝全站切换。
+
 ## 1. 设计目标
 
 每次 `main` 更新后，GitHub 向服务器发送 `push` Webhook。服务器在 30 秒内完成签名和边界校验并返回 `202`，随后由 Systemd 异步、串行地处理部署。

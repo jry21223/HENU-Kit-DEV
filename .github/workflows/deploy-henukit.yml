@@ -23,7 +23,7 @@ jobs:
   validate-release-contract:
     name: release-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Verify artifact and runtime boundaries
@@ -31,6 +31,7 @@ jobs:
           set -euo pipefail
           run_contract_tests() {
             python3 -m unittest discover -s scripts/ops/tests -p 'test_scoped*.py' -v
+            python3 -m unittest discover -s scripts/ops/tests -p 'test_stack_transition.py' -v
             node --test \
               scripts/ops/tests/bot-membership-wiring.test.mjs \
               scripts/ops/tests/deploy-henukit-workflow.test.mjs \
@@ -48,6 +49,7 @@ jobs:
               scripts/ops/tests/build-henukit-release-local.test.mjs \
               scripts/ops/tests/deploy-henukit-release-from-wsl.test.mjs \
               scripts/ops/tests/activate-henukit-release.test.mjs \
+              scripts/ops/tests/auto-deploy-henukit-actions.test.mjs \
               scripts/ops/tests/getwork-actions-provenance.test.mjs \
               scripts/ops/tests/getwork-node-rollback.test.mjs \
               scripts/ops/tests/getwork-wsl-node-contract.test.mjs

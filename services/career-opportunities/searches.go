@@ -79,6 +79,10 @@ func (h *service) createSearch(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if h.jobSourceDisabled {
+		writeError(w, r, http.StatusServiceUnavailable, "JOB_SOURCE_DISABLED", jobSourceDisabledMessage)
+		return
+	}
 	var input createSearchInput
 	body, ok := decode(w, r, &input)
 	if !ok {

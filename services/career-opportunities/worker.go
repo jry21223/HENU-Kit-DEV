@@ -158,6 +158,9 @@ func (h *service) claimOne(ctx context.Context) (string, any, bool, error) {
 func (h *service) finish(ctx context.Context, searchID string, profile any) error {
 	result, err := h.work(ctx, profile)
 	if err != nil {
+		if errors.Is(err, ErrJobSourceDisabled) {
+			return h.fail(ctx, searchID, "JOB_SOURCE_DISABLED", err)
+		}
 		return h.fail(ctx, searchID, "CAREER_WORK_FAILED", err)
 	}
 	payload, _ := json.Marshal(result.Payload)
@@ -431,6 +434,10 @@ func validDigestResultURL(value string) bool {
 // The transition is guarded: a search that already finished is never re-failed.
 func (h *service) fail(ctx context.Context, searchID, code string, cause error) error {
 	log.Printf("career search %s failed (%s): %v", searchID, code, cause)
-	_, err := h.database.Exec(ctx, `UPDATE career_searches SET status='failed',stage=NULL,completed_at=NULL,failed_at=now(),error_code=$2,error_message='job execution failed' WHERE id=$1 AND status='running'`, searchID, code)
+	message := "job execution failed"
+	if code == "JOB_SOURCE_DISABLED" {
+		message = jobSourceDisabledMessage
+	}
+	_, err := h.database.Exec(ctx, `UPDATE career_searches SET status='failed',stage=NULL,completed_at=NULL,failed_at=now(),error_code=$2,error_message=$3 WHERE id=$1 AND status='running'`, searchID, code, message)
 	return err
 }

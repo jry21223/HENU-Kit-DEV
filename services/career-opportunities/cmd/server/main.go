@@ -62,6 +62,7 @@ func main() {
 	service, err := career.New(career.Config{
 		Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret},
 		Work:              work,
+		JobSourceDisabled: strings.TrimSpace(os.Getenv("CAREER_GETWORK_ENABLED")) == "0",
 		Extract:           extractor,
 		Suify:             suifier,
 		ExtractRateLimit:  intEnv("CAREER_EXTRACT_RATE_LIMIT", 5),
@@ -102,6 +103,14 @@ func main() {
 // Source selection is not an operator or browser input; the fixed upstream
 // configuration and Career's HTTPS apply-URL policies remain the boundary.
 func buildWork() (career.WorkFunc, error) {
+	switch strings.TrimSpace(os.Getenv("CAREER_GETWORK_ENABLED")) {
+	case "0":
+		return career.DisabledJobSourceWork, nil
+	case "", "1":
+		// Keep the existing enabled behavior unless explicitly disabled.
+	default:
+		return nil, errors.New("CAREER_GETWORK_ENABLED must be 0 or 1")
+	}
 	mcpEndpoint := strings.TrimSpace(os.Getenv("CAREER_GETWORK_MCP_URL"))
 	mcpToken := strings.TrimSpace(os.Getenv("CAREER_GETWORK_MCP_ACCESS_TOKEN"))
 	if mcpEndpoint != "" || mcpToken != "" {

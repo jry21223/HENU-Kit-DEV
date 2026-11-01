@@ -49,10 +49,12 @@ type Attempt struct {
 }
 
 type Snapshot struct {
-	QueueDepth  int      `json:"queue_depth"`
-	Running     *Event   `json:"running,omitempty"`
-	LastSuccess *Attempt `json:"last_success,omitempty"`
-	LastFailure *Attempt `json:"last_failure,omitempty"`
+	QueueDepth   int      `json:"queue_depth"`
+	Running      *Event   `json:"running,omitempty"`
+	LastSuccess  *Attempt `json:"last_success,omitempty"`
+	LastFailure  *Attempt `json:"last_failure,omitempty"`
+	Mode         string   `json:"mode,omitempty"`
+	Notification *Event   `json:"notification,omitempty"`
 }
 
 type EnqueueResult struct {

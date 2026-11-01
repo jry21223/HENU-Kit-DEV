@@ -37,6 +37,7 @@ function createCleanSourceCheckout() {
     "scripts/ops/deploy-henukit-practice-scoped.py",
     "scripts/ops/deploy-henukit-portal-successor.py",
     "scripts/ops/deploy-henukit-account-membership.py",
+    "scripts/ops/deploy-henukit-stack-transition.py",
   ].filter((path) => existsSync(join(repoRoot, path)) && !existsSync(join(checkout, path)));
   for (const helper of newHelpers) {
     copyFileSync(join(repoRoot, helper), join(checkout, helper));
@@ -99,7 +100,17 @@ test("the no-interpolate production contract removes every profiled crawler serv
   );
   const contract = JSON.parse(rendered);
   assert.equal(contract.services["getwork-mcp"], undefined);
-  assert.equal(contract.services["getwork-mcp-relay"].profiles, undefined);
+  assert.equal(contract.services["getwork-mcp-relay"], undefined);
+  assert.equal(contract.services["career-opportunities"].depends_on["getwork-mcp-relay"], undefined);
+  assert.equal(contract.services["career-opportunities"].depends_on["getwork-mcp"], undefined);
+  const rawEnvironment = contract.services["career-opportunities"].environment;
+  const environment = Array.isArray(rawEnvironment)
+    ? Object.fromEntries(rawEnvironment.map(line => {
+      const index = line.indexOf("=");
+      return [line.slice(0, index), line.slice(index + 1)];
+    }))
+    : rawEnvironment;
+  assert.equal(environment.CAREER_GETWORK_ENABLED, "${CAREER_GETWORK_ENABLED:-0}");
 });
 
 test("runtime binaries omit VCS metadata so unchanged materials remain rollback-compatible", () => {
@@ -230,9 +241,15 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
     "./bin/deploy-henukit-practice-scoped.py",
     "./bin/deploy-henukit-portal-successor.py",
     "./bin/deploy-henukit-account-membership.py",
+    "./bin/deploy-henukit-stack-transition.py",
     "./migrations/quizcraft/000001_quizcraft_content.up.sql",
     "./migrations/quizcraft/000001_quizcraft_content.down.sql",
     "./bin/watch-henukit-actions.sh",
+    "./bin/auto-deploy-henukit-actions.sh",
+    "./infra/systemd/henukit-actions-auto-deploy.service",
+    "./infra/systemd/henukit-actions-webhook-receiver.service",
+    "./infra/systemd/henukit-actions-webhook.path",
+    "./infra/systemd/henukit-actions-webhook.service",
     "./bin/adopt-henukit-degraded-baseline.sh",
     "./bin/rotate-henukit-release-signers.sh",
     "./bin/henukit-release-images.sh",
