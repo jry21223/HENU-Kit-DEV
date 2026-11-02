@@ -32,6 +32,8 @@ def options():
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--proof-dir", required=True)
     parser.add_argument("--test-root")
+    parser.add_argument("--recover-transition")
+    parser.add_argument("--recovery-proof-dir")
     parser.add_argument("--materials-baseline-sha")
     parser.add_argument("--materials-baseline-runtime")
     parser.add_argument("--materials-baseline-proof-dir")
@@ -42,6 +44,21 @@ def options():
     for name in ("preflight", "execute", "rollback"):
         mode.add_argument("--" + name, action="store_true")
     result = parser.parse_args()
+    if bool(result.recover_transition) != bool(result.recovery_proof_dir):
+        parser.error(
+            "recovery requires the pinned transition and its proof directory together"
+        )
+    if result.recover_transition:
+        if (
+            not result.rollback
+            or result.recover_transition != FAILED_SHA
+            or result.sha == FAILED_SHA
+        ):
+            parser.error("only a successor may roll back the pinned failed transition")
+        proof = Path(result.recovery_proof_dir)
+        if not proof.is_absolute():
+            parser.error("recovery proof directory must be absolute")
+        result.recovery_proof_dir = str(proof)
     if not re.fullmatch(r"[0-9a-f]{40}", result.sha) or not re.fullmatch(
         r"[1-9][0-9]*", result.run_id
     ):
@@ -70,6 +87,9 @@ def options():
     return result
 
 
+FAILED_SHA = "c97d7e93db5b9f12b137e610b7e22bf6b911392e"
+FAILED_HELPER = "007f55b1b852d8276ad18b8f9fa4f0576dcf368c806a0dc7825eb13efee92cbd"
+FAILED_RUN = "41369983145"
 SELECTED = options() if __name__ == "__main__" else None
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent
@@ -135,6 +155,27 @@ OWNERS = {
 FORMAT = "henukit-stack-transition-v1"
 
 
+class RecoveredPortalGuard(portal.Release):
+    """Compare history with history, and real recreated IDs with their receipt."""
+
+    def __init__(self, options, terminal):
+        super().__init__(options)
+        self.original_checkpoint = {**terminal["unselected"], **terminal["selected"]}
+        self.live_checkpoint = {
+            **terminal["unselected"],
+            **terminal["rollback_checkpoint"],
+        }
+
+    def live_checkpoint_matches(self, actual, expected):
+        names = set(expected)
+        return (
+            set(actual) == names
+            and names <= self.original_checkpoint.keys()
+            and expected == {name: self.original_checkpoint[name] for name in names}
+            and actual == {name: self.live_checkpoint[name] for name in names}
+        )
+
+
 class Release(engine.Release):
     services = SCOPE
     helper_file = Path(__file__)
@@ -144,6 +185,14 @@ class Release(engine.Release):
     def __init__(self, options):
         super().__init__(options)
         self.guard = portal.Release(options)
+        self.recovery = bool(options.recover_transition)
+        self.recovery_authority = None
+        if self.recovery:
+            self.record = self.state / FAILED_SHA / "receipt.json"
+            token = self.path("/etc/henukit/github-actions-read.token")
+            self.trusted(token, private=True)
+            self.env["GH_TOKEN"] = token.read_text().strip()
+            require(self.env["GH_TOKEN"], "existing Actions read token is empty")
 
     def active_chain(self):
         require(self.marker.is_symlink(), "an active Portal v3 checkpoint is required")
@@ -157,7 +206,54 @@ class Release(engine.Release):
         )
         return record, value
 
+    def adopt_recovered_checkpoint(self):
+        record = self.state / FAILED_SHA / "receipt.json"
+        if not record.exists():
+            return None
+        self.trusted(record, private=True)
+        data = json.loads(record.read_text())
+        require(
+            data.get("status") == "rolled_back",
+            "pinned prior transition must finish successor recovery first",
+        )
+        reference = data.get("recovery_authority", {}).get(self.o.sha)
+        require(reference, "current successor has no pinned rollback recovery audit")
+        require(
+            re.fullmatch(
+                "recovery-" + self.o.sha + r"-[1-9][0-9]*\.json",
+                reference.get("file", ""),
+            ),
+            "invalid recovery audit path",
+        )
+        audit = record.parent / reference["file"]
+        self.trusted(audit, private=True)
+        require(engine.digest(audit) == reference["sha256"], "recovery audit changed")
+        saved = json.loads(audit.read_text())["authority"]
+        selected = argparse.Namespace(**vars(self.o))
+        selected.rollback = True
+        selected.recover_transition = FAILED_SHA
+        selected.recovery_proof_dir = saved["target"]["proof_dir"]
+        recovery = Release(selected)
+        authority = recovery.prepare_recovery(data, Path(selected.recovery_proof_dir))
+        require(
+            authority == saved,
+            "terminal recovery authority differs from verified successor",
+        )
+        recovery.final_state(data, False)
+        recovery.health(data, False)
+        recovery.materials_matches(data, False)
+        self.guard = RecoveredPortalGuard(self.o, data)
+        return {
+            "record": str(record),
+            "receipt_sha256": engine.digest(record),
+            "audit": str(audit),
+            "audit_sha256": engine.digest(audit),
+            "target": authority["target"],
+            "successor": authority["successor"],
+        }
+
     def preflight(self):
+        recovered = self.adopt_recovered_checkpoint()
         record, current = self.active_chain()
         require(
             not self.record.parent.exists(),
@@ -168,6 +264,7 @@ class Release(engine.Release):
         baseline, baseline_sha = self.guard.full_baseline()
         self.guard.pending()
         containers = self.containers()
+        self.public_acceptance(containers)
         self.guard.predecessor(containers)
         chain = self.guard.predecessor_chain(record)
         anchor = current.get("membership_checkpoint")
@@ -235,6 +332,9 @@ class Release(engine.Release):
         retained = {str(p): engine.digest(p) for p, _ in chain}
         retained[anchor["record"]] = anchor["sha256"]
         retained_files = {}
+        if recovered:
+            retained[recovered["record"]] = recovered["receipt_sha256"]
+            retained_files[recovered["audit"]] = recovered["audit_sha256"]
         for name, checksum in member["configuration_hashes"].items():
             path = Path(anchor["record"]).parent / name
             self.trusted(path, private=True)
@@ -323,6 +423,7 @@ class Release(engine.Release):
             ),
             "getwork_acceptance": "explicitly_disabled",
             "whole_application_release": True,
+            **({"recovered_transition": recovered} if recovered else {}),
         }
 
     @staticmethod
@@ -1089,11 +1190,8 @@ printf gateway_ready
             "gid": info.st_gid,
         }
 
-    def attested_materials_baseline(self, candidate_records):
+    def historical_runtime(self, sha, runtime, proof, archive=None):
         """Authenticate historical bytes without importing or running old code."""
-        sha = self.o.materials_baseline_sha
-        runtime = Path(self.o.materials_baseline_runtime)
-        proof = Path(self.o.materials_baseline_proof_dir)
         self.trusted_directory(runtime)
         self.trusted_directory(proof)
         marker = runtime / "RELEASE_SHA"
@@ -1101,7 +1199,7 @@ printf gateway_ready
         require(
             marker.read_text().strip() == sha, "materials baseline runtime SHA differs"
         )
-        archive = proof / ("henukit-runtime-" + sha + ".tar.gz")
+        archive = archive or proof / ("henukit-runtime-" + sha + ".tar.gz")
         sidecar = Path(str(archive) + ".sha256")
         manifest = proof / ("henukit-getwork-actions-" + sha + ".manifest")
         bundle = proof / ("henukit-getwork-actions-" + sha + ".attestation.json")
@@ -1252,16 +1350,6 @@ printf gateway_ready
                     hashlib.sha256(raw).hexdigest() == checksum,
                     "historical materials runtime bytes differ from its attested archive",
                 )
-        records, payload_manifest, payload_files = self.materials_payload(runtime)
-        require(
-            {r["target"]: r for r in records}
-            == {r["target"]: r for r in candidate_records},
-            "historical/candidate materials installer target maps differ",
-        )
-        require(
-            payload_files == {"install.sh", *(r["source"] for r in records)},
-            "historical materials payload contains an unknown installation inventory",
-        )
         runtime_identities = {
             name: self.file_identity(runtime / name) for name in inventory
         }
@@ -1279,20 +1367,41 @@ printf gateway_ready
             ),
             "historical materials proof changed during verification",
         )
-        return runtime, {
-            "kind": "attested-retained",
+        return {
             "sha": sha,
             "runtime": str(runtime),
             "proof_dir": str(proof),
             "archive": str(archive),
             "archive_sha256": engine.digest(archive),
-            "payload_manifest_sha256": payload_manifest,
-            "target_map": records,
             "run_id": run_id,
             "attempt": attempt,
             "invocation": invocation,
             "proof_files": proof_identities,
             "runtime_files": runtime_identities,
+        }
+
+    def attested_materials_baseline(self, candidate_records):
+        runtime = Path(self.o.materials_baseline_runtime)
+        authority = self.historical_runtime(
+            self.o.materials_baseline_sha,
+            runtime,
+            Path(self.o.materials_baseline_proof_dir),
+        )
+        records, payload_manifest, payload_files = self.materials_payload(runtime)
+        require(
+            {r["target"]: r for r in records}
+            == {r["target"]: r for r in candidate_records},
+            "historical/candidate materials installer target maps differ",
+        )
+        require(
+            payload_files == {"install.sh", *(r["source"] for r in records)},
+            "historical materials payload contains an unknown installation inventory",
+        )
+        return runtime, {
+            **authority,
+            "kind": "attested-retained",
+            "payload_manifest_sha256": payload_manifest,
+            "target_map": records,
         }
 
     def materials_baseline_unchanged(self, data):
@@ -1536,6 +1645,14 @@ printf gateway_ready
         )
 
     def retained_unchanged(self, data):
+        if data.get("recovered_transition"):
+            for name in ("target", "successor"):
+                self.materials_baseline_unchanged(
+                    {
+                        **data["recovered_transition"][name],
+                        "kind": "attested-retained",
+                    }
+                )
         self.materials_baseline_unchanged(data["materials"]["baseline"])
         self.materials_owned(data)
         for name, checksum in data["retained_files"].items():
@@ -2047,6 +2164,12 @@ printf gateway_ready
             / ("candidate.compose.json" if candidate else "mixed.compose.json"),
         )
         self.run("docker", "exec", "henukit-nginx-1", "nginx", "-t")
+        self.public_acceptance(containers)
+        if candidate:
+            self.disabled_source(data)
+        self.retained_unchanged(data)
+
+    def public_acceptance(self, containers):
         for path in (
             "/",
             "/food",
@@ -2058,18 +2181,54 @@ printf gateway_ready
             "/api/v1/practice/catalog",
         ):
             self.http(path, (200,))
-        for path in (
-            "/api/v1/account/summary",
-            "/api/v1/console/workshop/catalog",
-            "/api/v1/quizcraft/workshop/catalog",
-        ):
-            self.http(path, (401, 403))
+        self.http("/api/v1/account/summary", (401, 403))
+        self.workshop_authentication(containers)
         self.http("/api/v1/bot/membership-entitlement", (401, 403))
         self.http("/quiz/", (404,))
         self.http("/study-api/healthz", (404,))
-        if candidate:
-            self.disabled_source(data)
-        self.retained_unchanged(data)
+
+    def workshop_authentication(self, containers):
+        # Match the established Practice gate: Console owns the public route;
+        # the /console/ path belongs only to the private QuizCraft owner.
+        self.http(
+            "/api/v1/quizcraft/workshop/catalog",
+            (401,),
+            origin="https://console.henukit.cn",
+        )
+        networks = containers["henukit-quizcraft-1"]["NetworkSettings"]["Networks"]
+        addresses = {n.get("IPAddress") for n in networks.values()}
+        require(len(addresses) == 1, "ambiguous QuizCraft owner endpoint")
+        address = next(iter(addresses))
+        require(
+            ipaddress.ip_address(address).version == 4
+            and ipaddress.ip_address(address).is_private,
+            "unreviewed QuizCraft owner endpoint",
+        )
+        for _ in range(30):
+            with tempfile.NamedTemporaryFile() as output:
+                code = (
+                    self.run(
+                        "curl",
+                        "--silent",
+                        "--show-error",
+                        "--noproxy",
+                        "*",
+                        "--max-time",
+                        "10",
+                        "--output",
+                        output.name,
+                        "--write-out",
+                        "%{http_code}",
+                        "http://" + address + ":10089/api/v1/console/workshop/catalog",
+                    )
+                    .decode()
+                    .strip()
+                )
+            if code == "401":
+                return
+            if not self.testing:
+                time.sleep(2)
+        raise engine.ReleaseError("private Workshop authentication acceptance failed")
 
     def disabled_source(self, data):
         # Authenticate at the same signed owner boundary used by Portal. A 503
@@ -2174,17 +2333,25 @@ printf gateway_ready
             ),
             "unknown durable transition state",
         )
-        require(
-            data.get("format") == FORMAT
-            and data.get("scope") == list(SCOPE)
-            and data.get("sha") == self.o.sha
-            and data.get("run_id") == self.o.run_id
-            and data.get("helper_sha256") == engine.digest(self.helper_file)
-            and data.get("runtime") == str(self.runtime),
-            "transition receipt identity mismatch",
-        )
+        if self.recovery:
+            self.pinned_receipt(data)
+            require(
+                self.recovery_authority,
+                "successor recovery authority has not been verified",
+            )
+            self.recovery_unchanged(data)
+        else:
+            require(
+                data.get("format") == FORMAT
+                and data.get("scope") == list(SCOPE)
+                and data.get("sha") == self.o.sha
+                and data.get("run_id") == self.o.run_id
+                and data.get("helper_sha256") == engine.digest(self.helper_file)
+                and data.get("runtime") == str(self.runtime),
+                "transition receipt identity mismatch",
+            )
         self.retained_unchanged(data)
-        actual = self.runtime_inventory(self.runtime)
+        actual = self.runtime_inventory(Path(data["runtime"]))
         require(actual == data["runtime_hashes"], "transition retained runtime changed")
         for name, checksum in data["configuration_hashes"].items():
             path = self.record.parent / name
@@ -2193,6 +2360,7 @@ printf gateway_ready
                 engine.digest(path) == checksum,
                 "transition private configuration changed",
             )
+
         require(
             self.snapshot(self.containers()) == data["unselected"],
             "persistent or excluded containers changed",
@@ -2245,6 +2413,140 @@ printf gateway_ready
                 and str(audit.resolve()) == data["marker_before"],
                 "scoped marker vanished without a transition audit",
             )
+
+    @staticmethod
+    def transaction_identity(data):
+        mutable = {"status", "updated_at", "rollback_checkpoint", "recovery_authority"}
+        return hashlib.sha256(
+            json.dumps(
+                {k: v for k, v in data.items() if k not in mutable}, sort_keys=True
+            ).encode()
+        ).hexdigest()
+
+    def pinned_receipt(self, data):
+        require(
+            data.get("format") == FORMAT
+            and data.get("scope") == list(SCOPE)
+            and data.get("sha") == FAILED_SHA
+            and data.get("run_id") == FAILED_RUN
+            and data.get("attempt") == 1
+            and data.get("helper_sha256") == FAILED_HELPER
+            and data.get("runtime")
+            == str(self.path("/opt/henukit-releases") / FAILED_SHA)
+            and data.get("status")
+            in ("rolling_back", "rollback_accepted", "rolled_back"),
+            "receipt is not the pinned failed transition rollback",
+        )
+        require(
+            self.o.sha != FAILED_SHA, "failed candidate cannot recover or retry itself"
+        )
+
+    def recovery_unchanged(self, data):
+        authority = self.recovery_authority
+        require(
+            self.transaction_identity(data) == authority["transaction_identity"],
+            "original transition identity changed during recovery",
+        )
+        self.materials_baseline_unchanged(
+            {**authority["target"], "kind": "attested-retained"}
+        )
+        self.materials_baseline_unchanged(
+            {**authority["successor"], "kind": "attested-retained"}
+        )
+
+    def prepare_recovery(self, data, proof):
+        self.pinned_receipt(data)
+        attempt = self.source()
+        self.provenance()
+        successor = self.historical_runtime(
+            self.o.sha,
+            self.runtime,
+            self.proof,
+            self.archive("henukit-runtime-" + self.o.sha + ".tar.gz"),
+        )
+        require(
+            str(successor["run_id"]) == self.o.run_id
+            and successor["attempt"] == attempt,
+            "successor attestation workflow invocation differs from current attempt",
+        )
+        archive = (
+            self.path("/opt/henukit-staging")
+            / FAILED_SHA
+            / ("henukit-runtime-" + FAILED_SHA + ".tar.gz")
+        )
+        target = self.historical_runtime(
+            FAILED_SHA, Path(data["runtime"]), proof, archive
+        )
+        require(
+            str(target["run_id"]) == FAILED_RUN
+            and target["attempt"] == 1
+            and target["runtime_files"]["bin/" + self.helper_file.name]["sha256"]
+            == FAILED_HELPER
+            and {
+                name: value["sha256"] for name, value in target["runtime_files"].items()
+            }
+            == data["runtime_hashes"],
+            "pinned transition attestation identity differs",
+        )
+        authority = {
+            "format": "henukit-stack-recovery-authority-v1",
+            "sha": self.o.sha,
+            "run_id": self.o.run_id,
+            "attempt": attempt,
+            "runtime": str(self.runtime),
+            "helper_sha256": engine.digest(self.helper_file),
+            "successor": successor,
+            "target": target,
+            "transaction_identity": self.transaction_identity(data),
+        }
+        self.recovery_authority = authority
+        self.validate(data)
+        self.workshop_authentication(self.containers())
+        require(
+            self.source() == attempt,
+            "successor Actions attempt changed before recovery",
+        )
+        return authority
+
+    def recovery_audit(self, data, authority):
+        name = "recovery-" + self.o.sha + "-" + str(authority["attempt"]) + ".json"
+        path = self.record.parent / name
+        if path.exists():
+            self.trusted(path, private=True)
+            require(
+                json.loads(path.read_text())["authority"] == authority,
+                "existing recovery authority differs",
+            )
+        else:
+            content = json.dumps(
+                {
+                    "authority": authority,
+                    "original_receipt_sha256": engine.digest(self.record),
+                },
+                sort_keys=True,
+            ).encode()
+            incoming = path.parent / (".recovery-incoming-" + secrets.token_hex(12))
+            fd = os.open(
+                incoming, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+            )
+            try:
+                with os.fdopen(fd, "wb") as stream:
+                    stream.write(content)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.link(incoming, path, follow_symlinks=False)
+                self.durable_directory(path.parent)
+            finally:
+                incoming.unlink(missing_ok=True)
+            self.durable_directory(path.parent)
+        audits = data.setdefault("recovery_authority", {})
+        reference = {"file": name, "sha256": engine.digest(path)}
+        require(
+            self.o.sha not in audits or audits[self.o.sha] == reference,
+            "recovery audit reference changed",
+        )
+        audits[self.o.sha] = reference
+        self.checkpoint(data, data["status"])
 
     def selected_owned(self, data):
         containers = self.containers()
@@ -2435,6 +2737,13 @@ printf gateway_ready
         return "rolled_back"
 
     def execute(self):
+        if self.recovery:
+            self.trusted(self.record, private=True)
+            data = json.loads(self.record.read_text())
+            with self.lock_watcher():
+                authority = self.prepare_recovery(data, Path(self.o.recovery_proof_dir))
+                self.recovery_audit(data, authority)
+                return self.rollback(data)
         if self.record.exists():
             self.trusted(self.record, private=True)
             data = json.loads(self.record.read_text())

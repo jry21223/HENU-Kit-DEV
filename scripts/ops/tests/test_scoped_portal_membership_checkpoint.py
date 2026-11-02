@@ -142,11 +142,15 @@ class PortalMembershipCLI(membership.MembershipCLI):
     def test_membership_container_environment_and_mount_drift_block_release(self):
         state_path = self.root / "fake-state.json"
         original = state_path.read_bytes()
-        for change in ("identity", "environment", "mount"):
+        for change in ("identity", "portal_identity", "unrelated_identity", "environment", "mount"):
             with self.subTest(change=change):
                 state = json.loads(original)
                 if change == "identity":
                     state["containers"]["henukit-account-portfolio-1"]["Id"] = "foreign"
+                elif change == "portal_identity":
+                    state["containers"]["henukit-portal-1"]["Id"] = "foreign"
+                elif change == "unrelated_identity":
+                    state["containers"]["henukit-library-1"]["Id"] = "foreign"
                 elif change == "environment":
                     state["containers"]["henukit-account-portfolio-1"]["Config"]["Env"] = ["SECRET=wrong"]
                 else:

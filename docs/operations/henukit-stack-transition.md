@@ -42,6 +42,42 @@ Redis, the getWork crawler and the WSL relay are outside that cohort. Career
 starts with `CAREER_GETWORK_ENABLED=0`; scans must fail after authentication with
 `503 JOB_SOURCE_DISABLED`. Retained profiles, history and resume tools remain.
 
+Workshop authentication is checked before any deployment mutation and again
+after activation or rollback. Its public entry is
+`https://console.henukit.cn/api/v1/quizcraft/workshop/catalog`; its private owner
+entry is `/api/v1/console/workshop/catalog` on the verified QuizCraft container
+address, port 10089. Both unsigned GET requests must return exactly 401. The
+Portal origin does not publish either Workshop entry; a 404 never proves
+authentication protection.
+
+## Recovery of the c97 transition
+
+The failed `c97d7e93db5b9f12b137e610b7e22bf6b911392e` transition from run
+41369983145, attempt 1, requires a verified successor. Its original helper hash
+is `007f55b1b852d8276ad18b8f9fa4f0576dcf368c806a0dc7825eb13efee92cbd`.
+Keep its receipt, runtime, staging archive and original proof directory intact.
+Do not retry that candidate or edit its receipt to declare recovery complete.
+
+Run the newly merged current-main helper with its own `--sha`, `--run-id` and
+`--proof-dir`, adding `--rollback`,
+`--recover-transition c97d7e93db5b9f12b137e610b7e22bf6b911392e` and
+`--recovery-proof-dir` naming the retained c97 proof directory. This option is
+restricted to that failed transition in `rolling_back`, `rollback_accepted` or
+`rolled_back` state. Both runtime archives must pass their exact signed
+run/attempt and full byte checks; the successor must be the newest successful
+main workflow, with c97 as an ancestor. Recovery never loads candidate images
+or executes the old transition helper or installer.
+
+Recovery adds a separate immutable successor-authority audit and retains the
+old candidate's identity fields. Existing owned-container, environment, private
+configuration, materials, alias and marker checks still apply. Only a completed
+`rolled_back` receipt may authorize a subsequent first transition. Its actual
+rollback container checkpoint replaces historical live-ID equality for that
+one audited boundary; historical receipt comparisons remain exact. The normal
+Portal entry continues to reject recreated container IDs. A new first
+transition records the real current IDs and binds the recovery evidence; it
+never rewrites an old Portal or membership snapshot.
+
 ## Preflight and execution
 
 Prepare the verified artifacts under the existing private staging directory and
