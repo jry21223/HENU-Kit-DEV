@@ -130,10 +130,14 @@ class Release(engine.Release):
             retained.selected_configuration(data, True)
         except module.engine.ReleaseError as error:
             raise engine.ReleaseError("retained membership configuration failed: " + str(error)) from error
-        require(set(checkpoint) == {"henukit-" + s + "-1" for s in MEMBERSHIP_SCOPE} and checkpoint == data["selected_checkpoint"], "membership checkpoint containers changed")
+        require(set(checkpoint) == {"henukit-" + s + "-1" for s in MEMBERSHIP_SCOPE} and self.live_checkpoint_matches(checkpoint, data["selected_checkpoint"]), "membership checkpoint containers changed")
         images = data["images"]
         require(set(images) == set(MEMBERSHIP_SCOPE) and all(checkpoint["henukit-" + s + "-1"]["image"] == images[s] for s in MEMBERSHIP_SCOPE), "membership checkpoint image differs")
         return data
+
+    @staticmethod
+    def live_checkpoint_matches(actual, expected):
+        return actual == expected
 
     @staticmethod
     def membership_projection(data):
@@ -267,8 +271,8 @@ class Release(engine.Release):
             if membership:
                 checkpoint = self.membership_predecessor(self.checkpoint_anchor, record, data)
                 expected = self.membership_projection(checkpoint)
-                require(checkpoint["unselected"]["henukit-portal-1"] == self.snapshot(containers, True)["henukit-portal-1"], "membership Portal checkpoint changed")
-            require(self.snapshot(containers) == expected, "active non-Portal containers changed")
+                require(self.live_checkpoint_matches(self.snapshot(containers, True), {"henukit-portal-1": checkpoint["unselected"]["henukit-portal-1"]}), "membership Portal checkpoint changed")
+            require(self.live_checkpoint_matches(self.snapshot(containers), expected), "active non-Portal containers changed")
         if data.get("membership_checkpoint"):
             self.checkpoint_anchor = data["membership_checkpoint"]
         self.marker_before = str(marker)

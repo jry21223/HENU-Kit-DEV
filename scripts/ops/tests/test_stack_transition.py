@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import copy
+import gzip
 import hashlib
 import io
 import json
@@ -40,6 +41,8 @@ IMAGES = (
 SCOPE = (*IMAGES, "nginx")
 MATERIALS_SHA = "9" * 40
 FULL_DEPLOYED_AT = "2026-10-18T05:05:00Z"
+FAILED_SHA = "c97d7e93db5b9f12b137e610b7e22bf6b911392e"
+FAILED_HELPER = "007f55b1b852d8276ad18b8f9fa4f0576dcf368c806a0dc7825eb13efee92cbd"
 
 FAKE = r"""#!/usr/bin/env python3
 import copy,hashlib,json,os,pathlib,sys
@@ -64,7 +67,7 @@ def config():
   if s in ['quizcraft','console-gateway']:
    keys=['ENABLED','CLIENT_ID']+(['API_URL','KEY_ID','SECRET'] if s=='console-gateway' else ['KEYS_JSON'])
    c['environment'].update({'QUIZCRAFT_CONSOLE_'+k:os.environ['QUIZCRAFT_CONSOLE_'+k] for k in keys if 'QUIZCRAFT_CONSOLE_'+k in os.environ})
- if sha=='b'*40:
+ if sha==fixture.get('candidate_sha','b'*40):
   result['services'].pop('getwork-mcp-relay',None)
   result['services']['career-opportunities']['environment']['CAREER_GETWORK_ENABLED']=os.environ.get('CAREER_GETWORK_ENABLED','1')
   result['services']['nginx']['volumes'][0]['source']=str(root/'opt/henukit-releases'/sha/'infra/nginx/henukit.conf.example')
@@ -78,21 +81,30 @@ def config_hash(service,spec):
  if fixture.get('strict_metadata') and service in ['portal','portal-summary']:suffix='-'+spec['environment']['PORTAL_VERSION']+'-'+spec['environment']['PORTAL_DEPLOYED_AT']
  return 'config-'+service+suffix
 if name=='gh':
- if args[:2]==['run','list']:out([{'databaseId':123,'attempt':state.get('attempt',1)}])
- elif args[:2]==['run','view']:out({'headSha':'b'*40,'headBranch':'main','event':'push','status':'completed','conclusion':'success','workflowName':'Build HENU Kit release artifacts','attempt':state.get('attempt',1)})
+ if args[:2]==['run','list']:out([{'databaseId':fixture.get('run_id',123),'attempt':state.get('attempt',1)}])
+ elif args[:2]==['run','view']:out({'headSha':fixture.get('candidate_sha','b'*40),'headBranch':'main','event':'push','status':'completed','conclusion':'success','workflowName':'Build HENU Kit release artifacts','attempt':state.get('attempt',1)})
  elif args[0]=='api':
   if '/issues/166' in args[1]:print('open' if os.environ.get('BLOCKER_OPEN') else 'closed')
   elif '/actions/runs/456/attempts/2' in args[1]:out({'id':456,'run_attempt':2,'head_sha':'9'*40,'head_branch':'main','event':'push','status':'completed','conclusion':'failure' if os.environ.get('B_ATTEMPT_FAILED') else 'success','path':'.github/workflows/deploy-henukit.yml'})
-  elif '/compare/' in args[1]:out({'status':'ahead','behind_by':0,'base_commit':{'sha':'9'*40},'merge_base_commit':{'sha':'9'*40}})
+  elif '/actions/runs/41369983145/attempts/1' in args[1]:out({'id':41369983145,'run_attempt':1,'head_sha':'c97d7e93db5b9f12b137e610b7e22bf6b911392e','head_branch':'main','event':'push','status':'completed','conclusion':'failure' if os.environ.get('OLD_ATTEMPT_FAILED') else 'success','path':'.github/workflows/deploy-henukit.yml'})
+  elif '/actions/runs/' in args[1]:
+   parts=args[1].split('/');out({'id':int(parts[-3]),'run_attempt':int(parts[-1]),'head_sha':'b'*40,'head_branch':'main','event':'push','status':'completed','conclusion':'success','path':'.github/workflows/deploy-henukit.yml'})
+  elif '/compare/' in args[1]:
+   old=args[1].split('/compare/')[1].split('...')[0];out({'status':'ahead','behind_by':0,'base_commit':{'sha':old},'merge_base_commit':{'sha':old}})
   elif '/git/commits/' in args[1]:print('d'*40)
-  else:print(state.get('source_sha',('c' if os.environ.get('STALE_SOURCE') else 'b')*40))
+  else:print(state.get('source_sha','c'*40 if os.environ.get('STALE_SOURCE') else fixture.get('candidate_sha','b'*40)))
  elif args[:2]==['attestation','verify']:
   if args[args.index('--source-digest')+1]=='9'*40:
    value=json.loads(pathlib.Path(args[args.index('--bundle')+1]).read_text())
    if value.get('fixture_sha')!='9'*40:sys.exit(2)
    if os.environ.get('B_PROOF_DRIFT_DURING_VERIFY'):pathlib.Path(args[args.index('--bundle')+1]).write_text('{"fixture_sha":"swapped after verification"}')
    out([{'verificationResult':{'signature':{'certificate':{'runInvocationURI':'https://github.com/jry21223/HENU-Kit-DEV/actions/runs/456/attempts/2','sourceRepositoryDigest':'9'*40,'buildConfigDigest':'9'*40,'sourceRepositoryRef':'refs/heads/main','runnerEnvironment':'github-hosted','buildConfigURI':'https://github.com/jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml@refs/heads/main'}}}}])
-  else:out([{'verified':True}])
+  elif args[args.index('--source-digest')+1]=='c97d7e93db5b9f12b137e610b7e22bf6b911392e':
+   if os.environ.get('BAD_OLD_PROOF'):sys.exit(2)
+   sha=args[args.index('--source-digest')+1]
+   out([{'verificationResult':{'signature':{'certificate':{'runInvocationURI':'https://github.com/jry21223/HENU-Kit-DEV/actions/runs/41369983145/attempts/'+os.environ.get('OLD_PROOF_ATTEMPT','1'),'sourceRepositoryDigest':sha,'buildConfigDigest':sha,'sourceRepositoryRef':'refs/heads/main','runnerEnvironment':'github-hosted','buildConfigURI':'https://github.com/jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml@refs/heads/main'}}}}])
+  else:
+   out([{'verificationResult':{'signature':{'certificate':{'runInvocationURI':'https://github.com/jry21223/HENU-Kit-DEV/actions/runs/'+os.environ.get('NEW_PROOF_RUN','123')+'/attempts/'+os.environ.get('NEW_PROOF_ATTEMPT',str(state.get('attempt',1))),'sourceRepositoryDigest':'b'*40,'buildConfigDigest':'b'*40,'sourceRepositoryRef':'refs/heads/main','runnerEnvironment':'github-hosted','buildConfigURI':'https://github.com/jry21223/HENU-Kit-DEV/.github/workflows/deploy-henukit.yml@refs/heads/main'}}}}])
  else:sys.exit(92)
 elif name=='systemctl':
  if args[0]=='is-active':sys.exit(3)
@@ -110,7 +122,13 @@ elif name=='curl':
   assert args[args.index('--noproxy')+1]=='*'
   received=sys.stdin.read();assert 'X-Signature:' in received and 'X-Actor-User-Id:' in received
   code=503;body={'error':{'code':'JOB_SOURCE_DISABLED'}}
- elif '/api/v1/account/summary' in url or '/workshop/catalog' in url or '/api/v1/bot/' in url:code=401
+ elif '/workshop/catalog' in url:
+  if url=='https://console.henukit.cn/api/v1/quizcraft/workshop/catalog':code=int(os.environ.get('CONSOLE_AUTH_STATUS','401'))
+  elif url.startswith('http://') and url.endswith(':10089/api/v1/console/workshop/catalog'):
+   assert args[args.index('--noproxy')+1]=='*'
+   code=int(os.environ.get('OWNER_AUTH_STATUS','401'))
+  else:code=404
+ elif '/api/v1/account/summary' in url or '/api/v1/bot/' in url:code=401
  elif '/quiz' in url or '/study-api/' in url:code=404
  if os.environ.get('FAIL_SMOKE') and state.get('deployed') and '/api/v1/library/materials' in url:code=503
  pathlib.Path(args[args.index('--output')+1]).write_text(json.dumps(body));print(code,end='')
@@ -145,6 +163,9 @@ elif name=='docker':
    for s in selected:
     c=state['containers']['henukit-'+s+'-1'];spec=cfg['services'][s]
     c['Id']='transition-'+s+('-new' if state['deployed'] else '-old');c['Image']=state['images'][spec['image']];c['Config']['Image']=spec['image'];c['Config']['Env']=[k+'='+str(v) for k,v in spec.get('environment',{}).items()]
+    if s=='quizcraft':
+     old_hosts=pathlib.Path(c['HostsPath']);c['Id']=hashlib.sha256(c['Id'].encode()).hexdigest()
+     hosts=root/'var/lib/docker/containers'/c['Id']/'hosts';hosts.parent.mkdir(parents=True,exist_ok=True);hosts.write_bytes(old_hosts.read_bytes());c['HostsPath']=str(hosts)
     c['Config']['Labels']['com.docker.compose.config-hash']=config_hash(s,spec)
     c['Mounts']=[{'Type':'bind','Destination':m['target'],'Source':m['source'],'RW':not m.get('read_only',False)} for m in spec.get('volumes',[]) if m.get('type')=='bind']
     c['State'].update(Running='--no-start' not in args,Status='created' if '--no-start' in args else 'running',Health={'Status':'healthy'})
@@ -1065,6 +1086,367 @@ if os.environ.get('INTERRUPT_INSTALL'):
             (self.root / "var/lib/henukit-scoped-releases/stack-transition").exists()
         )
 
+    def test_workshop_boundaries_use_console_and_private_owner_before_mutation(self):
+        self.full_fixture()
+        result = self.transition("--preflight")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        urls = [args[-1] for name, args in self.calls() if name == "curl"]
+        self.assertIn(
+            "https://console.henukit.cn/api/v1/quizcraft/workshop/catalog", urls
+        )
+        self.assertTrue(
+            any(
+                u.startswith("http://")
+                and u.endswith(":10089/api/v1/console/workshop/catalog")
+                for u in urls
+            )
+        )
+        self.assertNotIn("https://henukit.cn/api/v1/quizcraft/workshop/catalog", urls)
+        for key in ("CONSOLE_AUTH_STATUS", "OWNER_AUTH_STATUS"):
+            for status in ("200", "403", "404", "503"):
+                with self.subTest(boundary=key, status=status):
+                    before = (self.root / "fake-state.json").read_bytes()
+                    env = self.envfile.read_bytes()
+                    (self.root / "calls.jsonl").write_text("")
+                    result = self.transition("--execute", {key: status})
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("acceptance failed", result.stderr)
+                    self.assertEqual(
+                        before, (self.root / "fake-state.json").read_bytes()
+                    )
+                    self.assertEqual(env, self.envfile.read_bytes())
+                    self.assertFalse(
+                        any(
+                            name == "docker" and ("load" in args or "up" in args)
+                            for name, args in self.calls()
+                        )
+                    )
+
+    def failed_predecessor_fixture(self):
+        """Execute the authentic c97 helper against the origin-aware HTTP seam."""
+        self.full_fixture()
+        old_runtime = self.runtime.with_name(FAILED_SHA)
+        shutil.copytree(self.runtime, old_runtime)
+        (old_runtime / "RELEASE_SHA").write_text(FAILED_SHA + "\n")
+        original = gzip.decompress(
+            (Path(__file__).parent / "fixtures/stack-transition-c97.py.gz").read_bytes()
+        )
+        self.assertEqual(hashlib.sha256(original).hexdigest(), FAILED_HELPER)
+        (old_runtime / "bin" / SOURCE.name).write_bytes(original)
+        for name in (
+            "release-gates/account-production-boundary.env",
+            "release-gates/oauth-continuation.env",
+            "materials-runtime/install.sh",
+        ):
+            p = old_runtime / name
+            p.write_text(
+                p.read_text()
+                .replace(food.NEW, FAILED_SHA)
+                .replace("'b'*40", repr(FAILED_SHA))
+            )
+        payload = old_runtime / "materials-runtime"
+        (payload / "SHA256SUMS").write_text(
+            "".join(
+                self.digest(p) + "  " + str(p.relative_to(payload)) + "\n"
+                for p in sorted(payload.rglob("*"))
+                if p.is_file() and p.name != "SHA256SUMS"
+            )
+        )
+        stage = self.artifacts.with_name(FAILED_SHA)
+        stage.mkdir()
+        for p in self.artifacts.glob("*.docker.tar.gz"):
+            new = stage / p.name.replace(food.NEW, FAILED_SHA)
+            if "getwork-mcp" in p.name:
+                new.write_bytes(p.read_bytes())
+            else:
+                with tarfile.open(p, "r:gz") as tar:
+                    entries = [
+                        (m.name, tar.extractfile(m).read()) for m in tar if m.isfile()
+                    ]
+                with tarfile.open(new, "w:gz") as tar:
+                    for name, content in entries:
+                        if name == "manifest.json":
+                            content = content.replace(
+                                food.NEW.encode(), FAILED_SHA.encode()
+                            )
+                        info = tarfile.TarInfo(name)
+                        info.size = len(content)
+                        tar.addfile(info, io.BytesIO(content))
+            Path(str(new) + ".sha256").write_text(
+                self.digest(new) + "  " + new.name + "\n"
+            )
+        archive = stage / ("henukit-runtime-" + FAILED_SHA + ".tar.gz")
+        with tarfile.open(archive, "w:gz") as tar:
+            for p in old_runtime.rglob("*"):
+                if p.is_file():
+                    tar.add(p, arcname="./" + str(p.relative_to(old_runtime)))
+        Path(str(archive) + ".sha256").write_text(
+            self.digest(archive) + "  " + archive.name + "\n"
+        )
+        self.old_proof = self.root / "old-proof"
+        self.old_proof.mkdir()
+        for p in self.proof.iterdir():
+            if p.name in ("trusted_root.jsonl",) or p.name.endswith(
+                ".attestation.json"
+            ):
+                shutil.copy(p, self.old_proof / p.name.replace(food.NEW, FAILED_SHA))
+        result = subprocess.run(
+            [
+                "bash",
+                str(SOURCE.with_name("create-getwork-actions-manifest.sh")),
+                "--sha",
+                FAILED_SHA,
+                "--artifact-dir",
+                str(stage),
+                "--output",
+                str(
+                    self.old_proof
+                    / ("henukit-getwork-actions-" + FAILED_SHA + ".manifest")
+                ),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (stage / ("oauth-continuation-" + FAILED_SHA + ".env")).write_bytes(
+            (old_runtime / "release-gates/oauth-continuation.env").read_bytes()
+        )
+        fixture_path = self.root / "transition-fixture.json"
+        fixture = json.loads(fixture_path.read_text())
+        fixture.update(candidate_sha=FAILED_SHA, run_id=41369983145)
+        fixture_path.write_text(json.dumps(fixture))
+        state_path = self.root / "fake-state.json"
+        state = json.loads(state_path.read_text())
+        for tag, image in list(state["images"].items()):
+            if tag.endswith(":" + food.NEW):
+                state["images"][tag.replace(food.NEW, FAILED_SHA)] = image
+        state_path.write_text(json.dumps(state))
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(old_runtime / "bin" / SOURCE.name),
+                "--sha",
+                FAILED_SHA,
+                "--run-id",
+                "41369983145",
+                "--proof-dir",
+                str(self.old_proof),
+                "--test-root",
+                str(self.root),
+                "--acknowledge-getwork-disabled",
+                "--execute",
+            ],
+            env=self.env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.old_record = (
+            self.root
+            / "var/lib/henukit-scoped-releases/stack-transition"
+            / FAILED_SHA
+            / "receipt.json"
+        )
+        self.assertEqual(
+            json.loads(self.old_record.read_text())["status"],
+            "rolling_back",
+            result.stderr,
+        )
+        fixture.pop("candidate_sha")
+        fixture.pop("run_id")
+        fixture_path.write_text(json.dumps(fixture))
+        (self.root / "calls.jsonl").write_text("")
+        return json.loads(self.old_record.read_text())
+
+    def recovery(self, extra=None, arguments=()):
+        return self.transition(
+            "--rollback",
+            extra,
+            (
+                "--recover-transition",
+                FAILED_SHA,
+                "--recovery-proof-dir",
+                str(self.old_proof),
+                *arguments,
+            ),
+        )
+
+    def test_pinned_successor_recovers_real_failed_receipt_without_changing_identity(
+        self,
+    ):
+        original = self.failed_predecessor_fixture()
+        immutable = {
+            k: v
+            for k, v in original.items()
+            if k not in ("status", "updated_at", "rollback_checkpoint")
+        }
+        result = self.recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(self.old_record.read_text())
+        self.assertEqual(data["status"], "rolled_back")
+        self.assertEqual({k: data[k] for k in immutable}, immutable)
+        self.assertIn("recovery_authority", data)
+        before = (self.root / "fake-state.json").read_bytes()
+        result = self.recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "already_rolled_back")
+        self.assertEqual(before, (self.root / "fake-state.json").read_bytes())
+        self.assertFalse(
+            any(name == "docker" and "load" in args for name, args in self.calls())
+        )
+
+    def test_recovered_checkpoint_allows_next_transition_with_real_recreated_ids(self):
+        original = self.failed_predecessor_fixture()
+        before = {
+            p: p.read_bytes()
+            for p in (self.full_record, self.membership_record, self.portal_record)
+        }
+        result = self.recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        recovered = json.loads(self.old_record.read_text())
+        self.assertNotEqual(recovered["rollback_checkpoint"], original["selected"])
+        result = self.transition("--preflight")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.transition("--execute")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        new = json.loads(
+            (self.old_record.parent.with_name(food.NEW) / "receipt.json").read_text()
+        )
+        self.assertEqual(new["selected"], recovered["rollback_checkpoint"])
+        self.assertIn("recovered_transition", new)
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_recovered_checkpoint_rejects_foreign_recreation_and_evidence_drift(self):
+        self.failed_predecessor_fixture()
+        result = self.recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state_path = self.root / "fake-state.json"
+        state = state_path.read_bytes()
+        record = self.old_record.read_bytes()
+        data = json.loads(record)
+        audit = self.old_record.parent / data["recovery_authority"][food.NEW]["file"]
+        audit_bytes = audit.read_bytes()
+        for kind in (
+            "foreign_id",
+            "foreign_environment",
+            "reset_checkpoint",
+            "audit",
+            "not_terminal",
+        ):
+            with self.subTest(kind=kind):
+                state_path.write_bytes(state)
+                self.old_record.write_bytes(record)
+                audit.chmod(0o600)
+                audit.write_bytes(audit_bytes)
+                audit.chmod(0o400)
+                changed = json.loads(state)
+                if kind == "foreign_id":
+                    changed["containers"]["henukit-portal-1"]["Id"] = (
+                        "foreign-recreation"
+                    )
+                    state_path.write_text(json.dumps(changed))
+                elif kind == "foreign_environment":
+                    changed["containers"]["henukit-account-portfolio-1"]["Config"][
+                        "Env"
+                    ].append("FOREIGN=1")
+                    state_path.write_text(json.dumps(changed))
+                elif kind == "reset_checkpoint":
+                    self.old_record.write_text(
+                        json.dumps({**data, "rollback_checkpoint": data["selected"]})
+                    )
+                elif kind == "audit":
+                    audit.chmod(0o600)
+                    audit.write_text('{"authority":{}}')
+                    audit.chmod(0o400)
+                else:
+                    self.old_record.write_text(
+                        json.dumps({**data, "status": "rolling_back"})
+                    )
+                before = (
+                    state_path.read_bytes(),
+                    self.envfile.read_bytes(),
+                    self.old_record.read_bytes(),
+                )
+                (self.root / "calls.jsonl").write_text("")
+                result = self.transition("--execute")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(
+                    before,
+                    (
+                        state_path.read_bytes(),
+                        self.envfile.read_bytes(),
+                        self.old_record.read_bytes(),
+                    ),
+                )
+                self.assertFalse(
+                    any(
+                        name == "docker" and ("load" in args or "up" in args)
+                        for name, args in self.calls()
+                    )
+                )
+
+    def test_recovery_ignores_unpublished_audit_temporary_and_rejects_foreign_final(
+        self,
+    ):
+        self.failed_predecessor_fixture()
+        orphan = self.old_record.parent / ".recovery-incoming-interrupted"
+        orphan.write_bytes(b'{"authority":')
+        orphan.chmod(0o400)
+        final = self.old_record.parent / ("recovery-" + food.NEW + "-1.json")
+        final.write_text('{"authority":{"sha":"foreign"}}')
+        final.chmod(0o400)
+        before = self.old_record.read_bytes()
+        result = self.recovery()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.old_record.read_bytes(), before)
+        final.unlink()
+        result = self.recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(self.old_record.read_text())["status"], "rolled_back"
+        )
+        self.assertEqual(orphan.read_bytes(), b'{"authority":')
+
+    def test_successor_recovery_rejects_foreign_authority_before_online_mutation(self):
+        original = self.failed_predecessor_fixture()
+        for field, value in (
+            ("sha", "d" * 40),
+            ("run_id", "999"),
+            ("attempt", 2),
+            ("helper_sha256", "0" * 64),
+            ("status", "active"),
+            ("status", "accepted"),
+            ("scope", ["portal"]),
+        ):
+            with self.subTest(field=field, value=value):
+                self.old_record.write_text(json.dumps({**original, field: value}))
+                before = (self.root / "fake-state.json").read_bytes()
+                result = self.recovery()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(before, (self.root / "fake-state.json").read_bytes())
+                self.assertFalse(list(self.old_record.parent.glob("recovery-*.json")))
+        self.old_record.write_text(json.dumps(original))
+        for extra in (
+            {"STALE_SOURCE": "1"},
+            {"BAD_OLD_PROOF": "1"},
+            {"OLD_PROOF_ATTEMPT": "2"},
+            {"OLD_ATTEMPT_FAILED": "1"},
+            {"NEW_PROOF_RUN": "999"},
+            {"NEW_PROOF_ATTEMPT": "2"},
+        ):
+            with self.subTest(extra=extra):
+                before = (self.root / "fake-state.json").read_bytes()
+                result = self.recovery(extra)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(before, (self.root / "fake-state.json").read_bytes())
+                self.assertFalse(list(self.old_record.parent.glob("recovery-*.json")))
+        self.assertFalse(
+            any(
+                name == "docker" and ("up" in args or "load" in args)
+                for name, args in self.calls()
+            )
+        )
+
     def strict_metadata_fixture(self):
         self.full_fixture()
         fixture_path = self.root / "transition-fixture.json"
@@ -1453,6 +1835,12 @@ def load_tests(loader, tests, pattern):
     for name in (
         "test_transition_requires_actual_active_v3_without_online_mutation",
         "test_complete_preflight_binds_real_mixed_checkpoint_without_mutation",
+        "test_workshop_boundaries_use_console_and_private_owner_before_mutation",
+        "test_pinned_successor_recovers_real_failed_receipt_without_changing_identity",
+        "test_recovered_checkpoint_allows_next_transition_with_real_recreated_ids",
+        "test_successor_recovery_rejects_foreign_authority_before_online_mutation",
+        "test_recovered_checkpoint_rejects_foreign_recreation_and_evidence_drift",
+        "test_recovery_ignores_unpublished_audit_temporary_and_rejects_foreign_final",
         "test_success_commits_full_aliases_and_same_candidate_does_not_replay",
         "test_failed_smoke_restores_mixed_images_private_configuration_and_stopped_career",
         "test_unknown_service_or_schema_drift_fails_before_any_online_write",
