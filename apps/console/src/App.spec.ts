@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App.vue";
-import { fetchLibraryWorkspace } from "./lib/console-gateway";
+import { fetchLibraryWorkspace, type ConsoleOverview } from "./lib/console-gateway";
 
 const authenticated = {
   data: {
@@ -13,7 +13,7 @@ const authenticated = {
   request_id: "req_console_test",
 };
 
-const overview = {
+const overview: { data: ConsoleOverview; request_id: string } = {
   data: {
     modules: [
       {
@@ -39,6 +39,58 @@ const overview = {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("Console Overview", () => {
+  it("preserves partial and stale explanations when the owner also returns metrics", async () => {
+    const degraded = structuredClone(overview);
+    degraded.data.modules[2] = { ...degraded.data.modules[2]!, status: "partial", metrics: [{ label: "待审核", value: "6" }], status_message: "邮件渠道暂不可用，站内通知摘要仍可读取" };
+    degraded.data.modules[5] = { ...degraded.data.modules[5]!, status: "stale", metrics: [{ label: "异常票", value: "2" }], last_success_at: "2026-07-19T00:00:00Z", status_message: "当前展示上一次成功读取的美食摘要，请核对最新对象版本" };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? degraded : authenticated), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    for (const [id, name, explanation] of [["notice", "Notice", "邮件渠道暂不可用，站内通知摘要仍可读取"], ["food", "Food", "当前展示上一次成功读取的美食摘要，请核对最新对象版本"]]) {
+      expect(wrapper.get(`[data-module-card='${id}']`).text()).toContain(explanation);
+      await wrapper.get(`button[aria-label='查看 ${name} 证据']`).trigger("click");
+      expect(wrapper.get(`[data-module-evidence='${id}']`).text()).toContain(explanation);
+    }
+    wrapper.unmount();
+  });
+
+  it("does not claim Overview authorization from an authenticated product-only session", async () => {
+    const productSession = structuredClone(authenticated);
+    productSession.data.access_context.permissions = ["notice.read"];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(String(input).endsWith("/overview") ? new Response("", { status: 500 }) : new Response(JSON.stringify(productSession), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App);
+    await flushPromises();
+
+    const context = wrapper.get('[aria-label="服务端验证的访问上下文"]').text();
+    expect(context).not.toContain("已授予概览查看权限");
+    expect(context).toContain("已登录");
+    expect(context).toContain("0/6 摘要可读取");
+    wrapper.unmount();
+  });
+
+  it("keeps mobile module evidence beside its source and preserves scoped navigation", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const scopedSession = structuredClone(authenticated);
+    scopedSession.data.access_context.permissions.push("notice.read");
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : scopedSession), { status: 200 }))));
+    window.history.replaceState({}, "", "/");
+    const wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get("button[aria-label='查看 Notice 证据']").trigger("click");
+    const source = wrapper.get("[data-module-card='notice']");
+    expect(source.get("[data-module-evidence='notice']").text()).toContain("req_notice");
+    expect(source.get("a[href='/notices']").text()).toContain("通知");
+    expect(wrapper.findAll("[data-module-card]")).toHaveLength(6);
+    expect(wrapper.findAll("[data-module-evidence]")).toHaveLength(1);
+    await source.get("button[aria-label='收起 Notice 证据']").trigger("click");
+    expect(wrapper.find("[data-module-evidence]").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("reviews a Library submission without exposing retired Study capabilities", async () => {
     const librarySession = { ...authenticated, data: { ...authenticated.data, access_context: { permissions: ["library.read", "library.manage", "library.review"], scopes: [{ kind: "product", product_code: "library" }], verified_at: "2026-07-19T00:00:00Z" } } };
     let approved = false;
@@ -141,7 +193,7 @@ describe("Console Overview", () => {
 
   it("labels an operator-disabled owner distinctly from an outage", async () => {
     const disabled = structuredClone(overview);
-    (disabled.data.modules as Array<Record<string, unknown>>)[2] = {
+    disabled.data.modules[2] = {
       id: "notice", status: "unavailable", unavailable_reason: "operator_disabled", metrics: [],
       status_message: "校园通知摘要已由运营配置停用；如需恢复，请重新配置摘要地址", request_id: "req_notice_disabled",
     };
@@ -196,7 +248,7 @@ describe("Console Overview", () => {
     await flushPromises();
 
     expect(wrapper.findAll("[data-state='unavailable']")).toHaveLength(6);
-    expect(wrapper.get('[aria-label="服务端验证的访问上下文"]').text()).toContain("0/6 可见");
+    expect(wrapper.get('[aria-label="服务端验证的访问上下文"]').text()).toContain("0/6 摘要可读取");
     expect(wrapper.text()).toContain("概览数据暂时不可用");
     wrapper.unmount();
   });
@@ -235,7 +287,7 @@ describe("Console Overview", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    expect(wrapper.text()).toContain("截至");
+    expect(wrapper.text()).toContain("观测时间");
     expect(wrapper.text()).toContain("最近成功");
     expect(wrapper.text()).not.toContain("2026-07-19T00:00:00Z");
     expect(wrapper.text()).not.toContain("2026-07-19T00:00:01Z");
