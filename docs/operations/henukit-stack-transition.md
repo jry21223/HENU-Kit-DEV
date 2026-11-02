@@ -5,6 +5,9 @@ checkpoints into one whole-application release. Routine releases continue to use
 `activate-henukit-release`; the automatic scheduler never invokes this transition.
 This document is an implementation procedure, not evidence of a production run.
 
+An independently accepted materials control plane may have a different version
+from the full application alias; see [ADR-0059](../adr/0059-independent-materials-runtime-baseline.md).
+
 ## Source and retained authority
 
 Require freshly fetched, merged `origin/main`, its newest complete successful
@@ -20,6 +23,13 @@ release. It reconstructs a private mixed Compose configuration from each actual
 owner's retained runtime, the original Practice Console application credential
 and the membership Account/Nginx configuration. Current images, environment,
 Compose hashes and mounts must match that authority.
+
+Render the retained full layer with the unique, valid UTC
+`PORTAL_DEPLOYED_AT` already recorded in the root application environment.
+Practice and Portal overlays retain their own receipt timestamps. A scoped
+release timestamp must not replace the full layer's metadata. The candidate
+uses one timestamp consistently in its rendered configuration and receipt;
+the environment identity remains guarded throughout preparation and recovery.
 
 The candidate must preserve PostgreSQL/Redis configuration, membership Bot
 credentials and routes, Practice Console credentials, and every owner's exact
@@ -47,6 +57,24 @@ python3 /opt/henukit-releases/<sha>/bin/deploy-henukit-stack-transition.py \
   --acknowledge-getwork-disabled \
   --preflight
 ```
+
+When production inspection proves a separately installed materials runtime,
+name its complete baseline explicitly with all three additional arguments:
+
+```text
+--materials-baseline-sha 6008f76346fcc4dab1652505c371d62ebde3d30d
+--materials-baseline-runtime /opt/henukit-releases/6008f76346fcc4dab1652505c371d62ebde3d30d
+--materials-baseline-proof-dir /var/lib/henukit-release-proofs/materials-baseline-6008f76346fcc4dab1652505c371d62ebde3d30d
+```
+
+The private proof directory must retain the original runtime archive and
+checksum, v1 manifest and attestation bundle, and a copy of the already approved
+`trusted_root.jsonl`. Reverify the historical certificate's run/attempt and
+source ancestry. The complete retained runtime and all installed materials
+targets must match one baseline; a per-file fallback is prohibited. The
+application aliases continue to identify the original application baseline.
+Keep these arguments for execution; recovery binds the recorded selection and
+refuses a conflicting baseline. No old deployment code is executed.
 
 Review the actual preflight result and retained baseline. Use identical arguments
 with `--execute` only after the repository's source, Account, workflow,
