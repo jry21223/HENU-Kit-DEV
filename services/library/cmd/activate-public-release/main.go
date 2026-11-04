@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	library "henukit.dev/library"
@@ -49,11 +52,8 @@ func main() {
 	}
 	defer database.Close()
 	result, err := library.ActivatePublicRelease(ctx, database, store, bundle, time.Now)
-	if err != nil {
-		fail("Library public release activation failed")
-	}
-	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
-		fail("Library activation result could not be encoded")
+	if message, failed := activationOutcome(os.Stdout, result, err); failed {
+		fail(message)
 	}
 }
 
@@ -94,6 +94,65 @@ func readBundle(name string) (library.PublicReleaseActivation, error) {
 		return library.PublicReleaseActivation{}, errors.New("activation bundle has trailing content")
 	}
 	return bundle, nil
+}
+
+const activationFailurePrefix = "Library public release activation failed: "
+
+// databaseCause replaces every driver-level cause. Driver errors name the
+// internal address, hostname, database and user, and constraint or column
+// names. The SQLSTATE is appended separately: it is a fixed SQL standard code,
+// not deployment detail, and without it every database failure -- a unique
+// violation, a refused connection, a missing grant -- reads the same.
+const databaseCause = "database error during activation"
+
+// databaseRemedy names the next step for a database-side failure. It does not
+// claim the release is unchanged -- a connection lost during commit leaves
+// that undecided -- and it does not describe what the orchestration wrapper
+// does with its fence, which this binary neither controls nor observes. The
+// retry is safe either way: an already-committed release takes the replay
+// path and reports itself as replayed.
+const databaseRemedy = "; retry with the same release id and receipt digest"
+
+// activationOutcome encodes a successful activation and otherwise reports the
+// operator-facing failure message, with failed saying which happened. main
+// deliberately owns no part of this branch: routing the cause through
+// operatorSafeCause is the point of the function, and a caller cannot report
+// an activation failure without it. The message is operator copy that opens
+// with the service name, so it stays a string rather than an error: ST1005
+// governs error strings, and the prefix is fixed by contract.
+func activationOutcome(out io.Writer, result library.PublicReleaseActivationResult, err error) (message string, failed bool) {
+	if err != nil {
+		return activationFailurePrefix + operatorSafeCause(err), true
+	}
+	if err := json.NewEncoder(out).Encode(result); err != nil {
+		return "Library activation result could not be encoded", true
+	}
+	return "", false
+}
+
+// operatorSafeCause surfaces the causes ActivatePublicRelease raises itself --
+// fixed rules naming a reviewed public path, which are what an operator needs
+// to tell object verification from a binding failure -- and reduces database
+// and network causes to a fixed classification. This message is captured by
+// the materials orchestration wrapper and reprinted in its own operator
+// output, so infrastructure detail must not reach it.
+func operatorSafeCause(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		// SQLSTATE only. Message, Detail, ConstraintName and the schema names
+		// they carry stay out.
+		return databaseCause + " (SQLSTATE " + pgErr.Code + ")" + databaseRemedy
+	}
+	var connectErr *pgconn.ConnectError
+	var parseErr *pgconn.ParseConfigError
+	var scanErr pgx.ScanArgError
+	var netErr net.Error
+	var opErr *net.OpError
+	if errors.As(err, &connectErr) || errors.As(err, &parseErr) || errors.As(err, &scanErr) ||
+		errors.As(err, &netErr) || errors.As(err, &opErr) {
+		return databaseCause + databaseRemedy
+	}
+	return err.Error()
 }
 
 func fail(message string) {
