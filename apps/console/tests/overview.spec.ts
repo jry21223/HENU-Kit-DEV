@@ -1,8 +1,14 @@
 import { expect, test } from "@playwright/test";
 
+// Make the local-time contract deterministic while preserving UTC provenance.
+test.use({ timezoneId: "Asia/Shanghai" });
+
+// No fake metrics may leak from rows, Portal probes, or selected evidence.
+const metricFacts = ".ledger-metric, .portal-release, .portal-facts dd, .evidence-facts dd";
+
 const moduleNames = ["Portal", "Platform Operations", "Notice", "Library", "练习服务", "Food"];
 const broadPermissionTargets = [
-  ["产品运行概览", "/"],
+  ["全局平台概览", "/"],
   ["平台运营工作台", "/operations"],
   ["校园通知审核与分发", "/notices"],
   ["资料库运营", "/library"],
@@ -61,9 +67,9 @@ test("desktop overview exposes six traced module summaries and degradation state
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "产品运行概览" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "全局平台概览" })).toBeVisible();
   await expect(page.locator("[data-module-card]")).toHaveCount(6);
-  for (const name of moduleNames) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  for (const name of moduleNames) await expect(page.getByRole("button", { name: `查看 ${name} 证据`, exact: true })).toBeVisible();
   await expect(page.locator('[data-state="ok"]')).toHaveCount(2);
   for (const state of ["empty", "partial", "stale", "unavailable"]) await expect(page.locator(`[data-state="${state}"]`)).toHaveCount(1);
   await expect(page.getByText("积分", { exact: true })).toHaveCount(0);
@@ -71,10 +77,13 @@ test("desktop overview exposes six traced module summaries and degradation state
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
   await expect(page.getByText("练习服务摘要暂不可用", { exact: true })).toBeVisible();
   const portal = page.locator('[data-module-card="portal"]');
-  await expect(portal).toHaveAccessibleName("Portal：正常");
-  for (const fact of ["2026.07.19", "0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) await expect(portal.getByText(fact, { exact: true })).toBeVisible();
-  await expect(portal.getByLabel("Readiness：ready")).toBeVisible();
-  await expect(portal.getByLabel("入口健康：2/2")).toBeVisible();
+  await expect(portal).toHaveAccessibleName("Portal：摘要可读取");
+  await expect(portal.getByText("反馈摘要", { exact: true })).toBeVisible();
+  const deployment = page.getByRole("region", { name: "发布与本轮探测", exact: true });
+  for (const fact of ["2026.07.19", "0123456789ab", "Readiness", "关键探测", "入口健康", "当前异常"]) await expect(deployment.getByText(fact, { exact: true })).toBeVisible();
+  await expect(deployment.getByText("Readiness", { exact: true }).locator("..").getByRole("definition")).toHaveText("ready");
+  await expect(deployment.getByText("入口健康", { exact: true }).locator("..").getByRole("definition")).toHaveText("2/2");
+  await expect(page.getByRole("region", { name: "Portal 来源证据", exact: true }).getByText("req_portal_browser", { exact: true })).toBeVisible();
   for (const control of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) await expect(page.getByText(control, { exact: true })).toHaveCount(0);
 });
 
@@ -85,7 +94,7 @@ test("desktop overview renders interpolated copy instead of raw template syntax"
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
 
-  await expect(page.getByText("6 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。", { exact: true })).toBeVisible();
+  await expect(page.getByText("6 个模块", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("{{");
 });
 
@@ -97,7 +106,7 @@ test("390px overview keeps its single real navigation target usable without over
   await page.getByRole("button", { name: "打开运营导航" }).click();
   const navigation = page.getByRole("navigation", { name: "移动端运营导航" });
   await expect(navigation.getByRole("link")).toHaveCount(1);
-  const overviewLink = navigation.getByRole("link", { name: "产品运行概览" });
+  const overviewLink = navigation.getByRole("link", { name: "全局平台概览" });
   await expect(overviewLink).toHaveAttribute("href", "/");
   expect(await overviewLink.evaluate((link) => link.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   await expect(navigation.locator('a[href^="#"]')).toHaveCount(0);
@@ -106,10 +115,11 @@ test("390px overview keeps its single real navigation target usable without over
   await expect(page.getByRole("dialog")).toBeHidden();
 
   const portal = page.locator('[data-module-card="portal"]');
-  await expect(portal).toHaveAccessibleName("Portal：正常");
-  await expect(portal.getByText("Readiness", { exact: true })).toBeVisible();
-  await expect(portal.getByText("入口健康", { exact: true })).toBeVisible();
-  await expect(portal.getByLabel("Readiness：ready")).toBeVisible();
+  await expect(portal).toHaveAccessibleName("Portal：摘要可读取");
+  const deployment = page.getByRole("region", { name: "发布与本轮探测", exact: true });
+  await expect(deployment.getByText("Readiness", { exact: true })).toBeVisible();
+  await expect(deployment.getByText("入口健康", { exact: true })).toBeVisible();
+  await expect(deployment.getByText("Readiness", { exact: true }).locator("..").getByRole("definition")).toHaveText("ready");
 
   const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
@@ -158,7 +168,7 @@ test("loading scenario marks all six modules busy without fake metrics", async (
   await page.goto("/?scenario=loading");
   await expect(page.locator("section[aria-busy='true']")).toBeVisible();
   await expect(page.locator("[data-state='loading']")).toHaveCount(6);
-  await expect(page.locator("[data-metric-tile]")).toHaveCount(0);
+  await expect(page.locator(metricFacts)).toHaveCount(0);
 });
 
 test("expired session completes sign-in callback and returns to the intended path", async ({ page, context }) => {
@@ -199,12 +209,13 @@ test("expired session completes sign-in callback and returns to the intended pat
   await expect(login).toBeVisible();
   await expect(login).toHaveAttribute("href", /return_to=%2F%3Ftab%3Dinbox/);
   await expect(page.locator("[data-state='denied']")).toHaveCount(6);
-  await expect(page.locator("[data-metric-tile]")).toHaveCount(0);
+  await expect(page.locator(metricFacts)).toHaveCount(0);
   await login.click();
 
   await expect(page).toHaveURL(/\/\?tab=inbox$/);
   await expect(page.getByText("权限已验证", { exact: true })).toBeVisible();
-  await expect(page.locator("[data-metric-tile]")).not.toHaveCount(0);
+  await expect(page.locator("[data-state='ok']")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Portal 来源证据", exact: true }).getByText("req_portal_browser", { exact: true })).toBeVisible();
   expect((await context.cookies()).some((cookie) => cookie.name === "henukit_console_e2e" && cookie.httpOnly)).toBe(true);
 });
 
@@ -257,7 +268,7 @@ test("overview navigation exposes each permitted operational target once", async
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "产品运行概览" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "全局平台概览" })).toBeVisible();
   const navigation = page.getByRole("navigation", { name: "运营导航" });
 
   await expect(navigation.getByRole("link")).toHaveCount(broadPermissionTargets.length);
@@ -374,7 +385,7 @@ test("overview navigation does not expose an unverified workspace", async ({ pag
 
   const navigation = page.getByRole("navigation", { name: "运营导航" });
   await expect(navigation.getByRole("link")).toHaveCount(2);
-  await expect(navigation.getByRole("link", { name: "产品运行概览", exact: true })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "全局平台概览", exact: true })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "美食运营", exact: true })).toBeVisible();
   for (const hiddenWorkspace of ["平台运营工作台", "校园通知审核与分发", "资料库运营", "会员权益运营", "积分账本运营", "账户工单运营"]) {
     await expect(navigation.getByRole("link", { name: hiddenWorkspace, exact: true })).toHaveCount(0);
@@ -387,8 +398,10 @@ test("overview count drops to 0/6 when the overview feed is unavailable", async 
   await page.goto("/");
 
   await expect(page.locator("[data-state='unavailable']")).toHaveCount(6);
-  await expect(page.getByText("0/6 可见", { exact: true })).toBeVisible();
-  await expect(page.getByText("概览数据暂时不可用，请稍后刷新页面。", { exact: true })).toHaveCount(6);
+  await expect(page.getByText("0/6 摘要可读取", { exact: true })).toBeVisible();
+  for (const id of ["portal", "platform", "notice", "library", "quizcraft", "food"]) {
+    await expect(page.locator(`[data-module-card="${id}"]`).getByText("概览数据暂时不可用，请稍后刷新页面。", { exact: true })).toHaveCount(1);
+  }
 });
 
 test("degraded status messages render exactly once per card", async ({ page }) => {
@@ -417,10 +430,17 @@ test("overview timestamps render in local time instead of raw UTC", async ({ pag
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
 
-  await expect(page.getByText(/^截至 /).first()).toBeVisible();
+  await expect(page.getByText(/^最近汇总 /)).toHaveText(/最近汇总 2026年7月19日\s+08:00/);
   const library = page.locator('[data-module-card="library"]');
-  await expect(library.getByText(/^最近成功 /)).toBeVisible();
-  await expect(library).not.toContainText("2026-07-19T00:00:01Z");
+  await expect(library.locator("time")).toHaveAttribute("datetime", "2026-07-19T00:00:00Z");
+  await expect(library.locator("time")).toContainText("2026/07/19");
+  await expect(library.locator("time")).toContainText("08:00");
+  await library.getByRole("button", { name: "查看 Library 证据", exact: true }).click();
+  const evidence = page.getByRole("region", { name: "Library 来源证据", exact: true });
+  await expect(evidence.getByText("最近成功", { exact: true }).locator("..").getByRole("definition")).toHaveText(/2026年7月19日\s+08:00/);
+  await expect(evidence.getByText("req_library_browser", { exact: true })).toBeVisible();
+  await expect(evidence).not.toContainText("2026-07-19T00:00:01Z");
+  await expect(library).not.toContainText("2026-07-19T00:00:00Z");
   await expect(page.locator('[data-module-card="portal"]')).not.toContainText("2026-07-19T00:00:00Z");
 });
 
@@ -476,4 +496,26 @@ test("mobile navigation exposes a confirming sign-out entry", async ({ page }) =
   await expect(page.getByRole("link", { name: "登录 Console" })).toBeVisible();
   await expect(page.getByRole("dialog")).toBeHidden();
   await expect(page.locator("[data-module-card]")).toHaveCount(6);
+});
+
+
+test("390px module evidence stays with its source and returns focus on close", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const library = page.locator('[data-module-card="library"]');
+  const source = library.getByRole("button", { name: "查看 Library 证据", exact: true });
+  await expect(source).toHaveAttribute("aria-expanded", "false");
+  await source.click();
+  const evidence = page.getByRole("region", { name: "Library 来源证据", exact: true });
+  await expect(evidence).toHaveCount(1);
+  await expect(library.getByRole("region", { name: "Library 来源证据", exact: true })).toBeVisible();
+  await expect(source).toHaveAttribute("aria-expanded", "true");
+  await expect(evidence.getByText("req_library_browser", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("展示最近成功摘要", { exact: true })).toBeVisible();
+  await evidence.getByRole("button", { name: "收起 Library 证据", exact: true }).click();
+  await expect(evidence).toHaveCount(0);
+  await expect(source).toHaveAttribute("aria-expanded", "false");
+  await expect(source).toBeFocused();
+  const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
 });
