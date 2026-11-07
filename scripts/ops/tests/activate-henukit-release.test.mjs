@@ -9,12 +9,15 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { forwarderContract } from "./active-alias-fixture.mjs";
 
 const command = fileURLToPath(
   new URL("../activate-henukit-release.sh", import.meta.url),
@@ -68,6 +71,14 @@ function fixture({
   const release = join(releases, releaseSha);
   mkdirSync(join(release, "bin"), { recursive: true });
   mkdirSync(join(release, "infra", "epay-gateway", "patches"), { recursive: true });
+  writeFileSync(join(release, "RELEASE_SHA"), releaseSha + "\n", { mode: 0o444 });
+  mkdirSync(join(releases, recoveryBaselineSha));
+  writeFileSync(join(releases, recoveryBaselineSha, "RELEASE_SHA"), recoveryBaselineSha + "\n", { mode: 0o444 });
+  const current = join(root, "current");
+  const compatible = join(root, "compat-current");
+  symlinkSync(release, current, "dir");
+  symlinkSync(release, compatible, "dir");
+  forwarderContract(state, releases, compatible, current);
   executable(join(release, "bin", "deploy-epay-gateway-patches.sh"), "#!/usr/bin/env bash\nexit 0\n");
   writeFileSync(join(release, "infra", "epay-gateway", "patches", "0001.patch"), "patch\n");
   writeFileSync(log, "");
@@ -126,6 +137,10 @@ approval="$HENUKIT_STATE_ROOT/approvals/$FAKE_RELEASE_SHA"
 if [[ -f "$approval" ]]; then
   rm "$approval"
   printf '%s\n' "$FAKE_RELEASE_SHA" > "$HENUKIT_STATE_ROOT/last-activated-sha"
+  if [[ "\${FAKE_WATCHER_ALIAS_DRIFT:-0}" == "1" ]]; then
+    rm "$HENUKIT_COMPAT_CURRENT_LINK"
+    ln -s "$HENUKIT_RELEASE_ROOT/cccccccccccccccccccccccccccccccccccccccc" "$HENUKIT_COMPAT_CURRENT_LINK"
+  fi
 else
   backup="$HENUKIT_STATE_ROOT/platform-backup-\${FAKE_RELEASE_SHA:0:12}.dump"
   printf 'verified backup\n' > "$backup"
@@ -189,6 +204,8 @@ fi
       HENUKIT_STATE_ROOT: state,
       HENUKIT_TRUST_ANCHOR: root,
       HENUKIT_RELEASE_ROOT: releases,
+      HENUKIT_CURRENT_LINK: current,
+      HENUKIT_COMPAT_CURRENT_LINK: compatible,
       HENUKIT_ENV_FILE: envFile,
       GH_TOKEN_FILE: tokenFile,
       HENUKIT_WATCHER: watcher,
@@ -205,6 +222,55 @@ test("automatic activation refuses a workflow attempt different from its authori
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /identity differs from the automatic authorization/);
   assert.doesNotMatch(readFileSync(setup.log, "utf8"), /ssh |watcher /);
+});
+
+test("same-SHA Notice configuration uses the original watcher without EasyPay or activation replay", () => {
+  const setup = fixture();
+  writeFileSync(join(setup.state, "last-activated-sha"), releaseSha + "\n", { mode: 0o600 });
+  writeFileSync(join(setup.state, "direct-deploy.lock"), "", { mode: 0o600 });
+  const plan = join(setup.root, "notice-plan.json");
+  writeFileSync(plan, "{}\n", { mode: 0o600 }); // plan itself is verified inside the watcher/helper
+  const result = spawnSync(command, [releaseSha, "--notice-url", "apply", "--plan", plan, "--execute"], {
+    encoding: "utf8", env: setup.env,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = readFileSync(setup.log, "utf8");
+  assert.match(calls, /watcher --notice-url apply --sha a{40} --plan /);
+  assert.doesNotMatch(calls, /gh |ssh |watcher --once/);
+});
+
+test("already-active requires both real aliases before skipping activation", () => {
+  const setup = fixture();
+  writeFileSync(join(setup.state, "last-activated-sha"), releaseSha + "\n", { mode: 0o600 });
+  unlinkSync(setup.env.HENUKIT_COMPAT_CURRENT_LINK);
+  symlinkSync(join(setup.env.HENUKIT_RELEASE_ROOT, recoveryBaselineSha), setup.env.HENUKIT_COMPAT_CURRENT_LINK, "dir");
+  const result = spawnSync(command, [releaseSha, "--execute"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /ssh |watcher /);
+});
+
+test("a non-SHA baseline stops before remote environment or approval writes", () => {
+  const setup = fixture();
+  const invalid = join(setup.env.HENUKIT_RELEASE_ROOT, "non-sha");
+  mkdirSync(invalid);
+  writeFileSync(join(invalid, "RELEASE_SHA"), "non-sha\n", { mode: 0o444 });
+  unlinkSync(setup.env.HENUKIT_COMPAT_CURRENT_LINK);
+  symlinkSync(invalid, setup.env.HENUKIT_COMPAT_CURRENT_LINK, "dir");
+  const environment = readFileSync(setup.env.HENUKIT_ENV_FILE);
+  const result = spawnSync(command, [releaseSha, "--execute"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /ssh |watcher /);
+  assert.deepEqual(readFileSync(setup.env.HENUKIT_ENV_FILE), environment);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+});
+
+test("watcher marker without both aliases is not reported as activated", () => {
+  const setup = fixture();
+  setup.env.FAKE_WATCHER_ALIAS_DRIFT = "1";
+  const result = spawnSync(command, [releaseSha, "--execute"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /complete active-alias contract/);
+  assert.doesNotMatch(result.stdout, new RegExp(`release ${releaseSha} activated`));
 });
 
 test("one command prepares, exact-SHA approves, and activates a release", () => {
@@ -475,16 +541,18 @@ test("activation rejects a writable approval directory before reading or writing
   assert.equal(readFileSync(setup.log, "utf8"), "");
 });
 
-test("first activation safely creates missing private state directories", () => {
+test("recreated private state cannot silently bootstrap missing alias authority", () => {
   const setup = fixture();
   rmSync(setup.state, { recursive: true, force: true });
 
-  const output = execFileSync(command, [releaseSha, "--execute"], {
+  const result = spawnSync(command, [releaseSha, "--execute"], {
     encoding: "utf8",
     env: setup.env,
   });
 
-  assert.match(output, new RegExp(`release ${releaseSha} activated`));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /reviewed versioned bootstrap/);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /ssh |watcher /);
   for (const directory of [
     setup.state,
     join(setup.state, "approvals"),

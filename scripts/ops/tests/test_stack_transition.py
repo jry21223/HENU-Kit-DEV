@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import copy
+import fcntl
 import gzip
 import hashlib
 import io
@@ -13,6 +14,7 @@ import sys
 import unittest
 import shutil
 import tarfile
+import tempfile
 
 import test_scoped_food_release as food
 import test_scoped_portal_membership_checkpoint as checkpoint
@@ -264,6 +266,15 @@ class StackTransitionCheckpoint(checkpoint.PortalMembershipCLI):
 
     def setUp(self):
         super().setUp()
+        self.bootstrap_alias_contract()
+        config = self.root / "etc/henukit-deploy/deploy.env"
+        source = self.root / "run/lock/henukit-deploy.lock"
+        config.parent.mkdir(parents=True, exist_ok=True)
+        source.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text("HENUKIT_DEPLOY_LOCK_FILE=" + str(source) + "\n")
+        config.chmod(0o600)
+        source.write_bytes(b"")
+        source.chmod(0o640)
         shutil.copy(SOURCE, self.runtime / "bin" / SOURCE.name)
         shutil.copy(
             SOURCE.with_name("deploy-henukit-practice-scoped.py"),
@@ -271,11 +282,64 @@ class StackTransitionCheckpoint(checkpoint.PortalMembershipCLI):
         )
         self.repack()
 
+    def bootstrap_alias_contract(self):
+        """Explicit fixture-only phase transition, never historical receipt edit."""
+        inner = self.root / "opt/henukit/current"
+        outer = self.root / "opt/henukit-current"
+        outer.unlink()
+        outer.symlink_to(inner)
+        def metadata(path):
+            info = path.lstat()
+            return dict(dev=info.st_dev, ino=info.st_ino, uid=info.st_uid, gid=info.st_gid, mode=info.st_mode & 0o7777)
+        contract = self.root / "var/lib/henukit-actions-watch/active-alias-contract.json"
+        contract.write_text(json.dumps(dict(
+            format="henukit-active-alias-forwarder-v1",
+            release_root=str(self.root / "opt/henukit-releases"),
+            inner=str(inner), outer=str(outer),
+            outer_snapshot={**metadata(outer), "text": os.readlink(outer)},
+            parents={str(p): metadata(p) for p in (inner.parent, outer.parent)},
+        )))
+        contract.chmod(0o400)
+
     def transition(self, mode, extra=None, arguments=()):
+        command = [sys.executable, str(self.runtime / "bin" / SOURCE.name)]
+        if (extra or {}).get("TEST_KILL_INNER_ALIAS_RENAME"):
+            # Fault the real CLI at a real rename, without a production hook.
+            driver = """import os,runpy,signal,sys
+target=os.environ['FIXTURE']+'/opt/henukit/current'; replace=os.replace
+def interrupted(src,dst,*args,**kwargs):
+ result=replace(src,dst,*args,**kwargs)
+ if os.fspath(dst)==target and os.path.basename(os.fspath(src)).startswith('.transition-full-alias-'):
+  os.kill(os.getpid(),signal.SIGKILL)
+ return result
+os.replace=interrupted
+sys.argv=sys.argv[1:]
+runpy.run_path(sys.argv[0],run_name='__main__')
+"""
+            command = [sys.executable, "-c", driver, str(self.runtime / "bin" / SOURCE.name)]
+        if (extra or {}).get("TEST_FOREIGN_INNER_AFTER_PROOF"):
+            driver = """import json,os,pathlib,runpy,sys
+root=pathlib.Path(os.environ['FIXTURE']); inner=root/'opt/henukit/current'
+journal=root/'var/lib/henukit-scoped-releases/stack-transition'/('b'*40)/'full-alias-commit.json'
+readlink=os.readlink; seen=0
+def changed(path,*args,**kwargs):
+ global seen
+ result=readlink(path,*args,**kwargs)
+ if os.fspath(path)==str(inner) and journal.exists():
+  seen+=1
+  if seen==2:
+   foreign=inner.parent/'.foreign-between-proof-and-rename'
+   foreign.symlink_to(result); foreign.replace(inner)
+   (root/'foreign-inode.json').write_text(json.dumps({'ino':inner.lstat().st_ino}))
+ return result
+os.readlink=changed
+sys.argv=sys.argv[1:]
+runpy.run_path(sys.argv[0],run_name='__main__')
+"""
+            command = [sys.executable, "-c", driver, str(self.runtime / "bin" / SOURCE.name)]
         return subprocess.run(
             [
-                sys.executable,
-                str(self.runtime / "bin" / SOURCE.name),
+                *command,
                 "--sha",
                 food.NEW,
                 "--run-id",
@@ -600,7 +664,7 @@ if os.environ.get('INTERRUPT_INSTALL'):
             )
         )
         config = self.root / "etc/henukit-deploy/materials-activate.env"
-        config.parent.mkdir(parents=True)
+        config.parent.mkdir(parents=True, exist_ok=True)
         config.write_text("MODERN=1\n")
         config.chmod(0o600)
         (self.root / "opt/henukit-materials").mkdir(exist_ok=True)
@@ -888,6 +952,9 @@ if os.environ.get('INTERRUPT_INSTALL'):
                 )
 
     def test_independent_materials_rejects_partial_live_target_drift(self):
+        self.check_materials_live_drift()
+
+    def check_materials_live_drift(self, special_bit=None):
         self.separate_materials_fixture()
         path = self.root / "usr/local/libexec/henukit/henukit-materials-control"
         path.write_bytes(b"unknown partial install")
@@ -899,9 +966,11 @@ if os.environ.get('INTERRUPT_INSTALL'):
         self.assertEqual((self.root / "fake-state.json").read_bytes(), before)
         content, mode = self.materials_targets[path]
         path.write_bytes(content)
-        for changed in (mode ^ 0o100, mode | 0o4000, mode | 0o2000):
+        modes = (mode ^ 0o100,) if special_bit is None else (mode | special_bit,)
+        for changed in modes:
             with self.subTest(mode=oct(changed)):
                 path.chmod(changed)
+                self.assertEqual(path.stat().st_mode & 0o7777, changed, "negative fixture did not retain its requested mode")
                 result = self.transition(
                     "--execute", arguments=self.materials_arguments
                 )
@@ -973,7 +1042,10 @@ if os.environ.get('INTERRUPT_INSTALL'):
     def test_interrupted_independent_materials_refuses_foreign_identity_then_restores_B(
         self,
     ):
-        self.separate_materials_fixture()
+        self.check_interrupted_materials()
+
+    def check_interrupted_materials(self, special_bit=None, reuse=False):
+        if not reuse: self.separate_materials_fixture()
         result = self.transition(
             "--execute", {"INTERRUPT_INSTALL": "1"}, arguments=self.materials_arguments
         )
@@ -1006,16 +1078,9 @@ if os.environ.get('INTERRUPT_INSTALL'):
         proof = self.materials_proof / "trusted_root.jsonl"
         original_proof = proof.read_bytes()
         correct_mode = self.materials_targets[live][1]
-        for fault in (
-            "foreign_bytes",
-            "foreign_mode",
-            "foreign_suid",
-            "foreign_sgid",
-            "backup_mode",
-            "backup_suid",
-            "backup_sgid",
-            "proof",
-        ):
+        faults = ("foreign_bytes", "foreign_mode", "backup_mode", "proof") if special_bit is None else (
+            ("foreign_suid", "backup_suid") if special_bit == 0o4000 else ("foreign_sgid", "backup_sgid"))
+        for fault in faults:
             with self.subTest(fault):
                 if fault == "foreign_bytes":
                     live.write_bytes(b"independently installed foreign C")
@@ -1033,6 +1098,10 @@ if os.environ.get('INTERRUPT_INSTALL'):
                     backup.chmod(correct_mode | 0o2000)
                 if fault == "proof":
                     proof.write_bytes(b"unapproved replacement root")
+                if special_bit is not None:
+                    selected = backup if fault.startswith("backup_") else live
+                    self.assertEqual(selected.stat().st_mode & 0o7777, correct_mode | special_bit,
+                                     "negative fixture did not retain its requested special bit")
                 changed_identity = (live.read_bytes(), live.stat().st_mode & 0o7777)
                 (self.root / "calls.jsonl").unlink()
                 result = self.transition("--rollback")
@@ -1063,6 +1132,90 @@ if os.environ.get('INTERRUPT_INSTALL'):
             self.assertEqual(
                 (live.stat().st_uid, live.stat().st_gid), (os.geteuid(), os.getegid())
             )
+
+    def require_special_bit_fixture(self, bit):
+        # Probe the actual current filesystem, never infer capability from an OS
+        # name. CI/Linux must fail closed if their required gate cannot run.
+        with tempfile.TemporaryDirectory(prefix="henukit-mode-capability-") as directory:
+            path = Path(directory) / "empty-never-executed"
+            path.write_bytes(b"")
+            requested = 0o700 | bit
+            path.chmod(requested)
+            observed = path.stat().st_mode & 0o7777
+        if observed != requested:
+            message = f"filesystem stripped requested {oct(requested)} to {oct(observed)}; Linux special-permission gate not verified"
+            ci = os.environ.get("CI", "").lower() not in ("", "0", "false", "no") or os.environ.get("GITHUB_ACTIONS") == "true"
+            if sys.platform == "darwin" and not ci: self.skipTest(message)
+            self.fail(message)
+
+    def test_materials_suid_drift_is_rejected_before_activation_and_rollback(self):
+        self.require_special_bit_fixture(0o4000)
+        self.check_materials_live_drift(0o4000)
+        self.check_interrupted_materials(0o4000, reuse=True)
+
+    def test_materials_sgid_drift_is_rejected_before_activation_and_rollback(self):
+        self.require_special_bit_fixture(0o2000)
+        self.check_materials_live_drift(0o2000)
+        self.check_interrupted_materials(0o2000, reuse=True)
+
+    def test_original_group_readable_source_config_is_accepted_without_mutation(self):
+        self.full_fixture()
+        config = self.root / "etc/henukit-deploy/deploy.env"
+        config.chmod(0o640)
+        info = config.lstat()
+        before = (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode, config.read_bytes())
+
+        result = self.transition("--preflight")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "preflight_passed")
+        info = config.lstat()
+        self.assertEqual(before, (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode, config.read_bytes()))
+        self.assertFalse((self.root / "var/lib/henukit-scoped-releases/stack-transition").exists())
+
+    def assert_source_config_rejected(self):
+        config = self.root / "etc/henukit-deploy/deploy.env"
+        info = config.lstat()
+        before = (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode, config.read_bytes(),
+                  (self.root / "fake-state.json").read_bytes(), self.envfile.read_bytes())
+        (self.root / "calls.jsonl").write_text("")
+        result = self.transition("--execute")
+        self.assertNotEqual(result.returncode, 0)
+        info = config.lstat()
+        self.assertEqual(before, (info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode, config.read_bytes(),
+                                  (self.root / "fake-state.json").read_bytes(), self.envfile.read_bytes()))
+        self.assertFalse((self.root / "var/lib/henukit-scoped-releases/stack-transition").exists())
+        self.assertFalse(any(name == "docker" and ("load" in args or "up" in args) for name, args in self.calls()))
+
+    def test_writable_source_configs_are_refused_before_transition_writes(self):
+        self.full_fixture()
+        config = self.root / "etc/henukit-deploy/deploy.env"
+        for mode in (0o660, 0o602):
+            with self.subTest(mode=oct(mode)):
+                config.chmod(mode)
+                self.assert_source_config_rejected()
+
+    def test_group_readable_source_config_foreign_group_is_refused(self):
+        self.full_fixture()
+        config = self.root / "etc/henukit-deploy/deploy.env"
+        config.chmod(0o640)
+        other = next((gid for gid in os.getgroups() if gid != os.getegid()), 1 if os.geteuid() == 0 else None)
+        if other is None:
+            self.skipTest("no alternate permitted GID for a real foreign-group filesystem fixture")
+        os.chown(config, os.geteuid(), other)
+        self.assert_source_config_rejected()
+
+    def test_source_config_foreign_owner_is_refused(self):
+        self.full_fixture()
+        config = self.root / "etc/henukit-deploy/deploy.env"
+        config.chmod(0o640)
+        try:
+            os.chown(config, 1 if os.geteuid() == 0 else 0, os.getegid())
+        except PermissionError as error:
+            if os.environ.get("HENUKIT_REQUIRE_FOREIGN_OWNER") == "1":
+                self.fail(f"required foreign-owner filesystem fixture is unavailable: {error.errno}")
+            self.skipTest(f"actual chown probe cannot construct foreign-owner fixture: {error.errno}; Linux/root gate remains unverified")
+        self.assert_source_config_rejected()
 
     def test_complete_preflight_binds_real_mixed_checkpoint_without_mutation(self):
         self.full_fixture()
@@ -1125,6 +1278,11 @@ if os.environ.get('INTERRUPT_INSTALL'):
     def failed_predecessor_fixture(self):
         """Execute the authentic c97 helper against the origin-aware HTTP seam."""
         self.full_fixture()
+        # The authentic old helper must execute in its original pre-bootstrap
+        # phase. It cannot produce the versioned alias contract or receipt fields.
+        (self.root / "var/lib/henukit-actions-watch/active-alias-contract.json").unlink()
+        inner, outer = self.root / "opt/henukit/current", self.root / "opt/henukit-current"
+        outer.unlink(); outer.symlink_to(inner.resolve())
         old_runtime = self.runtime.with_name(FAILED_SHA)
         shutil.copytree(self.runtime, old_runtime)
         (old_runtime / "RELEASE_SHA").write_text(FAILED_SHA + "\n")
@@ -1295,6 +1453,35 @@ if os.environ.get('INTERRUPT_INSTALL'):
             any(name == "docker" and "load" in args for name, args in self.calls())
         )
 
+    def test_legacy_recovery_cannot_downgrade_present_or_started_topology_authority(self):
+        self.failed_predecessor_fixture()
+        watch = self.root / "var/lib/henukit-actions-watch"
+        contract = watch / "active-alias-contract.json"
+        outer = self.root / "opt/henukit-current"
+        baseline = outer.resolve()
+        for kind in ("present", "malformed", "dangling", "intent", "prepared", "completed", "journal"):
+            with self.subTest(kind=kind):
+                fence = None
+                if kind == "present": self.bootstrap_alias_contract()
+                elif kind == "malformed": contract.write_text("{not-json"); contract.chmod(0o400)
+                elif kind == "dangling": contract.symlink_to(watch / "missing-authority")
+                else:
+                    fence = watch / ("active-aliases" if kind == "journal" else "active-alias-bootstrap")
+                    fence.mkdir(mode=0o700)
+                    marker = fence / (kind + ".json")
+                    marker.write_text('{"controlled_fixture":true}')
+                    marker.chmod(0o400)
+                before = ((self.root / "fake-state.json").read_bytes(), self.envfile.read_bytes(), self.old_record.read_bytes(), outer.lstat().st_ino)
+                (self.root / "calls.jsonl").write_text("")
+                result = self.recovery()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("migration authority", result.stderr)
+                self.assertEqual(before, ((self.root / "fake-state.json").read_bytes(), self.envfile.read_bytes(), self.old_record.read_bytes(), outer.lstat().st_ino))
+                self.assertFalse(any(name == "docker" and ("load" in args or "up" in args) for name, args in self.calls()))
+                if contract.exists() or contract.is_symlink(): contract.unlink()
+                if fence: shutil.rmtree(fence)
+                outer.unlink(); outer.symlink_to(baseline)
+
     def test_recovered_checkpoint_allows_next_transition_with_real_recreated_ids(self):
         original = self.failed_predecessor_fixture()
         before = {
@@ -1303,6 +1490,7 @@ if os.environ.get('INTERRUPT_INSTALL'):
         }
         result = self.recovery()
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.bootstrap_alias_contract()
         recovered = json.loads(self.old_record.read_text())
         self.assertNotEqual(recovered["rollback_checkpoint"], original["selected"])
         result = self.transition("--preflight")
@@ -1320,6 +1508,7 @@ if os.environ.get('INTERRUPT_INSTALL'):
         self.failed_predecessor_fixture()
         result = self.recovery()
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.bootstrap_alias_contract()
         state_path = self.root / "fake-state.json"
         state = state_path.read_bytes()
         record = self.old_record.read_bytes()
@@ -1554,6 +1743,8 @@ if os.environ.get('INTERRUPT_INSTALL'):
 
     def test_success_commits_full_aliases_and_same_candidate_does_not_replay(self):
         self.full_fixture()
+        outer = self.root / "opt/henukit-current"
+        outer_inode = outer.lstat().st_ino
         immutable = {
             path: path.read_bytes()
             for path in (self.full_record, self.membership_record, self.portal_record)
@@ -1562,6 +1753,7 @@ if os.environ.get('INTERRUPT_INSTALL'):
         result = self.transition("--execute")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["status"], "active")
+        self.assertEqual(outer.lstat().st_ino, outer_inode)
         self.assertFalse(self.marker.exists())
         for path in (
             self.root / "opt/henukit/current",
@@ -1586,10 +1778,80 @@ if os.environ.get('INTERRUPT_INSTALL'):
             )
         )
 
+    def test_fixed_outer_and_legacy_contract_fail_closed_before_transition_writes(self):
+        self.full_fixture()
+        outer = self.root / "opt/henukit-current"
+        saved = outer.lstat().st_ino
+        contract = self.root / "var/lib/henukit-actions-watch/active-alias-contract.json"
+        contract.unlink()
+        (self.root / "calls.jsonl").unlink()
+        result = self.transition("--execute")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(outer.lstat().st_ino, saved)
+        self.assertFalse((self.root / "var/lib/henukit-scoped-releases/stack-transition" / food.NEW / "receipt.json").exists())
+        self.assertFalse(any(name == "docker" and ("load" in args or "up" in args) for name, args in self.calls()))
+
+    def test_foreign_inner_inode_after_success_is_preserved_without_rollback(self):
+        self.full_fixture()
+        result = self.transition("--execute")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        inner = self.root / "opt/henukit/current"
+        foreign = inner.parent / ".foreign-current"
+        foreign.symlink_to(self.runtime)
+        foreign.replace(inner)
+        inode = inner.lstat().st_ino
+        (self.root / "calls.jsonl").unlink()
+        result = self.transition("--execute")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("foreign full alias inode", result.stderr)
+        self.assertEqual(inner.lstat().st_ino, inode)
+        self.assertFalse(any(name == "docker" and ("load" in args or "up" in args) for name, args in self.calls()))
+
+    def test_foreign_inner_between_proof_and_rename_preserves_foreign_and_prepared_inodes(self):
+        self.full_fixture()
+        result = self.transition("--execute", {"TEST_FOREIGN_INNER_AFTER_PROOF": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        proof = json.loads((self.root / "foreign-inode.json").read_text())
+        self.assertEqual((self.root / "opt/henukit/current").lstat().st_ino, proof["ino"])
+        journal = json.loads((self.root / "var/lib/henukit-scoped-releases/stack-transition" / food.NEW / "full-alias-commit.json").read_text())
+        self.assertEqual(Path(journal["path"]).lstat().st_ino, journal["link"]["ino"])
+
+    def test_source_lease_contention_leaves_full_aliases_and_runtime_untouched(self):
+        self.full_fixture()
+        outer = self.root / "opt/henukit-current"
+        inode = outer.lstat().st_ino
+        before = (self.root / "fake-state.json").read_bytes()
+        (self.root / "calls.jsonl").unlink()
+        with (self.root / "run/lock/henukit-deploy.lock").open("rb") as held:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = self.transition("--execute")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(outer.lstat().st_ino, inode)
+        self.assertEqual((self.root / "fake-state.json").read_bytes(), before)
+        self.assertFalse(any(name == "docker" and ("load" in args or "up" in args) for name, args in self.calls()))
+
+    def test_interrupted_inner_commit_restores_owned_baseline_without_reloading(self):
+        self.full_fixture()
+        outer = self.root / "opt/henukit-current"
+        inode, baseline = outer.lstat().st_ino, outer.resolve()
+        result = self.transition("--execute", {"TEST_KILL_INNER_ALIAS_RENAME": "1"})
+        self.assertEqual(result.returncode, -9, result.stderr)
+        self.assertEqual(outer.lstat().st_ino, inode)
+        self.assertEqual(outer.resolve(), self.runtime)
+        (self.root / "calls.jsonl").unlink()
+        result = self.transition("--execute")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("interrupted transition restored", result.stderr)
+        self.assertEqual(outer.lstat().st_ino, inode)
+        self.assertEqual(outer.resolve(), baseline)
+        self.assertFalse(any(name == "docker" and "load" in args for name, args in self.calls()))
+
     def test_failed_smoke_restores_mixed_images_private_configuration_and_stopped_career(
         self,
     ):
         self.full_fixture()
+        outer = self.root / "opt/henukit-current"
+        outer_inode = outer.lstat().st_ino
         before = json.loads((self.root / "fake-state.json").read_text())["containers"]
         environment = self.envfile.read_bytes()
         marker = self.marker.resolve()
@@ -1608,6 +1870,7 @@ if os.environ.get('INTERRUPT_INSTALL'):
             ).read_text()
         )
         self.assertEqual(data["status"], "rolled_back", result.stderr)
+        self.assertEqual(outer.lstat().st_ino, outer_inode)
         after = json.loads((self.root / "fake-state.json").read_text())["containers"]
         for name, old in before.items():
             self.assertEqual(
@@ -1834,14 +2097,24 @@ def load_tests(loader, tests, pattern):
     suite = loader.loadTestsFromTestCase(StackTransitionCLI)
     for name in (
         "test_transition_requires_actual_active_v3_without_online_mutation",
+        "test_original_group_readable_source_config_is_accepted_without_mutation",
+        "test_writable_source_configs_are_refused_before_transition_writes",
+        "test_group_readable_source_config_foreign_group_is_refused",
+        "test_source_config_foreign_owner_is_refused",
         "test_complete_preflight_binds_real_mixed_checkpoint_without_mutation",
         "test_workshop_boundaries_use_console_and_private_owner_before_mutation",
         "test_pinned_successor_recovers_real_failed_receipt_without_changing_identity",
+        "test_legacy_recovery_cannot_downgrade_present_or_started_topology_authority",
         "test_recovered_checkpoint_allows_next_transition_with_real_recreated_ids",
         "test_successor_recovery_rejects_foreign_authority_before_online_mutation",
         "test_recovered_checkpoint_rejects_foreign_recreation_and_evidence_drift",
         "test_recovery_ignores_unpublished_audit_temporary_and_rejects_foreign_final",
         "test_success_commits_full_aliases_and_same_candidate_does_not_replay",
+        "test_fixed_outer_and_legacy_contract_fail_closed_before_transition_writes",
+        "test_foreign_inner_inode_after_success_is_preserved_without_rollback",
+        "test_foreign_inner_between_proof_and_rename_preserves_foreign_and_prepared_inodes",
+        "test_source_lease_contention_leaves_full_aliases_and_runtime_untouched",
+        "test_interrupted_inner_commit_restores_owned_baseline_without_reloading",
         "test_failed_smoke_restores_mixed_images_private_configuration_and_stopped_career",
         "test_unknown_service_or_schema_drift_fails_before_any_online_write",
         "test_main_or_run_attempt_drift_during_image_loading_prevents_online_change",
@@ -1855,6 +2128,8 @@ def load_tests(loader, tests, pattern):
         "test_explicit_materials_baseline_preserves_independent_delivered_capabilities",
         "test_independent_materials_rejects_missing_unverified_or_failed_attempt_proof",
         "test_independent_materials_rejects_partial_live_target_drift",
+        "test_materials_suid_drift_is_rejected_before_activation_and_rollback",
+        "test_materials_sgid_drift_is_rejected_before_activation_and_rollback",
         "test_independent_materials_retained_bytes_drift_after_preflight_is_refused",
         "test_failed_transition_restores_the_independent_materials_cohort",
         "test_interrupted_independent_materials_refuses_foreign_identity_then_restores_B",

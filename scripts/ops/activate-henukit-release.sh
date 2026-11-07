@@ -9,6 +9,8 @@ program="activate-henukit-release"
 usage() {
   cat >&2 <<'EOF'
 usage: activate-henukit-release.sh <full-main-sha> --execute
+       activate-henukit-release.sh <full-main-sha> --notice-url <apply|reconcile|restore> --plan <private-plan> --execute
+       activate-henukit-release.sh <full-main-sha> --notice-url accept --plan <private-plan> --evidence <private-evidence> --execute
        activate-henukit-release.sh <full-main-sha> \
          --recover-degraded-baseline <full-current-sha> --execute
        activate-henukit-release.sh <full-main-sha> --local-artifacts <artifact-dir> --execute
@@ -31,6 +33,63 @@ die() {
   printf '%s: %s\n' "$program" "$*" >&2
   exit 1
 }
+
+# Explicit single-key configuration reconciliation is part of this original
+# owner, not a replay of the full release/EasyPay transaction. Default activation
+# and the scheduler's already-active no-op remain unchanged.
+if [[ ( $# -eq 6 || $# -eq 8 ) && "$2" == "--notice-url" && "$4" == "--plan" ]]; then
+  [[ "$1" =~ ^[0-9a-f]{40}$ && ( "$3" == "apply" || "$3" == "reconcile" ||
+      "$3" == "restore" || "$3" == "accept" ) ]] || die "invalid Notice URL action or SHA"
+  notice_evidence=""
+  if [[ $# -eq 8 ]]; then
+    [[ "$3" == "accept" && "$6" == "--evidence" && "$8" == "--execute" ]] || { usage; exit 64; }
+    notice_evidence="$7"
+  else
+    [[ "$3" != "accept" && "$6" == "--execute" ]] || { usage; exit 64; }
+  fi
+  exec python3 -I - "${HENUKIT_WATCHER:-/usr/local/sbin/watch-henukit-actions}" \
+    "${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}" "$1" "$3" "$5" "$notice_evidence" \
+    "${HENUKIT_TRUST_ANCHOR:-/}" <<'NOTICE_URL_OWNER'
+import fcntl,os,pathlib,stat,sys
+watcher,state,sha,mode,plan,evidence,anchor=sys.argv[1:]
+state,anchor=map(pathlib.Path,(state,anchor));lock=state/'direct-deploy.lock'
+def trusted(path,directory=False):
+    info=path.lstat()
+    assert path.is_absolute() and '..' not in path.parts and info.st_uid==os.geteuid() and not info.st_mode&0o022
+    assert stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)
+    if path==anchor:return info
+    for parent in path.parents:
+        if parent==anchor:break
+        assert parent.is_relative_to(anchor)
+        item=parent.lstat();assert stat.S_ISDIR(item.st_mode) and item.st_uid==os.geteuid() and not item.st_mode&0o022
+    return info
+try:
+    trusted(anchor,True);trusted(state,True);trusted(pathlib.Path(watcher));info=trusted(lock)
+    assert not stat.S_IMODE(state.lstat().st_mode)&0o077 and info.st_size==0
+    try:held=os.fstat(8)
+    except OSError:
+        source=os.open(lock,os.O_RDONLY|os.O_NOFOLLOW)
+        os.dup2(source,8,inheritable=True)
+        if source!=8:os.close(source)
+        held=os.fstat(8)
+    assert (held.st_dev,held.st_ino)==(info.st_dev,info.st_ino)
+    fcntl.flock(8,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    os.set_inheritable(8,True)
+except (OSError,AssertionError):
+    raise SystemExit('Notice URL original release owner/lock unavailable; no action started')
+args=[watcher,'--notice-url',mode,'--sha',sha,'--plan',plan]
+if evidence:args+=['--evidence',evidence]
+os.execv(watcher,args)
+NOTICE_URL_OWNER
+fi
+
+notice_url_plan=""
+# Optional only on an explicitly requested full activation. Never inferred from
+# the normal summary flags or silently installed as a new deployment default.
+if [[ $# -ge 4 && "${@: -3:1}" == "--notice-url-plan" && "${@: -1}" == "--execute" ]]; then
+  notice_url_plan="${@: -2:1}"
+  set -- "${@:1:$#-3}" --execute
+fi
 
 release_source="actions"
 local_artifact_dir=""
@@ -71,6 +130,7 @@ epay_ssh_target="${HENUKIT_EPAY_GATEWAY_SSH_TARGET:-root@metaview.top}"
 epay_gateway_dir="${HENUKIT_EPAY_GATEWAY_DIR:-/root/epay-gateway}"
 retained_release_owner_uid="${HENUKIT_RETAINED_RELEASE_OWNER_UID:-}"
 retained_release_adopter="${HENUKIT_RETAINED_RELEASE_ADOPTER:-/usr/local/sbin/adopt-henukit-degraded-baseline}"
+notice_url_helper="${HENUKIT_NOTICE_URL_HELPER:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/henukit-notice-url-transaction.py}"
 
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be 40 lowercase hexadecimal characters"
 if [[ -n "$recovery_baseline_sha" ]]; then
@@ -79,6 +139,8 @@ if [[ -n "$recovery_baseline_sha" ]]; then
   [[ "$recovery_baseline_sha" != "$release_sha" ]] ||
     die "recovery baseline and candidate SHA must differ"
 fi
+[[ -z "$notice_url_plan" || -z "$recovery_baseline_sha" ]] ||
+  die "Notice URL change cannot be combined with degraded-baseline recovery"
 if [[ "$release_source" == "local" ]]; then
   [[ -d "$local_artifact_dir" && ! -L "$local_artifact_dir" ]] ||
     die "--local-artifacts must name a non-symlink artifact directory"
@@ -186,6 +248,50 @@ validate_private_file() {
   [[ "$owner" == "$(id -u)" ]] || die "$label must be owned by the release user"
 }
 
+active_aliases_match() {
+  local accepted="$1" alias marker mode owner
+  [[ "$accepted" =~ ^[0-9a-f]{40}$ ]] || return 1
+  local current="${HENUKIT_CURRENT_LINK:-/opt/henukit-current}"
+  local compatible="${HENUKIT_COMPAT_CURRENT_LINK:-/opt/henukit/current}"
+  local contract="$state_root/active-alias-contract.json" target
+  [[ "$current" != "$compatible" ]] || return 1
+  marker="$release_root/$accepted/RELEASE_SHA"
+  for alias in "$compatible" "$current"; do
+    target="$release_root/$accepted"
+    [[ "$alias" != "$current" ]] || target="$compatible"
+    [[ "$alias" == /* && -L "$alias" && "$(readlink "$alias")" == "$target" ]] || return 1
+    owner="$(stat -c '%u' "$alias" 2>/dev/null || stat -f '%u' "$alias")"
+    [[ "$owner" == "$(id -u)" ]] || return 1
+    trusted_nonwritable_directory_chain "$(dirname "$alias")" || return 1
+    [[ -f "$marker" && ! -L "$marker" ]] || return 1
+    trusted_nonwritable_directory_chain "$(dirname "$marker")" || return 1
+    owner="$(stat -c '%u' "$marker" 2>/dev/null || stat -f '%u' "$marker")"
+    mode="$(stat -c '%a' "$marker" 2>/dev/null || stat -f '%Lp' "$marker")"
+    [[ "$owner" == "$(id -u)" ]] && (( (8#$mode & 8#022) == 0 )) || return 1
+    [[ "$(tr -d '\r\n' < "$marker")" == "$accepted" ]] || return 1
+  done
+  (validate_private_file "$contract" "active alias contract"; trusted_nonwritable_directory_chain "$(dirname "$contract")") || return 1
+  python3 -I - "$contract" "$release_root" "$compatible" "$current" <<'ALIAS_CONTRACT'
+import json, os, pathlib, stat, sys
+path, releases, inner, outer = map(pathlib.Path, sys.argv[1:])
+def metadata(path):
+    info = path.lstat()
+    return dict(dev=info.st_dev, ino=info.st_ino, uid=info.st_uid, gid=info.st_gid, mode=stat.S_IMODE(info.st_mode))
+try:
+    info = path.lstat()
+    assert stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o400
+    value = json.loads(path.read_bytes())
+    assert set(value) == {'format','release_root','inner','outer','outer_snapshot','parents'}
+    assert value['format'] == 'henukit-active-alias-forwarder-v1'
+    assert (value['release_root'], value['inner'], value['outer']) == tuple(map(str, (releases, inner, outer)))
+    assert outer.is_symlink() and os.readlink(outer) == str(inner)
+    assert value['outer_snapshot'] == {**metadata(outer), 'text': os.readlink(outer)}
+    assert value['parents'] == {str(p): metadata(p) for p in (inner.parent, outer.parent)}
+except (OSError, ValueError, KeyError, AssertionError, TypeError):
+    sys.exit(1)
+ALIAS_CONTRACT
+}
+
 validate_prepared_evidence() {
   local prepared_backup prepared_metadata
   validate_private_file "$prepared" "prepared backup evidence"
@@ -257,6 +363,9 @@ verify_release_current() {
 }
 
 verify_release_current
+baseline_sha="$(basename "$(readlink "${HENUKIT_COMPAT_CURRENT_LINK:-/opt/henukit/current}")")" ||
+  die "active alias baseline is unavailable"
+active_aliases_match "$baseline_sha" || die "active alias topology requires a reviewed versioned bootstrap"
 if [[ -e "$approval" ]]; then
   [[ -n "$recovery_baseline_sha" ]] ||
     die "an approval already exists for release $release_sha"
@@ -268,12 +377,21 @@ if [[ -e "$approval" ]]; then
   printf '%s: resuming valid unconsumed approval for release %s\n' "$program" "$release_sha"
 fi
 if [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]]; then
+  active_aliases_match "$release_sha" || die "active release aliases disagree; operator reconciliation is required"
+  [[ -z "$notice_url_plan" ]] || die "already-active Notice URL change requires the explicit --notice-url apply entry"
   printf '%s: release %s is already active\n' "$program" "$release_sha"
   exit 0
 fi
 
 [[ -n "$env_file" && -r "$env_file" && -w "$env_file" && ! -L "$env_file" ]] ||
   die "HENUKIT_ENV_FILE must be a writable, non-symlink production environment file"
+if [[ -n "$notice_url_plan" ]]; then
+  python3 -I "$notice_url_helper" --mode preflight --sha "$release_sha" --env-file "$env_file" --plan "$notice_url_plan"
+  export HENUKIT_NOTICE_URL_PLAN="$notice_url_plan"
+  unset NOTICE_API_URL
+else
+  unset HENUKIT_NOTICE_URL_PLAN
+fi
 
 watcher_args=(--once)
 if [[ "$release_source" == "local" ]]; then
@@ -427,6 +545,7 @@ fi
 "$watcher" "${watcher_args[@]}"
 [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]] ||
   die "watcher returned without activating release $release_sha"
+active_aliases_match "$release_sha" || die "watcher returned without the complete active-alias contract"
 rm -f -- "$environment_backup"
 environment_backup=""
 

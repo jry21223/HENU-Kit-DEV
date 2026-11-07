@@ -3,7 +3,9 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  chownSync,
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -19,6 +21,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { forwarderContract } from "./active-alias-fixture.mjs";
 
 const script = fileURLToPath(
   new URL("../watch-henukit-actions.sh", import.meta.url),
@@ -212,6 +215,9 @@ function fixture({
   const log = join(root, "calls.log");
   const active = join(root, "active-sha");
   const currentLink = join(root, "current");
+  const compatibilityLink = join(root, "henukit", "current");
+  const sourceLock = join(state, "source-deploy.lock");
+  const sourceConfig = join(state, "source-deploy.env");
   const libraryHealthAttempts = join(root, "library-health-attempts");
   const mixedRuntime = join(root, "mixed-runtime");
   const materialsWebhookUnhealthy = join(root, "materials-webhook-unhealthy");
@@ -231,6 +237,9 @@ function fixture({
   }
   mkdirSync(join(state, "approvals"));
   mkdirSync(join(state, "prepared"));
+  mkdirSync(dirname(compatibilityLink), { mode: 0o755 });
+  writeFileSync(sourceLock, "", { mode: 0o640 });
+  writeFileSync(sourceConfig, `HENUKIT_DEPLOY_LOCK_FILE=${sourceLock}\n`, { mode: 0o600 });
   if (approved) {
     writeFileSync(join(state, "approvals", releaseSha), `${releaseSha}\n`, {
       mode: 0o600,
@@ -333,7 +342,7 @@ if [[ "$format" == "%u" ]]; then
     id -u
   elif [[ "$path" == "$FAKE_MATERIALS_ROOT"/* ]]; then
     printf '0'
-  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_ROLLBACK_ENV_FILE" || "$path" == "$FAKE_RELEASE_ROOT"/* || "$path" == "$FAKE_BACKUP_ROOT"/* || "$path" == "$FAKE_STATE_ROOT/approvals/"* || "$path" == "$FAKE_STATE_ROOT/prepared/"* || "$path" == "$FAKE_STATE_ROOT/practice-smoke-"* ]]; then
+  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_ROLLBACK_ENV_FILE" || "$path" == "$FAKE_RELEASE_ROOT"/* || "$path" == "$FAKE_BACKUP_ROOT"/* || "$path" == "$FAKE_STATE_ROOT/approvals/"* || "$path" == "$FAKE_STATE_ROOT/prepared/"* || "$path" == "$FAKE_STATE_ROOT/last-activated-sha" || "$path" == "$FAKE_STATE_ROOT/practice-smoke-"* ]]; then
     printf '0'
   else
     id -u
@@ -369,8 +378,10 @@ printf 'deploy %s\\n' "$*" >> "$FAKE_CALL_LOG"
     }
     writeFileSync(active, `${previousSha}\n`);
     symlinkSync(previousRelease, currentLink, "dir");
+    symlinkSync(previousRelease, compatibilityLink, "dir");
   }
 
+  forwarderContract(state, releases, compatibilityLink, currentLink);
   writeExecutable(
     join(bin, "gh"),
     `#!/usr/bin/env bash
@@ -479,6 +490,10 @@ cat > "$runtime_tree/bin/deploy-henukit-artifact.sh" <<'HELPER'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 printf 'deploy %s\\n' "$*" >> "$FAKE_CALL_LOG"
+if [[ "\${FAKE_KILL_CANDIDATE_BEFORE_SWITCH:-0}" == "1" ]]; then
+  kill -KILL "$PPID"
+  exit 137
+fi
 if [[ "$FAKE_MUTATE_ROLLBACK_ENV_ON_FAILURE" == "1" ]]; then
   printf 'TAMPERED=1\\n' >> "$FAKE_ROLLBACK_ENV_FILE"
 fi
@@ -863,6 +878,9 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
       HENUKIT_BACKUP_ROOT: backups,
       HENUKIT_ENV_FILE: envFile,
       HENUKIT_CURRENT_LINK: currentLink,
+      HENUKIT_COMPAT_CURRENT_LINK: compatibilityLink,
+      HENUKIT_SOURCE_DEPLOY_LOCK: sourceLock,
+      HENUKIT_SOURCE_DEPLOY_CONFIG: sourceConfig,
       HENUKIT_IMAGE_INVENTORY: imageInventory,
       HENUKIT_RELEASE_ROOT: releases,
       HENUKIT_RELEASE_SIGNERS_FILE: releaseSigners,
@@ -879,6 +897,104 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
   };
 }
 
+function aliasReplaceFault(setup, destination, action) {
+  const python = execFileSync("python3", ["-I", "-c", "import sys;print(sys.executable)"], { encoding: "utf8" }).trim();
+  const wrapper = join(setup.root, "bin", "python3");
+  writeExecutable(wrapper, `#!${python}
+import os, signal, stat, sys
+assert sys.argv[1:3] == ['-I', '-']
+source = sys.stdin.read()
+sys.argv = ['-', *sys.argv[3:]]
+replace = os.replace
+symlink = os.symlink
+fsync = os.fsync
+sync_log = ${JSON.stringify(join(setup.root, "alias-parent-fsync.log"))}
+alias_parents = ${JSON.stringify([dirname(setup.env.HENUKIT_COMPAT_CURRENT_LINK)])}
+def traced_fsync(fd):
+    result = fsync(fd)
+    held = os.fstat(fd)
+    if ${JSON.stringify(action)} == 'assert-parent-sync' and stat.S_ISDIR(held.st_mode):
+        for directory in alias_parents:
+            expected = os.stat(directory)
+            if (held.st_dev, held.st_ino) == (expected.st_dev, expected.st_ino):
+                with open(sync_log, 'a') as stream: stream.write(directory + '\\n')
+    return result
+os.fsync = traced_fsync
+def changed_symlink(src, dst, *args, **kwargs):
+    result = symlink(src, dst, *args, **kwargs)
+    if ${JSON.stringify(action)} == 'replace-source-config' and os.path.basename(os.fspath(dst)).startswith('.henukit-active-'):
+        destination = ${JSON.stringify(destination)}
+        incoming = destination + '.same-bytes-replacement'
+        with open(destination, 'rb') as stream: contents = stream.read()
+        fd = os.open(incoming, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, 'wb') as stream: stream.write(contents)
+        replace(incoming, destination)
+    return result
+os.symlink = changed_symlink
+def interrupted_replace(src, dst, *args, **kwargs):
+    selected = os.fspath(dst) == ${JSON.stringify(destination)} and os.path.basename(os.fspath(src)).startswith(('.henukit-active-', '.active-marker-'))
+    if selected and ${JSON.stringify(action)} == 'error':
+        raise OSError('controlled active-alias filesystem failure')
+    if selected and ${JSON.stringify(action)} == 'kill-before':
+        os.kill(os.getppid(), signal.SIGKILL); os._exit(137)
+    if selected and ${JSON.stringify(action)} == 'assert-parent-sync':
+        observed = set(open(sync_log).read().splitlines()) if os.path.exists(sync_log) else set()
+        if not set(alias_parents).issubset(observed):
+            raise OSError('alias parents were not fsynced after interrupted replacement')
+    result = replace(src, dst, *args, **kwargs)
+    if selected and ${JSON.stringify(action)} == 'kill-after':
+        os.kill(os.getppid(), signal.SIGKILL); os._exit(137)
+    return result
+os.replace = interrupted_replace
+exec(compile(source, '<stdin>', 'exec'), {'__name__': '__main__'})
+`);
+  return () => unlinkSync(wrapper);
+}
+
+function contractDurabilityFault(setup) {
+  const python = execFileSync("python3", ["-I", "-c", "import sys;print(sys.executable)"], { encoding: "utf8" }).trim();
+  const wrapper = join(setup.root, "bin", "python3");
+  const trace = join(setup.root, "contract-fsync.trace");
+  const contract = join(setup.state, "rollback-contracts", "pending", releaseSha);
+  writeExecutable(wrapper, `#!${python}
+import os, stat, sys
+assert sys.argv[1:3] == ['-I', '-']
+source = sys.stdin.read()
+sys.argv = ['-', *sys.argv[3:]]
+fsync, link = os.fsync, os.link
+contract, trace = ${JSON.stringify(contract)}, ${JSON.stringify(trace)}
+def traced_fsync(fd):
+    result = fsync(fd)
+    held = os.fstat(fd)
+    for label, path in [('file', contract), ('parent', os.path.dirname(contract))]:
+        if os.path.exists(path):
+            current = os.stat(path)
+            if (held.st_dev, held.st_ino) == (current.st_dev, current.st_ino):
+                with open(trace, 'a') as stream: stream.write(label + '\\n')
+    return result
+def checked_link(src, dst, *args, **kwargs):
+    if os.path.basename(os.fspath(dst)) == 'intent.json':
+        observed = open(trace).read().splitlines() if os.path.exists(trace) else []
+        if 'file' not in observed or 'parent' not in observed or observed.index('file') > observed.index('parent'):
+            raise OSError('rollback contract file and parent were not durable before alias intent')
+    return link(src, dst, *args, **kwargs)
+os.fsync, os.link = traced_fsync, checked_link
+exec(compile(source, '<stdin>', 'exec'), {'__name__': '__main__'})
+`);
+  return () => unlinkSync(wrapper);
+}
+
+async function holdLease(path) {
+  const holder = spawn("python3", ["-I", "-c", "import fcntl,os,sys; fd=os.open(sys.argv[1],os.O_RDONLY); fcntl.flock(fd,fcntl.LOCK_EX); print('locked',flush=True); sys.stdin.read()", path], { stdio: ["pipe", "pipe", "pipe"] });
+  const exited = new Promise(resolve => holder.once("close", resolve));
+  await new Promise((resolve, reject) => {
+    holder.stdout.once("data", resolve);
+    holder.once("error", reject);
+    holder.once("exit", code => { if (code !== null) reject(new Error(`lease holder exited: ${code}`)); });
+  });
+  return async () => { holder.stdin.end(); await exited; };
+}
+
 test("the watcher refuses an Actions attempt different from automatic authorization", () => {
   const setup = fixture({ runAttempt: 2, approved: false });
   const result = spawnSync(script, ["--once"], {
@@ -887,6 +1003,64 @@ test("the watcher refuses an Actions attempt different from automatic authorizat
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /identity differs from the automatic authorization/);
   assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+test("Notice reconciliation inherits all original locks without any full-release or business POST", () => {
+  const setup = fixture({ previousSha: releaseSha, approved: false });
+  writeFileSync(join(setup.state, "last-activated-sha"), releaseSha + "\n", { mode: 0o600 });
+  const lock = join(setup.state, "direct-deploy.lock");
+  writeFileSync(lock, "", { mode: 0o600 });
+  const helper = join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha, "bin", "notice-url-fixture.py");
+  mkdirSync(dirname(helper), { recursive: true });
+  writeFileSync(helper, `import fcntl,os,sys
+for fd in (8,9,6,7):
+ os.fstat(fd);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+assert sys.argv[sys.argv.index('--mode')+1]=='apply'
+print('notice-fixture-four-locks-validated')
+`, { mode: 0o555 });
+  const plan = join(setup.root, "notice-plan.json"); writeFileSync(plan, "{}\n", { mode: 0o600 });
+  const wrapper = `import fcntl,os,sys
+fd=os.open(sys.argv[1],os.O_RDONLY);os.dup2(fd,8,inheritable=True)
+if fd!=8:os.close(fd)
+fcntl.flock(8,fcntl.LOCK_EX|fcntl.LOCK_NB)
+os.execv(sys.argv[2],sys.argv[2:])
+`;
+  const result = spawnSync("python3", ["-I", "-c", wrapper, lock, script,
+    "--notice-url", "apply", "--sha", releaseSha, "--plan", plan], {
+    encoding: "utf8", env: { ...setup.env, HENUKIT_NOTICE_URL_HELPER: helper },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /notice-fixture-four-locks-validated/);
+  const calls = readFileSync(setup.log, "utf8");
+  assert.doesNotMatch(calls, /docker |curl |deploy |grant-account|gh run|artifact/);
+});
+
+test("full release stages Notice before rollback binding and keeps committed activation when its separate receipt needs reconciliation", () => {
+  const setup = fixture();
+  const helper = join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40), "bin", "notice-url-fixture.py");
+  mkdirSync(dirname(helper), { recursive: true });
+  writeFileSync(helper, `import os,pathlib,sys
+mode=sys.argv[sys.argv.index('--mode')+1];state=pathlib.Path(os.environ['HENUKIT_STATE_ROOT']);sha='a'*40
+with open(os.environ['FAKE_CALL_LOG'],'a') as log:log.write('notice-hook '+mode+'\\n')
+if mode=='stage':
+ assert pathlib.Path(sys.argv[sys.argv.index('--baseline-env')+1]).is_file()
+ assert not (state/'rollback-contracts/pending'/sha).exists()
+elif mode=='health':
+ assert (state/'last-activated-sha').read_text().strip()==sha
+ raise SystemExit(13)
+else:raise SystemExit(14)
+`, { mode: 0o555 });
+  const plan = join(setup.root, "notice-plan.json"); writeFileSync(plan, "{}\n", { mode: 0o600 });
+  // The formal scheduler already holds direct-deploy.lock in production.
+  // The fake helper checks hook ordering; the real helper's lock/FS contract
+  // is exercised separately by test_notice_url_transaction.py.
+  const result = spawnSync(script, ["--once"], { encoding: "utf8",
+    env: { ...setup.env, HENUKIT_NOTICE_URL_HELPER: helper, HENUKIT_NOTICE_URL_PLAN: plan },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(readFileSync(setup.log, "utf8"), /notice-hook stage[\s\S]*notice-hook health/);
+  assert.match(result.stdout, /release active; Notice URL receipt requires explicit reconciliation/);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
 });
 
 test("one-shot downloads, verifies, backs up, and deploys one successful main artifact set", () => {
@@ -923,6 +1097,8 @@ test("one-shot downloads, verifies, backs up, and deploys one successful main ar
     readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(),
     releaseSha,
   );
+  assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha));
+  assert.equal(realpathSync(setup.env.HENUKIT_COMPAT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha));
 
   execFileSync(script, ["--once"], { env: setup.env });
   const secondCalls = readFileSync(setup.log, "utf8");
@@ -1058,7 +1234,8 @@ test("one-shot waits for a newly started Library healthcheck before accepting th
     output,
     new RegExp(`release ${releaseSha} activated and deterministic smoke checks passed`),
   );
-  assert.equal(readFileSync(join(setup.root, "library-health-attempts"), "utf8"), "4");
+  // Three starting reads plus readiness, pre-publication and pre-marker checks.
+  assert.equal(readFileSync(join(setup.root, "library-health-attempts"), "utf8"), "6");
   assert.equal((calls.match(/^sleep 2$/gm) ?? []).length, 3);
 });
 
@@ -1091,8 +1268,272 @@ test("an active release without an activation record converges the audited permi
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 1);
   assert.equal((calls.match(/grant-account-operator-role/g) ?? []).length, 2);
   assert.equal(readFileSync(setup.materialsPathState, "utf8").trim(), "enabled");
-  assert.equal(readFileSync(setup.libraryHealthAttempts, "utf8"), "4");
+  assert.equal(readFileSync(setup.libraryHealthAttempts, "utf8"), "6");
   assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("an activation marker cannot complete a pending contract over a foreign alias", () => {
+  const setup = fixture();
+  execFileSync(script, ["--once"], { env: setup.env, stdio: "pipe" });
+  reopenCompletedRollbackContract(setup);
+  const alias = setup.env.HENUKIT_COMPAT_CURRENT_LINK;
+  unlinkSync(alias);
+  symlinkSync(join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)), alias, "dir");
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0);
+  assert.equal(existsSync(join(setup.state, "rollback-contracts/pending", releaseSha)), true);
+  assert.equal(realpathSync(alias), join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)));
+  assert.equal((readFileSync(setup.log, "utf8").match(/^deploy /gm) ?? []).length, 1);
+});
+
+test("an already-consistent pre-invariant release does not fabricate a new alias attempt", () => {
+  const setup = fixture({ previousSha: releaseSha });
+  writeFileSync(join(setup.state, "last-activated-sha"), releaseSha + "\n", { mode: 0o600 });
+  const before = lstatSync(join(setup.state, "last-activated-sha")).ino;
+  execFileSync(script, ["--once"], { env: setup.env, stdio: "pipe" });
+  assert.equal(lstatSync(join(setup.state, "last-activated-sha")).ino, before);
+  assert.equal(existsSync(join(setup.state, "active-aliases")), false);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+test("the versioned fixed outer alias remains unchanged through a normal activation", () => {
+  const setup = fixture();
+  const outer = setup.env.HENUKIT_CURRENT_LINK;
+  const before = lstatSync(outer).ino;
+  execFileSync(script, ["--once"], { env: setup.env, stdio: "pipe" });
+  assert.equal(lstatSync(outer).ino, before);
+  assert.equal(realpathSync(outer), join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha));
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("a new approval cannot replay an unresolved previously-published attempt", () => {
+  const setup = fixture();
+  execFileSync(script, ["--once"], { env: setup.env, stdio: "pipe" });
+  reopenCompletedRollbackContract(setup);
+  unlinkSync(join(setup.state, "last-activated-sha"));
+  writeFileSync(setup.active, "b".repeat(40) + "\n");
+  writeFileSync(join(setup.state, "approvals", releaseSha), releaseSha + "\n", { mode: 0o600 });
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0);
+  assert.equal((readFileSync(setup.log, "utf8").match(/^deploy /gm) ?? []).length, 1);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+});
+
+test("an inner-alias I/O failure remains pending and resumes without another deployment", () => {
+  const setup = fixture();
+  const removeFault = aliasReplaceFault(setup, setup.env.HENUKIT_COMPAT_CURRENT_LINK, "error");
+  const first = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  removeFault();
+  assert.notEqual(first.status, 0);
+  assert.equal(realpathSync(setup.env.HENUKIT_COMPAT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)));
+  assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)));
+  assert.equal(existsSync(join(setup.state, "last-activated-sha")), false);
+  assert.equal(existsSync(join(setup.state, "rollback-contracts/pending", releaseSha)), true);
+  execFileSync(script, ["--once"], { env: setup.env, stdio: "pipe" });
+  assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha));
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+  assert.equal((readFileSync(setup.log, "utf8").match(/^deploy /gm) ?? []).length, 1);
+});
+
+test("a killed alias transaction resumes its persisted attempt without replaying deployment", () => {
+  for (const boundary of ["before-first-alias", "after-first-alias", "after-marker"]) {
+    const setup = fixture();
+    const destination = boundary === "after-marker" ? join(setup.state, "last-activated-sha") : setup.env.HENUKIT_COMPAT_CURRENT_LINK;
+    const removeFault = aliasReplaceFault(setup, destination, boundary === "before-first-alias" ? "kill-before" : "kill-after");
+    const interrupted = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+    removeFault();
+    assert.equal(interrupted.signal, "SIGKILL", boundary);
+    assert.equal(existsSync(join(setup.state, "rollback-contracts/pending", releaseSha)), true);
+    setup.env.FAKE_GH_MUST_NOT_RUN = "1";
+    const verifySync = boundary === "after-first-alias" ? aliasReplaceFault(setup, join(setup.state, "last-activated-sha"), "assert-parent-sync") : () => {};
+    try {
+      execFileSync(script, ["--once"], { env: setup.env, stdio: "pipe" });
+    } finally {
+      verifySync();
+    }
+    assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha));
+    assert.equal(realpathSync(setup.env.HENUKIT_COMPAT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha));
+    assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+    assert.equal(existsSync(join(setup.state, "rollback-contracts/pending", releaseSha)), false);
+    assert.equal((readFileSync(setup.log, "utf8").match(/^deploy /gm) ?? []).length, 1);
+  }
+});
+
+test("a foreign same-target inode after interruption is preserved without declaring activation", () => {
+  const setup = fixture();
+  const alias = setup.env.HENUKIT_COMPAT_CURRENT_LINK;
+  const removeFault = aliasReplaceFault(setup, alias, "kill-after");
+  const interrupted = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  removeFault();
+  assert.equal(interrupted.signal, "SIGKILL");
+  const foreign = join(dirname(alias), ".foreign-active-link");
+  symlinkSync(join(setup.env.HENUKIT_RELEASE_ROOT, releaseSha), foreign, "dir");
+  renameSync(foreign, alias);
+  const foreignInode = lstatSync(alias).ino;
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0);
+  assert.equal(lstatSync(alias).ino, foreignInode);
+  assert.equal(existsSync(join(setup.state, "last-activated-sha")), false);
+  assert.equal(existsSync(join(setup.state, "rollback-contracts/pending", releaseSha)), true);
+  assert.equal((readFileSync(setup.log, "utf8").match(/^deploy /gm) ?? []).length, 1);
+});
+
+test("a fresh same-SHA approval cannot replay a consumed attempt before alias preparation", () => {
+  const setup = fixture();
+  setup.env.FAKE_KILL_CANDIDATE_BEFORE_SWITCH = "1";
+  const interrupted = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.equal(interrupted.signal, "SIGKILL");
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+  assert.equal(existsSync(join(setup.state, "rollback-contracts", "pending", releaseSha)), true);
+  const attempts = join(setup.state, "active-aliases", releaseSha);
+  assert.equal(readdirSync(join(attempts, readdirSync(attempts)[0])).includes("prepared-0.json"), false);
+  setup.env.FAKE_KILL_CANDIDATE_BEFORE_SWITCH = "0";
+  writeFileSync(join(setup.state, "approvals", releaseSha), `${releaseSha}\n`, { mode: 0o600 });
+
+  const resumed = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.notEqual(resumed.status, 0);
+  assert.match(resumed.stderr, /interrupted release .* reconciled/i);
+  assert.equal((readFileSync(setup.log, "utf8").match(/^deploy /gm) ?? []).length, 1);
+  assert.equal(readFileSync(setup.active, "utf8").trim(), "b".repeat(40));
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), "b".repeat(40));
+});
+
+test("the original rollback contract is durable before the alias intent is published", () => {
+  const setup = fixture();
+  const removeFault = contractDurabilityFault(setup);
+  try {
+    execFileSync(script, ["--once"], { env: setup.env, stdio: "pipe" });
+  } finally {
+    removeFault();
+  }
+  assert.equal((readFileSync(setup.log, "utf8").match(/^deploy /gm) ?? []).length, 1);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+});
+
+test("the original group-readable source config permits activation without changing its authority", () => {
+  const setup = fixture();
+  const path = setup.env.HENUKIT_SOURCE_DEPLOY_CONFIG;
+  chmodSync(path, 0o640);
+  const before = { info: lstatSync(path), bytes: readFileSync(path) };
+
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), releaseSha);
+  const after = lstatSync(path);
+  for (const key of ["dev", "ino", "uid", "gid", "mode"]) assert.equal(after[key], before.info[key], key);
+  assert.deepEqual(readFileSync(path), before.bytes);
+});
+
+function assertSourceConfigRejected(setup) {
+  const path = setup.env.HENUKIT_SOURCE_DEPLOY_CONFIG;
+  const before = { info: lstatSync(path), bytes: readFileSync(path) };
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+  assert.equal(existsSync(join(setup.state, "active-aliases")), false);
+  assert.equal(existsSync(join(setup.state, "last-activated-sha")), false);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+  const after = lstatSync(path);
+  for (const key of ["dev", "ino", "uid", "gid", "mode"]) assert.equal(after[key], before.info[key], key);
+  assert.deepEqual(readFileSync(path), before.bytes);
+}
+
+test("writable source configs stop before approval consumption", () => {
+  for (const mode of [0o660, 0o602]) {
+    const setup = fixture();
+    chmodSync(setup.env.HENUKIT_SOURCE_DEPLOY_CONFIG, mode);
+    assertSourceConfigRejected(setup);
+  }
+});
+
+test("a group-readable source config belonging to another group is refused", (t) => {
+  const setup = fixture();
+  const path = setup.env.HENUKIT_SOURCE_DEPLOY_CONFIG;
+  const other = process.getgroups().find((gid) => gid !== process.getgid()) ?? (process.getuid() === 0 ? 1 : null);
+  if (other === null) return t.skip("no alternate permitted GID for a real foreign-group filesystem fixture");
+  chmodSync(path, 0o640);
+  chownSync(path, process.getuid(), other);
+  assertSourceConfigRejected(setup);
+});
+
+test("a source config belonging to another owner is refused", (t) => {
+  const setup = fixture();
+  const path = setup.env.HENUKIT_SOURCE_DEPLOY_CONFIG;
+  chmodSync(path, 0o640);
+  try {
+    chownSync(path, process.getuid() === 0 ? 1 : 0, process.getgid());
+  } catch (error) {
+    if (["EPERM", "EACCES"].includes(error.code)) {
+      if (process.env.HENUKIT_REQUIRE_FOREIGN_OWNER === "1") {
+        assert.fail(`required foreign-owner filesystem fixture is unavailable: ${error.code}`);
+      }
+      return t.skip(`actual chown probe cannot construct foreign-owner fixture: ${error.code}; Linux/root gate remains unverified`);
+    }
+    throw error;
+  }
+  assertSourceConfigRejected(setup);
+});
+
+test("same-byte source-config inode drift is rejected before any alias replacement", () => {
+  const setup = fixture();
+  chmodSync(setup.env.HENUKIT_SOURCE_DEPLOY_CONFIG, 0o640);
+  const removeFault = aliasReplaceFault(setup, setup.env.HENUKIT_SOURCE_DEPLOY_CONFIG, "replace-source-config");
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  removeFault();
+  assert.notEqual(result.status, 0);
+  assert.equal(existsSync(join(setup.state, "last-activated-sha")), false);
+  for (const alias of [setup.env.HENUKIT_COMPAT_CURRENT_LINK, setup.env.HENUKIT_CURRENT_LINK]) {
+    assert.equal(realpathSync(alias), join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)));
+  }
+});
+
+test("competing watcher, adoption and source leases stop before approval consumption", { timeout: 30000 }, async () => {
+  for (const kind of ["watcher", "adoption", "source"]) {
+    const setup = fixture();
+    const watcherLock = join(setup.state, "watcher.lock");
+    writeFileSync(watcherLock, "", { mode: 0o600 });
+    const path = kind === "watcher" ? watcherLock : kind === "adoption" ? setup.state : setup.env.HENUKIT_SOURCE_DEPLOY_LOCK;
+    const release = await holdLease(path);
+    try {
+      const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+      assert.notEqual(result.status, 0, kind);
+      assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+      assert.equal(existsSync(join(setup.state, "active-aliases")), false);
+      assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+      assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)));
+    } finally {
+      await release();
+    }
+  }
+});
+
+test("isolated active-alias overrides require a private deployment root", () => {
+  const setup = fixture();
+  chmodSync(setup.root, 0o755);
+  const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+});
+
+test("legacy aliases and a foreign fixed outer link stop before approval consumption", () => {
+  for (const kind of ["missing-contract", "direct-legacy", "foreign-outer"]) {
+    const setup = fixture();
+    const outer = setup.env.HENUKIT_CURRENT_LINK;
+    if (kind === "missing-contract") unlinkSync(join(setup.state, "active-alias-contract.json"));
+    else {
+      const incoming = join(setup.root, ".foreign-outer");
+      symlinkSync(kind === "direct-legacy" ? join(setup.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)) : setup.env.HENUKIT_COMPAT_CURRENT_LINK, incoming, "dir");
+      renameSync(incoming, outer);
+    }
+    const before = lstatSync(outer).ino;
+    const result = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+    assert.notEqual(result.status, 0, kind);
+    assert.equal(lstatSync(outer).ino, before);
+    assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+    assert.doesNotMatch(readFileSync(setup.log, "utf8"), /pg_dump|docker load|^deploy /m);
+  }
 });
 
 test("restart after materials quiesce restores the previous runtime before requesting a new approval", () => {
@@ -1155,16 +1596,16 @@ for (const [label, envKey] of [
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /interrupted release .* reconciled/i);
     assert.equal(readFileSync(setup.active, "utf8").trim(), previousSha);
-    assert.equal(existsSync(join(setup.state, "last-activated-sha")), false);
+    assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), previousSha);
   });
 }
 
 test("an approved pending candidate blocks a newer main candidate from creating a second contract", () => {
   const setup = fixture();
-  execFileSync(script, ["--once"], { env: setup.env });
-  reopenCompletedRollbackContract(setup);
-  unlinkSync(join(setup.state, "last-activated-sha"));
-  writeFileSync(join(setup.state, "approvals", releaseSha), `${releaseSha}\n`, { mode: 0o600 });
+  setup.env.FAKE_ACTIVATION_FREE_KIB = "1";
+  const interrupted = spawnSync(script, ["--once"], { encoding: "utf8", env: setup.env });
+  assert.notEqual(interrupted.status, 0);
+  assert.match(interrupted.stderr, /approval remains unconsumed/i);
   const nextSha = "d".repeat(40);
   setup.env.FAKE_BRANCH_SHA = nextSha;
   setup.env.FAKE_RUN_RELEASE_SHA = nextSha;
@@ -1376,6 +1817,12 @@ test("watch mode honors a maintenance request bound to its live instance at a sa
   const child = spawn(script, ["--watch"], {
     env: { ...setup.env, HENUKIT_POLL_SECONDS: "1" },
   });
+  // Register before the first await: a fast safe-boundary exit must not be
+  // lost while the test is writing the maintenance request.
+  let closed = false;
+  const completion = new Promise(resolve => child.once("close", (status, signal) => {
+    closed = true; resolve({ status, signal });
+  }));
   let stdout = "";
   let stderr = "";
   child.stdout.setEncoding("utf8");
@@ -1383,25 +1830,33 @@ test("watch mode honors a maintenance request bound to its live instance at a sa
   child.stdout.on("data", (chunk) => { stdout += chunk; });
   child.stderr.on("data", (chunk) => { stderr += chunk; });
 
+  let timer;
+  const timeout = new Promise(resolve => { timer = setTimeout(() => resolve({ timeout: true }), 30_000); });
+  try {
   const deadline = Date.now() + 10_000;
   while (!existsSync(instance) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  assert.equal(existsSync(instance), true, "watcher did not publish its instance id");
+  assert.equal(existsSync(instance), true, `watcher did not publish its instance id: ${stderr}`);
   const instanceId = readFileSync(instance, "utf8").trim();
   assert.match(instanceId, /^[1-9][0-9]*$/);
   const nonce = "b".repeat(32);
   writeFileSync(quiesce, `${releaseSha} ${instanceId} ${nonce}\n`, { mode: 0o600 });
   chmodSync(quiesce, 0o600);
 
-  const status = await new Promise((resolve) => child.on("close", resolve));
+  const outcome = await Promise.race([completion, timeout]);
+  assert.notEqual(outcome.timeout, true, `owned fixture watcher PID ${child.pid} did not close: ${stdout}\n${stderr}`);
 
-  assert.equal(status, 0, stderr);
+  assert.equal(outcome.status, 0, stderr);
   assert.match(stdout, /quiesce requested (at a safe boundary|after a completed check)/i);
   assert.equal(
     readFileSync(join(setup.state, "quiesced"), "utf8").trim(),
     `${releaseSha} ${instanceId} ${nonce}`,
   );
+  } finally {
+    clearTimeout(timer);
+    if (!closed && child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+  }
 });
 
 test("watch mode ignores a stale request bound to a prior watcher instance", () => {
@@ -1435,6 +1890,9 @@ test("failed public verification restores and verifies the previous fixed-SHA re
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /rolled back/);
   assert.equal(readFileSync(join(setup.root, "active-sha"), "utf8").trim(), previousSha);
+  assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, previousSha));
+  assert.equal(realpathSync(setup.env.HENUKIT_COMPAT_CURRENT_LINK), join(setup.env.HENUKIT_RELEASE_ROOT, previousSha));
+  assert.equal(readFileSync(join(setup.state, "last-activated-sha"), "utf8").trim(), previousSha);
   assert.equal((calls.match(/^deploy /gm) ?? []).length, 1);
   assert.match(calls, /docker compose --env-file .*henukit\.rollback\.env .* up -d --remove-orphans/);
   assert.doesNotMatch(calls, /--runtime-only/);
@@ -2074,12 +2532,16 @@ test("degraded recovery resumes after authorization but before approval consumpt
     "--sha", releaseSha,
     "--recover-degraded-baseline", previousSha,
   ];
-  execFileSync(script, args, { env: setup.env });
-  reopenCompletedRollbackContract(setup);
-  unlinkSync(join(setup.state, "last-activated-sha"));
-  unlinkSync(join(setup.state, "degraded-recoveries", `${releaseSha}.activated`));
-  writeFileSync(setup.active, `${previousSha}\n`);
-  writeFileSync(join(setup.state, "approvals", releaseSha), `${releaseSha}\n`, { mode: 0o600 });
+  // Stop the original attempt after its authorization, with its original
+  // approval inode still present; do not fabricate this phase from success.
+  setup.env.FAKE_ACTIVATION_FREE_KIB = "1";
+  const interrupted = spawnSync(script, args, { encoding: "utf8", env: setup.env });
+  assert.notEqual(interrupted.status, 0);
+  assert.match(interrupted.stderr, /approval remains unconsumed/i);
+  assert.equal(existsSync(join(setup.state, "degraded-recoveries", `${releaseSha}.authorized`)), true);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), true);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /^deploy /m);
+  setup.env.FAKE_ACTIVATION_FREE_KIB = "8388608";
 
   execFileSync(script, args, { env: setup.env });
 
@@ -2171,8 +2633,8 @@ test("explicit recovery refuses a baseline that does not own the current release
   const previousSha = "c".repeat(40);
   const setup = fixture({ failPreviousHealth: true, previousSha });
   const artifacts = writeLocalArtifacts(setup.root);
-  unlinkSync(join(setup.root, "current"));
-  symlinkSync(join(setup.root, "releases", "d".repeat(40)), join(setup.root, "current"), "dir");
+  unlinkSync(setup.env.HENUKIT_COMPAT_CURRENT_LINK);
+  symlinkSync(join(setup.root, "releases", "d".repeat(40)), setup.env.HENUKIT_COMPAT_CURRENT_LINK, "dir");
 
   const result = spawnSync(
     script,

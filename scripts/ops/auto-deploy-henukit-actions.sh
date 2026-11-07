@@ -54,6 +54,40 @@ private_file() {
   trusted "$1"
   [[ "$(file_mode "$1")" == 600 || "$(file_mode "$1")" == 400 ]] || die "private file must use mode 0600 or 0400: $1"
 }
+active_aliases_match() {
+  local accepted="$1" root="${HENUKIT_RELEASE_ROOT:-/opt/henukit-releases}" alias
+  local current="${HENUKIT_CURRENT_LINK:-/opt/henukit-current}"
+  local compatible="${HENUKIT_COMPAT_CURRENT_LINK:-/opt/henukit/current}"
+  local contract="${HENUKIT_STATE_ROOT:-/var/lib/henukit-actions-watch}/active-alias-contract.json" target
+  [[ "$accepted" =~ ^[0-9a-f]{40}$ && "$root" == /* && "$root/" != *'/../'* && "$root/" != *'/./'* && "$current" != "$compatible" ]] || return 1
+  for alias in "$compatible" "$current"; do
+    target="$root/$accepted"
+    [[ "$alias" != "$current" ]] || target="$compatible"
+    [[ "$alias" == /* && -L "$alias" && "$(file_owner "$alias")" == 0 && "$(readlink "$alias")" == "$target" ]] || return 1
+    (trusted "$(dirname "$alias")"; trusted "$root/$accepted/RELEASE_SHA") || return 1
+    [[ "$(tr -d '\r\n' < "$root/$accepted/RELEASE_SHA")" == "$accepted" ]] || return 1
+  done
+  (trusted "$contract") || return 1
+  python3 -I - "$contract" "$root" "$compatible" "$current" <<'ALIAS_CONTRACT'
+import json, os, pathlib, stat, sys
+path, releases, inner, outer = map(pathlib.Path, sys.argv[1:])
+def metadata(path):
+    info = path.lstat()
+    return dict(dev=info.st_dev, ino=info.st_ino, uid=info.st_uid, gid=info.st_gid, mode=stat.S_IMODE(info.st_mode))
+try:
+    info = path.lstat()
+    assert stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o400
+    value = json.loads(path.read_bytes())
+    assert set(value) == {'format','release_root','inner','outer','outer_snapshot','parents'}
+    assert value['format'] == 'henukit-active-alias-forwarder-v1'
+    assert (value['release_root'], value['inner'], value['outer']) == tuple(map(str, (releases, inner, outer)))
+    assert outer.is_symlink() and os.readlink(outer) == str(inner)
+    assert value['outer_snapshot'] == {**metadata(outer), 'text': os.readlink(outer)}
+    assert value['parents'] == {str(p): metadata(p) for p in (inner.parent, outer.parent)}
+except (OSError, ValueError, KeyError, AssertionError, TypeError):
+    sys.exit(1)
+ALIAS_CONTRACT
+}
 load_policy() {
   private_file "$policy"
   jq -e --arg repo "$repo" --arg workflow "$workflow" '
@@ -122,12 +156,16 @@ activate_locked() (
   load_policy
   trusted "$activator"
   activator_digest="$(sha256sum "$activator" | awk '{print $1}')"
+  local baseline_sha
+  baseline_sha="$(basename "$(readlink "${HENUKIT_COMPAT_CURRENT_LINK:-/opt/henukit/current}")")" || die 'active alias baseline is unavailable'
+  active_aliases_match "$baseline_sha" || die 'active alias topology requires a reviewed versioned bootstrap'
   write_audit "$state/$sha.attempted.json" attempted
   local status=0
   HENUKIT_EXPECTED_ACTIONS_IDENTITY="actions:$run_id:$run_attempt" "$activator" "$sha" --execute || status=$?
   if [[ "$status" == 0 ]]; then
     private_file "$watcher_state/last-activated-sha"
     [[ "$(tr -d '\r\n' < "$watcher_state/last-activated-sha")" == "$sha" ]] || status=1
+    active_aliases_match "$sha" || status=1
   fi
   if [[ "$status" != 0 ]]; then
     write_audit "$state/$sha.failed.json" failed "$status"
@@ -165,6 +203,7 @@ check_once() {
   if [[ -e "$watcher_state/last-activated-sha" || -L "$watcher_state/last-activated-sha" ]]; then
     private_file "$watcher_state/last-activated-sha"
     if [[ "$(tr -d '\r\n' < "$watcher_state/last-activated-sha")" == "$sha" ]]; then
+      active_aliases_match "$sha" || die 'recorded release has divergent active aliases; operator reconciliation is required'
       log "full release $sha is already recorded; no new activation"; return 0
     fi
   fi

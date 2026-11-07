@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { forwarderContract } from "./active-alias-fixture.mjs";
 
 const script = fileURLToPath(new URL("../auto-deploy-henukit-actions.sh", import.meta.url));
 const sha = "a".repeat(40);
@@ -15,7 +16,17 @@ function fixture(overrides = {}) {
   const bin = join(root, "bin");
   const state = join(root, "state");
   const watcher = join(root, "watcher");
-  for (const p of [bin, state, watcher]) mkdirSync(p, { mode: 0o700 });
+  const releases = join(root, "releases");
+  for (const p of [bin, state, watcher, releases]) mkdirSync(p, { mode: 0o700 });
+  for (const version of [sha, "b".repeat(40)]) {
+    mkdirSync(join(releases, version), { mode: 0o755 });
+    writeFileSync(join(releases, version, "RELEASE_SHA"), version + "\n");
+  }
+  const current = join(root, "current");
+  const compatible = join(root, "compat-current");
+  symlinkSync(join(releases, sha), current, "dir");
+  symlinkSync(join(releases, sha), compatible, "dir");
+  forwarderContract(watcher, releases, compatible, current);
   const policy = join(root, "policy.json");
   writeFileSync(policy, JSON.stringify({ format: "henukit-actions-auto-deploy-v1", repository: "jry21223/HENU-Kit-DEV", workflow: "deploy-henukit.yml", branch: "main" }), { mode: 0o600 });
   const token = join(root, "token");
@@ -59,6 +70,10 @@ printf '%s\n' "$*" >> "$TEST_LOG"
 if [ "$TEST_ACTIVATE_DELAY" = 1 ]; then /bin/sleep 1; fi
 [ "$TEST_ACTIVATE_FAILS" = 0 ] || exit 23
 printf '%s\n' "$1" > "$HENUKIT_STATE_ROOT/last-activated-sha"
+if [ "$TEST_ACTIVATE_ALIAS_DRIFT" = 1 ]; then
+  rm "$HENUKIT_COMPAT_CURRENT_LINK"
+  ln -s "$HENUKIT_RELEASE_ROOT/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$HENUKIT_COMPAT_CURRENT_LINK"
+fi
 `,
   };
   for (const [name, contents] of Object.entries(executables)) writeFileSync(join(bin, name), contents, { mode: 0o755 });
@@ -66,10 +81,11 @@ printf '%s\n' "$1" > "$HENUKIT_STATE_ROOT/last-activated-sha"
     ...process.env, PATH: `${bin}:${process.env.PATH}`, TEST_FIXTURE_ROOT: root, TEST_POLICY: policy, TEST_POLICY_OWNER: "0",
     TEST_OLD_WATCHER_STATE: "inactive", TEST_SHA: sha, TEST_BRANCH_SHA: sha,
     TEST_RUN_STATUS: "completed", TEST_RUN_CONCLUSION: "success", TEST_ACTIVATE_FAILS: "0", TEST_LOG: log,
-    TEST_POLL_LOG: join(root, "poll.log"), TEST_ACTIVATE_DELAY: "0", TEST_REAL_FLOCK: "0",
+    TEST_POLL_LOG: join(root, "poll.log"), TEST_ACTIVATE_DELAY: "0", TEST_REAL_FLOCK: "0", TEST_ACTIVATE_ALIAS_DRIFT: "0",
     TEST_STARTUP_DELAY: "0", TEST_STARTUP_FILE: join(root, "startup"),
     HENUKIT_AUTO_DEPLOY_POLICY: policy, HENUKIT_AUTO_DEPLOY_STATE_ROOT: state,
     HENUKIT_STATE_ROOT: watcher, HENUKIT_ACTIVATE_COMMAND: join(bin, "activate"), GH_TOKEN_FILE: token,
+    HENUKIT_RELEASE_ROOT: releases, HENUKIT_CURRENT_LINK: current, HENUKIT_COMPAT_CURRENT_LINK: compatible,
     ...overrides,
   } };
 }
@@ -85,6 +101,49 @@ test("current successful main build invokes the existing full release entry once
   assert.equal(existsSync(join(s.state, `${sha}.activated.json`)), true);
   assert.equal(run(s).status, 0);
   assert.equal(readFileSync(s.log, "utf8"), `${sha} --execute\n`);
+});
+
+test("an existing activation marker cannot hide a divergent mandatory alias", () => {
+  const s = fixture();
+  writeFileSync(join(s.watcher, "last-activated-sha"), sha + "\n", { mode: 0o600 });
+  unlinkSync(s.env.HENUKIT_COMPAT_CURRENT_LINK);
+  symlinkSync(join(s.env.HENUKIT_RELEASE_ROOT, "b".repeat(40)), s.env.HENUKIT_COMPAT_CURRENT_LINK, "dir");
+  const r = run(s);
+  assert.notEqual(r.status, 0);
+  assert.equal(readFileSync(s.log, "utf8"), "");
+  assert.equal(existsSync(join(s.state, `${sha}.attempted.json`)), false);
+  assert.equal(existsSync(join(s.state, `${sha}.activated.json`)), false);
+});
+
+test("a busy original direct-deployment lease creates no automatic attempt", { timeout: 15000 }, async () => {
+  const s = fixture();
+  const lock = join(s.watcher, "direct-deploy.lock");
+  writeFileSync(lock, "", { mode: 0o600 });
+  writeFileSync(join(s.root, "bin", "flock"), `#!/bin/sh
+exec python3 -I -c 'import fcntl,sys; fcntl.flock(int(sys.argv[1]),fcntl.LOCK_EX|fcntl.LOCK_NB)' "$2"
+`, { mode: 0o755 });
+  const holder = spawn("python3", ["-I", "-c", "import fcntl,os,sys; fd=os.open(sys.argv[1],os.O_RDONLY); fcntl.flock(fd,fcntl.LOCK_EX); print('locked',flush=True); sys.stdin.read()", lock], { stdio: ["pipe", "pipe", "pipe"] });
+  const exited = new Promise(resolve => holder.once("close", resolve));
+  await new Promise((resolve, reject) => { holder.stdout.once("data", resolve); holder.once("error", reject); });
+  try {
+    const r = run(s);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /another direct deployment holds the lock/);
+    assert.equal(existsSync(join(s.state, `${sha}.attempted.json`)), false);
+    assert.equal(readFileSync(s.log, "utf8"), "");
+  } finally {
+    holder.stdin.end();
+    await exited;
+  }
+});
+
+test("activator marker alone cannot publish an automatic success receipt", () => {
+  const s = fixture({ TEST_ACTIVATE_ALIAS_DRIFT: "1" });
+  const r = run(s);
+  assert.notEqual(r.status, 0);
+  assert.equal(existsSync(join(s.state, `${sha}.attempted.json`)), true);
+  assert.equal(existsSync(join(s.state, `${sha}.failed.json`)), true);
+  assert.equal(existsSync(join(s.state, `${sha}.activated.json`)), false);
 });
 
 test("the actual activator receives only the policy source despite inherited overrides", () => {
