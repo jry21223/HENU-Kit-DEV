@@ -38,6 +38,7 @@ const (
 	sessionCookie              = "__Host-henukit_console_session"
 	oauthFlowCookie            = "__Host-henukit_console_oauth"
 	stateTTL                   = 5 * time.Minute
+	sessionVerificationTimeout = 3 * time.Second
 	maxPublicPointValue        = int64(9_007_199_254_740_991)
 	membershipAggregateTimeout = 3 * time.Second
 )
@@ -71,6 +72,7 @@ type noticeClient interface {
 }
 
 type libraryClient interface {
+	Readiness(context.Context, string) (json.RawMessage, error)
 	Workspace(context.Context, string) (json.RawMessage, error)
 	Command(context.Context, string, string, []byte) (json.RawMessage, error)
 	Operation(context.Context, string, string, string) (json.RawMessage, error)
@@ -83,6 +85,7 @@ type foodClient interface {
 }
 
 type accountPortfolioClient interface {
+	Operation(context.Context, string, string, string) (json.RawMessage, error)
 	Membership(context.Context, string, string) (json.RawMessage, error)
 	Grant(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	Revoke(context.Context, string, string, string, []byte) (json.RawMessage, error)
@@ -218,9 +221,11 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.NoticeReviewRoute, handler.reviewNoticeVersion)
 	router.Post(contract.NoticeDistributionRoute, handler.distributeNoticeVersion)
 	router.Get(contract.NoticeOperationRoute, handler.getNoticeOperation)
+	router.Get(contract.LibraryReadinessRoute, handler.getLibraryReadiness)
 	router.Get(contract.LibraryWorkspaceRoute, handler.getLibraryWorkspace)
 	router.Post(contract.LibraryCommandRoute, handler.executeLibraryCommand)
 	router.Get(contract.LibraryOperationRoute, handler.getLibraryOperation)
+	router.Get(contract.FoodFactsRoute, handler.getFoodFacts)
 	router.Get(contract.FoodWorkspaceRoute, handler.getFoodWorkspace)
 	router.Post(contract.FoodCommandRoute, handler.executeFoodCommand)
 	router.Get(contract.FoodOperationRoute, handler.getFoodOperation)
@@ -229,7 +234,9 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.AccountMembershipGrantsRoute, handler.grantAccountMembership)
 	router.Post(contract.AccountMembershipRevocationsRoute, handler.revokeAccountMembership)
 	router.Post(contract.AccountPointAdjustmentsRoute, handler.adjustAccountPoints)
+	router.Get(contract.AccountTicketFactsRoute, handler.getAccountTicketFacts)
 	router.Get(contract.AccountTicketsRoute, handler.getAccountTickets)
+	router.Get(contract.AccountOperationRoute, handler.getAccountOperation)
 	router.Get(contract.AccountTicketRoute, handler.getAccountTicket)
 	router.Post(contract.AccountTicketRepliesRoute, handler.replyAccountTicket)
 	router.Post(contract.AccountTicketTransitionsRoute, handler.transitionAccountTicket)
@@ -301,7 +308,11 @@ func (h *Handler) getFoodOperation(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	data, err := h.food.Operation(foodapi.WithRequestID(request.Context(), requestID(request)), value.UserID, operation, key)
+	ctx := foodapi.WithRequestID(request.Context(), requestID(request))
+	if request.URL.Query().Get("outcome") == "v1" {
+		ctx = foodapi.WithOperationOutcome(ctx)
+	}
+	data, err := h.food.Operation(ctx, value.UserID, operation, key)
 	h.writeFoodResult(writer, request, data, err)
 }
 
@@ -328,7 +339,9 @@ func (h *Handler) writeFoodResult(writer http.ResponseWriter, request *http.Requ
 	}
 	switch {
 	case errors.Is(err, foodapi.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
+		// Core already verified the browser actor; owner service authentication
+		// failure does not prove that the browser Session expired.
+		h.unavailable(writer, request, err)
 	case errors.Is(err, foodapi.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, foodapi.ErrConflict):
@@ -348,6 +361,38 @@ func (h *Handler) getAccountTickets(writer http.ResponseWriter, request *http.Re
 	data, err := h.account.Tickets(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
 	if err == nil {
 		data, err = h.enrichTicketIdentities(request.Context(), value.ExchangeToken, "account.tickets.read", ticketQueueEnvelope, data)
+	}
+	h.writeAccountResult(writer, request, data, err)
+}
+
+func (h *Handler) getAccountOperation(writer http.ResponseWriter, request *http.Request) {
+	operation := chi.URLParam(request, "operation")
+	permission := map[string]string{
+		"membership_grant": "account.membership.write", "membership_revoke": "account.membership.write",
+		"point_adjustment": "account.points.adjust", "ticket_reply": "account.tickets.reply", "ticket_transition": "account.tickets.transition",
+	}[operation]
+	key := chi.URLParam(request, "idempotency_key")
+	if permission == "" || !accountIdempotencyKeyPattern.MatchString(key) || request.URL.RawQuery != "" {
+		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "操作结果查询内容无效")
+		return
+	}
+	value, ok := h.authorizeAccount(writer, request, permission)
+	if !ok {
+		return
+	}
+	data, err := h.account.Operation(accountportfolioapi.WithRequestID(request.Context(), requestID(request)), value.UserID, operation, key)
+	if err == nil && (operation == "ticket_reply" || operation == "ticket_transition") {
+		var outcome struct {
+			Operation string          `json:"operation"`
+			Status    string          `json:"status"`
+			Result    json.RawMessage `json:"result,omitempty"`
+		}
+		if err = json.Unmarshal(data, &outcome); err == nil && outcome.Status == "succeeded" {
+			outcome.Result, err = h.enrichTicketIdentities(request.Context(), value.ExchangeToken, permission, ticketCommandEnvelope, outcome.Result)
+			if err == nil {
+				data, err = json.Marshal(outcome)
+			}
+		}
 	}
 	h.writeAccountResult(writer, request, data, err)
 }
@@ -793,8 +838,10 @@ func (h *Handler) writeAccountOwnerResult(writer http.ResponseWriter, request *h
 		return
 	}
 	switch {
-	case errors.Is(err, accountportfolioapi.ErrUnauthorized), errors.Is(err, platformcore.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
+	case errors.Is(err, accountportfolioapi.ErrUnauthorized):
+		h.unavailable(writer, request, err)
+	case errors.Is(err, platformcore.ErrUnauthorized):
+		h.handlePlatformSessionError(writer, request, err)
 	case errors.Is(err, accountportfolioapi.ErrForbidden), errors.Is(err, platformcore.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, accountportfolioapi.ErrNotFound):
@@ -806,6 +853,15 @@ func (h *Handler) writeAccountOwnerResult(writer http.ResponseWriter, request *h
 	default:
 		h.unavailable(writer, request, err)
 	}
+}
+
+func (h *Handler) getLibraryReadiness(writer http.ResponseWriter, request *http.Request) {
+	value, ok := h.authorizeLibrary(writer, request, "library.read")
+	if !ok {
+		return
+	}
+	data, err := h.library.Readiness(libraryapi.WithRequestID(request.Context(), requestID(request)), value.UserID)
+	h.writeLibraryResult(writer, request, data, err)
 }
 
 func (h *Handler) getLibraryWorkspace(writer http.ResponseWriter, request *http.Request) {
@@ -882,7 +938,9 @@ func (h *Handler) writeLibraryResult(writer http.ResponseWriter, request *http.R
 	}
 	switch {
 	case errors.Is(err, libraryapi.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "Library rejected the verified actor")
+		// Core already verified the browser actor; owner service authentication
+		// failure does not prove that the browser Session expired.
+		h.unavailable(writer, request, err)
 	case errors.Is(err, libraryapi.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "Library permission or Scope is missing")
 	case errors.Is(err, libraryapi.ErrConflict):
@@ -997,12 +1055,12 @@ func (h *Handler) authorizeNotice(writer http.ResponseWriter, request *http.Requ
 	if !ok {
 		return session.Value{}, false
 	}
-	if isUnconfigured(h.notice) {
-		h.unavailable(writer, request, errors.New("notice API is not configured"))
-		return session.Value{}, false
-	}
 	if err := h.platform.CheckNotice(request.Context(), value.ExchangeToken, permission); err != nil {
 		h.handlePlatformSessionError(writer, request, err)
+		return session.Value{}, false
+	}
+	if isUnconfigured(h.notice) {
+		writeError(writer, request, http.StatusServiceUnavailable, "NOTICE_NOT_CONFIGURED", "通知工作台尚未接入，请联系管理员完成接入")
 		return session.Value{}, false
 	}
 	return value, true
@@ -1015,7 +1073,9 @@ func (h *Handler) writeNoticeResult(writer http.ResponseWriter, request *http.Re
 	}
 	switch {
 	case errors.Is(err, noticeapi.ErrUnauthorized):
-		writeError(writer, request, http.StatusUnauthorized, "CONSOLE_SESSION_EXPIRED", "登录已过期，请重新登录")
+		// Core already verified the browser actor; owner service authentication
+		// failure does not prove that the browser Session expired.
+		h.unavailable(writer, request, err)
 	case errors.Is(err, noticeapi.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "ACCESS_DENIED", "暂无操作权限，请联系管理员")
 	case errors.Is(err, noticeapi.ErrConflict):
@@ -1429,38 +1489,48 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if !ok {
 		return
 	}
-	overviewErr := h.platform.CheckOverview(request.Context(), value.ExchangeToken)
-	operationsErr := h.platform.CheckPlatformOperations(request.Context(), value.ExchangeToken)
-	operationsWriteErr := h.platform.CheckPlatformOperationsWrite(request.Context(), value.ExchangeToken)
-	noticeErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.read")
-	noticeManageErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.manage")
-	noticeReviewErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.review")
-	noticeDistributeErr := h.platform.CheckNotice(request.Context(), value.ExchangeToken, "notice.distribute")
+	ctx, cancel := context.WithTimeout(request.Context(), sessionVerificationTimeout)
+	defer cancel()
+	overviewErr := h.platform.CheckOverview(ctx, value.ExchangeToken)
+	operationsErr := h.platform.CheckPlatformOperations(ctx, value.ExchangeToken)
+	operationsWriteErr := h.platform.CheckPlatformOperationsWrite(ctx, value.ExchangeToken)
+	noticeErr := h.platform.CheckNotice(ctx, value.ExchangeToken, "notice.read")
+	noticeManageErr := h.platform.CheckNotice(ctx, value.ExchangeToken, "notice.manage")
+	noticeReviewErr := h.platform.CheckNotice(ctx, value.ExchangeToken, "notice.review")
+	noticeDistributeErr := h.platform.CheckNotice(ctx, value.ExchangeToken, "notice.distribute")
 	libraryReadErr, libraryManageErr, libraryReviewErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
 	if h.library != nil {
-		libraryReadErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.read")
-		libraryManageErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.manage")
-		libraryReviewErr = h.platform.CheckLibrary(request.Context(), value.ExchangeToken, "library.review")
+		libraryReadErr = h.platform.CheckLibrary(ctx, value.ExchangeToken, "library.read")
+		libraryManageErr = h.platform.CheckLibrary(ctx, value.ExchangeToken, "library.manage")
+		libraryReviewErr = h.platform.CheckLibrary(ctx, value.ExchangeToken, "library.review")
 	}
 	foodReadErr, foodReviewErr, foodAnomalyErr, foodTierErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
 	if h.food != nil {
-		foodReadErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.read")
-		foodReviewErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.review")
-		foodAnomalyErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.anomaly")
-		foodTierErr = h.platform.CheckFood(request.Context(), value.ExchangeToken, "food.tier_adjust")
+		foodReadErr = h.platform.CheckFood(ctx, value.ExchangeToken, "food.read")
+		foodReviewErr = h.platform.CheckFood(ctx, value.ExchangeToken, "food.review")
+		foodAnomalyErr = h.platform.CheckFood(ctx, value.ExchangeToken, "food.anomaly")
+		foodTierErr = h.platform.CheckFood(ctx, value.ExchangeToken, "food.tier_adjust")
 	}
 	accountMembershipErr, accountPointsAdjustErr, accountReadErr, accountReplyErr, accountTransitionErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
 	if h.account != nil {
-		accountMembershipErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.membership.write")
-		accountPointsAdjustErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.points.adjust")
-		accountReadErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.read")
-		accountReplyErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.reply")
-		accountTransitionErr = h.platform.CheckAccount(request.Context(), value.ExchangeToken, "account.tickets.transition")
+		accountMembershipErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.membership.write")
+		accountPointsAdjustErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.points.adjust")
+		accountReadErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.tickets.read")
+		accountReplyErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.tickets.reply")
+		accountTransitionErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.tickets.transition")
 	}
 	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(operationsWriteErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) || errors.Is(accountMembershipErr, platformcore.ErrUnauthorized) || errors.Is(accountPointsAdjustErr, platformcore.ErrUnauthorized) || errors.Is(accountReadErr, platformcore.ErrUnauthorized) || errors.Is(accountReplyErr, platformcore.ErrUnauthorized) || errors.Is(accountTransitionErr, platformcore.ErrUnauthorized) {
 		h.clearSession(writer)
 		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
 		return
+	}
+	// A Core outage is not a denial. Do not advertise a complete verified
+	// access context when any configured capability could not be checked.
+	for _, err := range []error{overviewErr, operationsErr, operationsWriteErr, noticeErr, noticeManageErr, noticeReviewErr, noticeDistributeErr, libraryReadErr, libraryManageErr, libraryReviewErr, foodReadErr, foodReviewErr, foodAnomalyErr, foodTierErr, accountMembershipErr, accountPointsAdjustErr, accountReadErr, accountReplyErr, accountTransitionErr} {
+		if err != nil && !errors.Is(err, platformcore.ErrForbidden) {
+			h.unavailable(writer, request, err)
+			return
+		}
 	}
 	permissions := make([]string, 0, 2)
 	if overviewErr == nil {

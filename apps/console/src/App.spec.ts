@@ -39,81 +39,69 @@ const overview: { data: ConsoleOverview; request_id: string } = {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("Console Overview", () => {
-  it("preserves partial and stale explanations when the owner also returns metrics", async () => {
+  it("keeps partial and stale source explanations once inside diagnostics without promoting summary metrics to business counts", async () => {
     const degraded = structuredClone(overview);
     degraded.data.modules[2] = { ...degraded.data.modules[2]!, status: "partial", metrics: [{ label: "待审核", value: "6" }], status_message: "邮件渠道暂不可用，站内通知摘要仍可读取" };
     degraded.data.modules[5] = { ...degraded.data.modules[5]!, status: "stale", metrics: [{ label: "异常票", value: "2" }], last_success_at: "2026-07-19T00:00:00Z", status_message: "当前展示上一次成功读取的美食摘要，请核对最新对象版本" };
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? degraded : authenticated), { status: 200 }))));
+    const granted = structuredClone(authenticated);
+    granted.data.access_context.permissions.push("notice.read", "food.read");
+    const context = { ...granted, data: { ...granted.data, access_context: { ...granted.data.access_context, scopes: [{ kind: "platform" }, { kind: "product", product_code: "notice" }, { kind: "product", product_code: "food" }] } } };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? degraded : context), { status: 200 }))));
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App);
     await flushPromises();
-
-    for (const [id, name, explanation] of [["notice", "Notice", "邮件渠道暂不可用，站内通知摘要仍可读取"], ["food", "Food", "当前展示上一次成功读取的美食摘要，请核对最新对象版本"]]) {
-      expect(wrapper.get(`[data-module-card='${id}']`).text()).toContain(explanation);
-      await wrapper.get(`button[aria-label='查看 ${name} 证据']`).trigger("click");
-      expect(wrapper.get(`[data-module-evidence='${id}']`).text()).toContain(explanation);
+    for (const explanation of ["邮件渠道暂不可用，站内通知摘要仍可读取", "当前展示上一次成功读取的美食摘要，请核对最新对象版本"]) {
+      expect(wrapper.get("details").text()).toContain(explanation);
+      expect(wrapper.text().split(explanation)).toHaveLength(2);
     }
+    expect(wrapper.get("[data-overview-task='food']").text()).not.toContain("异常票 2");
     wrapper.unmount();
   });
 
-  it("does not claim Overview authorization from an authenticated product-only session", async () => {
-    const productSession = structuredClone(authenticated);
-    productSession.data.access_context.permissions = ["notice.read"];
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(String(input).endsWith("/overview") ? new Response("", { status: 500 }) : new Response(JSON.stringify(productSession), { status: 200 }))));
+  it("keeps authorized product entry without claiming Overview access from a product-only session", async () => {
+    const productSession = { ...authenticated, data: { ...authenticated.data, access_context: { permissions: ["notice.read"], scopes: [{ kind: "product", product_code: "notice" }], verified_at: "2026-07-19T00:00:00Z" } } };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(productSession), { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App);
     await flushPromises();
-
-    const context = wrapper.get('[aria-label="服务端验证的访问上下文"]').text();
-    expect(context).not.toContain("已授予概览查看权限");
-    expect(context).toContain("已登录");
-    expect(context).toContain("0/6 摘要可读取");
+    expect(wrapper.text()).toContain("当前账户没有总览查看权限");
+    expect(wrapper.find("a[href='/notices']").exists()).toBe(true);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(wrapper.text()).not.toContain("已授予概览查看权限");
     wrapper.unmount();
   });
 
-  it("keeps mobile module evidence beside its source and preserves scoped navigation", async () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
-    const scopedSession = structuredClone(authenticated);
-    scopedSession.data.access_context.permissions.push("notice.read");
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : scopedSession), { status: 200 }))));
+  it("keeps navigation and diagnostic disclosure in the same reading order on the mobile layout", async () => {
+    const scoped = { ...authenticated, data: { ...authenticated.data, access_context: { permissions: ["console.overview.read", "notice.read"], scopes: [{ kind: "platform" }, { kind: "product", product_code: "notice" }], verified_at: "2026-07-19T00:00:00Z" } } };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : scoped), { status: 200 })));
     window.history.replaceState({}, "", "/");
-    const wrapper = mount(App, { attachTo: document.body });
+    const wrapper = mount(App);
     await flushPromises();
-
-    await wrapper.get("button[aria-label='查看 Notice 证据']").trigger("click");
-    const source = wrapper.get("[data-module-card='notice']");
-    expect(source.get("[data-module-evidence='notice']").text()).toContain("req_notice");
-    expect(source.get("a[href='/notices']").text()).toContain("通知");
-    expect(wrapper.findAll("[data-module-card]")).toHaveLength(6);
-    expect(wrapper.findAll("[data-module-evidence]")).toHaveLength(1);
-    await source.get("button[aria-label='收起 Notice 证据']").trigger("click");
-    expect(wrapper.find("[data-module-evidence]").exists()).toBe(false);
+    expect(wrapper.findAll("details")).toHaveLength(1);
+    expect(wrapper.get("summary").text()).toBe("连接与诊断");
+    expect(wrapper.findAll("[data-module-evidence]")).toHaveLength(0);
+    expect(wrapper.find("a[href='/notices']").exists()).toBe(true);
+    expect(wrapper.find("a[href='/food']").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("reviews a Library submission without exposing retired Study capabilities", async () => {
+  it("shows owner-confirmed Library readiness while retaining the old Workspace consumer", async () => {
     const librarySession = { ...authenticated, data: { ...authenticated.data, access_context: { permissions: ["library.read", "library.manage", "library.review"], scopes: [{ kind: "product", product_code: "library" }], verified_at: "2026-07-19T00:00:00Z" } } };
-    let approved = false;
-    const material = { id: "22222222-2222-4222-8222-222222222222", course_id: "11111111-1111-4111-8111-111111111111", title: "期末复习提纲", type: "quick_review", file_name: "review.pdf", file_size: 2048, access_level: "authenticated", status: approved ? "published" : "pending", updated_at: "2026-07-19T00:00:00Z" };
-    const workspace = () => ({ data: { status: "partial", status_message: "纠错来源暂不可用", degraded: true, courses: [{ id: "11111111-1111-4111-8111-111111111111", name: "高等数学", slug: "math", grade: "2025", status: "published", updated_at: "2026-07-19T00:00:00Z" }], materials: [material], downloads: [{ id: "33333333-3333-4333-8333-333333333333", material_id: material.id, material_title: material.title, access_level: "authenticated", downloaded_at: "2026-07-19T01:00:00Z" }], submissions: approved ? [] : [material], corrections: [], generated_at: "2026-07-19T00:00:00Z" }, request_id: "req_library_workspace" });
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const workspace = { data: { status: "partial", status_message: "legacy Study API adapter removed (ADR-0037); catalog migration (T1) pending", degraded: true, courses: [], materials: [], downloads: [], submissions: [], corrections: [], generated_at: "2026-07-19T00:00:00Z" }, request_id: "req_library_workspace" };
+    const readiness = { data: { management: "not_ready", reason: "management_migration_pending", capabilities: { workspace: false, commands: false, operation_results: false }, checked_at: "2026-11-07T18:00:00Z" }, request_id: "req_library_readiness" };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const path = String(input);
-      if (path.endsWith("/api/v1/session")) return Promise.resolve(new Response(JSON.stringify(librarySession), { status: 200 }));
-      if (path.endsWith("/library/commands") && init?.method === "POST") { approved = true; return Promise.resolve(new Response(JSON.stringify({ data: { operation: "submission_approve", resource_id: "22222222-2222-4222-8222-222222222222", state: "succeeded" }, request_id: "req_library_review" }), { status: 200 })); }
-      return Promise.resolve(new Response(JSON.stringify(workspace()), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(path.endsWith("/session") ? librarySession : path.endsWith("/readiness") ? readiness : workspace), { status: 200 }));
     }));
-    expect(await fetchLibraryWorkspace()).toMatchObject({ state: "authenticated" });
+    expect(await fetchLibraryWorkspace()).toMatchObject({ state: "authenticated", workspace: workspace.data });
     window.history.replaceState({}, "", "/library");
     const wrapper = mount(App);
     await flushPromises();
-    for (const text of ["资料库运营", "课程", "资料", "下载", "投稿审核", "资料纠错", "纠错来源暂不可用"]) expect(wrapper.text()).toContain(text);
-    for (const excluded of ["社区", "支付", "刷题", "积分", "会员"]) expect(wrapper.text()).not.toContain(excluded);
-    await wrapper.findAll("button").find((button) => button.text() === "批准投稿")!.trigger("click");
-    await flushPromises();
-    await wrapper.findAll("button").find((button) => button.text() === "确认批准")!.trigger("click");
-    await flushPromises();
-    expect(wrapper.text()).toContain("投稿已批准");
-    expect(wrapper.text()).not.toContain("批准投稿");
+    expect(wrapper.text()).toContain("资料管理尚未就绪");
+    expect(wrapper.get("a[href='https://henukit.cn/library']").text()).toContain("打开公开资料目录");
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(wrapper.text()).not.toMatch(/ADR-0037|同步生效|暂无课程|暂无资料/);
     wrapper.unmount();
   });
 
@@ -124,7 +112,7 @@ describe("Console Overview", () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path.endsWith("/api/v1/session")) return Promise.resolve(new Response(JSON.stringify(noticeSession), { status: 200 }));
-      if (path.endsWith("/reviews") && init?.method === "POST") { approved = true; return Promise.resolve(new Response(JSON.stringify({ data: { state: "approved", revision: 2 }, request_id: "req_notice_review" }), { status: 200 })); }
+      if (path.endsWith("/reviews") && init?.method === "POST") { approved = true; return Promise.resolve(new Response(JSON.stringify({ data: { version_id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", state: "approved", revision: 2 }, request_id: "req_notice_review" }), { status: 200 })); }
       return Promise.resolve(new Response(JSON.stringify(noticeEnvelope()), { status: 200 }));
     }));
     window.history.replaceState({}, "", "/notices");
@@ -135,7 +123,7 @@ describe("Console Overview", () => {
     await wrapper.findAll("button").find((button) => button.text() === "批准")!.trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("审核已批准");
-    expect(wrapper.text()).toContain("已通过 · 版本 v2");
+    expect(wrapper.text()).toContain("已通过 · 修订 r2");
     wrapper.unmount();
   });
 
@@ -170,24 +158,19 @@ describe("Console Overview", () => {
     expect(readOnly.findAll("button").some((button) => button.text().includes("保存访问设置") || button.text().includes("撤销登录"))).toBe(false);
     readOnly.unmount();
   });
-  it("renders six modules only after the server verifies the access context", async () => {
+  it("keeps technical module coverage in one disclosure after the server verifies the access context", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
     window.history.replaceState({}, "", "/");
-    const wrapper = mount(App, { attachTo: document.body });
+    const wrapper = mount(App);
     await flushPromises();
-
-    expect(wrapper.findAll("[data-module-card]")).toHaveLength(6);
-    for (const name of ["Portal", "Platform Operations", "Notice", "Library", "练习服务", "Food"]) expect(wrapper.text()).toContain(name);
-    for (const retiredCopy of ["QuizCraft", "题库工坊", "刷题产品"]) expect(wrapper.text()).not.toContain(retiredCopy);
-    expect(wrapper.text()).not.toContain("创建草稿版本");
-    for (const state of ["ok", "empty", "partial", "stale", "unavailable"]) expect(wrapper.find(`[data-state="${state}"]`).exists()).toBe(true);
-    expect(wrapper.text()).toContain("摘要暂不可用");
-    for (const portalFact of ["0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) expect(wrapper.text()).toContain(portalFact);
-    for (const forbiddenControl of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) expect(wrapper.text()).not.toContain(forbiddenControl);
+    expect(wrapper.findAll("[data-module-card]")).toHaveLength(0);
+    for (const name of ["Portal", "Platform Operations", "Notice", "Library", "练习服务", "Food"]) expect(wrapper.get("details").text()).toContain(name);
+    for (const retiredCopy of ["QuizCraft", "题库工坊", "刷题产品", "模块证据对照"]) expect(wrapper.text()).not.toContain(retiredCopy);
+    for (const fact of ["0123456789ab", "Readiness", "关键探测", "入口健康", "反馈摘要", "当前异常"]) expect(wrapper.get("details").text()).toContain(fact);
+    for (const control of ["编辑内容", "重新部署", "回滚版本", "切换版本"]) expect(wrapper.text()).not.toContain(control);
     expect(wrapper.text()).toContain("权限已验证");
-    expect(wrapper.text()).toContain("已授予概览查看权限");
-    expect(wrapper.text()).not.toContain("积分");
-    expect(wrapper.text()).not.toContain("会员");
+    expect(wrapper.find("a[href='/account/points']").exists()).toBe(false);
+    expect(wrapper.find("a[href='/account/memberships']").exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -201,9 +184,8 @@ describe("Console Overview", () => {
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.get("[data-module-card='notice']").attributes("aria-label")).toContain("已停用");
-    expect(wrapper.text()).toContain("校园通知摘要已由运营配置停用");
-    expect(wrapper.text()).toContain("如需恢复，请重新配置摘要地址");
+    expect(wrapper.get("details").text()).toContain("Notice · 摘要已停用");
+    expect(wrapper.text()).not.toContain("通知产品已停服");
     wrapper.unmount();
   });
 
@@ -214,7 +196,7 @@ describe("Console Overview", () => {
     await flushPromises();
 
     expect(wrapper.get("a[href^='/api/v1/auth/login']").text()).toContain("登录 Console");
-    expect(wrapper.text()).toContain("没有平台运营权限");
+    expect(wrapper.text()).toContain("请登录后继续");
     expect(wrapper.findAll("[data-module-card]")).toHaveLength(0);
     expect(wrapper.findAll(".metric-tile")).toHaveLength(0);
     expect(wrapper.get("a[href^='/api/v1/auth/login']").attributes("href")).toContain(encodeURIComponent("/operations?tab=inbox"));
@@ -228,7 +210,9 @@ describe("Console Overview", () => {
 
     expect(wrapper.text()).not.toContain("权限已验证");
     expect(wrapper.get("a[href^='/api/v1/auth/login']").text()).toContain("登录 Console");
-    expect(wrapper.findAll("[data-state='denied']")).toHaveLength(6);
+    expect(wrapper.findAll("[data-module-card]")).toHaveLength(0);
+    expect(wrapper.text()).toContain("登录已过期，请重新登录后继续");
+    wrapper.unmount();
   });
 
   it("exposes a loading state without inventing metrics", () => {
@@ -236,20 +220,21 @@ describe("Console Overview", () => {
     window.history.replaceState({}, "", "/?scenario=loading");
     const wrapper = mount(App);
 
-    expect(wrapper.find("section[aria-busy='true']").exists()).toBe(true);
-    expect(wrapper.findAll("[data-state='loading']")).toHaveLength(6);
+    expect(wrapper.find("[role='status'][aria-busy='true']").text()).toContain("正在验证登录状态");
+    expect(wrapper.findAll("[data-module-card]")).toHaveLength(0);
     expect(wrapper.findAll(".metric-tile")).toHaveLength(0);
+    wrapper.unmount();
   });
 
-  it("counts zero visible modules when the overview feed is unavailable", async () => {
+  it("keeps a summary failure inside diagnostics without inventing six business outages or a coverage count", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(String(input).endsWith("/overview") ? new Response("", { status: 500 }) : new Response(JSON.stringify(authenticated), { status: 200 }))));
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App);
     await flushPromises();
-
-    expect(wrapper.findAll("[data-state='unavailable']")).toHaveLength(6);
-    expect(wrapper.get('[aria-label="服务端验证的访问上下文"]').text()).toContain("0/6 摘要可读取");
-    expect(wrapper.text()).toContain("概览数据暂时不可用");
+    expect(wrapper.get("details").text()).toContain("本次摘要诊断未能完成");
+    expect(wrapper.findAll("[data-module-card]")).toHaveLength(0);
+    expect(wrapper.text()).not.toContain("0/6");
+    expect(wrapper.text()).toContain("权限已验证");
     wrapper.unmount();
   });
 
@@ -261,23 +246,22 @@ describe("Console Overview", () => {
 
     // A degraded card's explanation must appear in the state panel or the
     // footer, never both (the footer only echoes it for metric-bearing cards).
-    expect(wrapper.text().match(/部分来源可用/g)).toHaveLength(1);
-    expect(wrapper.text().match(/摘要暂不可用/g)).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("部分来源可用");
+    expect(wrapper.text().match(/练习服务摘要暂不可用/g)).toHaveLength(1);
     expect(wrapper.text().match(/Portal 部署与只读探测正常/g)).toHaveLength(1);
     wrapper.unmount();
   });
 
-  it("keeps module cards informational while Console navigation is canonical", async () => {
+  it("keeps task rows informational and places actions on their actual destination links", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith("/overview") ? overview : authenticated), { status: 200 }))));
     window.history.replaceState({}, "", "/");
     const wrapper = mount(App);
     await flushPromises();
-
-    for (const id of ["portal", "platform", "notice", "library", "quizcraft", "food"]) {
-      const card = wrapper.get(`[data-module-card='${id}']`);
-      expect(card.element.tagName).toBe("ARTICLE");
-      expect(card.attributes("href")).toBeUndefined();
+    for (const row of wrapper.findAll("[data-overview-task]")) {
+      expect(row.element.tagName).toBe("ARTICLE");
+      expect(row.attributes("href")).toBeUndefined();
     }
+    expect(wrapper.find("a[href='https://henukit.cn/library']").exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -287,8 +271,8 @@ describe("Console Overview", () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    expect(wrapper.text()).toContain("观测时间");
-    expect(wrapper.text()).toContain("最近成功");
+    expect(wrapper.get("details").text()).toContain("来源时间");
+    expect(wrapper.get("details").text()).not.toContain("2026-07-19T00:00:01Z");
     expect(wrapper.text()).not.toContain("2026-07-19T00:00:00Z");
     expect(wrapper.text()).not.toContain("2026-07-19T00:00:01Z");
     wrapper.unmount();

@@ -26,7 +26,7 @@ func main() {
 			routes[operation.OperationID] = path
 		}
 	}
-	for _, id := range []string{"getLibraryWorkspace", "executeLibraryCommand", "getLibraryOperation"} {
+	for _, id := range []string{"getLibraryConsoleReadiness", "getLibraryWorkspace", "executeLibraryCommand", "getLibraryOperation"} {
 		if routes[id] == "" {
 			fail(fmt.Errorf("required Library operation %s is missing", id))
 		}
@@ -36,11 +36,12 @@ func main() {
 package library
 
 const (
+	ReadinessPath = %q
 	WorkspacePath = %q
 	CommandPath = %q
 	OperationPath = %q
 )
-`, digest, routes["getLibraryWorkspace"], routes["executeLibraryCommand"], routes["getLibraryOperation"])
+`, digest, routes["getLibraryConsoleReadiness"], routes["getLibraryWorkspace"], routes["executeLibraryCommand"], routes["getLibraryOperation"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/library", 0o755))

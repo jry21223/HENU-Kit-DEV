@@ -30,6 +30,7 @@ func main() {
 		"HealthRoute":     "getFoodHealth",
 		"SummaryRoute":    "getFoodConsoleSummary",
 		"WorkspaceRoute":  "getFoodWorkspace",
+		"FactsRoute":      "getFoodFacts",
 		"CommandRoute":    "executeFoodCommand",
 		"OperationRoute":  "getFoodOperation",
 		"CreatePostRoute": "createFoodPost",
@@ -54,6 +55,7 @@ const (
 	HealthRoute = %q
 	SummaryRoute = %q
 	WorkspaceRoute = %q
+	FactsRoute = %q
 	CommandRoute = %q
 	OperationRoute = %q
 	CreatePostRoute = %q
@@ -65,7 +67,7 @@ const (
 	PostImageRoute = %q
 	VenuesRoute = %q
 )
-`, digest, routes["getFoodHealth"], routes["getFoodConsoleSummary"], routes["getFoodWorkspace"], routes["executeFoodCommand"], routes["getFoodOperation"], routes["createFoodPost"], routes["listFoodPosts"], routes["listMyFoodPosts"], routes["getFoodPost"], routes["getAuthorFoodPost"], routes["updateAuthorFoodPost"], routes["getFoodPostImage"], routes["listFoodVenues"])
+`, digest, routes["getFoodHealth"], routes["getFoodConsoleSummary"], routes["getFoodWorkspace"], routes["getFoodFacts"], routes["executeFoodCommand"], routes["getFoodOperation"], routes["createFoodPost"], routes["listFoodPosts"], routes["listMyFoodPosts"], routes["getFoodPost"], routes["getAuthorFoodPost"], routes["updateAuthorFoodPost"], routes["getFoodPostImage"], routes["listFoodVenues"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/contract", 0o755))

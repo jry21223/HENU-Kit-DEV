@@ -58,6 +58,27 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/workspace/facts:
+    get:
+      tags: [Food]
+      operationId: getFoodFacts
+      summary: Read global operating counts and bounded references from one fresh database snapshot
+      description: Uses the existing food.read product Scope. No campus filter, summary endpoint or cached fallback; as_of identifies this transaction read, not a replayable snapshot.
+      parameters:
+        - $ref: "#/components/parameters/ServiceID"
+        - $ref: "#/components/parameters/KeyID"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+        - $ref: "#/components/parameters/ActorUserID"
+        - $ref: "#/components/parameters/FoodReadPermission"
+        - $ref: "#/components/parameters/ScopeKind"
+        - $ref: "#/components/parameters/ProductScope"
+      responses:
+        "200": { description: Fresh global counts and matching bounded references, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodFacts" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/v1/commands:
     post:
       tags: [Food]
@@ -88,6 +109,7 @@ paths:
       summary: Resolve a Food operation by actor-scoped idempotency key
       parameters:
         - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/FoodCommandKind" } }
+        - { name: outcome, in: query, required: false, description: Opt in to explicit persisted failure facts; omitted preserves legacy raw results, schema: { type: string, enum: [v1] } }
         - $ref: "#/components/parameters/ServiceID"
         - $ref: "#/components/parameters/KeyID"
         - $ref: "#/components/parameters/Timestamp"
@@ -98,7 +120,7 @@ paths:
         - $ref: "#/components/parameters/ProductScope"
         - $ref: "#/components/parameters/IdempotencyKey"
       responses:
-        "200": { description: Original result or explicit unknown state, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationResult" } } }] } } } }
+        "200": { description: Original result or unknown; opt-in outcome v1 also exposes confirmed stored failure, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationOutcome" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -305,13 +327,57 @@ components:
     FoodSummary:
       type: object
       additionalProperties: false
-      required: [status, metrics, status_message, as_of]
+      required: [id, status, metrics, status_message, as_of]
       properties:
+        id: { type: string, const: food }
         status: { type: string, enum: [ok, empty, stale] }
         metrics: { type: array, maxItems: 8, items: { type: object, additionalProperties: false, required: [label, value], properties: { label: { type: string, maxLength: 40 }, value: { type: string, maxLength: 80 } } } }
         status_message: { type: string, maxLength: 240 }
         as_of: { type: string, format: date-time }
         last_success_at: { type: string, format: date-time }
+    FoodFacts:
+      type: object
+      additionalProperties: false
+      required: [scope, as_of, stale, counts, windows]
+      properties:
+        scope: { type: string, const: global }
+        as_of: { type: string, format: date-time }
+        stale: { type: boolean, const: false }
+        counts:
+          type: object
+          additionalProperties: false
+          required: [pending_submissions, open_anomalies, pending_tier_adjustments]
+          properties:
+            pending_submissions: { type: integer, minimum: 0, maximum: 9007199254740991 }
+            open_anomalies: { type: integer, minimum: 0, maximum: 9007199254740991 }
+            pending_tier_adjustments: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        windows:
+          type: object
+          additionalProperties: false
+          required: [submissions, anomalies, tier_adjustments]
+          properties:
+            submissions: { $ref: "#/components/schemas/FoodFactWindow" }
+            anomalies: { $ref: "#/components/schemas/FoodFactWindow" }
+            tier_adjustments: { $ref: "#/components/schemas/FoodFactWindow" }
+    FoodFactWindow:
+      type: object
+      additionalProperties: false
+      required: [filter, limit, returned, has_more, items]
+      properties:
+        filter: { type: string, enum: [pending, open] }
+        limit: { type: integer, const: 200 }
+        returned: { type: integer, minimum: 0, maximum: 200 }
+        has_more: { type: boolean }
+        items: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodFactReference" } }
+    FoodFactReference:
+      type: object
+      additionalProperties: false
+      required: [id, status, version, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, open] }
+        version: { type: integer, minimum: 1 }
+        updated_at: { type: string, format: date-time }
     FoodWorkspace:
       type: object
       additionalProperties: false
@@ -438,6 +504,19 @@ components:
         resource_id: { type: string, format: uuid }
         state: { type: string, enum: [succeeded, unknown] }
         version: { type: integer, minimum: 1 }
+    FoodOperationOutcome:
+      oneOf:
+        - { $ref: "#/components/schemas/FoodOperationResult" }
+        - { $ref: "#/components/schemas/FoodFailedOperation" }
+    FoodFailedOperation:
+      type: object
+      additionalProperties: false
+      required: [operation, resource_id, state, error_code]
+      properties:
+        operation: { $ref: "#/components/schemas/FoodCommandKind" }
+        resource_id: { type: string, format: uuid }
+        state: { type: string, enum: [failed] }
+        error_code: { type: string, enum: [FOOD_CONFLICT] }
     FoodCampus:
       type: string
       enum: [minglun, jinming, longzihu]

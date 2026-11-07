@@ -539,3 +539,42 @@ test("390px Platform Operations keeps account paging and body-only search usable
   const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
 });
+
+// Ticket 09: route interception supplies synthetic references; these tests make
+// no claim about a production origin integration. No current source is linked.
+for (const viewport of [{ name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 }]) {
+  test(`${viewport.name} Platform Inbox restores safe context and never follows an owner URL`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const reads: URL[] = [];
+    const reference = { ...operations.inbox_items[0], source_product_code: "quizcraft", source_resource_type: "feedback", source_resource_url: "https://untrusted.invalid/private", source_resource_id: "88888888-8888-4888-8888-888888888888" };
+    await page.route("**/api/v1/operations?*", async (route) => {
+      const url = new URL(route.request().url()); reads.push(url);
+      const accountPage = Number(url.searchParams.get("accounts_page") ?? 1), inboxPage = Number(url.searchParams.get("inbox_page") ?? 1);
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { ...operations, inbox_items: [reference], pagination: { ...operations.pagination, accounts: { page: accountPage, next_page: accountPage === 1 ? 2 : null, next_cursor: accountPage === 1 ? "accounts-next" : null }, inbox_items: { page: inboxPage, next_page: inboxPage === 1 ? 2 : null, next_cursor: inboxPage === 1 ? "inbox-next" : null } } }, request_id: "req_inbox_context" }) });
+    });
+    await gotoOperations(page);
+    await page.getByRole("button", { name: "账户下一页", exact: true }).click();
+    await expect(page.getByText("账户第 2 页")).toBeVisible();
+    await page.getByRole("button", { name: "收件箱下一页", exact: true }).click();
+    await expect(page.getByText("收件箱第 2 页")).toBeVisible();
+    await page.getByLabel("本页状态", { exact: true }).selectOption("open");
+    const referenceButton = page.getByRole("button", { name: "quizcraft / feedback", exact: true });
+    await referenceButton.click();
+    await expect(referenceButton).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByText(/来源尚未接入：练习反馈/)).toBeVisible();
+    await expect(page.locator('a[href*="untrusted.invalid"]')).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByLabel("本页状态", { exact: true })).toHaveValue("open");
+    await expect(referenceButton).toHaveAttribute("aria-expanded", "true");
+    await expect(referenceButton).toBeFocused();
+    const last = reads[reads.length - 1];
+    expect(last.searchParams.get("accounts_cursor")).toBe("accounts-next");
+    expect(last.searchParams.get("inbox_cursor")).toBe("inbox-next");
+    expect(last.searchParams.get("sessions_page")).toBe("1");
+    expect(last.searchParams.get("audit_page")).toBe("1");
+    expect(last.searchParams.get("snapshot_at")).toBe(operations.generated_at);
+    const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(width.client).toBe(viewport.width); expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
+    await referenceButton.press("Enter"); await expect(referenceButton).toHaveAttribute("aria-expanded", "false");
+  });
+}

@@ -1,10 +1,11 @@
-// Code generated from food.yaml (SHA256 1201bbc02975ae2f7133222d4908b1f9e97f6764abab951e33aaed9043b61466); DO NOT EDIT.
+// Code generated from food.yaml (SHA256 adf54cda20e060ac498c901b45e9dcafdc4f0e25aff353321000f1e179086121); DO NOT EDIT.
 package contract
 
 const (
 	HealthRoute     = "/healthz"
 	SummaryRoute    = "/api/v1/console-summary"
 	WorkspaceRoute  = "/api/v1/workspace"
+	FactsRoute      = "/api/v1/workspace/facts"
 	CommandRoute    = "/api/v1/commands"
 	OperationRoute  = "/api/v1/operations/{operation}"
 	CreatePostRoute = "/api/v1/food/posts"

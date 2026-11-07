@@ -179,6 +179,14 @@ components:
       type: object
       additionalProperties: false
       required: [decision, expected_revision]
+      allOf:
+        - oneOf:
+            - properties:
+                decision: { type: string, enum: [approved] }
+            - required: [note]
+              properties:
+                decision: { type: string, enum: [rejected] }
+                note: { type: string, minLength: 1, pattern: '\S' }
       properties:
         decision: { type: string, enum: [approved, rejected] }
         note: { type: string, maxLength: 1000, default: "" }
@@ -186,6 +194,8 @@ components:
       example: { decision: approved, note: 来源与正文已核验, expected_revision: 1 }
       x-invalid-examples:
         - { decision: pending, expected_revision: 0 }
+        - { decision: rejected, expected_revision: 1 }
+        - { decision: rejected, note: "   ", expected_revision: 1 }
     Audience:
       oneOf:
         - type: object

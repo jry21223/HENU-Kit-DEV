@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Activity, Bell, BookOpen, LayoutDashboard, LogOut, Menu, MessageSquare, ShieldCheck, Utensils, X } from "@lucide/vue";
 import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle, DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from "reka-ui";
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 
 import OverviewWorkspace from "@/components/OverviewWorkspace.vue";
-import { Button } from "@/components/ui";
+import { Button, PageHeader } from "@/components/ui";
 import LibraryOperationsView from "@/components/LibraryOperationsView.vue";
 import FoodOperationsView from "@/components/FoodOperationsView.vue";
 import AccountMembershipOperationsView from "@/components/AccountMembershipOperationsView.vue";
@@ -16,6 +16,8 @@ import StatusBadge from "@/components/ui/StatusBadge.vue";
 import { moduleSummaries, type ModuleSummary } from "@/data/modules";
 import { consolePath, isConsolePath } from "@/lib/base-path";
 import { consoleLoginHref, fetchConsoleOverview, fetchConsoleSession, logoutConsoleSession, type ConsoleOverview, type ConsoleSession } from "@/lib/console-gateway";
+
+import { beginConsolePrincipal, isCurrentConsolePrincipal, onConsoleSessionExpired } from "@/lib/console-session";
 
 const query = new URLSearchParams(window.location.search);
 const isPlatformOperations = isConsolePath("/operations");
@@ -37,26 +39,62 @@ const isOverviewPage = !isPlatformOperations && !isNoticeOperations && !isLibrar
 const loading = query.get("scenario") === "loading";
 const mobileNavigationOpen = ref(false);
 const authState = ref<"loading" | "authenticated" | "signed_out" | "denied" | "unavailable">("loading");
+const principalGeneration = ref(0);
+const sessionExpired = ref(false);
 const consoleSession = ref<ConsoleSession>();
 const consoleOverview = ref<ConsoleOverview>();
-const overviewState = ref<"loading" | "ready" | "unavailable">("loading");
+const overviewState = ref<"loading" | "ready" | "denied" | "unavailable">("loading");
+let overviewController: AbortController | undefined;
+async function readOverview() {
+  overviewController?.abort();
+  const controller = new AbortController();
+  overviewController = controller;
+  return new Promise<Awaited<ReturnType<typeof fetchConsoleOverview>>>((resolve) => {
+    let settled = false;
+    const finish = (result: Awaited<ReturnType<typeof fetchConsoleOverview>>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      controller.signal.removeEventListener("abort", expired);
+      resolve(result);
+    };
+    const expired = () => finish({ state: "unavailable" });
+    const timer = setTimeout(() => controller.abort(), 3000);
+    controller.signal.addEventListener("abort", expired, { once: true });
+    void fetchConsoleOverview({ signal: controller.signal }).then(finish, () => finish({ state: "unavailable" }));
+  });
+}
 
 async function refreshSession() {
+  overviewController?.abort();
+  const generation = beginConsolePrincipal();
+  principalGeneration.value = generation;
   authState.value = "loading";
+  consoleSession.value = undefined;
+  consoleOverview.value = undefined;
   const result = await fetchConsoleSession();
+  if (!isCurrentConsolePrincipal(generation)) return;
+  sessionExpired.value = false;
   authState.value = result.state;
   consoleSession.value = result.state === "authenticated" ? result.session : undefined;
   consoleOverview.value = undefined;
   if (result.state === "authenticated" && isOverviewPage) {
+    if (!result.session.access_context.permissions.includes("console.overview.read") || !result.session.access_context.scopes.some((scope) => scope.kind === "platform")) {
+      overviewState.value = "denied";
+      return;
+    }
     overviewState.value = "loading";
-    const overviewResult = await fetchConsoleOverview();
+    const overviewResult = await readOverview();
+    if (!isCurrentConsolePrincipal(generation)) return;
     if (overviewResult.state === "authenticated") {
       consoleOverview.value = overviewResult.overview;
       overviewState.value = "ready";
-    } else if (overviewResult.state === "signed_out" || overviewResult.state === "denied") {
+    } else if (overviewResult.state === "signed_out") {
       authState.value = overviewResult.state;
       consoleSession.value = undefined;
       overviewState.value = "unavailable";
+    } else if (overviewResult.state === "denied") {
+      overviewState.value = "denied";
     } else {
       overviewState.value = "unavailable";
     }
@@ -84,13 +122,21 @@ function requestSignOut(kind: "signout" | "switch_account") {
 }
 
 async function signOut() {
+  overviewController?.abort();
+  const generation = beginConsolePrincipal();
+  principalGeneration.value = generation;
+  authState.value = "loading";
+  consoleSession.value = undefined;
+  consoleOverview.value = undefined;
+  sessionExpired.value = false;
   try {
     await logoutConsoleSession();
+    if (!isCurrentConsolePrincipal(generation)) return;
     authState.value = "signed_out";
     consoleSession.value = undefined;
     consoleOverview.value = undefined;
   } catch {
-    authState.value = "unavailable";
+    if (isCurrentConsolePrincipal(generation)) authState.value = "unavailable";
   }
 }
 
@@ -99,7 +145,22 @@ async function confirmSignOut() {
   pendingSignOut.value = null;
 }
 
+const stopExpiryListener = onConsoleSessionExpired((generation) => {
+  overviewController?.abort();
+  principalGeneration.value = generation;
+  sessionExpired.value = authState.value === "authenticated";
+  authState.value = "signed_out";
+  consoleSession.value = undefined;
+  consoleOverview.value = undefined;
+  mobileNavigationOpen.value = false;
+  pendingSignOut.value = null;
+});
 onMounted(refreshSession);
+onUnmounted(() => {
+  overviewController?.abort();
+  stopExpiryListener();
+  if (isCurrentConsolePrincipal(principalGeneration.value)) beginConsolePrincipal();
+});
 
 function publicModuleStatusMessage(
   moduleId: ModuleSummary["id"],
@@ -152,13 +213,14 @@ const consoleNav = computed(() =>
   [
     { href: overviewHref, label: "全局平台概览", icon: LayoutDashboard, permission: "console.overview.read", active: isOverviewPage },
     { href: operationsHref, label: "平台运营工作台", icon: ShieldCheck, permission: "platform.operations.read", active: isPlatformOperations },
-    { href: noticesHref, label: "校园通知审核与分发", icon: Bell, permission: "notice.read", active: isNoticeOperations },
-    { href: libraryHref, label: "资料库运营", icon: BookOpen, permission: "library.read", active: isLibraryOperations },
-    { href: foodHref, label: "美食运营", icon: Utensils, permission: "food.read", active: isFoodOperations },
-    { href: accountMembershipsHref, label: "会员权益运营", icon: ShieldCheck, permission: "account.membership.write", active: isAccountMembershipOperations },
-    { href: accountPointsHref, label: "积分账本运营", icon: Activity, permission: "account.points.adjust", active: isAccountPointOperations },
-    { href: accountTicketsHref, label: "账户工单运营", icon: MessageSquare, permission: "account.tickets.read", active: isAccountTicketOperations },
-  ].filter((item) => consoleSession.value?.access_context.permissions.includes(item.permission)),
+    { href: noticesHref, label: "校园通知审核与分发", icon: Bell, permission: "notice.read", product: "notice", active: isNoticeOperations },
+    { href: libraryHref, label: "资料库运营", icon: BookOpen, permission: "library.read", product: "library", active: isLibraryOperations },
+    { href: foodHref, label: "美食运营", icon: Utensils, permission: "food.read", product: "food", active: isFoodOperations },
+    { href: accountMembershipsHref, label: "会员权益运营", icon: ShieldCheck, permission: "account.membership.write", product: "account-portfolio", active: isAccountMembershipOperations },
+    { href: accountPointsHref, label: "积分调整", icon: Activity, permission: "account.points.adjust", product: "account-portfolio", active: isAccountPointOperations },
+    { href: accountTicketsHref, label: "账户工单运营", icon: MessageSquare, permission: "account.tickets.read", product: "account-portfolio", active: isAccountTicketOperations },
+  ].filter((item) => consoleSession.value?.access_context.permissions.includes(item.permission)
+    && consoleSession.value.access_context.scopes.some((scope) => item.product ? scope.kind === "product" && scope.product_code === item.product : scope.kind === "platform")),
 );
 </script>
 
@@ -268,31 +330,29 @@ const consoleNav = computed(() =>
         </div>
       </header>
 
-      <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8" :class="isOverviewPage && 'console-overview-main'">
+      <main :key="principalGeneration" class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8" :class="isOverviewPage && 'console-overview-main'">
+        <PageHeader v-if="isOverviewPage && authState !== 'authenticated'" title="全局总览" title-id="overview-heading" />
+        <p v-if="authState === 'signed_out'" role="status" class="mb-4 text-sm text-muted-foreground">{{ sessionExpired ? "登录已过期，请重新登录后继续。" : "请登录后继续，登录成功后将回到当前页面。" }}</p>
+        <template v-if="authState === 'authenticated'">
         <PlatformOperationsView v-if="isPlatformOperations" :key="`platform-${consoleSession?.user.id ?? 'signed-out'}`" :auth-state="authState" :operator-i-d="consoleSession?.user.id" />
         <NoticeOperationsView v-else-if="isNoticeOperations" :key="`notice-${consoleSession?.user.id ?? 'signed-out'}`" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <LibraryOperationsView v-else-if="isLibraryOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
-        <FoodOperationsView v-else-if="isFoodOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
+        <FoodOperationsView v-else-if="isFoodOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountMembershipOperationsView v-else-if="isAccountMembershipOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountPointOperationsView v-else-if="isAccountPointOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
-        <AccountTicketOperationsView v-else-if="isAccountTicketOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
+        <AccountTicketOperationsView v-else-if="isAccountTicketOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <template v-else>
-        <OverviewWorkspace :summaries="summaries" :generated-at="consoleOverview?.generated_at" :authenticated="authState === 'authenticated'" :overview-granted="consoleSession?.access_context.permissions.includes('console.overview.read') ?? false" :navigation="consoleNav" @refresh="refreshSession" />
-
-        <details class="console-access-details mt-6 border-t border-border pt-4" aria-labelledby="permission-heading">
-          <summary id="permission-heading" class="cursor-pointer text-sm font-semibold">当前账户的权限</summary>
-          <p class="mt-3 text-sm text-muted-foreground">当前账户可访问的运营范围。</p>
-          <!-- This used to render two <code> pills of filler prose ("已授予概览查看权限")
-               under an aria-label promising the verified permission codes, while the real
-               access_context.permissions array was never displayed at all. -->
-          <div class="mt-3 flex flex-wrap gap-1.5" aria-label="服务端验证的权限代码">
-            <code v-for="permission in consoleSession?.access_context.permissions ?? []" :key="permission">{{ permission }}</code>
-            <span v-if="!consoleSession" class="text-sm text-muted-foreground">
-              {{ authState === "denied" ? "当前账户缺少相应权限" : "登录后显示访问上下文" }}
-            </span>
-          </div>
-        </details>
+        <section v-if="overviewState === 'denied'" aria-labelledby="overview-heading">
+          <PageHeader title="全局总览" title-id="overview-heading" />
+          <p class="mt-4 text-sm text-muted-foreground" role="status">当前账户没有总览查看权限。你仍可进入已获授权的工作台。</p>
+          <nav class="mt-4 flex flex-wrap gap-3" aria-label="可用工作台"><Button v-for="item in consoleNav.filter((item) => item.permission !== 'console.overview.read')" :key="item.href" as="a" variant="outline" :href="item.href">{{ item.label }}</Button></nav>
+        </section>
+        <OverviewWorkspace v-else :summaries="summaries" :overview-state="overviewState" :permissions="consoleSession?.access_context.permissions ?? []" :scopes="consoleSession?.access_context.scopes ?? []" :navigation="consoleNav" @refresh="refreshSession" />
         </template>
+        </template>
+        <p v-else-if="authState === 'loading'" role="status" aria-busy="true" class="text-sm text-muted-foreground">正在验证登录状态…</p>
+        <p v-else-if="authState === 'denied'" role="status" class="text-sm text-muted-foreground">当前账户没有此工作台的访问权限，请联系管理员或换个账户登录。</p>
+        <p v-else-if="authState === 'unavailable'" role="status" class="text-sm text-muted-foreground">暂时无法验证访问权限，请重试连接。</p>
       </main>
     </div>
 

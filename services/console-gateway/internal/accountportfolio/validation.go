@@ -130,14 +130,18 @@ func validTicket(value map[string]json.RawMessage) bool {
 	_, categoryOK := requiredString(value, "category")
 	status, statusOK := requiredString(value, "status")
 	version, versionOK := requiredInt(value, "version")
-	return idOK && validUUID(id) && referenceOK && reference == "HKT-"+strings.ToLower(id) && titleOK && categoryOK && statusOK && validStatus(status) && versionOK && version >= 1 && requiredTimestamp(value, "created_at") && requiredTimestamp(value, "updated_at") && !hasInternalIdentity(value)
+	ownerID, ownerOK := requiredString(value, "user_id")
+	// The private owner contract carries user_id for Gateway's bounded Core
+	// identity resolution. It is removed at the browser HTTP boundary. Operator
+	// identities and other audit fields are never valid ticket representation.
+	return hasOnlyKeys(value, "id", "reference", "user_id", "title", "category", "status", "version", "created_at", "updated_at") && ownerOK && validUUID(ownerID) && idOK && validUUID(id) && referenceOK && reference == "HKT-"+strings.ToLower(id) && titleOK && categoryOK && statusOK && validStatus(status) && versionOK && version >= 1 && requiredTimestamp(value, "created_at") && requiredTimestamp(value, "updated_at")
 }
 
 func validMessage(value map[string]json.RawMessage) bool {
 	id, idOK := requiredString(value, "id")
 	authorKind, authorKindOK := requiredString(value, "author_kind")
 	_, bodyOK := requiredString(value, "body")
-	return idOK && validUUID(id) && authorKindOK && (authorKind == "user" || authorKind == "operator") && bodyOK && requiredTimestamp(value, "created_at") && !hasInternalIdentity(value)
+	return hasOnlyKeys(value, "id", "author_kind", "body", "created_at") && idOK && validUUID(id) && authorKindOK && (authorKind == "user" || authorKind == "operator") && bodyOK && requiredTimestamp(value, "created_at")
 }
 
 func validEvent(value map[string]json.RawMessage) bool {
@@ -145,7 +149,7 @@ func validEvent(value map[string]json.RawMessage) bool {
 	kind, kindOK := requiredString(value, "kind")
 	from, fromOK := requiredString(value, "from_status")
 	to, toOK := requiredString(value, "to_status")
-	return idOK && validUUID(id) && kindOK && (kind == "operator_reply" || kind == "status_transition" || kind == "reopened") && fromOK && validStatus(from) && toOK && validStatus(to) && requiredTimestamp(value, "created_at") && !hasInternalIdentity(value)
+	return hasOnlyKeys(value, "id", "kind", "from_status", "to_status", "created_at") && idOK && validUUID(id) && kindOK && (kind == "operator_reply" || kind == "status_transition" || kind == "reopened") && fromOK && validStatus(from) && toOK && validStatus(to) && requiredTimestamp(value, "created_at")
 }
 
 func hasInternalIdentity(value map[string]json.RawMessage) bool {

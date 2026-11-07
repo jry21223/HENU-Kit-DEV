@@ -73,6 +73,10 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 		t.Fatal("append-only Notice audit accepted TRUNCATE")
 	}
 
+	blankRejection := `{"decision":"rejected","note":"  \t ","expected_revision":1}`
+	if status := sendStatus(t, server.URL, actor, "notice.review", "product", http.MethodPost, "/api/v1/versions/"+versionID+"/reviews", blankRejection, "idem_blank_rejection"); status != http.StatusBadRequest {
+		t.Fatalf("rejection without a meaningful reason = %d, want 400 without changing the immutable version or review state", status)
+	}
 	reviewBody := `{"decision":"approved","note":"来源与正文已核验","expected_revision":1}`
 	firstReview := send(t, server.URL, actor, "notice.review", http.MethodPost, "/api/v1/versions/"+versionID+"/reviews", reviewBody, "idem_review_1")
 	replayedReview := send(t, server.URL, actor, "notice.review", http.MethodPost, "/api/v1/versions/"+versionID+"/reviews", reviewBody, "idem_review_1")
@@ -122,6 +126,9 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	if dataString(t, summary, "id") != "notice" {
 		t.Fatalf("summary is not Notice: %s", summary)
 	}
+	if !bytes.Contains(summary, []byte(`"label":"已提交分发"`)) {
+		t.Fatalf("lifecycle distribution count must not claim delivery: %s", summary)
+	}
 	health, err := http.Get(server.URL + "/healthz")
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +157,10 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	}
 	if failedStatus != "failed" || failedAttempts != 3 || lastError != "permanent provider failure" || failedAudits != 1 {
 		t.Fatalf("failed distribution = %s/%d/%q audits=%d", failedStatus, failedAttempts, lastError, failedAudits)
+	}
+	failedSnapshot := send(t, server.URL, actor, "notice.read", http.MethodGet, "/api/v1/console-notices", "", "")
+	if !bytes.Contains(failedSnapshot, []byte(`"distribution_status":"failed"`)) {
+		t.Fatalf("latest failed delivery omitted from owner snapshot: %s", failedSnapshot)
 	}
 
 	denied := sendStatus(t, server.URL, actor, "notice.read", "resource", http.MethodGet, "/api/v1/console-notices", "", "")

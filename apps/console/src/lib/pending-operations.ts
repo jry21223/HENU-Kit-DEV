@@ -1,3 +1,5 @@
+import type { FoodCommandKind } from "./console-gateway";
+
 export type PendingPlatformOperation = {
   version: 1;
   operator_id: string;
@@ -46,7 +48,7 @@ function read<T>(key: string, operatorID: string, valid: (value: unknown, operat
     const parsed: unknown = JSON.parse(raw);
     if (valid(parsed, operatorID)) return parsed;
     target.removeItem(key);
-  } catch { target.removeItem(key); }
+  } catch { clear(key); }
   return undefined;
 }
 
@@ -85,3 +87,101 @@ export function clearPendingPlatformOperation() { clear(platformKey); }
 export function readPendingNoticeOperation(operatorID: string) { return read(noticeKey, operatorID, validNotice); }
 export function writePendingNoticeOperation(value: PendingNoticeOperation) { return write(noticeKey, value); }
 export function clearPendingNoticeOperation() { clear(noticeKey); }
+
+export type PendingAccountTicketOperation = {
+  version: 1;
+  operator_id: string;
+  operation: "ticket_reply" | "ticket_transition";
+  idempotency_key: string;
+  resource_id: string;
+  expected_version: number;
+};
+
+const accountTicketKey = "henukit.console.pending-account-ticket-operation.v1";
+function validAccountTicket(value: unknown, operatorID: string): value is PendingAccountTicketOperation {
+  if (!validCommon(value, operatorID)) return false;
+  const item = value as PendingAccountTicketOperation;
+  return uuidPattern.test(item.resource_id) && ["ticket_reply", "ticket_transition"].includes(item.operation)
+    && Number.isSafeInteger(item.expected_version) && item.expected_version > 0
+    && Object.keys(item).every((key) => ["version", "operator_id", "operation", "idempotency_key", "resource_id", "expected_version"].includes(key));
+}
+export function readPendingAccountTicketOperation(operatorID: string) { return read(accountTicketKey, operatorID, validAccountTicket); }
+export function writePendingAccountTicketOperation(value: PendingAccountTicketOperation) { return write(accountTicketKey, value); }
+export function clearPendingAccountTicketOperation() { clear(accountTicketKey); }
+export type PendingFoodOperation = {
+  version: 1;
+  operator_id: string;
+  operation: FoodCommandKind;
+  idempotency_key: string;
+  resource_id: string;
+};
+
+const foodKey = "henukit.console.pending-food-operation.v1";
+const legacyFoodKey = "henukit.food.pending-operation";
+const foodOperations: FoodCommandKind[] = ["submission_approve", "submission_reject", "submission_edit", "post_edit", "anomaly_resolve", "anomaly_dismiss", "tier_adjustment_confirm", "tier_adjustment_reject"];
+
+function validFood(value: unknown, operatorID: string): value is PendingFoodOperation {
+  if (!validCommon(value, operatorID)) return false;
+  const item = value as unknown as PendingFoodOperation;
+  // Food includes frozen canonical UUIDs without RFC version/variant bits.
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.resource_id) && foodOperations.includes(item.operation);
+}
+
+export function readPendingFoodOperation(operatorID: string) {
+  clear(legacyFoodKey); // Old full commands have no trusted actor binding.
+  return read(foodKey, operatorID, validFood);
+}
+export function writePendingFoodOperation(value: PendingFoodOperation) { return write(foodKey, value); }
+export function clearPendingFoodOperation() { clear(foodKey); clear(legacyFoodKey); }
+
+export type PendingMembershipOperation = {
+  version: 1; operator_id: string; operation: "membership_grant" | "membership_revoke";
+  idempotency_key: string; resource_id: string; expected_version: number;
+};
+export type PendingPointOperation = {
+  version: 1; operator_id: string; operation: "point_adjustment";
+  idempotency_key: string; resource_id: string; expected_amount: number;
+};
+const membershipKey = "henukit.console.pending-membership-operation.v1";
+const pointKey = "henukit.console.pending-point-operation.v1";
+function validMembershipOperation(value: unknown, operatorID: string): value is PendingMembershipOperation {
+  if (!validCommon(value, operatorID)) return false;
+  const item = value as PendingMembershipOperation;
+  return uuidPattern.test(item.resource_id) && ["membership_grant", "membership_revoke"].includes(item.operation)
+    && Number.isSafeInteger(item.expected_version) && item.expected_version > 0
+    && Object.keys(item).every((key) => ["version", "operator_id", "operation", "idempotency_key", "resource_id", "expected_version"].includes(key));
+}
+function validPointOperation(value: unknown, operatorID: string): value is PendingPointOperation {
+  if (!validCommon(value, operatorID)) return false;
+  const item = value as PendingPointOperation;
+  return uuidPattern.test(item.resource_id) && item.operation === "point_adjustment" && Number.isSafeInteger(item.expected_amount) && item.expected_amount !== 0
+    && Object.keys(item).every((key) => ["version", "operator_id", "operation", "idempotency_key", "resource_id", "expected_amount"].includes(key));
+}
+function legacyAccountOperation(operatorID: string, kind: "membership" | "points") {
+  const legacyKey = kind === "membership" ? "henukit.account-membership.pending-command" : "henukit.account-points.pending-command";
+  try {
+    const value = JSON.parse(storage()?.getItem(legacyKey) ?? "null");
+    if (!value) return;
+    const command = kind === "membership"
+      ? { version: 1, operator_id: value.operatorID, operation: value.kind === "grant" ? "membership_grant" : value.kind === "revoke" ? "membership_revoke" : "", resource_id: value.userID, idempotency_key: value.key, expected_version: value.input?.expected_version }
+      : { version: 1, operator_id: value.operatorID, operation: "point_adjustment", resource_id: value.input?.user_id, idempotency_key: value.key, expected_amount: value.input?.amount };
+    const valid = kind === "membership" ? validMembershipOperation(command, operatorID) : validPointOperation(command, operatorID);
+    if (!valid) { clear(legacyKey); return; }
+    // Recover the original key even if storage cannot be rewritten. The full
+    // request is never replayed; only its validated minimum query metadata is used.
+    if (write(kind === "membership" ? membershipKey : pointKey, command)) clear(legacyKey);
+    return command;
+  } catch { clear(legacyKey); return; }
+}
+export function readPendingMembershipOperation(operatorID: string) {
+  const value = read(membershipKey, operatorID, validMembershipOperation) ?? legacyAccountOperation(operatorID, "membership");
+  return validMembershipOperation(value, operatorID) ? value : undefined;
+}
+export function writePendingMembershipOperation(value: PendingMembershipOperation) { return write(membershipKey, value); }
+export function clearPendingMembershipOperation() { clear(membershipKey); clear("henukit.account-membership.pending-command"); }
+export function readPendingPointOperation(operatorID: string) {
+  const value = read(pointKey, operatorID, validPointOperation) ?? legacyAccountOperation(operatorID, "points");
+  return validPointOperation(value, operatorID) ? value : undefined;
+}
+export function writePendingPointOperation(value: PendingPointOperation) { return write(pointKey, value); }
+export function clearPendingPointOperation() { clear(pointKey); clear("henukit.account-points.pending-command"); }

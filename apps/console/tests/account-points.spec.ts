@@ -25,7 +25,7 @@ async function routeAccountLookup(page: import("@playwright/test").Page, account
 
 for (const viewport of [
   { name: "desktop", width: 1440, height: 1000 },
-  { name: "390px", width: 390, height: 844 },
+  { name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 },
 ]) {
   test(`${viewport.name} Console operator finds an account by email, confirms the target, and adjusts durable points`, async ({ page }) => {
     await page.setViewportSize(viewport);
@@ -62,7 +62,7 @@ for (const viewport of [
     });
 
     await page.goto("/account/points");
-    await expect(page.getByRole("heading", { name: "积分账本运营" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "积分调整运营" })).toBeVisible();
     await page.getByLabel("完整邮箱").fill(targetEmail);
     await page.getByRole("button", { name: "查找账户" }).click();
     await expect(page.locator("[data-account-points-result]")).toContainText(targetName);
@@ -74,8 +74,8 @@ for (const viewport of [
     await expect(page.locator("[data-points-confirm-step]")).toContainText("120");
     await page.getByRole("button", { name: "确认写入" }).click();
 
-    await expect(page.getByText("积分调整已写入账本，并已为目标用户创建持久化通知。")).toBeVisible();
-    await expect(page.locator("[data-account-points-result]")).toContainText("当前积分余额 120");
+    await expect(page.getByText("积分调整已确认；下方仅显示本次记账结果。")).toBeVisible();
+    await expect(page.locator("[data-account-points-result]")).toContainText("本次调整后的余额 120");
     await expect(page.locator("[data-account-points-result]")).toContainText("人工核验后的补偿积分");
 
     await page.getByLabel("积分变更").fill("-20");
@@ -84,9 +84,10 @@ for (const viewport of [
     await expect(page.locator("[data-points-confirm-step]")).toContainText(targetName);
     await expect(page.locator("[data-points-confirm-step]")).toContainText("20");
     await page.getByRole("button", { name: "确认写入" }).click();
-    await expect(page.locator("[data-account-points-result]")).toContainText("当前积分余额 100");
+    await expect(page.locator("[data-account-points-result]")).toContainText("本次调整后的余额 100");
     await expect(page.locator("[data-account-points-result]")).toContainText("重复记账复核扣减");
 
+    expect(await page.evaluate(() => innerWidth)).toBe(viewport.width);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
@@ -130,18 +131,18 @@ test("Console preserves JavaScript-safe point boundaries without rounding a brow
   await page.getByLabel("操作原因").fill("最大安全整数记账。");
   await page.getByRole("button", { name: "提交积分调整" }).click();
   await page.getByRole("button", { name: "确认写入" }).click();
-  await expect(page.getByText("积分调整已写入账本，并已为目标用户创建持久化通知。")).toBeVisible();
+  await expect(page.getByText("积分调整已确认；下方仅显示本次记账结果。")).toBeVisible();
 
   await page.getByLabel("积分变更").fill(String(-maxSafe));
   await page.getByLabel("操作原因").fill("最小安全整数扣减。");
   await page.getByRole("button", { name: "提交积分调整" }).click();
   await page.getByRole("button", { name: "确认写入" }).click();
-  await expect(page.getByText("积分调整已写入账本，并已为目标用户创建持久化通知。")).toBeVisible();
+  await expect(page.getByText("积分调整已确认；下方仅显示本次记账结果。")).toBeVisible();
 
   await page.getByLabel("积分变更").fill("9007199254740992");
   await page.getByLabel("操作原因").fill("越界值不得由浏览器截断后发送。");
   await page.getByRole("button", { name: "提交积分调整" }).click();
-  await expect(page.getByText("请先查找并核对账户，再填写非零整数积分和不超过 1000 字的操作原因。")).toBeVisible();
+  await expect(page.getByText("请先查找并核对账户，再填写非零安全整数积分和不超过 1000 字的操作原因。")).toBeVisible();
   expect(attempts).toBe(2);
 });
 
@@ -196,48 +197,33 @@ test("Console distinguishes an unknown email from a lookup outage", async ({ pag
   expect(lookupAttempts).toBe(2);
 });
 
-for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
-test(`${viewport.name} Console retries an unknown point adjustment with its original identity and idempotency key`, async ({ page }) => {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 }]) {
+test(`${viewport.name} Console recovers an unknown point adjustment by GET after reload`, async ({ page }) => {
   await page.setViewportSize(viewport);
-  const keys: string[] = [];
-  let attempts = 0;
-  await page.route("**/api/v1/session", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_points_session" }) }),
-  );
+  const keys: string[] = [], queries: string[] = [];
+  await page.route("**/api/v1/session", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: session, request_id: "req_points_session" }) }));
   await routeAccountLookup(page, { id: targetUserID, display_name: targetName, email: targetEmail, status: "active" });
   await page.route("**/api/v1/account/points/adjustments", async (route) => {
-    attempts += 1;
     keys.push(route.request().headers()["idempotency-key"] ?? "");
-    expect(await route.request().postDataJSON()).toEqual({ user_id: targetUserID, amount: 30, reason: "网关结果未确认时重试" });
-    if (attempts === 1) {
-      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "unavailable", message: "retry" }, request_id: "req_points_unknown" }) });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ data: { balance: 30, entry: { id: "aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaaa", amount: 30, reason: "网关结果未确认时重试", created_at: "2026-07-28T00:00:00Z" } }, request_id: "req_points_replayed" }),
-    });
+    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "unavailable" }, request_id: "req_points_unknown" }) });
   });
-
+  await page.route("**/api/v1/account/operations/point_adjustment/*", async (route) => {
+    expect(route.request().method()).toBe("GET"); queries.push(route.request().url());
+    const succeeded = queries.length >= 3;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "point_adjustment", status: succeeded ? "succeeded" : "unknown", ...(succeeded ? { result: { balance: 30, entry: { id: "aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaaa", amount: 30, reason: "隔离恢复原因", created_at: "2026-07-28T00:00:00Z" } } } : {}) }, request_id: "req_points_query" }) });
+  });
   await page.goto("/account/points");
-  await page.getByLabel("完整邮箱").fill(targetEmail);
-  await page.getByRole("button", { name: "查找账户" }).click();
-  await page.getByLabel("积分变更").fill("30");
-  await page.getByLabel("操作原因").fill("网关结果未确认时重试");
-  await page.getByRole("button", { name: "提交积分调整" }).click();
-  await page.getByRole("button", { name: "确认写入" }).click();
-  await expect(page.getByRole("status")).toContainText("同一已确认目标");
-  await expect(page.getByRole("status")).toContainText(`${targetName} · ${targetEmail}`);
-  await expect(page.getByRole("status")).toContainText("沿用原操作请求，系统会避免重复执行");
-  const stored = await page.evaluate(() => sessionStorage.getItem("henukit.account-points.pending-command"));
-  expect(stored).toContain(targetUserID);
-  expect(stored).toContain(targetName);
-  expect(stored).toContain(targetEmail);
-  await page.getByRole("button", { name: "按原请求重试" }).click();
-  await expect(page.getByText("积分调整已写入账本，并已为目标用户创建持久化通知。")).toBeVisible();
-  expect(keys).toHaveLength(2);
-  expect(keys[1]).toBe(keys[0]);
+  expect(await page.evaluate(() => innerWidth)).toBe(viewport.width);
+  await page.getByLabel("完整邮箱").fill(targetEmail); await page.getByRole("button", { name: "查找账户" }).click();
+  await page.getByLabel("积分变更").fill("30"); await page.getByLabel("操作原因").fill("隔离恢复原因");
+  await page.getByRole("button", { name: "提交积分调整" }).click(); await page.getByRole("button", { name: "确认写入" }).click();
+  await expect(page.getByRole("status")).toContainText("结果尚未确认");
+  const stored = await page.evaluate(() => sessionStorage.getItem("henukit.console.pending-point-operation.v1"));
+  expect(stored).toContain(targetUserID); expect(stored).not.toContain(targetName); expect(stored).not.toContain(targetEmail); expect(stored).not.toContain("隔离恢复原因");
+  await page.reload(); await page.getByLabel("完整邮箱").fill(targetEmail); await page.getByRole("button", { name: "查找账户" }).click();
+  await page.getByRole("button", { name: "查询原操作结果" }).click();
+  await expect(page.locator("[data-account-points-result]")).toContainText("本次调整后的余额 30");
+  expect(keys).toHaveLength(1); expect(queries).toHaveLength(3); expect(queries.every((path) => path.endsWith(keys[0]!))).toBe(true);
 });
 }
 

@@ -54,7 +54,7 @@ func TestClientSignsExchangeAndNeverPlacesTokenInURL(t *testing.T) {
 }
 
 func TestAuthorizationStatusMapping(t *testing.T) {
-	for status, want := range map[int]error{http.StatusUnauthorized: ErrUnauthorized, http.StatusForbidden: ErrForbidden, http.StatusConflict: ErrConflict} {
+	for status, want := range map[int]error{http.StatusUnauthorized: ErrAuthorizationUnknown, http.StatusForbidden: ErrForbidden, http.StatusConflict: ErrConflict} {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(status) }))
 		client, err := New(server.URL, "console-gateway", "secret-with-enough-entropy-at-least-32", "active-key", server.Client())
 		if err != nil {

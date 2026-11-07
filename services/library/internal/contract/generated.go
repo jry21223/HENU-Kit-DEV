@@ -1,9 +1,10 @@
-// Code generated from library.yaml (SHA256 dfc7fc168b3e34bec079fe1990fde21a9f0cb279dd78620d959f214ae947cb0a); DO NOT EDIT.
+// Code generated from library.yaml (SHA256 fc4560d6708ac24d55dfedb09bd0279f5e63d773bcb7dcab9b946cbcd038958d); DO NOT EDIT.
 package contract
 
 const (
 	HealthRoute                    = "/healthz"
 	SummaryRoute                   = "/api/v1/console-summary"
+	ReadinessRoute                 = "/api/v1/console-readiness"
 	WorkspaceRoute                 = "/api/v1/workspace"
 	CommandRoute                   = "/api/v1/commands"
 	OperationRoute                 = "/api/v1/operations/{operation}"

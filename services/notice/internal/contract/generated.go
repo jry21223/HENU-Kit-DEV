@@ -1,4 +1,4 @@
-// Code generated from notice.yaml (SHA256 46921eba7809326d04a187ff4dac9c96bed113ec830aa771be19bfc8b4b015e4); DO NOT EDIT.
+// Code generated from notice.yaml (SHA256 08ea37eb48cbd824371a0489e3b0e39b20f3f50d09579e7577b11cf616fa044d); DO NOT EDIT.
 
 package contract
 

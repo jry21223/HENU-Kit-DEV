@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 
 import { Button, Card, Input, Label, PageHeader, Textarea } from "@/components/ui";
-import { executeFoodCommand, fetchFoodWorkspace, resolveFoodOperation, type FoodAnomalyTicket, type FoodCampus, type FoodCommand, type FoodCommandKind, type FoodCommandPayload, type FoodPost, type FoodPostTier, type FoodSubmission, type FoodTierAdjustment, type FoodWorkspace, type FoodWriteResult } from "@/lib/console-gateway";
+import { executeFoodCommand, fetchFoodWorkspace, resolveFoodOperation, type FoodAnomalyTicket, type FoodCampus, type FoodCommand, type FoodCommandKind, type FoodCommandPayload, type FoodOperationLookupResult, type FoodPost, type FoodPostTier, type FoodSubmission, type FoodTierAdjustment, type FoodWorkspace } from "@/lib/console-gateway";
+import { clearPendingFoodOperation, readPendingFoodOperation, writePendingFoodOperation, type PendingFoodOperation } from "@/lib/pending-operations";
 
-const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; permissions: string[] }>();
+const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; operatorID?: string; permissions: string[] }>();
 const workspace = ref<FoodWorkspace>();
 const state = ref<"loading" | "ready" | "denied" | "unavailable">("loading");
 const feedback = ref("");
 const busy = ref(false);
-const campusFilter = ref<FoodCampus | "">("");
-type PendingOperation = { kind: FoodCommandKind; key: string; input: FoodCommand; success: string };
+const campusFilter = ref<FoodCampus | "">(readCampusFilter());
+let workspaceRequest = 0;
+let principalGeneration = 0;
 type ConfirmTarget = { kind: FoodCommandKind; resourceID: string; version: number; title: string; confirmLabel: string; success: string; requireReason: boolean; extraPayload?: Partial<FoodCommandPayload> };
 type EditTarget = { resourceID: string; version: number; original: { venueName: string; itemName: string; description: string; campus: FoodCampus | "" } };
 type PostEditTarget = { resourceID: string; version: number; original: { venueName: string; campus: FoodCampus; tier: FoodPostTier; reviewText: string; priceReference: string; hoursReference: string; hidden: boolean } };
-const pendingStorageKey = "henukit.food.pending-operation";
-const pending = ref<PendingOperation>();
+const pending = ref<PendingFoodOperation>();
 const confirmTarget = ref<ConfirmTarget>();
 const confirmReason = ref("");
 const editTarget = ref<EditTarget>();
@@ -33,25 +34,49 @@ const postEditPriceReference = ref("");
 const postEditHoursReference = ref("");
 const postEditHidden = ref(false);
 const postEditNote = ref("");
-const foodCommandKinds: FoodCommandKind[] = ["submission_approve", "submission_reject", "submission_edit", "post_edit", "anomaly_resolve", "anomaly_dismiss", "tier_adjustment_confirm", "tier_adjustment_reject"];
 const canReview = computed(() => props.permissions.includes("food.review"));
 const canHandleAnomaly = computed(() => props.permissions.includes("food.anomaly"));
 const canAdjustTier = computed(() => props.permissions.includes("food.tier_adjust"));
+const canQueryPending = computed(() => {
+  const operation = pending.value;
+  if (!operation || props.authState !== "authenticated" || operation.operator_id !== props.operatorID) return false;
+  if (operation.operation.startsWith("anomaly_")) return canHandleAnomaly.value;
+  if (operation.operation.startsWith("tier_adjustment_")) return canAdjustTier.value;
+  return canReview.value;
+});
+const visiblePostCount = computed(() => workspace.value?.posts.filter((post) => !post.hidden).length ?? 0);
+const hiddenPostCount = computed(() => workspace.value?.posts.filter((post) => post.hidden).length ?? 0);
+
+function workspaceTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function readCampusFilter(): FoodCampus | "" {
+  const value = new URL(window.location.href).searchParams.get("campus");
+  return value === "minglun" || value === "jinming" || value === "longzihu" ? value : "";
+}
 
 function operationKey(kind: string) { return `idem_food_${kind}_${crypto.randomUUID()}`; }
-function persistPending(value?: PendingOperation) {
+function persistPending(value?: PendingFoodOperation) {
+  if (value && !writePendingFoodOperation(value)) return false;
+  if (!value) clearPendingFoodOperation();
   pending.value = value;
-  if (value) sessionStorage.setItem(pendingStorageKey, JSON.stringify(value)); else sessionStorage.removeItem(pendingStorageKey);
+  return true;
 }
-try {
-  const stored = JSON.parse(sessionStorage.getItem(pendingStorageKey) ?? "null") as Partial<PendingOperation> | null;
-  if (stored && typeof stored.kind === "string" && foodCommandKinds.includes(stored.kind as FoodCommandKind) && typeof stored.key === "string" && typeof stored.success === "string" && !!stored.input && typeof stored.input === "object" && (stored.input as FoodCommand).kind === stored.kind) pending.value = stored as PendingOperation;
-} catch { sessionStorage.removeItem(pendingStorageKey); }
+
+function isCurrentOperator(generation: number, operatorID: string) {
+  return generation === principalGeneration && props.authState === "authenticated" && props.operatorID === operatorID;
+}
 
 async function refresh() {
-  if (props.authState !== "authenticated") { state.value = props.authState === "denied" ? "denied" : "unavailable"; return; }
+  const request = ++workspaceRequest;
+  const generation = principalGeneration;
+  const operatorID = props.operatorID;
+  if (props.authState !== "authenticated" || !operatorID) { state.value = props.authState === "denied" ? "denied" : "unavailable"; return; }
   state.value = "loading";
-  const result = await fetchFoodWorkspace(campusFilter.value || undefined);
+  const campus = campusFilter.value;
+  const result = await fetchFoodWorkspace(campus || undefined);
+  if (request !== workspaceRequest || campus !== campusFilter.value || !isCurrentOperator(generation, operatorID)) return;
   if (result.state === "authenticated") { workspace.value = result.workspace; state.value = "ready"; return; }
   state.value = result.state === "denied" ? "denied" : "unavailable";
 }
@@ -65,41 +90,83 @@ function isEditing(id: string): boolean {
   return editTarget.value?.resourceID === id;
 }
 
-async function pollOperation(kind: FoodCommandKind, key: string): Promise<FoodWriteResult> {
+async function pollOperation(operation: PendingFoodOperation, generation: number): Promise<FoodOperationLookupResult | undefined> {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) await new Promise((resolve) => window.setTimeout(resolve, attempt * 250));
-    const result = await resolveFoodOperation(kind, key);
+    if (!isCurrentOperator(generation, operation.operator_id)) return;
+    if (!canQueryPending.value) return { state: "denied" };
+    const result = await resolveFoodOperation(operation.operation, operation.idempotency_key);
+    if (!isCurrentOperator(generation, operation.operator_id)) return;
     if (result.state === "unknown" || result.state === "unavailable") continue;
     return result;
   }
   return { state: "unavailable" };
 }
 
-async function finish(kind: FoodCommandKind, key: string, input: FoodCommand, success: string) {
-  busy.value = true;
-  let result = await executeFoodCommand(input, key);
-  if (result.state === "unknown") {
-    feedback.value = "操作结果待确认，正在核对…";
-    persistPending({ kind, key, input, success });
-    result = await pollOperation(kind, key);
+async function applyOperationResult(result: FoodOperationLookupResult, operation: PendingFoodOperation, success: string, fromLookup = false) {
+  if (fromLookup && (result.state === "denied" || result.state === "signed_out" || result.state === "invalid" || result.state === "conflict")) {
+    feedback.value = result.state === "denied" ? "当前账户无法查询原操作结果，请联系管理员核对；结果仍未确认。" : result.state === "signed_out" ? "请重新登录后查询原操作结果；结果仍未确认。" : "原操作结果暂时无法查询，请稍后查询；结果仍未确认。";
+    return;
   }
-  if (result.state === "succeeded") { persistPending(); feedback.value = success; await refresh(); }
-  else if (result.state === "conflict") { persistPending(); feedback.value = "数据有变化，请刷新后重试。"; }
+  if (fromLookup && result.state === "failed" && result.result.operation === operation.operation && result.result.resource_id === operation.resource_id) {
+    persistPending();
+    feedback.value = "原操作已确认未完成：内容有更新，请核对后重新选择并提交。";
+    await refresh();
+    return;
+  }
+  if (result.state === "succeeded" && result.result?.operation === operation.operation && result.result.resource_id === operation.resource_id) { persistPending(); feedback.value = success; await refresh(); }
+  else if (result.state === "conflict") { persistPending(); feedback.value = "操作遇到冲突，请核对最新状态后再操作。"; await refresh(); }
   else if (result.state === "denied") { persistPending(); feedback.value = "当前账户缺少对应操作权限。"; }
   else if (result.state === "invalid") { persistPending(); feedback.value = "操作内容无效，请检查填写后重试。"; }
   else if (result.state === "signed_out") { persistPending(); feedback.value = "登录状态已过期，请重新登录后再操作。"; }
-  else { persistPending({ kind, key, input, success }); feedback.value = "结果还没确认，可点下方按钮按原请求重试。"; }
-  busy.value = false;
+  else { feedback.value = "结果尚未确认，请查询操作结果；不会重新提交。"; }
+}
+
+function closeEditors() {
   confirmTarget.value = undefined;
   confirmReason.value = "";
   editTarget.value = undefined;
   postEditTarget.value = undefined;
 }
 
+async function finish(kind: FoodCommandKind, key: string, input: FoodCommand, success: string) {
+  if (busy.value || pending.value || props.authState !== "authenticated" || !props.operatorID) return;
+  const generation = principalGeneration;
+  const operation: PendingFoodOperation = { version: 1, operator_id: props.operatorID, operation: kind, idempotency_key: key, resource_id: input.resource_id };
+  if (!persistPending(operation)) {
+    feedback.value = "暂时无法保存操作恢复信息，尚未提交。填写内容已保留，请检查浏览器的站点存储设置后重试。";
+    return;
+  }
+  busy.value = true;
+  let fromLookup = false;
+  let result: FoodOperationLookupResult | undefined = await executeFoodCommand(input, key);
+  if (!isCurrentOperator(generation, operation.operator_id)) return;
+  if (result.state === "unknown") {
+    fromLookup = true;
+    feedback.value = "操作结果待确认，正在核对…";
+    result = await pollOperation(operation, generation);
+  }
+  if (!result || !isCurrentOperator(generation, operation.operator_id)) return;
+  await applyOperationResult(result, operation, success, fromLookup);
+  if (!isCurrentOperator(generation, operation.operator_id)) return;
+  busy.value = false;
+  closeEditors();
+}
+
 async function retryPending() {
   const operation = pending.value;
-  if (!operation || busy.value) return;
-  await finish(operation.kind, operation.key, operation.input, operation.success);
+  if (!operation || busy.value || operation.operator_id !== props.operatorID || props.authState !== "authenticated") return;
+  if (!canQueryPending.value) {
+    feedback.value = "当前账户缺少查询原操作所需权限，请联系管理员核对；结果仍未确认。";
+    return;
+  }
+  const generation = principalGeneration;
+  busy.value = true;
+  const result = await pollOperation(operation, generation);
+  if (!result || !isCurrentOperator(generation, operation.operator_id)) return;
+  const success: Record<FoodCommandKind, string> = { submission_approve: "投稿已批准。", submission_reject: "投稿已拒绝。", submission_edit: "投稿信息已更新。", post_edit: "点评变更已完成。", anomaly_resolve: "异常票已处理。", anomaly_dismiss: "异常票已驳回。", tier_adjustment_confirm: "调档已确认。", tier_adjustment_reject: "调档已拒绝。" };
+  await applyOperationResult(result, operation, success[operation.operation], true);
+  if (isCurrentOperator(generation, operation.operator_id)) busy.value = false;
 }
 
 function cancelConfirm() {
@@ -288,36 +355,59 @@ function workspaceStatusLabel(status: string) {
   if (status === "empty") return "暂无数据";
   if (status === "stale") return "数据过期";
   if (status === "loading") return "加载中";
+  if (status === "denied") return "无访问权限";
+  if (status === "unavailable") return "暂不可用";
   return `未知状态（${status}）`;
 }
 
-watch(() => props.authState, (value) => {
-  if (value === "authenticated") { void refresh().then(() => { if (pending.value) feedback.value = "发现一项结果未确认的操作；可按原请求重试。"; }); return; }
+watch(() => [props.authState, props.operatorID] as const, ([value, operatorID]) => {
+  principalGeneration++;
+  workspaceRequest++;
   workspace.value = undefined;
+  pending.value = undefined;
+  busy.value = false;
+  feedback.value = "";
+  closeEditors();
+  if (value === "authenticated" && operatorID) {
+    pending.value = readPendingFoodOperation(operatorID);
+    void refresh();
+    if (pending.value) { feedback.value = "发现一项结果待确认的操作，正在查询原操作结果。"; void retryPending(); }
+    return;
+  }
   state.value = value === "denied" ? "denied" : value === "loading" ? "loading" : "unavailable";
 }, { immediate: true });
 
-watch(campusFilter, () => { if (props.authState === "authenticated") void refresh(); });
+watch(campusFilter, (campus) => {
+  closeEditors();
+  const url = new URL(window.location.href);
+  if (url.pathname.replace(/\/+$/, "") === "/food") {
+    if (campus) url.searchParams.set("campus", campus); else url.searchParams.delete("campus");
+    history.replaceState(history.state, "", url);
+  }
+  if (props.authState === "authenticated") void refresh();
+});
+onBeforeUnmount(() => { principalGeneration++; workspaceRequest++; });
 </script>
 
 <template>
   <section aria-labelledby="food-heading">
-    <PageHeader eyebrow="美食运营" title="美食运营" title-id="food-heading" description="投稿、异常与调档均由服务端处理。">
-      <div class="access-context"><strong>{{ workspaceStatusLabel(workspace?.status ?? "loading") }}</strong></div>
+    <PageHeader eyebrow="美食运营" title="美食运营" title-id="food-heading" description="校区筛选用于投稿和点评；异常与调档保留全局队列。每类最多返回 200 条。">
+      <div class="access-context"><strong>{{ workspaceStatusLabel(state === 'ready' ? workspace?.status ?? 'loading' : state) }}</strong></div>
       <label class="grid gap-1 text-sm">校区筛选<select v-model="campusFilter" aria-label="校区筛选" class="rounded-md border bg-transparent px-2 py-1 text-sm"><option value="">全部校区</option><option value="minglun">明伦</option><option value="jinming">金明</option><option value="longzihu">龙子湖</option></select></label>
     </PageHeader>
+    <div v-if="feedback && props.authState === 'authenticated' && props.operatorID" class="operation-notice mt-5" role="status"><p>{{ feedback }}</p><Button v-if="pending" :disabled="busy || !canQueryPending" class="mt-3" @click="retryPending">查询操作结果</Button></div>
     <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取美食运营数据…</div>
     <div v-else-if="state === 'denied'" class="operation-state">当前账户没有美食运营权限，请联系管理员。</div>
     <div v-else-if="state === 'unavailable'" class="operation-state"><p>美食服务暂时不可用，请稍后重试。</p><Button class="mt-3" @click="refresh">重新加载</Button></div>
     <template v-else-if="workspace">
+      <p class="mt-4 text-sm text-muted-foreground">{{ workspace.stale ? '最近成功快照' : '数据截至' }} <time :datetime="workspace.as_of" :title="workspace.as_of">{{ workspaceTime(workspace.as_of) }}</time>（北京时间）<span v-if="workspace.stale">；快照最长保留 24 小时。</span></p>
       <div v-if="workspace.stale" class="operation-notice mt-5" role="status"><strong>数据可能不是最新</strong><p>{{ workspace.status_message }}</p></div>
-      <div v-if="feedback" class="operation-notice mt-5" role="status"><p>{{ feedback }}</p><Button v-if="pending && !busy" class="mt-3" @click="retryPending">按原请求重试</Button></div>
-      <div class="operation-summary-grid mt-6"><article><span>投稿</span><strong>{{ workspace.submissions.length }}</strong></article><article><span>异常票</span><strong>{{ workspace.anomaly_tickets.length }}</strong></article><article><span>调档</span><strong>{{ workspace.tier_adjustments.length }}</strong></article><article><span>已发布投稿</span><strong>{{ workspace.posts.length }}</strong></article></div>
+      <div class="operation-summary-grid mt-6"><article><span>本次待审核</span><strong>{{ workspace.submissions.length }}</strong></article><article><span>本次全局异常</span><strong>{{ workspace.anomaly_tickets.length }}</strong></article><article><span>本次全局调档</span><strong>{{ workspace.tier_adjustments.length }}</strong></article><article><span>本次返回点评</span><strong>{{ workspace.posts.length }}</strong><p class="text-sm">公开可见 {{ visiblePostCount }} · 已隐藏 {{ hiddenPostCount }}</p></article></div>
       <div class="mt-6 grid gap-5 xl:grid-cols-3">
-        <Card class="p-4" aria-labelledby="food-submissions"><h2 id="food-submissions" class="text-lg font-bold">投稿审核</h2><p v-if="!workspace.submissions.length" class="mt-3 text-muted-foreground">暂无待审核投稿。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.submissions" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }} · {{ item.item_name }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ item.description }} · {{ campusLabel(item.campus) }} · v{{ item.version }}</p><div v-if="canReview && item.status === 'pending'" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'submission_approve', 'submission_reject')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy" @click="cancelConfirm">取消</Button></div></div></template><div v-else-if="isEditing(item.id)" class="grid gap-2 rounded-lg border p-3"><strong>编辑投稿</strong><label class="grid gap-1 text-sm">店名<Input v-model="editVenueName" maxlength="160"></Input></label><label class="grid gap-1 text-sm">菜名<Input v-model="editItemName" maxlength="160"></Input></label><label class="grid gap-1 text-sm">描述<Textarea v-model="editDescription" maxlength="2000" rows="3"></Textarea></label><label class="grid gap-1 text-sm">校区<select v-model="editCampus" aria-label="投稿校区" class="rounded-md border bg-transparent px-2 py-1 text-sm"><option value="">未分配</option><option value="minglun">明伦</option><option value="jinming">金明</option><option value="longzihu">龙子湖</option></select></label><label class="grid gap-1 text-sm">操作理由<Textarea v-model="editNote" maxlength="1000" rows="2" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || editNote.trim().length < 2" @click="submitEdit">保存修改</Button><Button variant="ghost" :disabled="busy" @click="cancelEdit">取消</Button></div></div><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy" @click="openSubmissionConfirm(item, true)">批准投稿</Button><Button variant="ghost" :disabled="busy" @click="openSubmissionEdit(item)">编辑投稿</Button><Button variant="ghost" :disabled="busy" @click="openSubmissionConfirm(item, false)">拒绝投稿</Button></div></div><p v-else-if="!canReview" class="mt-3 text-sm">只读权限</p></li></ul></Card>
-        <Card class="p-4" aria-labelledby="food-anomalies"><h2 id="food-anomalies" class="text-lg font-bold">异常票处理</h2><p v-if="!workspace.anomaly_tickets.length" class="mt-3 text-muted-foreground">暂无异常票。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.anomaly_tickets" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }} · {{ anomalyKindLabel(item.kind) }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ item.details }} · {{ severityLabel(item.severity) }} · v{{ item.version }}</p><div v-if="canHandleAnomaly && item.status === 'open'" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'anomaly_resolve', 'anomaly_dismiss')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy" @click="cancelConfirm">取消</Button></div></div></template><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy" @click="openAnomalyConfirm(item, true)">标记已处理</Button><Button variant="ghost" :disabled="busy" @click="openAnomalyConfirm(item, false)">驳回异常票</Button></div></div><p v-else-if="!canHandleAnomaly" class="mt-3 text-sm">只读权限</p></li></ul></Card>
-        <Card class="p-4" aria-labelledby="food-tiers"><h2 id="food-tiers" class="text-lg font-bold">调档确认</h2><p v-if="!workspace.tier_adjustments.length" class="mt-3 text-muted-foreground">暂无待确认调档。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.tier_adjustments" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ tierLabel(item.current_tier) }} → {{ tierLabel(item.proposed_tier) }} · {{ item.reason }} · v{{ item.version }}</p><div v-if="canAdjustTier && item.status === 'pending'" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'tier_adjustment_confirm', 'tier_adjustment_reject')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy" @click="cancelConfirm">取消</Button></div></div></template><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy" @click="openTierConfirm(item, true)">确认调档</Button><Button variant="ghost" :disabled="busy" @click="openTierConfirm(item, false)">拒绝调档</Button></div></div><p v-else-if="!canAdjustTier" class="mt-3 text-sm">只读权限</p></li></ul></Card>
-                <Card class="p-4" aria-labelledby="food-posts"><h2 id="food-posts" class="text-lg font-bold">已发布投稿</h2><p v-if="!workspace.posts.length" class="mt-3 text-muted-foreground">暂无已发布投稿。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.posts" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }} · {{ campusLabel(item.campus) }} · {{ postTierLabel(item.tier) }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ item.review_text }} · {{ item.author_display_name }}{{ item.hidden ? " · 已隐藏" : "" }} · v{{ item.version }}</p><div v-if="canReview" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'post_edit')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy" @click="cancelConfirm">取消</Button></div></div></template><div v-else-if="isPostEditing(item.id)" class="grid gap-2 rounded-lg border p-3"><strong>编辑已发布投稿</strong><label class="grid gap-1 text-sm">店名<Input v-model="postEditVenueName" maxlength="160"></Input></label><label class="grid gap-1 text-sm">校区<select v-model="postEditCampus" aria-label="投稿校区" class="rounded-md border bg-transparent px-2 py-1 text-sm"><option value="minglun">明伦</option><option value="jinming">金明</option><option value="longzihu">龙子湖</option></select></label><label class="grid gap-1 text-sm">档位<select v-model="postEditTier" aria-label="档位" class="rounded-md border bg-transparent px-2 py-1 text-sm"><option value="hang">夯</option><option value="top">顶级</option><option value="elite">人上人</option><option value="npc">NPC</option><option value="bad">拉完了</option></select></label><label class="grid gap-1 text-sm">点评<Textarea v-model="postEditReviewText" maxlength="2000" rows="3"></Textarea></label><label class="grid gap-1 text-sm">价格参考<Input v-model="postEditPriceReference" maxlength="200"></Input></label><label class="grid gap-1 text-sm">营业时间参考<Input v-model="postEditHoursReference" maxlength="200"></Input></label><label class="flex items-center gap-2 text-sm"><input v-model="postEditHidden" type="checkbox" class="rounded border">隐藏此投稿（公开榜单不再展示）</label><label class="grid gap-1 text-sm">操作理由<Textarea v-model="postEditNote" maxlength="1000" rows="2" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || postEditNote.trim().length < 2" @click="submitPostEdit">保存修改</Button><Button variant="ghost" :disabled="busy" @click="cancelPostEdit">取消</Button></div></div><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy" @click="openPostEdit(item)">编辑已发布投稿</Button><Button variant="ghost" :disabled="busy" @click="openPostHideToggle(item)">{{ item.hidden ? "恢复展示" : "隐藏投稿" }}</Button></div></div><p v-else class="mt-3 text-sm">只读权限</p></li></ul></Card>
+        <Card class="p-4" aria-labelledby="food-submissions"><h2 id="food-submissions" class="text-lg font-bold">投稿审核</h2><p v-if="!workspace.submissions.length" class="mt-3 text-muted-foreground">暂无待审核投稿。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.submissions" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }} · {{ item.item_name }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ item.description }} · {{ campusLabel(item.campus) }} · v{{ item.version }}</p><div v-if="canReview && item.status === 'pending'" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'submission_approve', 'submission_reject')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy || !!pending" @click="cancelConfirm">取消</Button></div></div></template><div v-else-if="isEditing(item.id)" class="grid gap-2 rounded-lg border p-3"><strong>编辑投稿</strong><label class="grid gap-1 text-sm">店名<Input v-model="editVenueName" maxlength="160"></Input></label><label class="grid gap-1 text-sm">菜名<Input v-model="editItemName" maxlength="160"></Input></label><label class="grid gap-1 text-sm">描述<Textarea v-model="editDescription" maxlength="2000" rows="3"></Textarea></label><label class="grid gap-1 text-sm">校区<select v-model="editCampus" aria-label="投稿校区" class="rounded-md border bg-transparent px-2 py-1 text-sm"><option value="">未分配</option><option value="minglun">明伦</option><option value="jinming">金明</option><option value="longzihu">龙子湖</option></select></label><label class="grid gap-1 text-sm">操作理由<Textarea v-model="editNote" maxlength="1000" rows="2" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || editNote.trim().length < 2" @click="submitEdit">保存修改</Button><Button variant="ghost" :disabled="busy || !!pending" @click="cancelEdit">取消</Button></div></div><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy || !!pending" @click="openSubmissionConfirm(item, true)">批准投稿</Button><Button variant="ghost" :disabled="busy || !!pending" @click="openSubmissionEdit(item)">编辑投稿</Button><Button variant="ghost" :disabled="busy || !!pending" @click="openSubmissionConfirm(item, false)">拒绝投稿</Button></div></div><p v-else-if="!canReview" class="mt-3 text-sm">只读权限</p></li></ul></Card>
+        <Card class="p-4" aria-labelledby="food-anomalies"><h2 id="food-anomalies" class="text-lg font-bold">异常票处理</h2><p v-if="!workspace.anomaly_tickets.length" class="mt-3 text-muted-foreground">暂无异常票。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.anomaly_tickets" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }} · {{ anomalyKindLabel(item.kind) }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ item.details }} · {{ severityLabel(item.severity) }} · v{{ item.version }}</p><div v-if="canHandleAnomaly && item.status === 'open'" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'anomaly_resolve', 'anomaly_dismiss')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy || !!pending" @click="cancelConfirm">取消</Button></div></div></template><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy || !!pending" @click="openAnomalyConfirm(item, true)">标记已处理</Button><Button variant="ghost" :disabled="busy || !!pending" @click="openAnomalyConfirm(item, false)">驳回异常票</Button></div></div><p v-else-if="!canHandleAnomaly" class="mt-3 text-sm">只读权限</p></li></ul></Card>
+        <Card class="p-4" aria-labelledby="food-tiers"><h2 id="food-tiers" class="text-lg font-bold">调档确认</h2><p v-if="!workspace.tier_adjustments.length" class="mt-3 text-muted-foreground">暂无待确认调档。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.tier_adjustments" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ tierLabel(item.current_tier) }} → {{ tierLabel(item.proposed_tier) }} · {{ item.reason }} · v{{ item.version }}</p><div v-if="canAdjustTier && item.status === 'pending'" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'tier_adjustment_confirm', 'tier_adjustment_reject')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy || !!pending" @click="cancelConfirm">取消</Button></div></div></template><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy || !!pending" @click="openTierConfirm(item, true)">确认调档</Button><Button variant="ghost" :disabled="busy || !!pending" @click="openTierConfirm(item, false)">拒绝调档</Button></div></div><p v-else-if="!canAdjustTier" class="mt-3 text-sm">只读权限</p></li></ul></Card>
+                <Card class="p-4" aria-labelledby="food-posts"><h2 id="food-posts" class="text-lg font-bold">已发布投稿</h2><p v-if="!workspace.posts.length" class="mt-3 text-muted-foreground">暂无已发布投稿。</p><ul class="mt-3 grid gap-3"><li v-for="item in workspace.posts" :key="item.id" class="rounded-lg border p-3"><strong>{{ item.venue_name }} · {{ campusLabel(item.campus) }} · {{ postTierLabel(item.tier) }}</strong><p class="mt-1 text-sm text-muted-foreground">{{ item.review_text }} · {{ item.author_display_name }}{{ item.hidden ? " · 已隐藏" : "" }} · v{{ item.version }}</p><div v-if="canReview" class="mt-3 grid gap-2"><template v-if="isConfirming(item.id, 'post_edit')"><div class="grid gap-2 rounded-lg border p-3"><strong>{{ confirmTarget?.title }}</strong><label class="grid gap-1 text-sm">操作理由<Textarea v-model="confirmReason" maxlength="1000" rows="3" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || confirmReason.trim().length < 2" @click="submitConfirm">{{ confirmTarget?.confirmLabel }}</Button><Button variant="ghost" :disabled="busy || !!pending" @click="cancelConfirm">取消</Button></div></div></template><div v-else-if="isPostEditing(item.id)" class="grid gap-2 rounded-lg border p-3"><strong>编辑已发布投稿</strong><label class="grid gap-1 text-sm">店名<Input v-model="postEditVenueName" maxlength="160"></Input></label><label class="grid gap-1 text-sm">校区<select v-model="postEditCampus" aria-label="投稿校区" class="rounded-md border bg-transparent px-2 py-1 text-sm"><option value="minglun">明伦</option><option value="jinming">金明</option><option value="longzihu">龙子湖</option></select></label><label class="grid gap-1 text-sm">档位<select v-model="postEditTier" aria-label="档位" class="rounded-md border bg-transparent px-2 py-1 text-sm"><option value="hang">夯</option><option value="top">顶级</option><option value="elite">人上人</option><option value="npc">NPC</option><option value="bad">拉完了</option></select></label><label class="grid gap-1 text-sm">点评<Textarea v-model="postEditReviewText" maxlength="2000" rows="3"></Textarea></label><label class="grid gap-1 text-sm">价格参考<Input v-model="postEditPriceReference" maxlength="200"></Input></label><label class="grid gap-1 text-sm">营业时间参考<Input v-model="postEditHoursReference" maxlength="200"></Input></label><label class="flex items-center gap-2 text-sm"><input v-model="postEditHidden" type="checkbox" class="rounded border">隐藏此投稿（公开榜单不再展示）</label><label class="grid gap-1 text-sm">操作理由<Textarea v-model="postEditNote" maxlength="1000" rows="2" placeholder="请填写本次操作理由"></Textarea></label><div class="flex flex-wrap gap-2"><Button :disabled="busy || postEditNote.trim().length < 2" @click="submitPostEdit">保存修改</Button><Button variant="ghost" :disabled="busy || !!pending" @click="cancelPostEdit">取消</Button></div></div><div v-else class="flex flex-wrap gap-2"><Button :disabled="busy || !!pending" @click="openPostEdit(item)">编辑已发布投稿</Button><Button variant="ghost" :disabled="busy || !!pending" @click="openPostHideToggle(item)">{{ item.hidden ? "恢复展示" : "隐藏投稿" }}</Button></div></div><p v-else class="mt-3 text-sm">只读权限</p></li></ul></Card>
       </div>
     </template>
   </section>

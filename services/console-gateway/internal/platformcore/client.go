@@ -20,12 +20,13 @@ import (
 )
 
 var (
-	ErrUnauthorized = errors.New("platform core rejected session")
-	ErrForbidden    = errors.New("platform core denied access")
-	ErrConflict     = errors.New("platform core conflict")
-	ErrNotFound     = errors.New("platform core resource not found")
-	ErrInvalid      = errors.New("platform core rejected request")
-	ErrRateLimited  = errors.New("platform core rate limited request")
+	ErrUnauthorized         = errors.New("platform core rejected session")
+	ErrForbidden            = errors.New("platform core denied access")
+	ErrConflict             = errors.New("platform core conflict")
+	ErrNotFound             = errors.New("platform core resource not found")
+	ErrInvalid              = errors.New("platform core rejected request")
+	ErrRateLimited          = errors.New("platform core rate limited request")
+	ErrAuthorizationUnknown = errors.New("platform core authentication result is not verified")
 )
 
 type Client struct {
@@ -159,7 +160,7 @@ func (c *Client) operationRequest(ctx context.Context, method, path, exchangeTok
 		return nil, err
 	}
 	defer response.Body.Close()
-	if err := responseError(response); err != nil {
+	if err := sessionResponseError(response); err != nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
 		return nil, err
 	}
@@ -189,6 +190,10 @@ func New(baseURL, clientID, clientSecret, keyID string, client *http.Client) (*C
 	}
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Second}
+	} else if client.Timeout <= 0 {
+		bounded := *client
+		bounded.Timeout = 5 * time.Second
+		client = &bounded
 	}
 	signer, err := serviceauth.New(clientID, clientSecret, keyID)
 	if err != nil {
@@ -299,7 +304,7 @@ func (c *Client) checkPermission(ctx context.Context, exchangeToken, permissionC
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
 		_ = response.Body.Close()
 	}()
-	return responseError(response)
+	return sessionResponseError(response)
 }
 
 func (c *Client) signedRequest(ctx context.Context, method, path string, body []byte) (*http.Request, error) {
@@ -312,6 +317,24 @@ func (c *Client) signedRequest(ctx context.Context, method, path string, body []
 		return nil, err
 	}
 	return request, nil
+}
+
+// Signed Core APIs must distinguish a verified invalid exchange Session from
+// service credentials/signature errors and old Core's ambiguous 401 response.
+// OAuth code exchange retains its separate responseError mapping.
+func sessionResponseError(response *http.Response) error {
+	if response.StatusCode != http.StatusUnauthorized {
+		return responseError(response)
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<10)).Decode(&envelope); err == nil && envelope.Error.Code == "SESSION_INVALID" {
+		return ErrUnauthorized
+	}
+	return ErrAuthorizationUnknown
 }
 
 func responseError(response *http.Response) error {

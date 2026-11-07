@@ -463,7 +463,14 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: |
+            SESSION_INVALID means the authenticated service's exchange Session is missing, expired, revoked, or no longer active.
+            CLIENT_AUTH_FAILED, SIGNATURE_INVALID and TIMESTAMP_INVALID describe service authentication failures, not browser Session expiry.
+            Consumers must fail closed on unknown or legacy AUTHENTICATION_FAILED codes without treating them as a verified Session revocation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":

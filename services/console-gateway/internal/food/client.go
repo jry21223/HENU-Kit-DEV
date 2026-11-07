@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"henukit.dev/console-gateway/internal/businessfacts"
 	"henukit.dev/console-gateway/internal/clientutil"
 	"henukit.dev/console-gateway/internal/serviceauth"
 )
@@ -30,6 +31,13 @@ type Client struct {
 }
 
 type requestIDKey struct{}
+type operationOutcomeKey struct{}
+
+// WithOperationOutcome requests explicit stored failure facts without changing
+// the legacy raw-operation representation for other callers.
+func WithOperationOutcome(ctx context.Context) context.Context {
+	return context.WithValue(ctx, operationOutcomeKey{}, true)
+}
 
 func WithRequestID(ctx context.Context, requestID string) context.Context {
 	return context.WithValue(ctx, requestIDKey{}, requestID)
@@ -51,6 +59,19 @@ func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client)
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), signer: signer, httpClient: httpClient}, nil
 }
 
+func (c *Client) Facts(ctx context.Context, actorID string) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	raw, err := c.request(ctx, http.MethodGet, FactsPath, actorID, "food.read", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := businessfacts.ValidateFood(raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
 func (c *Client) Workspace(ctx context.Context, actorID, campus string) (json.RawMessage, error) {
 	path := WorkspacePath
 	if campus != "" {
@@ -62,7 +83,11 @@ func (c *Client) Command(ctx context.Context, actorID, key string, body []byte) 
 	return c.request(ctx, http.MethodPost, CommandPath, actorID, permissionForCommand(body), key, body)
 }
 func (c *Client) Operation(ctx context.Context, actorID, operation, key string) (json.RawMessage, error) {
-	return c.request(ctx, http.MethodGet, strings.ReplaceAll(OperationPath, "{operation}", url.PathEscape(operation)), actorID, permissionForOperation(operation), key, nil)
+	path := strings.ReplaceAll(OperationPath, "{operation}", url.PathEscape(operation))
+	if enabled, _ := ctx.Value(operationOutcomeKey{}).(bool); enabled {
+		path += "?outcome=v1"
+	}
+	return c.request(ctx, http.MethodGet, path, actorID, permissionForOperation(operation), key, nil)
 }
 
 func permissionForCommand(body []byte) string {

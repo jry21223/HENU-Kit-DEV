@@ -20,6 +20,14 @@
 
 ## Current boundary
 
+Console command-result reads use the existing committed idempotency row bound
+to the signed client, actor, operation and original key. Only membership grant,
+membership revoke, point adjustment, ticket reply and ticket transition are
+queryable. A committed row reports its original successful result; absence is
+`unknown`, including work still uncommitted or a rolled-back rejection, and
+never proves non-execution or authorizes replay. No new command store,
+credential, payment operation or account initialization is introduced by reads.
+
 HC-167 establishes the owner read boundary. Portal Gateway forwards only the
 verified Portal Session user ID in a replay-protected signed request. Every
 read reconciles the user’s missing default rows transactionally and returns a

@@ -71,6 +71,7 @@ func New(config Config) (http.Handler, error) {
 	router.Group(func(protected chi.Router) {
 		protected.Use(h.authenticate)
 		protected.Get(contract.SummaryRoute, h.consoleSummary)
+		protected.Get(contract.ReadinessRoute, h.consoleReadiness)
 		protected.Get(contract.WorkspaceRoute, h.workspace)
 		protected.Post(contract.CommandRoute, h.command)
 		protected.Get(contract.OperationRoute, h.operationStatus)
@@ -120,6 +121,19 @@ func (h *service) workspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, r, http.StatusOK, degradedWorkspace(h.now()))
+}
+
+// ADR-0037 removed management sources and commands. This explicit capability
+// response does not turn the empty legacy workspace into successful data.
+func (h *service) consoleReadiness(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.require(w, r, "library.read"); !ok {
+		return
+	}
+	writeData(w, r, http.StatusOK, map[string]any{
+		"management": "not_ready", "reason": "management_migration_pending",
+		"capabilities": map[string]bool{"workspace": false, "commands": false, "operation_results": false},
+		"checked_at":   h.now(),
+	})
 }
 
 func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {

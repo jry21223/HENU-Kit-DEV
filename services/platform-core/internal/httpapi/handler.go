@@ -1945,6 +1945,10 @@ func (h *Handler) writeFlowError(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, request, http.StatusTooManyRequests, "RATE_LIMITED", "操作太频繁，请稍后再试")
 	case errors.Is(err, verification.ErrInvalid):
 		writeError(writer, request, http.StatusBadRequest, "INVALID_REQUEST", "verification request is invalid")
+	case errors.Is(err, identity.ErrServiceAuthentication):
+		writeError(writer, request, http.StatusUnauthorized, "CLIENT_AUTH_FAILED", "service authentication failed")
+	case errors.Is(err, identity.ErrSessionInvalid):
+		writeError(writer, request, http.StatusUnauthorized, "SESSION_INVALID", "Session is invalid or no longer active")
 	case errors.Is(err, identity.ErrUnauthorized):
 		writeError(writer, request, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "authentication failed")
 	case errors.Is(err, identity.ErrForbidden):

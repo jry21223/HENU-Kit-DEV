@@ -26,7 +26,7 @@ func main() {
 			routes[operation.OperationID] = path
 		}
 	}
-	for _, id := range []string{"getFoodWorkspace", "executeFoodCommand", "getFoodOperation"} {
+	for _, id := range []string{"getFoodFacts", "getFoodWorkspace", "executeFoodCommand", "getFoodOperation"} {
 		if routes[id] == "" {
 			fail(fmt.Errorf("required Food operation %s is missing", id))
 		}
@@ -36,11 +36,12 @@ func main() {
 package food
 
 const (
+	FactsPath = %q
 	WorkspacePath = %q
 	CommandPath = %q
 	OperationPath = %q
 )
-`, digest, routes["getFoodWorkspace"], routes["executeFoodCommand"], routes["getFoodOperation"])
+`, digest, routes["getFoodFacts"], routes["getFoodWorkspace"], routes["executeFoodCommand"], routes["getFoodOperation"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/food", 0o755))

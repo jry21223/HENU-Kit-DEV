@@ -238,6 +238,25 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 			wantReason: "SESSION_REVOKED",
 		},
 		{
+			name: "exchange Session expired",
+			revoke: func(ctx context.Context, fixture authorizationFixture) error {
+				hash := sha256.Sum256([]byte(fixture.token))
+				_, err := fixture.pool.Exec(ctx, `UPDATE sessions SET expires_at = now() - interval '1 second' WHERE token_hash = $1`, hash[:])
+				return err
+			},
+			wantStatus: http.StatusUnauthorized,
+			wantReason: "SESSION_EXPIRED",
+		},
+		{
+			name: "parent Core Session expired",
+			revoke: func(ctx context.Context, fixture authorizationFixture) error {
+				_, err := fixture.pool.Exec(ctx, `UPDATE sessions SET expires_at = now() - interval '1 second' WHERE kind = 'core' AND user_id = $1`, fixture.userID)
+				return err
+			},
+			wantStatus: http.StatusUnauthorized,
+			wantReason: "PARENT_SESSION_EXPIRED",
+		},
+		{
 			name: "parent Core Session revoked",
 			revoke: func(ctx context.Context, fixture authorizationFixture) error {
 				_, err := fixture.pool.Exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE kind = 'core' AND user_id = $1`, fixture.userID)
@@ -260,7 +279,14 @@ func TestAuthorizationRevocationsTakeEffectOnNextRequest(t *testing.T) {
 			}
 			requestID := fmt.Sprintf("req_after_revoke_%d", index)
 			after := sendAuthorizationCheck(t, fixture, "quizcraft", fmt.Sprintf("nonce_after_revoke_%d", index), requestID)
+			var rejection struct{ Error struct{ Code string } }
+			if err := json.NewDecoder(after.Body).Decode(&rejection); err != nil {
+				t.Fatal(err)
+			}
 			after.Body.Close()
+			if test.wantStatus == http.StatusUnauthorized && rejection.Error.Code != "SESSION_INVALID" {
+				t.Fatalf("revoked or expired Session code = %q; want SESSION_INVALID", rejection.Error.Code)
+			}
 			if after.StatusCode != test.wantStatus {
 				t.Fatalf("authorization immediately after revocation = %d, want %d", after.StatusCode, test.wantStatus)
 			}

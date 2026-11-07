@@ -44,6 +44,8 @@ func main() {
 		"ConsoleMembershipGrantsRoute":        "grantConsoleAccountMembership",
 		"ConsoleMembershipRevocationsRoute":   "revokeConsoleAccountMembership",
 		"ConsolePointAdjustmentsRoute":        "adjustConsoleAccountPoints",
+		"ConsoleOperationRoute":               "getConsoleAccountOperation",
+		"ConsoleTicketFactsRoute":             "getConsoleAccountTicketFacts",
 		"ConsoleTicketsRoute":                 "getConsoleAccountTickets",
 		"ConsoleTicketRoute":                  "getConsoleAccountTicket",
 		"ConsoleTicketRepliesRoute":           "replyConsoleAccountTicket",
@@ -79,6 +81,8 @@ const (
 	ConsoleMembershipGrantsRoute = %q
 	ConsoleMembershipRevocationsRoute = %q
 	ConsolePointAdjustmentsRoute = %q
+	ConsoleOperationRoute = %q
+	ConsoleTicketFactsRoute = %q
 	ConsoleTicketsRoute = %q
 	ConsoleTicketRoute = %q
 	ConsoleTicketRepliesRoute = %q
@@ -87,7 +91,7 @@ const (
 	ConsoleMembershipOrderRefundsRoute = %q
 	ConsoleMembershipOrderRefundRoute = %q
 )
-	`, digest, routes["getBotMembershipEntitlement"], routes["getAccountPortfolioHealth"], routes["getAccountSummary"], routes["getAccountPoints"], routes["getAccountMembership"], routes["getAccountNotifications"], routes["markAccountNotificationRead"], routes["getAccountTickets"], routes["getAccountTicket"], routes["createAccountTicketFollowUp"], routes["getAccountMembershipOrders"], routes["createAccountMembershipOrder"], routes["recordAccountPaymentProviderNotification"], routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"])
+	`, digest, routes["getBotMembershipEntitlement"], routes["getAccountPortfolioHealth"], routes["getAccountSummary"], routes["getAccountPoints"], routes["getAccountMembership"], routes["getAccountNotifications"], routes["markAccountNotificationRead"], routes["getAccountTickets"], routes["getAccountTicket"], routes["createAccountTicketFollowUp"], routes["getAccountMembershipOrders"], routes["createAccountMembershipOrder"], routes["recordAccountPaymentProviderNotification"], routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountOperation"], routes["getConsoleAccountTicketFacts"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/contract", 0o755))

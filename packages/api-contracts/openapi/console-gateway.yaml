@@ -353,7 +353,7 @@ paths:
           content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/NoticeSnapshot" } } }] } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable", description: "NOTICE_NOT_CONFIGURED identifies a missing management connection after notice.read/product Scope verification; other dependency failures remain unavailable, never empty business data." }
   /notices/sources:
     post:
       tags: [Notice]
@@ -439,6 +439,20 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /library/readiness:
+    get:
+      tags: [Library]
+      operationId: getConsoleLibraryReadiness
+      summary: Read owner-confirmed Library management capabilities
+      description: Requires the existing library.read permission and Library product Scope. Missing owner support or a failed read is unavailable, never proof that management is ready or not ready.
+      security: [{ consoleSession: [] }]
+      responses:
+        "200":
+          description: Explicit management readiness, independent of workspace collections
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/LibraryReadiness" } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /library:
     get:
       tags: [Library]
@@ -496,6 +510,19 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /food/facts:
+    get:
+      tags: [Food]
+      operationId: getConsoleFoodFacts
+      summary: Read fresh global Food operating facts
+      description: Requires food.read in Food product Scope. Does not read a disabled summary, accept campus filters, or fall back to cached counts.
+      security: [{ consoleSession: [] }]
+      responses:
+        "200": { description: Fresh owner counts and matching bounded references, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodFacts" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /food/commands:
     post:
       tags: [Food]
@@ -519,9 +546,10 @@ paths:
       security: [{ consoleSession: [] }]
       parameters:
         - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/FoodCommandKind" } }
+        - { name: outcome, in: query, required: false, description: Opt in to explicit persisted failure facts; omitted preserves legacy raw results, schema: { type: string, enum: [v1] } }
         - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
       responses:
-        "200": { description: Original result or unknown state, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationResult" } } }] } } } }
+        "200": { description: Original result or unknown; opt-in outcome v1 also exposes confirmed stored failure, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationOutcome" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -666,6 +694,28 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/operations/{operation}/{idempotency_key}:
+    get:
+      tags: [Account Portfolio]
+      operationId: getConsoleAccountOperation
+      summary: Read the current operator's original Account Portfolio command result
+      description: >-
+        Rechecks the original command's exact permission and Account Portfolio
+        product Scope on every read. Membership grant/revoke require
+        account.membership.write; point adjustment requires account.points.adjust;
+        ticket reply/transition require their respective account.tickets permission.
+        Unknown never proves that the command did not execute and never authorizes
+        replay. Only an original committed result can report succeeded.
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/ConsoleAccountOperationKind" } }
+        - { name: idempotency_key, in: path, required: true, schema: { type: string, minLength: 8, maxLength: 200, pattern: '^[A-Za-z0-9._:-]+$' } }
+      responses:
+        "200": { description: Original committed result or unknown outcome, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountOperationResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /account/tickets:
     get:
       tags: [Account Portfolio]
@@ -675,6 +725,20 @@ paths:
       security: [{ consoleSession: [] }]
       responses:
         "200": { description: Durable support-ticket queue, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountTicketQueue" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /account/tickets/facts:
+    get:
+      tags: [Account Portfolio]
+      operationId: getConsoleAccountTicketFacts
+      summary: Read fresh global ticket counts and a status-filtered reference window
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/ConsoleTicketFactsFilter" } }
+      responses:
+        "200": { description: Fresh global counts; the default window includes only unresolved tickets, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/ConsoleAccountTicketFacts" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -872,6 +936,14 @@ components:
       type: object
       additionalProperties: false
       required: [decision, expected_revision]
+      allOf:
+        - oneOf:
+            - properties:
+                decision: { type: string, enum: [approved] }
+            - required: [note]
+              properties:
+                decision: { type: string, enum: [rejected] }
+                note: { type: string, minLength: 1, pattern: '\S' }
       properties:
         decision: { type: string, enum: [approved, rejected] }
         note: { type: string, maxLength: 1000 }
@@ -936,6 +1008,49 @@ components:
       properties:
         items: { type: array, maxItems: 50, items: { $ref: "#/components/schemas/NoticeVersion" } }
         generated_at: { type: string, format: date-time }
+    FoodFacts:
+      type: object
+      additionalProperties: false
+      required: [scope, as_of, stale, counts, windows]
+      properties:
+        scope: { type: string, const: global }
+        as_of: { type: string, format: date-time }
+        stale: { type: boolean, const: false }
+        counts:
+          type: object
+          additionalProperties: false
+          required: [pending_submissions, open_anomalies, pending_tier_adjustments]
+          properties:
+            pending_submissions: { type: integer, minimum: 0, maximum: 9007199254740991 }
+            open_anomalies: { type: integer, minimum: 0, maximum: 9007199254740991 }
+            pending_tier_adjustments: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        windows:
+          type: object
+          additionalProperties: false
+          required: [submissions, anomalies, tier_adjustments]
+          properties:
+            submissions: { $ref: "#/components/schemas/FoodFactWindow" }
+            anomalies: { $ref: "#/components/schemas/FoodFactWindow" }
+            tier_adjustments: { $ref: "#/components/schemas/FoodFactWindow" }
+    FoodFactWindow:
+      type: object
+      additionalProperties: false
+      required: [filter, limit, returned, has_more, items]
+      properties:
+        filter: { type: string, enum: [pending, open] }
+        limit: { type: integer, const: 200 }
+        returned: { type: integer, minimum: 0, maximum: 200 }
+        has_more: { type: boolean }
+        items: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/FoodFactReference" } }
+    FoodFactReference:
+      type: object
+      additionalProperties: false
+      required: [id, status, version, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, open] }
+        version: { type: integer, minimum: 1 }
+        updated_at: { type: string, format: date-time }
     FoodWorkspace:
       type: object
       additionalProperties: false
@@ -1052,6 +1167,35 @@ components:
         resource_id: { type: string, format: uuid }
         state: { type: string, enum: [succeeded, unknown] }
         version: { type: integer, minimum: 1 }
+    LibraryReadiness:
+      type: object
+      additionalProperties: false
+      required: [management, reason, capabilities, checked_at]
+      properties:
+        management: { type: string, enum: [not_ready, ready] }
+        reason: { type: string, enum: [management_migration_pending, none] }
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [workspace, commands, operation_results]
+          properties:
+            workspace: { type: boolean }
+            commands: { type: boolean }
+            operation_results: { type: boolean }
+        checked_at: { type: string, format: date-time }
+    FoodOperationOutcome:
+      oneOf:
+        - { $ref: "#/components/schemas/FoodOperationResult" }
+        - { $ref: "#/components/schemas/FoodFailedOperation" }
+    FoodFailedOperation:
+      type: object
+      additionalProperties: false
+      required: [operation, resource_id, state, error_code]
+      properties:
+        operation: { $ref: "#/components/schemas/FoodCommandKind" }
+        resource_id: { type: string, format: uuid }
+        state: { type: string, enum: [failed] }
+        error_code: { type: string, enum: [FOOD_CONFLICT] }
     LibraryWorkspace:
       type: object
       additionalProperties: false
@@ -1270,6 +1414,21 @@ components:
         operation: { $ref: "#/components/schemas/LibraryCommandKind" }
         resource_id: { type: string, format: uuid }
         state: { type: string, enum: [succeeded, unknown] }
+    ConsoleAccountOperationKind:
+      type: string
+      enum: [membership_grant, membership_revoke, point_adjustment, ticket_reply, ticket_transition]
+    ConsoleAccountOperationResult:
+      type: object
+      additionalProperties: false
+      required: [operation, status]
+      properties:
+        operation: { $ref: "#/components/schemas/ConsoleAccountOperationKind" }
+        status: { type: string, enum: [succeeded, unknown] }
+        result:
+          oneOf:
+            - { $ref: "#/components/schemas/ConsoleAccountTicketCommandResult" }
+            - { $ref: "#/components/schemas/ConsoleAccountMembershipEnvelope" }
+            - { $ref: "#/components/schemas/ConsoleAccountPointAdjustmentResult" }
     ConsoleAccountTicketQueue:
       type: object
       additionalProperties: false
@@ -1470,6 +1629,49 @@ components:
       required: [ticket]
       properties:
         ticket: { $ref: "#/components/schemas/ConsoleAccountTicket" }
+    ConsoleTicketFactsFilter:
+      type: string
+      enum: [unresolved, all, open, in_progress, resolved]
+    ConsoleAccountTicketFacts:
+      type: object
+      additionalProperties: false
+      required: [scope, as_of, stale, counts, window]
+      properties:
+        scope: { type: string, const: global }
+        as_of: { type: string, format: date-time }
+        stale: { type: boolean, const: false }
+        counts:
+          type: object
+          additionalProperties: false
+          required: [open, in_progress, resolved, unresolved]
+          properties:
+            open: { type: integer, minimum: 0, maximum: 9007199254740991 }
+            in_progress: { type: integer, minimum: 0, maximum: 9007199254740991 }
+            resolved: { type: integer, minimum: 0, maximum: 9007199254740991 }
+            unresolved: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        window: { $ref: "#/components/schemas/ConsoleTicketFactWindow" }
+    ConsoleTicketFactWindow:
+      type: object
+      additionalProperties: false
+      required: [filter, matched_total, limit, returned, has_more, items]
+      properties:
+        filter: { $ref: "#/components/schemas/ConsoleTicketFactsFilter" }
+        matched_total: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        limit: { type: integer, const: 100 }
+        returned: { type: integer, minimum: 0, maximum: 100 }
+        has_more: { type: boolean }
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/ConsoleTicketFactReference" } }
+    ConsoleTicketFactReference:
+      type: object
+      additionalProperties: false
+      required: [id, reference, title, status, version, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string, pattern: "^HKT-[0-9a-f-]{36}$" }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        status: { type: string, enum: [open, in_progress, resolved] }
+        version: { type: integer, minimum: 1 }
+        updated_at: { type: string, format: date-time }
     ConsoleAccountTicket:
       type: object
       additionalProperties: false

@@ -330,7 +330,8 @@ func (h *service) operationStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var record operationRecord
-	err := h.database.QueryRow(r.Context(), `SELECT operation,state,COALESCE(response,'null'::jsonb),COALESCE(error_code,'') FROM food_operations WHERE client_id=$1 AND actor_user_id=$2 AND method='POST' AND normalized_route=$3 AND idempotency_key=$4`, h.clientID, value.userID, contract.CommandRoute, key).Scan(&record.Operation, &record.State, &record.Response, &record.ErrorCode)
+	var resourceID string
+	err := h.database.QueryRow(r.Context(), `SELECT operation,state,COALESCE(response,'null'::jsonb),COALESCE(error_code,''),target_id FROM food_operations WHERE client_id=$1 AND actor_user_id=$2 AND method='POST' AND normalized_route=$3 AND idempotency_key=$4`, h.clientID, value.userID, contract.CommandRoute, key).Scan(&record.Operation, &record.State, &record.Response, &record.ErrorCode, &resourceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeData(w, r, http.StatusOK, map[string]any{"operation": operation, "state": "unknown"})
 		return
@@ -341,6 +342,14 @@ func (h *service) operationStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if record.Operation != operation {
 		writeError(w, r, http.StatusConflict, "IDEMPOTENCY_KEY_CONFLICT", "operation does not match Idempotency-Key history")
+		return
+	}
+	if r.URL.Query().Get("outcome") == "v1" && record.State == "failed" {
+		if record.ErrorCode != "FOOD_CONFLICT" {
+			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Food operation result is unavailable")
+			return
+		}
+		writeData(w, r, http.StatusOK, map[string]string{"operation": record.Operation, "resource_id": resourceID, "state": "failed", "error_code": record.ErrorCode})
 		return
 	}
 	h.writeStoredOperation(w, r, record)

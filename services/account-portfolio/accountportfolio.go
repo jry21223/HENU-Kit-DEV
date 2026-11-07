@@ -211,10 +211,12 @@ func New(config Config) (http.Handler, error) {
 		protected.Post(contract.ConsoleMembershipGrantsRoute, h.grantConsoleMembership)
 		protected.Post(contract.ConsoleMembershipRevocationsRoute, h.revokeConsoleMembership)
 		protected.Post(contract.ConsolePointAdjustmentsRoute, h.adjustConsolePoints)
+		protected.Get(contract.ConsoleOperationRoute, h.consoleOperation)
 		protected.Post(contract.ConsoleMembershipOrderClosuresRoute, h.closeConsoleMembershipOrder)
 		protected.Post(contract.ConsoleMembershipOrderRefundsRoute, h.refundConsoleMembershipOrder)
 		protected.Get(contract.ConsoleMembershipOrderRefundRoute, h.getConsoleMembershipOrderRefund)
 		protected.Get(contract.ConsoleTicketsRoute, h.consoleTickets)
+		protected.Get(contract.ConsoleTicketFactsRoute, h.consoleTicketFacts)
 		protected.Get(contract.ConsoleTicketRoute, h.consoleTicket)
 		protected.Post(contract.ConsoleTicketRepliesRoute, h.replyConsoleTicket)
 		protected.Post(contract.ConsoleTicketTransitionsRoute, h.transitionConsoleTicket)
@@ -713,6 +715,42 @@ func (h *service) consoleTickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeData(w, r, http.StatusOK, data)
+}
+
+// A committed idempotency row is positive evidence of one successful command.
+// An absent row is deliberately unknown: an uncommitted command is invisible,
+// and rejected commands roll back without leaving durable failure evidence.
+// This read neither initializes an account nor reserves/replays a command.
+func (h *service) consoleOperation(w http.ResponseWriter, r *http.Request) {
+	operator, ok := h.prepareConsole(w, r)
+	if !ok {
+		return
+	}
+	operation, key := chi.URLParam(r, "operation"), chi.URLParam(r, "idempotency_key")
+	switch operation {
+	case "membership_grant", "membership_revoke", "point_adjustment", "ticket_reply", "ticket_transition":
+	default:
+		writeCommandFailure(w, r, invalidCommand("operation is invalid"))
+		return
+	}
+	if len(key) < 8 || len(key) > 200 || !idempotencyKeyPattern.MatchString(key) || r.URL.RawQuery != "" {
+		writeCommandFailure(w, r, invalidCommand("operation lookup is invalid"))
+		return
+	}
+	var payload json.RawMessage
+	err := h.database.QueryRow(r.Context(), `
+		SELECT response_payload FROM account_portfolio_command_idempotency
+		WHERE client_id=$1 AND actor_user_id=$2 AND operation=$3 AND idempotency_key=$4
+	`, operator.clientID, operator.userID, operation, key).Scan(&payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeData(w, r, http.StatusOK, map[string]any{"operation": operation, "status": "unknown"})
+		return
+	}
+	if err != nil || !json.Valid(payload) || bytes.Equal(payload, []byte("{}")) {
+		writeCommandFailure(w, r, dependencyFailure("Account Portfolio operation result is unavailable"))
+		return
+	}
+	writeData(w, r, http.StatusOK, map[string]any{"operation": operation, "status": "succeeded", "result": payload})
 }
 
 func (h *service) consoleTicket(w http.ResponseWriter, r *http.Request) {
