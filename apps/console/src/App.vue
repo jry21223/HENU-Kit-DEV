@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Activity, Bell, BookOpen, Building2, LayoutDashboard, LogOut, Menu, MessageSquare, ShieldCheck, Utensils, X } from "@lucide/vue";
+import { Activity, Bell, BookOpen, LayoutDashboard, LogOut, Menu, MessageSquare, ShieldCheck, Utensils, X } from "@lucide/vue";
 import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogRoot, AlertDialogTitle, DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from "reka-ui";
 import { computed, nextTick, onMounted, ref } from "vue";
 
-import ModuleCard from "@/components/ModuleCard.vue";
-import { Button, PageHeader } from "@/components/ui";
+import OverviewWorkspace from "@/components/OverviewWorkspace.vue";
+import { Button } from "@/components/ui";
 import LibraryOperationsView from "@/components/LibraryOperationsView.vue";
 import FoodOperationsView from "@/components/FoodOperationsView.vue";
 import AccountMembershipOperationsView from "@/components/AccountMembershipOperationsView.vue";
@@ -16,15 +16,6 @@ import StatusBadge from "@/components/ui/StatusBadge.vue";
 import { moduleSummaries, type ModuleSummary } from "@/data/modules";
 import { consolePath, isConsolePath } from "@/lib/base-path";
 import { consoleLoginHref, fetchConsoleOverview, fetchConsoleSession, logoutConsoleSession, type ConsoleOverview, type ConsoleSession } from "@/lib/console-gateway";
-
-const icons = {
-  portal: Building2,
-  platform: ShieldCheck,
-  notice: Bell,
-  library: BookOpen,
-  quizcraft: Activity,
-  food: Utensils,
-};
 
 const query = new URLSearchParams(window.location.search);
 const isPlatformOperations = isConsolePath("/operations");
@@ -155,16 +146,11 @@ const summaries = computed<ModuleSummary[]>(() =>
       : moduleSummaries.map((summary) => ({ ...summary, status: "denied", metrics: [], statusMessage: "登录后即可查看，或联系管理员开通权限。" })),
 );
 
-// "可见" means the card actually shows content: denied cards are hidden behind
-// a login wall and unavailable cards are blank (e.g. the whole overview being
-// down renders every card "概览数据暂时不可用"), so neither counts.
-const visibleCount = computed(() => summaries.value.filter((summary) => summary.status !== "denied" && summary.status !== "unavailable").length);
-
-// This is the only Console route navigation surface. Each item names a real route
-// and remains hidden unless the server-verified access context grants it.
+// Canonical Console destinations, also reused by the Overview evidence panel.
+// Each remains hidden unless the server-verified access context grants it.
 const consoleNav = computed(() =>
   [
-    { href: overviewHref, label: "产品运行概览", icon: LayoutDashboard, permission: "console.overview.read", active: isOverviewPage },
+    { href: overviewHref, label: "全局平台概览", icon: LayoutDashboard, permission: "console.overview.read", active: isOverviewPage },
     { href: operationsHref, label: "平台运营工作台", icon: ShieldCheck, permission: "platform.operations.read", active: isPlatformOperations },
     { href: noticesHref, label: "校园通知审核与分发", icon: Bell, permission: "notice.read", active: isNoticeOperations },
     { href: libraryHref, label: "资料库运营", icon: BookOpen, permission: "library.read", active: isLibraryOperations },
@@ -282,7 +268,7 @@ const consoleNav = computed(() =>
         </div>
       </header>
 
-      <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+      <main class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8" :class="isOverviewPage && 'console-overview-main'">
         <PlatformOperationsView v-if="isPlatformOperations" :key="`platform-${consoleSession?.user.id ?? 'signed-out'}`" :auth-state="authState" :operator-i-d="consoleSession?.user.id" />
         <NoticeOperationsView v-else-if="isNoticeOperations" :key="`notice-${consoleSession?.user.id ?? 'signed-out'}`" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <LibraryOperationsView v-else-if="isLibraryOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
@@ -291,30 +277,11 @@ const consoleNav = computed(() =>
         <AccountPointOperationsView v-else-if="isAccountPointOperations" :auth-state="authState" :operator-i-d="consoleSession?.user.id" :permissions="consoleSession?.access_context.permissions ?? []" />
         <AccountTicketOperationsView v-else-if="isAccountTicketOperations" :auth-state="authState" :permissions="consoleSession?.access_context.permissions ?? []" />
         <template v-else>
-        <PageHeader
-          eyebrow="运营概览"
-          title="产品运行概览"
-          :description="`${summaries.length} 个运营模块的运行状态与关键指标总览，供运营人员快速了解全站情况。`"
-          title-id="overview-heading"
-        >
-          <div class="access-context" aria-label="服务端验证的访问上下文">
-            <span>{{ authState === "authenticated" ? "已授予概览查看权限" : "需要服务端权限" }}</span>
-            <strong>{{ authState === "authenticated" ? visibleCount : 0 }}/{{ summaries.length }} 可见</strong>
-          </div>
-        </PageHeader>
+        <OverviewWorkspace :summaries="summaries" :generated-at="consoleOverview?.generated_at" :authenticated="authState === 'authenticated'" :overview-granted="consoleSession?.access_context.permissions.includes('console.overview.read') ?? false" :navigation="consoleNav" @refresh="refreshSession" />
 
-        <section class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" :aria-busy="loading">
-          <ModuleCard
-            v-for="module in summaries"
-            :key="module.id"
-            :summary="module"
-            :icon="icons[module.id]"
-          />
-        </section>
-
-        <section class="mt-6 rounded-lg border border-border bg-card p-5" aria-labelledby="permission-heading">
-          <h2 id="permission-heading" class="text-sm font-semibold">当前账户的权限</h2>
-          <p class="mt-1 text-sm text-muted-foreground">登录状态与权限由服务端在每次请求时验证，前端不自行判断权限。</p>
+        <details class="console-access-details mt-6 border-t border-border pt-4" aria-labelledby="permission-heading">
+          <summary id="permission-heading" class="cursor-pointer text-sm font-semibold">当前账户的权限</summary>
+          <p class="mt-3 text-sm text-muted-foreground">当前账户可访问的运营范围。</p>
           <!-- This used to render two <code> pills of filler prose ("已授予概览查看权限")
                under an aria-label promising the verified permission codes, while the real
                access_context.permissions array was never displayed at all. -->
@@ -324,7 +291,7 @@ const consoleNav = computed(() =>
               {{ authState === "denied" ? "当前账户缺少相应权限" : "登录后显示访问上下文" }}
             </span>
           </div>
-        </section>
+        </details>
         </template>
       </main>
     </div>

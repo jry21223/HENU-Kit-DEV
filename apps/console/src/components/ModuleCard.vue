@@ -31,7 +31,7 @@ const statusLabel = computed(() => props.summary.unavailableReason === "not_onbo
 
 <template>
   <article
-    class="min-w-0 rounded-lg border border-border bg-card p-4"
+    class="console-module-card min-w-0 rounded-lg border border-border bg-card p-5"
     :class="summary.status === 'denied' && 'border-dashed bg-muted/40'"
     :data-module-card="summary.id"
     :data-state="summary.status"
@@ -53,23 +53,23 @@ const statusLabel = computed(() => props.summary.unavailableReason === "not_onbo
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-xs text-muted-foreground">{{ summary.eyebrow }}</p>
-          <h2 class="mt-0.5 truncate text-sm font-semibold tracking-tight">{{ summary.name }}</h2>
+          <h2 class="mt-0.5 text-sm font-semibold tracking-tight">{{ summary.name }}</h2>
         </div>
-        <StatusBadge :status="summary.status">{{ statusLabel }}</StatusBadge>
+        <StatusBadge class="shrink-0" :status="summary.status">{{ statusLabel }}</StatusBadge>
       </header>
 
       <p class="mt-3 text-sm leading-6 text-muted-foreground">{{ summary.description }}</p>
 
-      <div v-if="summary.metrics.length" class="mt-4 grid grid-cols-2 gap-2">
+      <div v-if="summary.metrics.length" class="console-module-metrics mt-4 grid grid-cols-2 gap-x-4">
         <div
           v-for="metric in summary.metrics"
           :key="metric.label"
           data-metric-tile
-          class="grid gap-0.5 rounded-md border border-border p-2.5"
+          class="grid min-w-0 gap-1 border-t border-border py-3"
           :aria-label="`${metric.label}：${metric.value}`"
         >
           <span class="text-xs text-muted-foreground">{{ metric.label }}</span>
-          <strong class="text-base font-semibold tracking-tight tabular-nums">{{ metric.value }}</strong>
+          <strong class="break-words text-xl font-semibold tracking-tight tabular-nums">{{ metric.value }}</strong>
           <small v-if="metric.hint" class="text-xs text-muted-foreground">{{ metric.hint }}</small>
         </div>
       </div>
