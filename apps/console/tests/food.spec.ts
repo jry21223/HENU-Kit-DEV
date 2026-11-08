@@ -60,7 +60,7 @@ test.beforeEach(async ({ page }) => {
     if (input.kind === "tier_adjustment_confirm") tierConfirmed = true;
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: input.kind, resource_id: input.resource_id, state: "succeeded", version: 2 }, request_id: "req_food_command" }) });
   });
-  await page.route("**/api/v1/food/operations/submission_approve", (route) => {
+  await page.route("**/api/v1/food/operations/submission_approve/outcome", (route) => {
     lookupCalls++;
     if (lookupCalls === 1) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "submission_approve", state: "unknown" }, request_id: "req_food_still_unknown" }) });
     approved = true;
@@ -113,7 +113,7 @@ test("Food review recovery queries the original key without replaying the write"
     keys.push(route.request().headers()["idempotency-key"] ?? "");
     return route.abort("connectionreset");
   });
-  await page.route("**/api/v1/food/operations/submission_approve", (route) => {
+  await page.route("**/api/v1/food/operations/submission_approve/outcome", (route) => {
     queriedKeys.push(route.request().headers()["idempotency-key"] ?? "");
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "submission_approve", state: resolved ? "succeeded" : "unknown", ...(resolved ? { resource_id: "11111111-1111-4111-8111-111111111111", version: 2 } : {}) }, request_id: "req_food_recovered" }) });
   });
