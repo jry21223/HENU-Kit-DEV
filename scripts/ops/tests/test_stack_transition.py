@@ -1186,6 +1186,7 @@ if os.environ.get('INTERRUPT_INSTALL'):
                                   (self.root / "fake-state.json").read_bytes(), self.envfile.read_bytes()))
         self.assertFalse((self.root / "var/lib/henukit-scoped-releases/stack-transition").exists())
         self.assertFalse(any(name == "docker" and ("load" in args or "up" in args) for name, args in self.calls()))
+        return result
 
     def test_writable_source_configs_are_refused_before_transition_writes(self):
         self.full_fixture()
@@ -1215,7 +1216,8 @@ if os.environ.get('INTERRUPT_INSTALL'):
             if os.environ.get("HENUKIT_REQUIRE_FOREIGN_OWNER") == "1":
                 self.fail(f"required foreign-owner filesystem fixture is unavailable: {error.errno}")
             self.skipTest(f"actual chown probe cannot construct foreign-owner fixture: {error.errno}; Linux/root gate remains unverified")
-        self.assert_source_config_rejected()
+        result = self.assert_source_config_rejected()
+        self.assertIn("untrusted file ownership/mode: deploy.env", result.stderr)
 
     def test_complete_preflight_binds_real_mixed_checkpoint_without_mutation(self):
         self.full_fixture()
