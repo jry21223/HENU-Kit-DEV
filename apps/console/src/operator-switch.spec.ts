@@ -65,6 +65,8 @@ describe("operator-bound pending operations", () => {
     sessionStorage.setItem("henukit.console.pending-notice-operation.v1", JSON.stringify({ version: 1, operator_id: operatorA, operation: "distribution", idempotency_key: "idem_notice_distribution_11111111-1111-4111-8111-111111111111", resource_id: noticeID, target_label: "暑期安排", distribution: { channel: "email", audience: { kind: "college", value: "software-college" }, expected_revision: 2 } }));
     const wrapper = mount(NoticeOperationsView, { props: { authState: "authenticated", operatorID: operatorA, permissions: ["notice.read", "notice.distribute"] } });
     await flushPromises();
+    await wrapper.get("select[aria-label='版本状态筛选']").setValue("approved");
+    await wrapper.findAll("button").find((button) => button.text().includes("暑期安排"))!.trigger("click");
     expect(wrapper.findAll("button").find((button) => button.text() === "创建分发任务")?.attributes("disabled")).toBeDefined();
     await wrapper.setProps({ operatorID: operatorB });
     await flushPromises();

@@ -226,5 +226,5 @@ func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Food summary is unavailable")
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{"status": data.Status, "status_message": data.StatusMessage, "as_of": data.AsOf, "last_success_at": data.AsOf, "metrics": []map[string]string{{"label": "待审核投稿", "value": fmt.Sprint(data.PendingSubmissions)}, {"label": "异常票", "value": fmt.Sprint(data.OpenAnomalies)}, {"label": "待确认调档", "value": fmt.Sprint(data.PendingTiers)}}})
+	writeData(w, r, http.StatusOK, map[string]any{"id": "food", "status": data.Status, "status_message": data.StatusMessage, "as_of": data.AsOf, "last_success_at": data.AsOf, "metrics": []map[string]string{{"label": "待审核投稿", "value": fmt.Sprint(data.PendingSubmissions)}, {"label": "异常票", "value": fmt.Sprint(data.OpenAnomalies)}, {"label": "待确认调档", "value": fmt.Sprint(data.PendingTiers)}}})
 }

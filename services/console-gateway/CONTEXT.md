@@ -14,6 +14,21 @@
 
 ## Current boundary
 
+The 2026-11-07 Library readiness read forwards only through the existing signed
+owner client after verifying `library.read` and Library product Scope. Owner
+404 (an older deployment) and dependency failures stay unconfirmed/unavailable;
+neither implies management is ready or explicitly disabled. The old Workspace
+response stays unchanged, so a newer owner remains compatible with its strict
+older consumers. No public catalog credential, product database dependency,
+permission, summary configuration, or management migration is added.
+Account Portfolio command-result reads recheck the original command's exact
+permission and product Scope on every request and forward only the Console
+Session actor. The private Ticket representation's declared, valid `user_id`
+is accepted solely for the existing bounded Core identity resolution, then
+removed before browser responses, including nested recovered command results.
+Operator/audit identities are rejected by the private client. Unknown results
+remain unknown and never cause a Gateway replay.
+
 HC-516 validates page/cursor pairs and the fixed snapshot timestamp before forwarding them. Continuation cursors are opaque; the Gateway never decodes or creates them.
 
 HC-09 establishes the login, callback, logout, and server-verified Console Access Context flow. HC-441 routes that unchanged state/S256/callback boundary through Platform Core OAuth Continuation and the Portal-owned Account Center; the Gateway still owns the browser-bound OAuth state, encrypted Console Session, and validated same-origin return path. HC-10 and HC-11 add the six-owner Overview aggregation and first real Portal owner endpoint. HC-12 adds thin signed forwarding for Platform Operations reads, idempotent Session/access writes, and unknown-result lookup. HC-516 forwards only validated bounded page numbers and body-carried account searches to Platform Core, and reports `platform.operations.write` in the Console Access Context only after a separate server verification. HC-13 adds the same thin boundary for Notice. HC-14 adds signed forwarding to the bounded Library Compatibility Adapter. HC-15 adds the equivalent thin Food boundary: Gateway verifies the exact `food.*` permission against product Scope `food`, signs actor context, and owns no Food state or database credential. HC-168 adds the Account Portfolio support-ticket operations workspace. Ticket responses are augmented through one bounded Platform Core identity batch authorized by the exact `account.tickets.read`, `account.tickets.reply`, or `account.tickets.transition` permission already required by the operation; the Gateway owns no identity copy. HC-170 adds bounded membership lookup, grant, and revocation: the Gateway verifies only `account.membership.write` against product Scope `account-portfolio`, forwards its Console Session actor with a separate actor-bound service credential, and never lets the browser select an operator identity or receive target/operator audit fields. HC-357 adds the membership identity page: Gateway forwards the same exact permission to Platform Core, aggregates at most 20 Account Portfolio membership reads under a three-second deadline, and owns neither identity nor membership copies. HC-169 adds the matching point-adjustment command boundary: Gateway verifies exactly `account.points.adjust` against product Scope `account-portfolio`, preserves the browser's raw idempotent command, and returns only the owner-confirmed balance and public ledger entry. Browser responses never contain the exchange token, service credentials, or point-audit identities.

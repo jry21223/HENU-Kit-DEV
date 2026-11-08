@@ -181,6 +181,30 @@ async function installConsoleRoutes(
     })
   );
   await page.route("**/api/v1/account/tickets", (route) => fulfill(route, 200, { data: { tickets: [state.ticket()] }, request_id: "req_console_queue" }));
+  await page.route((url) => url.pathname === "/api/v1/account/tickets/facts", async (route) => {
+    expect(route.request().method()).toBe("GET");
+    const filter = new URL(route.request().url()).searchParams.get("status") ?? "unresolved";
+    expect(["unresolved", "all", "open", "in_progress", "resolved"]).toContain(filter);
+    const current = state.ticket();
+    const counts = {
+      open: Number(current.status === "open"),
+      in_progress: Number(current.status === "in_progress"),
+      resolved: Number(current.status === "resolved"),
+      unresolved: Number(current.status === "open" || current.status === "in_progress"),
+    };
+    const matches = filter === "all" || (filter === "unresolved" ? current.status !== "resolved" : current.status === filter);
+    const items = matches ? [{ id: current.id, reference: current.reference, title: current.title, status: current.status, version: current.version, updated_at: current.updated_at }] : [];
+    await fulfill(route, 200, {
+      data: {
+        scope: "global",
+        as_of: "2030-01-01T00:05:00Z",
+        stale: false,
+        counts,
+        window: { filter, limit: 100, matched_total: items.length, returned: items.length, has_more: false, items },
+      },
+      request_id: "req_console_ticket_facts",
+    });
+  });
   await page.route(`**/api/v1/account/tickets/${ticketID}`, (route) => fulfill(route, 200, { data: state.detail(), request_id: "req_console_detail" }));
   await page.route(`**/api/v1/account/tickets/${ticketID}/replies`, async (route) => state.reply(route as never));
   await page.route(`**/api/v1/account/tickets/${ticketID}/transitions`, async (route) => state.transition(route as never));

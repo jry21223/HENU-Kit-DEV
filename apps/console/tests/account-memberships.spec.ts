@@ -37,6 +37,7 @@ async function selectTarget(page: Page) {
 
 for (const viewport of [
   { name: "desktop", width: 1440, height: 1000 },
+  { name: "375px", width: 375, height: 812 },
   { name: "390px", width: 390, height: 844 },
 ]) {
   test(`${viewport.name} operator searches a bounded user list, selects one user, then grants and revokes VIP`, async ({ page }) => {
@@ -90,45 +91,40 @@ for (const viewport of [
     await page.getByRole("button", { name: "撤销终身会员" }).click();
     await page.getByRole("button", { name: "确认执行" }).click();
     await expect(page.getByRole("status")).toContainText("终身会员权益已撤销");
+    expect(await page.evaluate(() => innerWidth)).toBe(viewport.width);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
   });
 
-  test(`${viewport.name} retries an unknown VIP result with the original idempotency key`, async ({ page }) => {
+  test(`${viewport.name} recovers an unknown membership operation by its original read key after reload`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await installSession(page);
-    const keys: string[] = [];
-    await page.route("**/api/v1/account/memberships/search", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { accounts: [account(targetUserID, targetName, targetEmail)], next_page: null }, request_id: "req_membership_search" }) }),
-    );
+    const keys: string[] = [], queries: string[] = [];
+    await page.route("**/api/v1/account/memberships/search", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { accounts: [account(targetUserID, targetName, targetEmail)], next_page: null }, request_id: "req_membership_search" }) }));
     await page.route(`**/api/v1/account/memberships/${targetUserID}/grants`, async (route) => {
       keys.push(route.request().headers()["idempotency-key"] ?? "");
-      const succeeded = keys.length > 1;
-      await route.fulfill({
-        status: succeeded ? 200 : 503,
-        contentType: "application/json",
-        body: JSON.stringify(succeeded
-          ? { data: { membership: { plan: "lifetime", lifetime: true, version: 2 } }, request_id: "req_membership_replayed" }
-          : { error: { code: "unavailable", message: "retry later" }, request_id: "req_membership_unknown" }),
-      });
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "unavailable" }, request_id: "req_membership_unknown" }) });
     });
-
+    await page.route("**/api/v1/account/operations/membership_grant/*", async (route) => {
+      expect(route.request().method()).toBe("GET"); queries.push(route.request().url());
+      const succeeded = queries.length >= 3;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "membership_grant", status: succeeded ? "succeeded" : "unknown", ...(succeeded ? { result: { membership: { plan: "lifetime", lifetime: true, version: 2 } } } : {}) }, request_id: "req_membership_query" }) });
+    });
     await page.goto("/account/memberships");
+    expect(await page.evaluate(() => innerWidth)).toBe(viewport.width);
     await page.getByRole("button", { name: new RegExp(`${targetName}.*${targetEmail}`) }).click();
-    await page.getByLabel("操作原因").fill("网关结果未确认时重试");
+    await page.getByLabel("操作原因").fill("隔离恢复原因");
     await page.getByRole("button", { name: "发放终身会员" }).click();
     await page.getByRole("button", { name: "确认执行" }).click();
-    await expect(page.getByRole("status")).toContainText("结果还没确认");
-    await expect(page.getByRole("status")).not.toContainText(targetUserID);
-    const stored = await page.evaluate(() => sessionStorage.getItem("henukit.account-membership.pending-command"));
-    expect(stored).toContain(targetUserID);
-    expect(stored).toContain(targetName);
-    expect(stored).toContain(targetEmail);
-    await expect(page.getByRole("status")).toContainText(`${targetName} · ${targetEmail}`);
-    await page.getByRole("button", { name: "按原请求重试" }).click();
+    await expect(page.getByRole("status")).toContainText("结果尚未确认");
+    const stored = await page.evaluate(() => sessionStorage.getItem("henukit.console.pending-membership-operation.v1"));
+    expect(stored).toContain(targetUserID); expect(stored).not.toContain(targetName); expect(stored).not.toContain(targetEmail); expect(stored).not.toContain("隔离恢复原因");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "查询原操作结果" })).toBeVisible();
+    await page.getByRole("button", { name: "查询原操作结果" }).click();
     await expect(page.getByRole("status")).toContainText("终身会员权益已发放");
-    expect(keys).toHaveLength(2);
-    expect(keys[1]).toBe(keys[0]);
+    expect(keys).toHaveLength(1); expect(queries).toHaveLength(3);
+    expect(queries.every((path) => path.endsWith(keys[0]!))).toBe(true);
   });
 }
 
@@ -199,7 +195,8 @@ test("Console shows bounded-list empty, outage, permission, and signed-out state
     route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { code: "unauthorized", message: "expired" }, request_id: "req_membership_signed_out" }) }),
   );
   await page.reload();
-  await expect(page.getByText("登录状态已过期，请重新登录后再操作。")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("请登录后继续，登录成功后将回到当前页面。");
+  await expect(page.getByRole("link", { name: "登录 Console", exact: true })).toHaveAttribute("href", /return_to=%2Faccount%2Fmemberships/);
   await expect(page.getByRole("button", { name: "搜索" })).toHaveCount(0);
 });
 

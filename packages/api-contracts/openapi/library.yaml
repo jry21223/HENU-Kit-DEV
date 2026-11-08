@@ -36,6 +36,20 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/SuccessEnvelope" } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/console-readiness:
+    get:
+      tags: [Library]
+      operationId: getLibraryConsoleReadiness
+      summary: Read explicit Library management readiness
+      description: Uses the existing library.read actor and product Scope. Does not query public or private catalog data and does not probe command routes. The legacy workspace response remains unchanged for existing consumers.
+      parameters: [{ $ref: "#/components/parameters/ActorUserID" }, { $ref: "#/components/parameters/LibraryReadPermission" }, { $ref: "#/components/parameters/ProductScope" }]
+      responses:
+        "200":
+          description: Owner-confirmed management capabilities, not inferred from empty collections
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/LibraryReadiness" } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/v1/workspace:
     get:
       tags: [Library]
@@ -367,6 +381,22 @@ components:
         file_size: { type: integer, format: int64, minimum: 0 }
         downloads: { type: integer, format: int64, minimum: 0 }
         download_available: { type: boolean, const: true }
+    LibraryReadiness:
+      type: object
+      additionalProperties: false
+      required: [management, reason, capabilities, checked_at]
+      properties:
+        management: { type: string, enum: [not_ready, ready] }
+        reason: { type: string, enum: [management_migration_pending, none] }
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [workspace, commands, operation_results]
+          properties:
+            workspace: { type: boolean }
+            commands: { type: boolean }
+            operation_results: { type: boolean }
+        checked_at: { type: string, format: date-time }
     LibraryWorkspace:
       type: object
       additionalProperties: false

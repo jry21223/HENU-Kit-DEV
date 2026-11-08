@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"henukit.dev/console-gateway/internal/businessfacts"
 	"henukit.dev/console-gateway/internal/clientutil"
 	"henukit.dev/console-gateway/internal/serviceauth"
 )
@@ -123,8 +124,58 @@ func (c *Client) MembershipOrderRefund(ctx context.Context, actorUserID, orderID
 	return c.get(ctx, MembershipOrderRefundPath(orderID, refundID), actorUserID, validateMembershipOrderRefund)
 }
 
+func (c *Client) TicketFacts(ctx context.Context, actorID, status string) (json.RawMessage, error) {
+	if !businessfacts.ValidTicketFilter(status) {
+		return nil, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return c.get(ctx, TicketFactsPath+"?status="+url.QueryEscape(status), actorID, func(raw json.RawMessage) error { return businessfacts.ValidateTickets(raw, status) })
+}
+
 func (c *Client) Tickets(ctx context.Context, actorUserID string) (json.RawMessage, error) {
 	return c.get(ctx, TicketsPath, actorUserID, validateTicketQueue)
+}
+
+// Operation reads only the original actor/operation/key's committed outcome.
+func (c *Client) Operation(ctx context.Context, actorUserID, operation, key string) (json.RawMessage, error) {
+	validate := operationValidator(operation)
+	if validate == nil || !validIdempotencyKey(key) {
+		return nil, ErrInvalid
+	}
+	path := strings.ReplaceAll(OperationPathTemplate, "{operation}", url.PathEscape(operation))
+	path = strings.ReplaceAll(path, "{idempotency_key}", url.PathEscape(key))
+	return c.get(ctx, path, actorUserID, func(raw json.RawMessage) error {
+		value, ok := requiredObject(raw)
+		if !ok {
+			return ErrInvalid
+		}
+		kind, kindOK := requiredString(value, "operation")
+		status, statusOK := requiredString(value, "status")
+		if !kindOK || kind != operation || !statusOK {
+			return ErrInvalid
+		}
+		if status == "unknown" && hasOnlyKeys(value, "operation", "status") {
+			return nil
+		}
+		if status != "succeeded" || !hasOnlyKeys(value, "operation", "status", "result") {
+			return ErrInvalid
+		}
+		return validate(value["result"])
+	})
+}
+
+func operationValidator(operation string) responseValidator {
+	switch operation {
+	case "membership_grant", "membership_revoke":
+		return validateMembershipEnvelope
+	case "point_adjustment":
+		return validatePointAdjustment
+	case "ticket_reply", "ticket_transition":
+		return validateTicketCommand
+	default:
+		return nil
+	}
 }
 
 func (c *Client) Ticket(ctx context.Context, actorUserID, ticketID string) (json.RawMessage, error) {

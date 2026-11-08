@@ -81,6 +81,7 @@ func New(config Config) (http.Handler, error) {
 		protected.Use(h.authenticate)
 		protected.Get(contract.SummaryRoute, h.consoleSummary)
 		protected.Get(contract.WorkspaceRoute, h.workspace)
+		protected.Get(contract.FactsRoute, h.facts)
 		protected.Post(contract.CommandRoute, h.command)
 		protected.Get(contract.OperationRoute, h.operationStatus)
 	})

@@ -421,7 +421,7 @@ func send(t *testing.T, baseURL, permission, method, path string, body []byte, k
 	return sendAs(t, baseURL, "99999999-9999-4999-8999-999999999999", permission, method, path, body, key)
 }
 
-func sendAs(t *testing.T, baseURL, actorID, permission, method, path string, body []byte, key string) *http.Response {
+func sendAs(t *testing.T, baseURL, actorID, permission, method, path string, body []byte, key string, headerOverrides ...map[string]string) *http.Response {
 	t.Helper()
 	request, err := http.NewRequest(method, baseURL+path, bytes.NewReader(body))
 	if err != nil {
@@ -434,6 +434,11 @@ func sendAs(t *testing.T, baseURL, actorID, permission, method, path string, bod
 	request.Header.Set("X-Permission-Code", permission)
 	request.Header.Set("X-Scope-Kind", "product")
 	request.Header.Set("X-Product-Code", "food")
+	for _, headers := range headerOverrides {
+		for name, value := range headers {
+			request.Header.Set(name, value)
+		}
+	}
 	request.Header.Set("X-Request-Id", "req_food_test_"+strings.ReplaceAll(uuid.NewString(), "-", ""))
 	if key != "" {
 		request.Header.Set("Idempotency-Key", key)

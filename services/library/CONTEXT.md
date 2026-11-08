@@ -59,6 +59,16 @@ _Avoid_: 当前筛选结果、Portal 汇总值、硬编码下载量
 
 ## Current boundary
 
+As of 2026-11-07, `GET /api/v1/console-readiness` explicitly reports that the
+management workspace, commands, and operation-result lookup are not ready while
+the management migration remains pending. It uses the existing signed Console
+service authentication, `library.read`, actor, and Library product Scope. The
+response contains no catalog facts and needs no database read. Its `checked_at`
+is the time of the capability check, not catalog freshness. This separate route
+preserves the old strict Workspace response without adding fields. It says
+nothing about the independently owned public material catalog; this slice does
+not migrate or restore management capabilities.
+
 HC-14 exposes only courses, materials, downloads, material submissions/reviews, and course/material corrections. Console Gateway verifies `library.*` with product Scope `library`, signs the actor context, and never connects to the legacy database. The Adapter holds a dedicated legacy API credential and maps old commercial access values to the opaque `restricted` state instead of exposing payment or membership concepts.
 
 ADR-0027 adopts #250 option A only for the public-free OSS download surface.

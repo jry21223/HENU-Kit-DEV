@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - services/console-gateway/**
+      - services/account-portfolio/**
       - services/food/**
       - apps/console/**
       - packages/api-contracts/openapi/console-gateway.yaml
@@ -16,6 +17,7 @@ on:
     branches: [main]
     paths:
       - services/console-gateway/**
+      - services/account-portfolio/**
       - services/food/**
       - apps/console/**
       - packages/api-contracts/openapi/console-gateway.yaml
@@ -103,6 +105,15 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
           go test -race -count=1 ./...
           go build -o /tmp/console-gateway ./cmd/server
+      - name: Verify real Account owner ticket recovery and revision boundaries
+        working-directory: services/console-gateway/integration/account-owner
+        env:
+          PGPASSWORD: food_test
+          ACCOUNT_GATEWAY_INTEGRATION_DATABASE_URL: postgres://food:food_test@localhost:5432/account_gateway_integration?sslmode=disable
+        run: |
+          set -euo pipefail
+          createdb -h localhost -U food account_gateway_integration
+          go test -race -count=1 ./...
       - name: Verify real Food owner read and review
         env:
           PGPASSWORD: food_test

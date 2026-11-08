@@ -78,7 +78,7 @@ func main() {
 		fail(errors.New("console gateway server must end with /api/v1"))
 	}
 	routes := operationRoutes(spec)
-	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "searchConsolePlatformOperationAccounts", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "lookupConsoleAccount", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "searchConsoleAccountMemberships", "getConsoleAccountMembership", "grantConsoleAccountMembership", "revokeConsoleAccountMembership", "adjustConsoleAccountPoints", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "closeConsoleMembershipOrder", "refundConsoleMembershipOrder", "getConsoleMembershipOrderRefund", "logoutConsoleSession"} {
+	for _, operationID := range []string{"getConsoleGatewayHealth", "beginConsoleLogin", "completeConsoleLogin", "getConsoleSession", "getConsoleOverview", "getConsolePlatformOperations", "searchConsolePlatformOperationAccounts", "revokeConsolePlatformSession", "updateConsolePlatformAccess", "getConsolePlatformOperationStatus", "lookupConsoleAccount", "getConsoleNotices", "createConsoleNoticeSource", "createConsoleNoticeVersion", "reviewConsoleNoticeVersion", "distributeConsoleNoticeVersion", "getConsoleNoticeOperationStatus", "getConsoleLibraryReadiness", "getConsoleLibraryWorkspace", "executeConsoleLibraryCommand", "getConsoleLibraryOperationStatus", "getConsoleFoodFacts", "getConsoleFoodWorkspace", "executeConsoleFoodCommand", "getConsoleFoodOperationStatus", "getConsoleFoodOperationOutcome", "searchConsoleAccountMemberships", "getConsoleAccountMembership", "grantConsoleAccountMembership", "revokeConsoleAccountMembership", "adjustConsoleAccountPoints", "getConsoleAccountOperation", "getConsoleAccountTicketFacts", "getConsoleAccountTickets", "getConsoleAccountTicket", "replyConsoleAccountTicket", "transitionConsoleAccountTicket", "closeConsoleMembershipOrder", "refundConsoleMembershipOrder", "getConsoleMembershipOrderRefund", "logoutConsoleSession"} {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required operation %s is missing", operationID))
 		}
@@ -206,17 +206,22 @@ const (
 	NoticeReviewRoute = %q
 	NoticeDistributionRoute = %q
 	NoticeOperationRoute = %q
+	LibraryReadinessRoute = %q
 	LibraryWorkspaceRoute = %q
 	LibraryCommandRoute = %q
 	LibraryOperationRoute = %q
+		FoodFactsRoute = %q
 		FoodWorkspaceRoute = %q
 		FoodCommandRoute = %q
 		FoodOperationRoute = %q
+		FoodOperationOutcomeRoute = %q
 		AccountMembershipRoute = %q
 		SearchAccountMembershipsRoute = %q
 		AccountMembershipGrantsRoute = %q
 		AccountMembershipRevocationsRoute = %q
 		AccountPointAdjustmentsRoute = %q
+		AccountOperationRoute = %q
+		AccountTicketFactsRoute = %q
 		AccountTicketsRoute = %q
 		AccountTicketRoute = %q
 		AccountTicketRepliesRoute = %q
@@ -228,7 +233,7 @@ const (
 	SourceSHA256 = %q
 )
 
-		`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["searchConsolePlatformOperationAccounts"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["lookupConsoleAccount"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleAccountMembership"], routes["searchConsoleAccountMemberships"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"], routes["logoutConsoleSession"], digest)
+		`, routes["getConsoleGatewayHealth"], routes["beginConsoleLogin"], routes["completeConsoleLogin"], routes["getConsoleSession"], routes["getConsoleOverview"], routes["getConsolePlatformOperations"], routes["searchConsolePlatformOperationAccounts"], routes["revokeConsolePlatformSession"], routes["updateConsolePlatformAccess"], routes["getConsolePlatformOperationStatus"], routes["lookupConsoleAccount"], routes["getConsoleNotices"], routes["createConsoleNoticeSource"], routes["createConsoleNoticeVersion"], routes["reviewConsoleNoticeVersion"], routes["distributeConsoleNoticeVersion"], routes["getConsoleNoticeOperationStatus"], routes["getConsoleLibraryReadiness"], routes["getConsoleLibraryWorkspace"], routes["executeConsoleLibraryCommand"], routes["getConsoleLibraryOperationStatus"], routes["getConsoleFoodFacts"], routes["getConsoleFoodWorkspace"], routes["executeConsoleFoodCommand"], routes["getConsoleFoodOperationStatus"], routes["getConsoleFoodOperationOutcome"], routes["getConsoleAccountMembership"], routes["searchConsoleAccountMemberships"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountOperation"], routes["getConsoleAccountTicketFacts"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"], routes["logoutConsoleSession"], digest)
 	for _, name := range schemaNames(spec) {
 		fmt.Fprintf(&output, "type %s %s\n\n", name, goType(spec.Components.Schemas[name], 0))
 	}
@@ -303,6 +308,8 @@ func renderTypeScript(spec document, routes map[string]string, digest string) st
 		fmt.Fprintf(&validators, "function is%s(value: unknown): value is %s {\n  return %s;\n}\n\n", name, name, tsCheck("value", value))
 	}
 	template := `// Code generated from console-gateway.yaml (SHA256 {{SHA}}); DO NOT EDIT.
+import { consoleRequest, readConsoleJSON, consoleReturnTo } from "./console-session";
+
 {{SCHEMAS}}function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -324,11 +331,11 @@ function isDateTime(value: unknown): value is string {
 
 export async function fetchConsoleSession(): Promise<ConsoleSessionResult> {
   try {
-    const response = await fetch("{{SESSION_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{SESSION_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleSession(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", session: envelope.data };
   } catch {
@@ -340,13 +347,13 @@ export type ConsoleOverviewResult =
   | { state: "authenticated"; overview: ConsoleOverview }
   | { state: "signed_out" | "denied" | "unavailable" };
 
-export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
+export async function fetchConsoleOverview(options: { signal?: AbortSignal } = {}): Promise<ConsoleOverviewResult> {
   try {
-    const response = await fetch("{{OVERVIEW_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{OVERVIEW_ROUTE}}", { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleOverview(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", overview: envelope.data };
   } catch {
@@ -356,7 +363,7 @@ export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
 
 export type PlatformOperationsResult =
   | { state: "authenticated"; operations: PlatformOperationsSnapshot }
-  | { state: "signed_out" | "denied" | "rate_limited" | "unavailable" };
+  | { state: "signed_out" | "denied" | "invalid" | "rate_limited" | "unavailable" };
 
 export interface PlatformOperationsPageRequest {
   accounts_page: number;
@@ -370,15 +377,16 @@ export interface PlatformOperationsPageRequest {
   audit_cursor?: string;
 }
 
-export async function fetchPlatformOperations(pages: PlatformOperationsPageRequest = { accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 }): Promise<PlatformOperationsResult> {
+export async function fetchPlatformOperations(pages: PlatformOperationsPageRequest = { accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 }, options: { signal?: AbortSignal } = {}): Promise<PlatformOperationsResult> {
   try {
     const query = new URLSearchParams(Object.entries(pages).filter((entry): entry is [string, string | number] => entry[1] !== undefined).map(([key, value]) => [key, String(value)]));
-    const response = await fetch("{{OPERATIONS_ROUTE}}?" + query.toString(), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{OPERATIONS_ROUTE}}?" + query.toString(), { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 400) return { state: "invalid" };
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 429) return { state: "rate_limited" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationsSnapshot(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", operations: envelope.data };
   } catch {
@@ -392,13 +400,13 @@ export type PlatformOperationAccountSearchResult =
 
 export async function searchPlatformOperationAccounts(input: PlatformOperationsAccountSearchRequest): Promise<PlatformOperationAccountSearchResult> {
   try {
-    const response = await fetch("{{ACCOUNT_SEARCH_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    const response = await consoleRequest("{{ACCOUNT_SEARCH_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (response.status === 429) return { state: "rate_limited" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationsAccountPage(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", page: envelope.data };
   } catch {
@@ -412,14 +420,14 @@ export type PlatformOperationWriteResult =
 
 async function writePlatformOperation(path: string, body: unknown, idempotencyKey: string): Promise<PlatformOperationWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" as const, result: { operation: path.includes("access-updates") ? "access_update" : "session_revoke", status: "unknown" } };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationResult(envelope.data)) return { state: "unknown" as const, result: { operation: path.includes("access-updates") ? "access_update" : "session_revoke", status: "unknown" } };
     return { state: envelope.data.status, result: envelope.data };
   } catch {
@@ -438,12 +446,12 @@ export function updatePlatformAccess(userID: string, input: UpdatePlatformAccess
 export async function resolvePlatformOperation(operation: "session_revoke" | "access_update", idempotencyKey: string): Promise<PlatformOperationWriteResult> {
   try {
     const path = "{{OPERATION_STATUS_ROUTE}}".replace("{operation}", operation);
-    const response = await fetch(path, { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest(path, { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationResult(envelope.data)) return { state: "unavailable" };
     return { state: envelope.data.status, result: envelope.data };
   } catch {
@@ -457,12 +465,12 @@ export type AccountLookupResult =
 
 export async function lookupConsoleAccount(email: string): Promise<AccountLookupResult> {
   try {
-    const response = await fetch("{{ACCOUNT_LOOKUP_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    const response = await consoleRequest("{{ACCOUNT_LOOKUP_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountLookupResult(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", account: envelope.data.account };
   } catch { return { state: "unavailable" }; }
@@ -470,15 +478,19 @@ export async function lookupConsoleAccount(email: string): Promise<AccountLookup
 
 export type NoticeSnapshotResult =
   | { state: "authenticated"; snapshot: NoticeSnapshot }
-  | { state: "signed_out" | "denied" | "unavailable" };
+  | { state: "signed_out" | "denied" | "not_configured" | "unavailable" };
 
-export async function fetchNoticeSnapshot(): Promise<NoticeSnapshotResult> {
+export async function fetchNoticeSnapshot(options: { signal?: AbortSignal } = {}): Promise<NoticeSnapshotResult> {
   try {
-    const response = await fetch("{{NOTICE_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{NOTICE_ROUTE}}", { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
+    if (response.status === 503) {
+      const failure: unknown = await readConsoleJSON(response);
+      return isErrorEnvelope(failure) && failure.error.code === "NOTICE_NOT_CONFIGURED" ? { state: "not_configured" } : { state: "unavailable" };
+    }
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isNoticeSnapshot(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", snapshot: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -488,14 +500,14 @@ export type NoticeWriteResult = { state: "succeeded"; result: Record<string, unk
 
 async function writeNotice(path: string, input: unknown, idempotencyKey: string): Promise<NoticeWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unknown" };
     return { state: "succeeded", result: envelope.data };
   } catch { return { state: "unknown" }; }
@@ -508,14 +520,28 @@ export function distributeNoticeVersion(versionID: string, input: NoticeDistribu
 
 export async function resolveNoticeOperation(operation: "source_create" | "version_create" | "review" | "distribution", idempotencyKey: string): Promise<NoticeWriteResult> {
   try {
-    const response = await fetch("{{NOTICE_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest("{{NOTICE_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unavailable" };
     return envelope.data.status === "unknown" ? { state: "unknown" } : { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type LibraryReadinessResult = { state: "authenticated"; readiness: LibraryReadiness } | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchLibraryReadiness(options: { signal?: AbortSignal } = {}): Promise<LibraryReadinessResult> {
+  try {
+    const response = await consoleRequest("{{LIBRARY_READINESS_ROUTE}}", { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isLibraryReadiness(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", readiness: envelope.data };
   } catch { return { state: "unavailable" }; }
 }
 
@@ -523,11 +549,11 @@ export type LibraryWorkspaceResult = { state: "authenticated"; workspace: Librar
 
 export async function fetchLibraryWorkspace(): Promise<LibraryWorkspaceResult> {
   try {
-    const response = await fetch("{{LIBRARY_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{LIBRARY_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isLibraryWorkspace(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", workspace: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -537,13 +563,13 @@ export type LibraryWriteResult = { state: "succeeded" | "unknown"; result?: Libr
 
 export async function executeLibraryCommand(input: LibraryCommand, idempotencyKey: string): Promise<LibraryWriteResult> {
   try {
-    const response = await fetch("{{LIBRARY_COMMAND_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest("{{LIBRARY_COMMAND_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unknown" };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unknown" }; }
@@ -551,14 +577,51 @@ export async function executeLibraryCommand(input: LibraryCommand, idempotencyKe
 
 export async function resolveLibraryOperation(operation: LibraryCommandKind, idempotencyKey: string): Promise<LibraryWriteResult> {
   try {
-    const response = await fetch("{{LIBRARY_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest("{{LIBRARY_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unavailable" };
     return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type FoodFactsResult = { state: "authenticated"; facts: FoodFacts } | { state: "signed_out" | "denied" | "unavailable" };
+export type AccountTicketFactsResult = { state: "authenticated"; facts: ConsoleAccountTicketFacts } | { state: "signed_out" | "denied" | "unavailable" };
+
+function factWindowMatches(window: FoodFactWindow, count: number, status: "pending" | "open"): boolean {
+  return window.filter === status && window.returned === window.items.length && window.returned === Math.min(count, 200) && window.has_more === (count > window.returned) && window.items.every(item => item.status === status) && new Set(window.items.map(item => item.id)).size === window.returned;
+}
+
+export async function fetchFoodFacts(options: { signal?: AbortSignal } = {}): Promise<FoodFactsResult> {
+  try {
+    const response = await consoleRequest("{{FOOD_FACTS_ROUTE}}", { credentials: "same-origin", signal: options.signal, headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isFoodFacts(envelope.data)) return { state: "unavailable" };
+    const facts = envelope.data;
+    if (!factWindowMatches(facts.windows.submissions, facts.counts.pending_submissions, "pending") || !factWindowMatches(facts.windows.anomalies, facts.counts.open_anomalies, "open") || !factWindowMatches(facts.windows.tier_adjustments, facts.counts.pending_tier_adjustments, "pending")) return { state: "unavailable" };
+    return { state: "authenticated", facts };
+  } catch { return { state: "unavailable" }; }
+}
+
+export async function fetchAccountTicketFacts(status: ConsoleTicketFactsFilter = "unresolved", options: { signal?: AbortSignal } = {}): Promise<AccountTicketFactsResult> {
+  if (!["unresolved", "all", "open", "in_progress", "resolved"].includes(status)) return { state: "unavailable" };
+  try {
+    const response = await consoleRequest("{{ACCOUNT_TICKET_FACTS_ROUTE}}" + "?status=" + encodeURIComponent(status), { credentials: "same-origin", signal: options.signal, headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketFacts(envelope.data)) return { state: "unavailable" };
+    const facts = envelope.data, counts = facts.counts, window = facts.window;
+    const total = status === "all" ? counts.unresolved + counts.resolved : counts[status];
+    if (!Number.isSafeInteger(counts.unresolved + counts.resolved) || counts.unresolved !== counts.open + counts.in_progress || window.filter !== status || window.matched_total !== total || window.returned !== window.items.length || window.returned !== Math.min(total, 100) || window.has_more !== (total > window.returned) || new Set(window.items.map(item => item.id)).size !== window.returned || !window.items.every(item => item.reference === "HKT-" + item.id.toLowerCase() && (status === "all" || (status === "unresolved" ? item.status !== "resolved" : item.status === status)))) return { state: "unavailable" };
+    return { state: "authenticated", facts };
   } catch { return { state: "unavailable" }; }
 }
 
@@ -567,11 +630,11 @@ export type FoodWorkspaceResult = { state: "authenticated"; workspace: FoodWorks
 export async function fetchFoodWorkspace(campus?: FoodCampus): Promise<FoodWorkspaceResult> {
   try {
     const route = "{{FOOD_ROUTE}}" + (campus ? "?campus=" + encodeURIComponent(campus) : "");
-    const response = await fetch(route, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest(route, { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isFoodWorkspace(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", workspace: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -581,27 +644,30 @@ export type FoodWriteResult = { state: "succeeded" | "unknown"; result?: FoodOpe
 
 export async function executeFoodCommand(input: FoodCommand, idempotencyKey: string): Promise<FoodWriteResult> {
   try {
-    const response = await fetch("{{FOOD_COMMAND_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest("{{FOOD_COMMAND_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unknown" };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unknown" }; }
 }
 
-export async function resolveFoodOperation(operation: FoodCommandKind, idempotencyKey: string): Promise<FoodWriteResult> {
+export type FoodOperationLookupResult = FoodWriteResult | { state: "failed"; result: FoodFailedOperation };
+
+export async function resolveFoodOperation(operation: FoodCommandKind, idempotencyKey: string): Promise<FoodOperationLookupResult> {
   try {
-    const response = await fetch("{{FOOD_OPERATION_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest("{{FOOD_OPERATION_OUTCOME_ROUTE}}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
-    if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isFoodOperationOutcome(envelope.data) || envelope.data.operation !== operation) return { state: "unavailable" };
+    if (envelope.data.state === "failed") return { state: "failed", result: envelope.data };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unavailable" }; }
 }
@@ -616,12 +682,12 @@ export type AccountMembershipPageResult =
 
 export async function searchAccountMemberships(input: ConsoleMembershipAccountSearchRequest): Promise<AccountMembershipPageResult> {
   try {
-    const response = await fetch("{{ACCOUNT_MEMBERSHIP_SEARCH_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    const response = await consoleRequest("{{ACCOUNT_MEMBERSHIP_SEARCH_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleMembershipAccountPage(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", page: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -629,13 +695,13 @@ export async function searchAccountMemberships(input: ConsoleMembershipAccountSe
 
 export async function fetchAccountMembership(userID: string): Promise<AccountMembershipReadResult> {
   try {
-    const response = await fetch("{{ACCOUNT_MEMBERSHIP_ROUTE}}".replace("{user_id}", encodeURIComponent(userID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{ACCOUNT_MEMBERSHIP_ROUTE}}".replace("{user_id}", encodeURIComponent(userID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", membership: envelope.data.membership };
   } catch { return { state: "unavailable" }; }
@@ -647,14 +713,14 @@ export type AccountMembershipWriteResult =
 
 async function writeAccountMembership(path: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
     return { state: "succeeded", membership: envelope.data.membership };
   } catch { return { state: "unavailable" }; }
@@ -674,27 +740,57 @@ export type AccountPointAdjustmentWriteResult =
 
 export async function adjustAccountPoints(input: ConsolePointAdjustmentRequest, idempotencyKey: string): Promise<AccountPointAdjustmentWriteResult> {
   try {
-    const response = await fetch("{{ACCOUNT_POINT_ADJUSTMENTS_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest("{{ACCOUNT_POINT_ADJUSTMENTS_ROUTE}}", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountPointAdjustmentResult(envelope.data)) return { state: "unavailable" };
     return { state: "succeeded", result: envelope.data };
   } catch { return { state: "unavailable" }; }
+}
+
+export type AccountOperationReadResult =
+  | { state: "succeeded" | "unknown"; result: ConsoleAccountOperationResult }
+  | { state: "signed_out" | "denied" | "invalid" | "unavailable" };
+
+export async function resolveAccountOperation(operation: ConsoleAccountOperationKind, key: string): Promise<AccountOperationReadResult> {
+  try {
+    const path = "{{ACCOUNT_OPERATION_ROUTE}}".replace("{operation}", encodeURIComponent(operation)).replace("{idempotency_key}", encodeURIComponent(key));
+    const response = await consoleRequest(path, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountOperationResult(envelope.data) || envelope.data.operation !== operation) return { state: "unavailable" };
+    const result = envelope.data;
+    if (result.status === "unknown") return result.result === undefined ? { state: "unknown", result } : { state: "unavailable" };
+    const valid = operation === "point_adjustment" ? isConsoleAccountPointAdjustmentResult(result.result)
+      : operation === "membership_grant" || operation === "membership_revoke" ? isConsoleAccountMembershipEnvelope(result.result)
+      : isConsoleAccountTicketCommandResult(result.result);
+    return valid ? { state: "succeeded", result } : { state: "unavailable" };
+  } catch { return { state: "unavailable" }; }
+}
+
+export async function resolveAccountTicketOperation(operation: "ticket_reply" | "ticket_transition", key: string): Promise<AccountTicketWriteResult | { state: "unknown" }> {
+  const result = await resolveAccountOperation(operation, key);
+  if (result.state !== "succeeded") return { state: result.state };
+  if (!isConsoleAccountTicketCommandResult(result.result.result)) return { state: "unavailable" };
+  return { state: "succeeded", ticket: result.result.result.ticket };
 }
 
 export type AccountTicketQueueResult = { state: "authenticated"; queue: ConsoleAccountTicketQueue } | { state: "signed_out" | "denied" | "unavailable" };
 
 export async function fetchAccountTicketQueue(): Promise<AccountTicketQueueResult> {
   try {
-    const response = await fetch("{{ACCOUNT_TICKETS_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{ACCOUNT_TICKETS_ROUTE}}", { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketQueue(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", queue: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -704,13 +800,13 @@ export type AccountTicketDetailResult = { state: "authenticated"; ticket: Consol
 
 export async function fetchAccountTicket(ticketID: string): Promise<AccountTicketDetailResult> {
   try {
-    const response = await fetch("{{ACCOUNT_TICKET_ROUTE}}".replace("{ticket_id}", encodeURIComponent(ticketID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("{{ACCOUNT_TICKET_ROUTE}}".replace("{ticket_id}", encodeURIComponent(ticketID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketDetail(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", ticket: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -720,14 +816,14 @@ export type AccountTicketWriteResult = { state: "succeeded"; ticket: ConsoleAcco
 
 async function writeAccountTicket(path: string, input: ConsoleOperatorReplyRequest | ConsoleTicketTransitionRequest, idempotencyKey: string): Promise<AccountTicketWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketCommandResult(envelope.data)) return { state: "unavailable" };
     return { state: "succeeded", ticket: envelope.data.ticket };
   } catch { return { state: "unavailable" }; }
@@ -742,12 +838,12 @@ export function transitionAccountTicket(ticketID: string, input: ConsoleTicketTr
 }
 
 export async function logoutConsoleSession(): Promise<void> {
-  const response = await fetch("{{LOGOUT_ROUTE}}", { method: "POST", credentials: "same-origin" });
+  const response = await consoleRequest("{{LOGOUT_ROUTE}}", { method: "POST", credentials: "same-origin" });
   if (!response.ok) throw new Error("Console logout failed");
 }
 
 export function consoleLoginHref(): string {
-  const returnTo = window.location.pathname + window.location.search + window.location.hash;
+  const returnTo = consoleReturnTo();
   return "{{LOGIN_ROUTE}}?return_to=" + encodeURIComponent(returnTo);
 }
 `
@@ -755,10 +851,12 @@ export function consoleLoginHref(): string {
 		"{{SHA}}": digest, "{{SCHEMAS}}": schemas.String(), "{{VALIDATORS}}": validators.String(),
 		"{{SESSION_ROUTE}}": routes["getConsoleSession"], "{{OVERVIEW_ROUTE}}": routes["getConsoleOverview"], "{{OPERATIONS_ROUTE}}": routes["getConsolePlatformOperations"], "{{ACCOUNT_SEARCH_ROUTE}}": routes["searchConsolePlatformOperationAccounts"], "{{REVOKE_SESSION_ROUTE}}": routes["revokeConsolePlatformSession"], "{{UPDATE_ACCESS_ROUTE}}": routes["updateConsolePlatformAccess"], "{{OPERATION_STATUS_ROUTE}}": routes["getConsolePlatformOperationStatus"], "{{ACCOUNT_LOOKUP_ROUTE}}": routes["lookupConsoleAccount"], "{{LOGOUT_ROUTE}}": routes["logoutConsoleSession"], "{{LOGIN_ROUTE}}": routes["beginConsoleLogin"],
 		"{{NOTICE_ROUTE}}": routes["getConsoleNotices"], "{{NOTICE_SOURCE_ROUTE}}": routes["createConsoleNoticeSource"], "{{NOTICE_VERSION_ROUTE}}": routes["createConsoleNoticeVersion"], "{{NOTICE_REVIEW_ROUTE}}": routes["reviewConsoleNoticeVersion"], "{{NOTICE_DISTRIBUTION_ROUTE}}": routes["distributeConsoleNoticeVersion"], "{{NOTICE_OPERATION_ROUTE}}": routes["getConsoleNoticeOperationStatus"],
-		"{{LIBRARY_ROUTE}}": routes["getConsoleLibraryWorkspace"], "{{LIBRARY_COMMAND_ROUTE}}": routes["executeConsoleLibraryCommand"], "{{LIBRARY_OPERATION_ROUTE}}": routes["getConsoleLibraryOperationStatus"],
-		"{{FOOD_ROUTE}}": routes["getConsoleFoodWorkspace"], "{{FOOD_COMMAND_ROUTE}}": routes["executeConsoleFoodCommand"], "{{FOOD_OPERATION_ROUTE}}": routes["getConsoleFoodOperationStatus"],
+		"{{LIBRARY_READINESS_ROUTE}}": routes["getConsoleLibraryReadiness"], "{{LIBRARY_ROUTE}}": routes["getConsoleLibraryWorkspace"], "{{LIBRARY_COMMAND_ROUTE}}": routes["executeConsoleLibraryCommand"], "{{LIBRARY_OPERATION_ROUTE}}": routes["getConsoleLibraryOperationStatus"],
+		"{{FOOD_FACTS_ROUTE}}": routes["getConsoleFoodFacts"], "{{ACCOUNT_TICKET_FACTS_ROUTE}}": routes["getConsoleAccountTicketFacts"],
+		"{{FOOD_ROUTE}}": routes["getConsoleFoodWorkspace"], "{{FOOD_COMMAND_ROUTE}}": routes["executeConsoleFoodCommand"], "{{FOOD_OPERATION_ROUTE}}": routes["getConsoleFoodOperationStatus"], "{{FOOD_OPERATION_OUTCOME_ROUTE}}": routes["getConsoleFoodOperationOutcome"],
 		"{{ACCOUNT_MEMBERSHIP_ROUTE}}": routes["getConsoleAccountMembership"], "{{ACCOUNT_MEMBERSHIP_SEARCH_ROUTE}}": routes["searchConsoleAccountMemberships"], "{{ACCOUNT_MEMBERSHIP_GRANTS_ROUTE}}": routes["grantConsoleAccountMembership"], "{{ACCOUNT_MEMBERSHIP_REVOCATIONS_ROUTE}}": routes["revokeConsoleAccountMembership"],
 		"{{ACCOUNT_POINT_ADJUSTMENTS_ROUTE}}": routes["adjustConsoleAccountPoints"],
+		"{{ACCOUNT_OPERATION_ROUTE}}":         routes["getConsoleAccountOperation"],
 		"{{ACCOUNT_TICKETS_ROUTE}}":           routes["getConsoleAccountTickets"], "{{ACCOUNT_TICKET_ROUTE}}": routes["getConsoleAccountTicket"], "{{ACCOUNT_TICKET_REPLIES_ROUTE}}": routes["replyConsoleAccountTicket"], "{{ACCOUNT_TICKET_TRANSITIONS_ROUTE}}": routes["transitionConsoleAccountTicket"],
 	}
 	for old, replacement := range replacements {
@@ -894,10 +992,10 @@ func tsCheckBase(expression string, value schema) string {
 		}
 		check := "typeof " + expression + ` === "string"`
 		if value.MinLength > 0 {
-			check += fmt.Sprintf(" && %s.length >= %d", expression, value.MinLength)
+			check += fmt.Sprintf(" && Array.from(%s).length >= %d", expression, value.MinLength)
 		}
 		if value.MaxLength > 0 {
-			check += fmt.Sprintf(" && %s.length <= %d", expression, value.MaxLength)
+			check += fmt.Sprintf(" && Array.from(%s).length <= %d", expression, value.MaxLength)
 		}
 		if value.Pattern != "" {
 			encoded, _ := json.Marshal(value.Pattern)

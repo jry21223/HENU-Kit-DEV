@@ -60,7 +60,7 @@ test.beforeEach(async ({ page }) => {
     if (input.kind === "tier_adjustment_confirm") tierConfirmed = true;
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: input.kind, resource_id: input.resource_id, state: "succeeded", version: 2 }, request_id: "req_food_command" }) });
   });
-  await page.route("**/api/v1/food/operations/submission_approve", (route) => {
+  await page.route("**/api/v1/food/operations/submission_approve/outcome", (route) => {
     lookupCalls++;
     if (lookupCalls === 1) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "submission_approve", state: "unknown" }, request_id: "req_food_still_unknown" }) });
     approved = true;
@@ -68,9 +68,10 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 }]) {
   test(`${viewport.name} Food operations resolve unknown writes and stay responsive`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.goto("/food");
     await expect(page.getByRole("heading", { name: "美食运营" })).toBeVisible();
     for (const heading of ["投稿审核", "异常票处理", "调档确认"]) await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
@@ -102,31 +103,41 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
   });
 }
 
-test("Food review retry reuses the original idempotency key", async ({ page }) => {
+test("Food review recovery queries the original key without replaying the write", async ({ page }) => {
   const keys: string[] = [];
+  const queriedKeys: string[] = [];
+  let resolved = false;
   await page.route("**/api/v1/food/commands", async (route) => {
     const input = await route.request().postDataJSON();
     expect(input.kind).toBe("submission_approve");
     keys.push(route.request().headers()["idempotency-key"] ?? "");
-    if (keys.length === 1) return route.abort("connectionreset");
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "submission_approve", resource_id: "11111111-1111-4111-8111-111111111111", state: "succeeded", version: 2 }, request_id: "req_food_retry" }) });
+    return route.abort("connectionreset");
   });
-  await page.route("**/api/v1/food/operations/submission_approve", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "submission_approve", state: "unknown" }, request_id: "req_food_still_unknown" }) }));
+  await page.route("**/api/v1/food/operations/submission_approve/outcome", (route) => {
+    queriedKeys.push(route.request().headers()["idempotency-key"] ?? "");
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { operation: "submission_approve", state: resolved ? "succeeded" : "unknown", ...(resolved ? { resource_id: "11111111-1111-4111-8111-111111111111", version: 2 } : {}) }, request_id: "req_food_recovered" }) });
+  });
   await page.goto("/food");
   await page.getByRole("button", { name: "批准投稿" }).click();
   await page.getByLabel("操作理由").fill("人工核验通过");
   await page.getByRole("button", { name: "确认批准投稿" }).click();
-  await expect(page.getByRole("button", { name: "按原请求重试" })).toBeVisible();
-  await page.getByRole("button", { name: "按原请求重试" }).click();
+  const queryResult = page.getByRole("button", { name: "查询操作结果" });
+  await expect(queryResult).toBeVisible();
+  await expect(queryResult).toBeEnabled();
+  expect(queriedKeys.length).toBeGreaterThan(0);
+  resolved = true;
+  await queryResult.click();
   await expect(page.getByText("投稿已批准。", { exact: true })).toBeVisible();
-  expect(keys.length).toBe(2);
+  expect(keys.length).toBe(1);
   expect(keys[0]).toBeTruthy();
-  expect(keys[1]).toBe(keys[0]);
+  expect(queriedKeys.length).toBeGreaterThan(0);
+  expect(queriedKeys.every((key) => key === keys[0])).toBe(true);
 });
 
-for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 }]) {
   test(`${viewport.name} Food ops edit a pending submission with campus`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.goto("/food");
     await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
     await page.getByRole("button", { name: "编辑投稿" }).click();
@@ -142,9 +153,10 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
   });
 }
 
-for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 }]) {
   test(`${viewport.name} Food ops edit a published post with campus tier and hidden`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.goto("/food");
     await expect(page.getByText("南苑餐厅 · 金明 · 夯")).toBeVisible();
     await page.getByRole("button", { name: "编辑已发布投稿" }).click();
@@ -161,9 +173,10 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
   });
 }
 
-for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 }]) {
   test(`${viewport.name} Food ops filter workspace by campus`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.goto("/food");
     await expect(page.getByText("早餐窗口 · 未分配 · v1")).toBeVisible();
     await expect(page.getByText("南苑餐厅 · 金明 · 夯")).toBeVisible();

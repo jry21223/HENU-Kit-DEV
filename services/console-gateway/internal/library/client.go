@@ -51,6 +51,10 @@ func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client)
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), signer: signer, httpClient: httpClient}, nil
 }
 
+func (c *Client) Readiness(ctx context.Context, actorID string) (json.RawMessage, error) {
+	return c.request(ctx, http.MethodGet, ReadinessPath, actorID, "library.read", "", nil)
+}
+
 func (c *Client) Workspace(ctx context.Context, actorID string) (json.RawMessage, error) {
 	return c.request(ctx, http.MethodGet, WorkspacePath, actorID, "library.read", "", nil)
 }

@@ -361,9 +361,9 @@ func TestConsoleTicketClientRejectsMalformedOwnerSuccess(t *testing.T) {
 	}
 }
 
-func TestConsoleTicketClientRejectsOwnerIdentityLeakInTicket(t *testing.T) {
+func TestConsoleTicketClientRejectsOperatorIdentityLeakInTicket(t *testing.T) {
 	response := testTicket()
-	response["user_id"] = "33333333-3333-4333-8333-333333333333"
+	response["operator_user_id"] = "33333333-3333-4333-8333-333333333333"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(map[string]any{
@@ -383,9 +383,122 @@ func TestConsoleTicketClientRejectsOwnerIdentityLeakInTicket(t *testing.T) {
 	}
 }
 
+func TestConsoleTicketPrivateClientAcceptsOnlyDeclaredValidOwnerIdentity(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		fields  map[string]any
+		allowed bool
+	}{
+		{"private owner identity for Gateway enrichment", map[string]any{"user_id": "33333333-3333-4333-8333-333333333333"}, true},
+		{"invalid owner identity", map[string]any{"user_id": "not-an-id"}, false},
+		{"operator identity", map[string]any{"user_id": "33333333-3333-4333-8333-333333333333", "operator_user_id": operatorID}, false},
+		{"undeclared actor identity", map[string]any{"actor_user_id": operatorID}, false},
+		{"nested audit identity", map[string]any{"metadata": map[string]any{"operator_user_id": operatorID}}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := testTicket()
+			for key, field := range test.fields {
+				value[key] = field
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assertActorBoundSignature(t, r)
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"tickets": []any{value}}, "request_id": "req_owner_private_identity"})
+			}))
+			defer server.Close()
+			client, err := New(server.URL, consoleClientID, consoleSecret, consoleKeyID, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := client.Tickets(WithRequestID(context.Background(), "req_owner_private_identity"), operatorID)
+			if test.allowed {
+				if err != nil || !strings.Contains(string(data), `"user_id":"33333333-3333-4333-8333-333333333333"`) {
+					t.Fatalf("private owner result=%s err=%v", data, err)
+				}
+			} else if !errors.Is(err, ErrInvalid) || len(data) != 0 {
+				t.Fatalf("invalid owner identity result=%s err=%v", data, err)
+			}
+		})
+	}
+}
+
+func TestConsoleTicketDetailClientRejectsUndeclaredMessageAndEventFields(t *testing.T) {
+	for _, test := range []struct {
+		name, section, field string
+		value                any
+	}{
+		{"declared message and event fields", "", "", nil},
+		{"message actor identity", "messages", "actor_user_id", operatorID},
+		{"message nested identity", "messages", "metadata", map[string]any{"user_id": membershipUserID}},
+		{"event actor identity", "events", "actor_user_id", operatorID},
+		{"event nested identity", "events", "metadata", map[string]any{"operator_user_id": operatorID}},
+		{"message invalid id", "messages", "id", "not-a-uuid"},
+		{"message invalid body", "messages", "body", map[string]any{"actor_user_id": operatorID}},
+		{"event invalid timestamp", "events", "created_at", "not-a-timestamp"},
+		{"event invalid status", "events", "to_status", "private-status"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			message := map[string]any{"id": ticketID, "author_kind": "operator", "body": "Reply", "created_at": "2026-07-28T00:00:00Z"}
+			event := map[string]any{"id": ticketID, "kind": "operator_reply", "from_status": "open", "to_status": "in_progress", "created_at": "2026-07-28T00:00:00Z"}
+			value := map[string]any{"ticket": testTicket(), "messages": []any{message}, "events": []any{event}}
+			if test.section == "messages" {
+				message[test.field] = test.value
+			} else if test.section == "events" {
+				event[test.field] = test.value
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assertActorBoundSignature(t, r)
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": value, "request_id": "req_owner_malformed_detail"})
+			}))
+			defer server.Close()
+			client, err := New(server.URL, consoleClientID, consoleSecret, consoleKeyID, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := client.Ticket(WithRequestID(context.Background(), "req_owner_malformed_detail"), operatorID, ticketID)
+			if test.section == "" {
+				if err != nil || len(data) == 0 {
+					t.Fatalf("declared detail fields rejected: result=%s err=%v", data, err)
+				}
+			} else if !errors.Is(err, ErrInvalid) || len(data) != 0 {
+				t.Fatalf("malformed detail result=%s err=%v, want ErrInvalid and no data", data, err)
+			}
+		})
+	}
+}
+
+func TestConsoleOperationClientRejectsMismatchedOrPrivateResults(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value map[string]any
+	}{
+		{"wrong operation", map[string]any{"operation": "ticket_transition", "status": "unknown"}},
+		{"unknown cannot include private result", map[string]any{"operation": "ticket_reply", "status": "unknown", "result": map[string]any{"ticket": testTicket()}}},
+		{"success cannot omit result", map[string]any{"operation": "ticket_reply", "status": "succeeded"}},
+		{"success cannot be another operation's shape", map[string]any{"operation": "ticket_reply", "status": "succeeded", "result": map[string]any{"membership": testMembership("lifetime", true, 2)}}},
+		{"success cannot include nested operator identity", map[string]any{"operation": "ticket_reply", "status": "succeeded", "result": map[string]any{"ticket": func() map[string]any { v := testTicket(); v["operator_user_id"] = operatorID; return v }()}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assertActorBoundSignature(t, r)
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": test.value, "request_id": "req_owner_operation"})
+			}))
+			defer server.Close()
+			client, err := New(server.URL, consoleClientID, consoleSecret, consoleKeyID, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := client.Operation(WithRequestID(context.Background(), "req_owner_operation"), operatorID, "ticket_reply", "idem_original_operation")
+			if !errors.Is(err, ErrInvalid) || len(data) != 0 {
+				t.Fatalf("invalid operation result=%s err=%v", data, err)
+			}
+		})
+	}
+}
+
 func testTicket() map[string]any {
 	return map[string]any{
 		"id":         ticketID,
+		"user_id":    membershipUserID,
 		"reference":  "HKT-" + ticketID,
 		"title":      "Need help",
 		"category":   "account",

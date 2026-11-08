@@ -29,6 +29,8 @@
 
 ### 产品规范
 
+- [`product/console-operations-guide.md`](./product/console-operations-guide.md)：Console 候选运营指南，发布状态另见生产现状。
+- [`product/console-maturity-update.md`](./product/console-maturity-update.md)：本轮 Console 候选改进说明。
 - [`product/PRODUCT_BOUNDARIES.md`](./product/PRODUCT_BOUNDARIES.md)
 - [`product/DESIGN_SYSTEM.md`](./product/DESIGN_SYSTEM.md)
 - [`product/ROADMAP.md`](./product/ROADMAP.md)

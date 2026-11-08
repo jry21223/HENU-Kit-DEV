@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
 import { PageHeader } from "@/components/ui";
 import StatusBadge from "@/components/ui/StatusBadge.vue";
 import { fetchPlatformOperations, resolvePlatformOperation, revokePlatformSession, searchPlatformOperationAccounts, updatePlatformAccess, type PlatformAccessGrantInput, type PlatformOperationWriteResult, type PlatformOperationsAuditEvent, type PlatformOperationsPageRequest, type PlatformOperationsSnapshot } from "@/lib/console-gateway";
 import { localDateTime } from "@/lib/format";
+import { clearPlatformViewContext, emptyPlatformCursorHistory, firstPlatformPages, platformCursorFields, readPlatformViewContext, writePlatformViewContext, type InboxStatusFilter, type PlatformPageSection } from "@/lib/platform-view-context";
 import { clearPendingPlatformOperation, readPendingPlatformOperation, writePendingPlatformOperation, type PendingPlatformOperation } from "@/lib/pending-operations";
 
 const props = defineProps<{ authState: "loading" | "authenticated" | "signed_out" | "denied" | "unavailable"; operatorID?: string }>();
 const operations = ref<PlatformOperationsSnapshot>();
-const state = ref<"loading" | "ready" | "denied" | "rate_limited" | "unavailable">("loading");
+const state = ref<"loading" | "ready" | "denied" | "invalid" | "rate_limited" | "unavailable">("loading");
 const notice = ref("");
 const pending = ref<PendingPlatformOperation>();
 const statuses = ref<Record<string, "active" | "suspended" | "deleted">>({});
@@ -20,16 +21,47 @@ const confirmation = ref<Confirmation>();
 const confirmationDialog = ref<HTMLDialogElement>();
 const restoredOperator = ref("");
 const submittingResourceID = ref("");
-const pages = ref<PlatformOperationsPageRequest>({ accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 });
+const pages = ref<PlatformOperationsPageRequest>(firstPlatformPages());
 const accountQueryInput = ref("");
 const submittedAccountQuery = ref("");
 const accountSearchBusy = ref(false);
-type PageSection = "accounts_page" | "sessions_page" | "inbox_page" | "audit_page";
-const cursorFields: Record<PageSection, "accounts_cursor" | "sessions_cursor" | "inbox_cursor" | "audit_cursor"> = {
-  accounts_page: "accounts_cursor", sessions_page: "sessions_cursor", inbox_page: "inbox_cursor", audit_page: "audit_cursor",
-};
-const cursorHistory = ref<Record<PageSection, Array<string | undefined>>>({ accounts_page: [undefined], sessions_page: [undefined], inbox_page: [undefined], audit_page: [undefined] });
+type PageSection = PlatformPageSection;
+const cursorFields = platformCursorFields;
+const cursorHistory = ref(emptyPlatformCursorHistory());
 const searchCursorHistory = ref<Array<string | undefined>>([undefined]);
+const inboxStatus = ref<InboxStatusFilter>("all");
+const selectedInboxID = ref("");
+const visibleInbox = computed(() => operations.value?.inbox_items.filter((item) => inboxStatus.value === "all" || item.status === inboxStatus.value) ?? []);
+let principalGeneration = 0;
+let operationGeneration = 0;
+let readSequence = 0;
+let lastAttemptPages: PlatformOperationsPageRequest | undefined;
+let searchSequence = 0;
+let restoredScrollTop: number | undefined;
+let active = true;
+function currentPrincipal(generation: number, actor: string | undefined) {
+  return active && generation === principalGeneration && props.authState === "authenticated" && actor === props.operatorID;
+}
+function persistView(operatorID = props.operatorID) {
+  if (!operatorID || !pages.value.snapshot_at) return;
+  writePlatformViewContext(operatorID, {
+    pages: { ...pages.value }, cursor_history: structuredClone(toRaw(cursorHistory.value)),
+    inbox_status: inboxStatus.value, selected_inbox_id: selectedInboxID.value,
+    scroll_top: window.scrollY, account_search_cleared: Boolean(submittedAccountQuery.value),
+  });
+}
+function selectInbox(itemID: string) {
+  selectedInboxID.value = selectedInboxID.value === itemID ? "" : itemID;
+  persistView();
+}
+function sourceAvailability(item: PlatformOperationsSnapshot["inbox_items"][number]) {
+  // Inbox URLs are owner-supplied references, never navigation authority. No
+  // current Console owner route has a verified Inbox producer/type contract.
+  return item.source_product_code === "quizcraft" && item.source_resource_type === "feedback"
+    ? "来源尚未接入：练习反馈暂不能在此控制台查看或处理。"
+    : "来源尚未接入：此类来源暂不能直接打开，请联系管理员核对来源。";
+}
+watch(inboxStatus, () => { selectedInboxID.value = ""; persistView(); }, { flush: "sync" });
 
 // Platform Core owns both identity fields. Display names are optional for
 // legacy rows, while the verified email remains the stable human identifier.
@@ -51,11 +83,17 @@ function idempotencyKey(prefix: string) {
   return `idem_console_${prefix}_${crypto.randomUUID()}`;
 }
 
-async function load(nextPages: PlatformOperationsPageRequest = pages.value, preserveAccountDrafts = false) {
+async function load(nextPages: PlatformOperationsPageRequest = lastAttemptPages ?? pages.value, preserveAccountDrafts = false) {
+  if (props.authState !== "authenticated" || !props.operatorID) return;
+  const targetPages = { ...nextPages };
+  lastAttemptPages = targetPages;
+  const sequence = ++readSequence, generation = principalGeneration, actor = props.operatorID;
+  searchSequence++; accountSearchBusy.value = false;
   state.value = "loading";
   const previousAccounts = preserveAccountDrafts ? operations.value?.accounts : undefined;
   const previousAccountPagination = preserveAccountDrafts ? operations.value?.pagination.accounts : undefined;
-  const result = await fetchPlatformOperations(nextPages);
+  const result = await fetchPlatformOperations(targetPages);
+  if (sequence !== readSequence || !currentPrincipal(generation, actor)) return;
   if (result.state === "authenticated") {
     const canonicalPages: PlatformOperationsPageRequest = {
       accounts_page: result.operations.pagination.accounts.page,
@@ -63,10 +101,10 @@ async function load(nextPages: PlatformOperationsPageRequest = pages.value, pres
       inbox_page: result.operations.pagination.inbox_items.page,
       audit_page: result.operations.pagination.audit.page,
       snapshot_at: result.operations.generated_at,
-      accounts_cursor: nextPages.accounts_cursor,
-      sessions_cursor: nextPages.sessions_cursor,
-      inbox_cursor: nextPages.inbox_cursor,
-      audit_cursor: nextPages.audit_cursor,
+      accounts_cursor: targetPages.accounts_cursor,
+      sessions_cursor: targetPages.sessions_cursor,
+      inbox_cursor: targetPages.inbox_cursor,
+      audit_cursor: targetPages.audit_cursor,
     };
     operations.value = result.operations;
     if (previousAccounts && previousAccountPagination) {
@@ -75,11 +113,25 @@ async function load(nextPages: PlatformOperationsPageRequest = pages.value, pres
     }
     pages.value = canonicalPages;
     if (!preserveAccountDrafts) {
+      // Only a successful search owns search rows/cursors. A canonical reply
+      // replaces that mode; its previous query remains an input draft to retry.
+      if (submittedAccountQuery.value) notice.value = "当前显示普通账户列表；可重新提交搜索。";
+      submittedAccountQuery.value = "";
+      searchCursorHistory.value = [undefined];
       statuses.value = Object.fromEntries(result.operations.accounts.map((account) => [account.id, account.status]));
       grants.value = Object.fromEntries(result.operations.accounts.map((account) => [account.id, structuredClone(account.grants)]));
     }
     state.value = "ready";
-  } else state.value = result.state === "denied" || result.state === "signed_out" ? "denied" : result.state === "rate_limited" ? "rate_limited" : "unavailable";
+    await nextTick();
+    if (sequence !== readSequence || !currentPrincipal(generation, actor)) return;
+    if (restoredScrollTop !== undefined) {
+      window.scrollTo({ top: restoredScrollTop, behavior: "instant" });
+      restoredScrollTop = undefined;
+      document.querySelector<HTMLButtonElement>(`[data-inbox-id="${selectedInboxID.value}"] button`)?.focus({ preventScroll: true });
+    }
+    persistView();
+    return sequence;
+  } else state.value = result.state === "denied" || result.state === "signed_out" ? "denied" : result.state === "invalid" ? "invalid" : result.state === "rate_limited" ? "rate_limited" : "unavailable";
 }
 
 async function loadPage(section: PageSection, page: number) {
@@ -94,8 +146,11 @@ async function loadPage(section: PageSection, page: number) {
 async function searchAccounts(page = 1, cursor?: string) {
   if (!operations.value || accountSearchBusy.value || page < 1) return;
   accountSearchBusy.value = true;
+  const sequence = ++searchSequence, snapshotSequence = readSequence, generation = principalGeneration, actor = props.operatorID;
+  const snapshotAt = operations.value.generated_at;
   const query = accountQueryInput.value.trim();
-  const result = await searchPlatformOperationAccounts({ query, page, snapshot_at: operations.value.generated_at, ...(cursor ? { cursor } : {}) });
+  const result = await searchPlatformOperationAccounts({ query, page, snapshot_at: snapshotAt, ...(cursor ? { cursor } : {}) });
+  if (sequence !== searchSequence || snapshotSequence !== readSequence || !currentPrincipal(generation, actor)) return;
   if (result.state === "authenticated") {
     submittedAccountQuery.value = query;
     operations.value.accounts = result.page.accounts;
@@ -105,9 +160,10 @@ async function searchAccounts(page = 1, cursor?: string) {
     grants.value = Object.fromEntries(result.page.accounts.map((account) => [account.id, structuredClone(account.grants)]));
     notice.value = result.page.accounts.length ? "账户搜索结果已更新。" : "没有匹配的账户。";
   } else {
-    notice.value = result.state === "signed_out" ? "登录状态已过期，请重新登录后再操作。" : result.state === "denied" ? "当前账户没有平台运营读取权限。" : result.state === "invalid" ? "请输入有效的账户搜索条件。" : result.state === "rate_limited" ? "请求过于频繁，请稍后重试。" : "账户搜索暂不可用，请稍后重试。";
+    notice.value = result.state === "signed_out" ? "登录状态已过期，请重新登录后再操作。" : result.state === "denied" ? "当前账户没有平台运营读取权限。" : result.state === "invalid" ? "请输入有效的账户搜索条件。" : result.state === "rate_limited" ? "请求过于频繁，请稍后重试。" : submittedAccountQuery.value ? "账户搜索暂不可用，请稍后重试。" : "账户搜索暂不可用。当前显示普通账户列表；可重新提交搜索。";
   }
   accountSearchBusy.value = false;
+  persistView();
 }
 
 function loadAccountPage(page: number) {
@@ -136,26 +192,43 @@ function refreshSnapshot() {
   searchCursorHistory.value = [undefined];
   cursorHistory.value = { accounts_page: [undefined], sessions_page: [undefined], inbox_page: [undefined], audit_page: [undefined] };
   notice.value = "";
-  void load({ accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 });
+  selectedInboxID.value = "";
+  restoredScrollTop = undefined;
+  clearPlatformViewContext();
+  void load(firstPlatformPages());
 }
 
 async function refreshAfterWrite() {
+  const generation = principalGeneration, actor = props.operatorID;
   const activeQuery = submittedAccountQuery.value;
+  if (activeQuery) accountQueryInput.value = activeQuery;
   cursorHistory.value = { accounts_page: [undefined], sessions_page: [undefined], inbox_page: [undefined], audit_page: [undefined] };
   searchCursorHistory.value = [undefined];
-  await load({ accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 });
-  if (activeQuery) {
-    accountQueryInput.value = activeQuery;
-    await searchAccounts(1);
-  }
+  const refreshed = await load(firstPlatformPages());
+  if (refreshed !== readSequence || !currentPrincipal(generation, actor)) return;
+  if (activeQuery) await searchAccounts(1);
 }
 
+type OperationContinuation = { principal: number; operation: number; command: PendingPlatformOperation };
+function operationContinuation(command: PendingPlatformOperation): OperationContinuation {
+  return { principal: principalGeneration, operation: operationGeneration, command };
+}
+function currentOperation(continuation: OperationContinuation) {
+  const command = continuation.command, current = pending.value;
+  return currentPrincipal(continuation.principal, command.operator_id) && continuation.operation === operationGeneration
+    && current?.operator_id === command.operator_id && current.idempotency_key === command.idempotency_key
+    && current.operation === command.operation && current.resource_id === command.resource_id;
+}
 function clearPending() {
+  operationGeneration++;
   pending.value = undefined;
+  submittingResourceID.value = "";
   clearPendingPlatformOperation();
 }
 
-function handleWrite(result: PlatformOperationWriteResult, command: PendingPlatformOperation, reconciling = false) {
+function handleWrite(result: PlatformOperationWriteResult, continuation: OperationContinuation, reconciling = false) {
+  if (!currentOperation(continuation)) return;
+  const command = continuation.command;
   if (result.state === "succeeded") {
     clearPending();
     notice.value = "操作已完成并写入审计记录。";
@@ -299,20 +372,21 @@ async function confirmOperation() {
   const operation = action.kind;
   const key = idempotencyKey(operation === "session_revoke" ? "revoke" : "access");
   const command: PendingPlatformOperation = { version: 1, operator_id: operatorID, operation, idempotency_key: key, resource_id: action.resourceID };
+  operationGeneration++;
   pending.value = command;
   const saved = writePendingPlatformOperation(command);
   if (!saved) {
-    pending.value = undefined;
-    submittingResourceID.value = "";
+    clearPending();
     notice.value = "浏览器无法安全保存原请求，操作未提交。请允许会话存储后重试。";
     return;
   }
   notice.value = `正在提交：${action.targetLabel} · ${action.changeSummary}`;
+  const continuation = operationContinuation(command);
   const result = action.kind === "session_revoke"
     ? await revokePlatformSession(action.resourceID, key)
     : await updatePlatformAccess(action.resourceID, { expected_revision: action.expectedRevision, status: action.status, grants: action.grants }, key);
-  handleWrite(result, command, false);
-  submittingResourceID.value = "";
+  handleWrite(result, continuation, false);
+  if (currentOperation(continuation)) submittingResourceID.value = "";
 }
 
 function addGrant(accountID: string) {
@@ -336,7 +410,9 @@ function normalizeScope(grant: PlatformAccessGrantInput) {
 async function resolveUnknown() {
   if (!pending.value) return;
   const command = pending.value;
-  handleWrite(await resolvePlatformOperation(command.operation, command.idempotency_key), command, true);
+  const continuation = operationContinuation(command);
+  const result = await resolvePlatformOperation(command.operation, command.idempotency_key);
+  handleWrite(result, continuation, true);
 }
 
 async function restorePending() {
@@ -357,15 +433,43 @@ async function restorePending() {
   restoredOperator.value = operatorID;
   const restored = readPendingPlatformOperation(operatorID);
   if (!restored) return;
+  operationGeneration++;
   pending.value = restored;
   notice.value = "正在核对之前未确认的平台操作。";
   await resolveUnknown();
 }
 
-const mailTotal = computed(() => operations.value ? Object.values(operations.value.mail).reduce((sum, value) => sum + value, 0) : 0);
 const canWrite = computed(() => operations.value?.access_context.permissions.includes("platform.operations.write") ?? false);
-watch(() => props.operatorID, () => { void restorePending(); });
-onMounted(() => { if (props.authState !== "signed_out") void load(); void restorePending(); });
+watch(() => [props.authState, props.operatorID] as const, ([auth, operatorID], previous) => {
+  if (previous?.[0] === "authenticated") persistView(previous[1]);
+  principalGeneration++; operationGeneration++; readSequence++; searchSequence++;
+  lastAttemptPages = undefined;
+  operations.value = undefined; statuses.value = {}; grants.value = {};
+  pages.value = firstPlatformPages(); cursorHistory.value = emptyPlatformCursorHistory();
+  accountQueryInput.value = ""; submittedAccountQuery.value = ""; accountSearchBusy.value = false;
+  searchCursorHistory.value = [undefined]; inboxStatus.value = "all"; selectedInboxID.value = "";
+  restoredScrollTop = undefined;
+  pending.value = undefined; submittingResourceID.value = ""; notice.value = ""; restoredOperator.value = ""; cancelConfirm();
+  if (auth !== "authenticated" || !operatorID) {
+    state.value = auth === "loading" ? "loading" : auth === "denied" ? "denied" : "unavailable";
+    return;
+  }
+  void restorePending();
+  const context = readPlatformViewContext(operatorID);
+  if (context) {
+    pages.value = context.pages; cursorHistory.value = context.cursor_history;
+    inboxStatus.value = context.inbox_status; selectedInboxID.value = context.selected_inbox_id;
+    restoredScrollTop = context.scroll_top;
+    if (context.account_search_cleared) notice.value = "已恢复列表位置；账户搜索条件未保存，请重新输入。";
+  }
+  void load();
+}, { immediate: true });
+function saveOnPageHide() { if (props.authState === "authenticated") persistView(); }
+onMounted(() => window.addEventListener("pagehide", saveOnPageHide));
+onBeforeUnmount(() => {
+  saveOnPageHide(); active = false; principalGeneration++; operationGeneration++; readSequence++; searchSequence++;
+  window.removeEventListener("pagehide", saveOnPageHide);
+});
 </script>
 
 <template>
@@ -398,15 +502,15 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); void restor
     </dialog>
     <div v-if="state === 'loading'" class="operation-state" aria-busy="true">正在读取运营状态…</div>
     <div v-else-if="state === 'denied'" class="operation-state">当前登录账户没有平台运营权限，请联系管理员。</div>
+    <div v-else-if="state === 'invalid'" class="operation-state" role="status">分页上下文已失效，请重新读取最新列表。<button type="button" @click="refreshSnapshot">重新载入第一页</button></div>
     <div v-else-if="state === 'rate_limited'" class="operation-state">请求过于频繁，请稍后重试。</div>
     <div v-else-if="state === 'unavailable'" class="operation-state">运营数据暂不可用。<button type="button" @click="load()">重试</button></div>
 
     <template v-else-if="operations">
-      <p class="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground"><span>数据快照 {{ localDateTime(operations.generated_at) }}</span><button type="button" class="secondary-action" :disabled="accountSearchBusy" @click="refreshSnapshot">刷新数据</button></p>
+      <p class="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground"><span>列表创建时间上限 {{ localDateTime(operations.generated_at) }}</span><button type="button" class="secondary-action" :disabled="accountSearchBusy" @click="refreshSnapshot">刷新数据</button></p>
       <div class="operation-summary-grid">
         <article><span>本页账户</span><strong>{{ operations.accounts.length }}</strong></article>
         <article><span>本页登录会话</span><strong>{{ operations.sessions.length }}</strong></article>
-        <article><span>邮件事件</span><strong>{{ mailTotal }}</strong></article>
         <article><span>本页收件箱</span><strong>{{ operations.inbox_items.length }}</strong></article>
         <article><span>数据库</span><StatusBadge :status="healthBadgeStatus(operations.dependencies.postgres)">{{ healthLabel(operations.dependencies.postgres) }}</StatusBadge></article>
         <article><span>缓存</span><StatusBadge :status="healthBadgeStatus(operations.dependencies.redis)">{{ healthLabel(operations.dependencies.redis) }}</StatusBadge></article>
@@ -449,8 +553,20 @@ onMounted(() => { if (props.authState !== "signed_out") void load(); void restor
       <section class="operation-panel" aria-labelledby="sessions-heading"><h2 id="sessions-heading">登录会话</h2><div class="operation-list"><article v-for="session in operations.sessions" :key="session.id" class="operation-row"><div><strong>{{ personLabel(session) }}</strong><p class="break-all">{{ personEmail(session) }} · {{ sessionKindLabel(session.kind) }} · 到期 {{ localDateTime(session.expires_at) }}</p></div><button v-if="canWrite" type="button" :disabled="Boolean(session.revoked_at) || accountSearchBusy || isResourceBusy(session.id)" @click="requestRevoke(session)">{{ session.revoked_at ? "已撤销" : busyLabel(session.id, "撤销登录") }}</button><span v-else>只读权限</span></article></div><div class="mt-4 flex items-center justify-between gap-3"><button type="button" class="secondary-action" :disabled="operations.pagination.sessions.page <= 1 || accountSearchBusy" @click="loadPage('sessions_page', operations.pagination.sessions.page - 1)">会话上一页</button><span>会话第 {{ operations.pagination.sessions.page }} 页</span><button type="button" class="secondary-action" :disabled="operations.pagination.sessions.next_page === null || accountSearchBusy" @click="operations.pagination.sessions.next_page && loadPage('sessions_page', operations.pagination.sessions.next_page)">会话下一页</button></div></section>
 
       <div class="operation-two-column">
-        <section class="operation-panel"><h2>邮件基础设施</h2><dl class="mail-grid"><template v-for="(value, key) in operations.mail" :key="key"><dt>{{ mailLabel(key) }}</dt><dd>{{ value }}</dd></template></dl></section>
-        <section class="operation-panel"><h2>运营收件箱</h2><article v-for="item in operations.inbox_items" :key="item.id" class="compact-row"><strong>{{ item.source_product_code }} / {{ item.source_resource_type }}</strong><span>{{ item.source_resource_id }} · {{ inboxStatusLabel(item.status) }} · v{{ item.version }}</span></article><p v-if="!operations.inbox_items.length">暂无引用项</p><div class="mt-4 flex items-center justify-between gap-3"><button type="button" class="secondary-action" :disabled="operations.pagination.inbox_items.page <= 1 || accountSearchBusy" @click="loadPage('inbox_page', operations.pagination.inbox_items.page - 1)">收件箱上一页</button><span>收件箱第 {{ operations.pagination.inbox_items.page }} 页</span><button type="button" class="secondary-action" :disabled="operations.pagination.inbox_items.next_page === null || accountSearchBusy" @click="operations.pagination.inbox_items.next_page && loadPage('inbox_page', operations.pagination.inbox_items.next_page)">收件箱下一页</button></div></section>
+        <section class="operation-panel"><h2>邮件基础设施</h2><p class="mt-2 text-sm text-muted-foreground">当前邮件事件各状态的全量聚合，不代表用户数或业务完成量；随本次读取更新。</p><dl class="mail-grid"><template v-for="(value, key) in operations.mail" :key="key"><dt>{{ mailLabel(key) }}</dt><dd>{{ value }}</dd></template></dl></section>
+        <section class="operation-panel" aria-labelledby="inbox-heading"><h2 id="inbox-heading">运营收件箱</h2>
+          <div class="mt-3 grid gap-1 text-sm"><label for="platform-inbox-status">本页状态</label><select id="platform-inbox-status" v-model="inboxStatus" class="rounded-md border bg-background px-3 py-2"><option value="all">全部状态</option><option value="open">待处理</option><option value="in_progress">处理中</option><option value="blocked">受阻</option><option value="resolved">已解决</option><option value="archived">已归档</option></select></div>
+          <p class="mt-2 text-sm text-muted-foreground">本页返回 {{ operations.inbox_items.length }} 条，当前显示 {{ visibleInbox.length }} 条。</p>
+          <p v-if="selectedInboxID && !visibleInbox.some((item) => item.id === selectedInboxID)" class="mt-2 text-sm" role="status">先前选中的引用未出现在本页筛选结果中，请调整状态或页码查看。</p>
+          <article v-for="item in visibleInbox" :key="item.id" :data-inbox-id="item.id" :aria-current="selectedInboxID === item.id ? 'true' : undefined" class="compact-row">
+            <button type="button" class="secondary-action w-full break-words text-left" :aria-expanded="selectedInboxID === item.id" :aria-controls="`inbox-reference-${item.id}`" @click="selectInbox(item.id)">{{ item.source_product_code }} / {{ item.source_resource_type }}</button>
+            <span class="break-all">{{ item.source_resource_id }} · {{ inboxStatusLabel(item.status) }} · v{{ item.version }}</span>
+            <p class="text-sm text-muted-foreground">{{ sourceAvailability(item) }}</p>
+            <dl v-if="selectedInboxID === item.id" :id="`inbox-reference-${item.id}`" class="mt-2 grid gap-1 text-sm"><div><dt>来源引用更新于</dt><dd>{{ localDateTime(item.updated_at) }}</dd></div><div v-if="item.sla_due_at"><dt>处理时限</dt><dd>{{ localDateTime(item.sla_due_at) }}</dd></div></dl>
+          </article>
+          <p v-if="!visibleInbox.length">{{ operations.inbox_items.length ? "本页没有符合状态的引用项。" : "本页暂无引用项。" }}</p>
+          <div class="mt-4 flex items-center justify-between gap-3"><button type="button" class="secondary-action" :disabled="operations.pagination.inbox_items.page <= 1 || accountSearchBusy" @click="loadPage('inbox_page', operations.pagination.inbox_items.page - 1)">收件箱上一页</button><span>收件箱第 {{ operations.pagination.inbox_items.page }} 页</span><button type="button" class="secondary-action" :disabled="operations.pagination.inbox_items.next_page === null || accountSearchBusy" @click="operations.pagination.inbox_items.next_page && loadPage('inbox_page', operations.pagination.inbox_items.next_page)">收件箱下一页</button></div>
+        </section>
       </div>
       <section class="operation-panel"><h2>授权审计</h2><article v-for="event in operations.audit" :key="event.request_id + event.created_at" class="compact-row"><strong>{{ decisionLabel(event.decision) }} · {{ event.permission_code }}</strong><span class="break-all">{{ personLabel(event) }} · {{ personEmail(event) }} · {{ localDateTime(event.created_at) }} · 目标 {{ targetLabel(event) }}</span><span>原因：{{ reasonLabel(event.reason_code) }}<template v-if="unknownReason(event.reason_code)">（{{ event.reason_code }}）</template> · {{ event.request_id }}</span></article><p v-if="!operations.audit.length">暂无审计事件</p><div class="mt-4 flex items-center justify-between gap-3"><button type="button" class="secondary-action" :disabled="operations.pagination.audit.page <= 1 || accountSearchBusy" @click="loadPage('audit_page', operations.pagination.audit.page - 1)">审计上一页</button><span>审计第 {{ operations.pagination.audit.page }} 页</span><button type="button" class="secondary-action" :disabled="operations.pagination.audit.next_page === null || accountSearchBusy" @click="operations.pagination.audit.next_page && loadPage('audit_page', operations.pagination.audit.next_page)">审计下一页</button></div></section>
     </template>

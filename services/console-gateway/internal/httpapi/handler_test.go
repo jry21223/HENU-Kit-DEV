@@ -104,6 +104,10 @@ func (f *fakeAccountPortfolio) Tickets(_ context.Context, actor string) (json.Ra
 	f.actor = actor
 	return f.queue, f.err
 }
+func (f *fakeAccountPortfolio) Operation(_ context.Context, actor, _, key string) (json.RawMessage, error) {
+	f.actor, f.key = actor, key
+	return f.result, f.err
+}
 func (f *fakeAccountPortfolio) Ticket(_ context.Context, actor, _ string) (json.RawMessage, error) {
 	f.actor = actor
 	return f.detail, f.err
@@ -170,6 +174,11 @@ func (f *fakeFood) Command(_ context.Context, actor, key string, _ []byte) (json
 func (f *fakeFood) Operation(_ context.Context, actor, _, key string) (json.RawMessage, error) {
 	f.actor, f.key = actor, key
 	return f.result, nil
+}
+
+func (f *fakeLibrary) Readiness(_ context.Context, actor string) (json.RawMessage, error) {
+	f.actor = actor
+	return json.RawMessage(`{"management":"not_ready","reason":"management_migration_pending","capabilities":{"workspace":false,"commands":false,"operation_results":false},"checked_at":"2026-11-07T18:00:00Z"}`), nil
 }
 
 func (f *fakeLibrary) Workspace(_ context.Context, actor string) (json.RawMessage, error) {

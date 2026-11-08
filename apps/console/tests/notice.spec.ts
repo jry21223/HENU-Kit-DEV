@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const session = { user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" }, access_context: { permissions: ["notice.read", "notice.manage", "notice.review", "notice.distribute"], scopes: [{ kind: "product", product_code: "notice" }], verified_at: "2026-07-19T00:00:00Z" }, expires_at: "2026-07-19T01:00:00Z" };
 let state: "pending_review" | "approved" | "rejected" | "distributed" = "pending_review";
@@ -7,6 +7,12 @@ let lastReviewBody: Record<string, unknown> = {};
 let distributionCalls = 0;
 
 function snapshot() { return { items: [{ id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", source: { id: "571f1c6f-7b10-4c92-91a2-b39bf5af5302", code: "henu-office", name: "学校办公室" }, version: 1, title: "暑期安排", body: "不可变正文", source_url: "https://example.edu/notices/1", content_hash: "a".repeat(64), state, revision: state === "distributed" ? 3 : state === "pending_review" ? 1 : 2, created_at: "2026-07-19T00:00:00Z", distribution_count: state === "distributed" ? 1 : 0, ...(state === "distributed" ? { distribution_status: "queued" } : {}) }], generated_at: "2026-07-19T00:00:00Z" }; }
+
+async function selectApprovedVersion(page: Page) {
+  await page.getByLabel("版本状态筛选", { exact: true }).selectOption("approved");
+  await page.locator("[data-notice-list]").getByRole("button", { name: /暑期安排/ }).click();
+  await expect(page.locator("[data-notice-detail]")).toContainText("已通过 · 修订 r2");
+}
 
 test.beforeEach(async ({ page }) => {
   state = "pending_review";
@@ -20,13 +26,13 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/notices/sources", async (route) => {
     expect(route.request().headers()["idempotency-key"]).toMatch(/^idem_notice_source_create_/);
     expect(await route.request().postDataJSON()).toEqual({ code: "henu-office-new", name: "新来源", canonical_url: "https://example.edu/new" });
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { id: "671f1c6f-7b10-4c92-91a2-b39bf5af5302" }, request_id: "req_notice_source" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { id: "671f1c6f-7b10-4c92-91a2-b39bf5af5302", code: "henu-office-new", name: "新来源", canonical_url: "https://example.edu/new" }, request_id: "req_notice_source" }) });
   });
   await page.route("**/api/v1/notices/sources/*/versions", async (route) => {
     expect(route.request().url()).toContain("671f1c6f-7b10-4c92-91a2-b39bf5af5302/versions");
     expect(route.request().headers()["idempotency-key"]).toMatch(/^idem_notice_version_create_/);
     expect(await route.request().postDataJSON()).toMatchObject({ title: "新通知", body: "新正文", source_url: "https://example.edu/new/1" });
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { id: "771f1c6f-7b10-4c92-91a2-b39bf5af5302", state: "pending_review", revision: 1 }, request_id: "req_notice_version" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { id: "771f1c6f-7b10-4c92-91a2-b39bf5af5302", source_id: "671f1c6f-7b10-4c92-91a2-b39bf5af5302", version: 1, state: "pending_review", revision: 1 }, request_id: "req_notice_version" }) });
   });
   await page.route("**/api/v1/notices/versions/*/reviews", async (route) => {
     expect(route.request().headers()["idempotency-key"]).toMatch(/^idem_notice_review_/);
@@ -34,22 +40,24 @@ test.beforeEach(async ({ page }) => {
     expect(lastReviewBody.expected_revision).toBe(1);
     await route.abort("connectionreset");
   });
-  await page.route("**/api/v1/notices/operations/review", (route) => { state = resolveState; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { state: resolveState, revision: 2 }, request_id: "req_notice_resolved" }) }); });
+  await page.route("**/api/v1/notices/operations/review", (route) => { state = resolveState; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { version_id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", state: resolveState, revision: 2 }, request_id: "req_notice_resolved" }) }); });
   await page.route("**/api/v1/notices/versions/*/distributions", async (route) => {
     expect(route.request().headers()["idempotency-key"]).toMatch(/^idem_notice_distribution_/);
     expect(await route.request().postDataJSON()).toEqual({ channel: "email", audience: { kind: "college", value: "software-college" }, expected_revision: 2 });
     distributionCalls += 1;
     state = "distributed";
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { status: "queued", revision: 3 }, request_id: "req_notice_distribution" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { version_id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", status: "queued", revision: 3 }, request_id: "req_notice_distribution" }) });
   });
 });
 
-for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "390px", width: 390, height: 844 }]) {
+for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "375px", width: 375, height: 812 }, { name: "390px", width: 390, height: 844 }]) {
   test(`${viewport.name} Notice review resolves an unknown write and distribution confirms channel and audience`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.goto("/notices");
     await expect(page.getByRole("heading", { name: "校园通知审核与分发" })).toBeVisible();
     await expect(page.getByText("不可变正文", { exact: true })).toBeVisible();
+    await page.getByText("管理来源与通知版本", { exact: true }).click();
     await page.getByLabel("来源代码").fill("henu-office-new");
     await page.getByLabel("来源名称").fill("新来源");
     await page.getByLabel("来源主页").fill("https://example.edu/new");
@@ -63,7 +71,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await page.getByLabel("审核理由").fill("内容核实无误");
     await page.getByRole("button", { name: "批准" }).click();
     await expect(page.getByRole("status")).toContainText("审核已批准");
-    await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已通过 · 修订 r2", { exact: true })).toBeVisible();
     expect(lastReviewBody.note).toBe("内容核实无误");
     await page.getByLabel("渠道").selectOption("email");
     await page.getByLabel("受众").selectOption("college");
@@ -77,8 +85,10 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await expect(dialog).toContainText("学院");
     await expect(dialog).toContainText("software-college");
     await dialog.getByRole("button", { name: "确认分发" }).click();
-    await expect(page.getByRole("status")).toContainText("分发任务已创建");
-    await expect(page.getByText("已分发 · 版本 v3", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("分发任务已排队，尚未确认送达。");
+    await expect(page.getByText("最近一次分发已排队，尚未确认送达")).toBeVisible();
+    await expect(page.getByText("最近一次分发已送达")).toHaveCount(0);
+    await expect(page.getByText("已提交分发 · 修订 r3", { exact: true })).toBeVisible();
     expect(distributionCalls).toBe(1);
     const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 2);
@@ -86,6 +96,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
 
   test(`${viewport.name} Notice rejection requires a written reason`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.goto("/notices");
     const reject = page.getByRole("button", { name: "拒绝" });
     await expect(reject).toBeDisabled();
@@ -94,16 +105,17 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     resolveState = "rejected";
     await reject.click();
     await expect(page.getByRole("status")).toContainText("审核已拒绝");
-    await expect(page.getByText("已拒绝 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已拒绝 · 修订 r2", { exact: true })).toBeVisible();
     expect(lastReviewBody.note).toBe("与原文内容不符");
   });
 
   test(`${viewport.name} Notice distribution confirm cancel performs no write`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.goto("/notices");
     await page.getByRole("button", { name: "批准" }).click();
     await expect(page.getByRole("status")).toContainText("审核已批准");
-    await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已通过 · 修订 r2", { exact: true })).toBeVisible();
     await page.getByLabel("渠道").selectOption("email");
     await page.getByLabel("受众").selectOption("college");
     await page.getByLabel("受众值").fill("software-college");
@@ -115,11 +127,12 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await dialog.getByRole("button", { name: "取消" }).click();
     await expect(dialog).toBeHidden();
     expect(distributionCalls).toBe(0);
-    await expect(page.getByText("已通过 · 版本 v2", { exact: true })).toBeVisible();
+    await expect(page.getByText("已通过 · 修订 r2", { exact: true })).toBeVisible();
   });
 
   test(`${viewport.name} Notice owner failure is not presented as an empty snapshot`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(viewport.width);
     await page.route("**/api/v1/notices", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "DEPENDENCY_UNAVAILABLE", message: "Notice owner unavailable" }, request_id: "req_notice_unavailable" }) }));
     await page.goto("/notices");
     await expect(page.getByText("通知服务暂时不可用，请稍后重试。")).toBeVisible();
@@ -144,9 +157,10 @@ test("Notice distribution reload reconciles the original audience, revision, and
     resolvedKeys.push(route.request().headers()["idempotency-key"] ?? "");
     const succeeded = resolvedKeys.length > 1;
     if (succeeded) state = "distributed";
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { status: succeeded ? "succeeded" : "unknown", resource_id: snapshot().items[0].id, ...(succeeded ? { resource_version: 3 } : {}) }, request_id: "req_notice_distribution_reload" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: succeeded ? { version_id: snapshot().items[0].id, status: "queued", revision: 3 } : { operation: "distribution", status: "unknown" }, request_id: "req_notice_distribution_reload" }) });
   });
   await page.goto("/notices");
+  await selectApprovedVersion(page);
   await page.getByLabel("渠道").selectOption("email");
   await page.getByLabel("受众").selectOption("college");
   await page.getByLabel("受众值").fill("software-college");
@@ -161,7 +175,7 @@ test("Notice distribution reload reconciles the original audience, revision, and
   expect(JSON.parse(stored ?? "{}").distribution).toEqual(originalBody);
   await page.reload();
   await expect(page.getByRole("status")).toContainText("之前的分发请求已确认");
-  await expect(page.getByText("已分发 · 版本 v3", { exact: true })).toBeVisible();
+  await expect(page.getByText("已提交分发 · 修订 r3", { exact: true })).toBeVisible();
   expect(distributionCalls).toBe(1);
   expect(resolvedKeys).toEqual([originalKey, originalKey]);
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-notice-operation.v1"))).toBeNull();
@@ -173,6 +187,7 @@ test("Notice discards pending distribution state owned by another operator", asy
   await page.addInitScript(() => sessionStorage.setItem("henukit.console.pending-notice-operation.v1", JSON.stringify({ version: 1, operator_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", operation: "distribution", idempotency_key: "idem_notice_distribution_11111111-1111-4111-8111-111111111111", resource_id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", target_label: "其他运营员的通知", distribution: { channel: "email", audience: { kind: "college", value: "software-college" }, expected_revision: 2 } })));
   await page.route("**/api/v1/notices/operations/distribution", (route) => { resolveCalls += 1; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { status: "unknown" }, request_id: "req_notice_foreign_pending" }) }); });
   await page.goto("/notices");
+  await selectApprovedVersion(page);
   await expect(page.getByRole("button", { name: "创建分发任务" })).toBeEnabled();
   expect(resolveCalls).toBe(0);
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-notice-operation.v1"))).toBeNull();

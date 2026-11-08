@@ -26,7 +26,7 @@ func main() {
 			routes[operation.OperationID] = path
 		}
 	}
-	required := map[string]string{"HealthRoute": "getLibraryHealth", "SummaryRoute": "getLibraryConsoleSummary", "WorkspaceRoute": "getLibraryWorkspace", "CommandRoute": "executeLibraryCommand", "OperationRoute": "getLibraryOperation", "PublicMaterialCatalogRoute": "getPublicMaterialCatalog", "PublicMaterialTypeCountsRoute": "getPublicMaterialTypeCounts", "DownloadStartRoute": "createPublicMaterialDownloadStart", "GlobalDownloadAggregateRoute": "getGlobalDownloadStartAggregate", "MaterialDownloadAggregateRoute": "getMaterialDownloadStartAggregate"}
+	required := map[string]string{"HealthRoute": "getLibraryHealth", "SummaryRoute": "getLibraryConsoleSummary", "ReadinessRoute": "getLibraryConsoleReadiness", "WorkspaceRoute": "getLibraryWorkspace", "CommandRoute": "executeLibraryCommand", "OperationRoute": "getLibraryOperation", "PublicMaterialCatalogRoute": "getPublicMaterialCatalog", "PublicMaterialTypeCountsRoute": "getPublicMaterialTypeCounts", "DownloadStartRoute": "createPublicMaterialDownloadStart", "GlobalDownloadAggregateRoute": "getGlobalDownloadStartAggregate", "MaterialDownloadAggregateRoute": "getMaterialDownloadStartAggregate"}
 	for _, operationID := range required {
 		if routes[operationID] == "" {
 			fail(fmt.Errorf("required Library operation %s is missing", operationID))
@@ -39,6 +39,7 @@ package contract
 const (
 	HealthRoute = %q
 	SummaryRoute = %q
+	ReadinessRoute = %q
 	WorkspaceRoute = %q
 	CommandRoute = %q
 	OperationRoute = %q
@@ -48,7 +49,7 @@ const (
 	GlobalDownloadAggregateRoute = %q
 	MaterialDownloadAggregateRoute = %q
 )
-`, digest, routes["getLibraryHealth"], routes["getLibraryConsoleSummary"], routes["getLibraryWorkspace"], routes["executeLibraryCommand"], routes["getLibraryOperation"], routes["getPublicMaterialCatalog"], routes["getPublicMaterialTypeCounts"], routes["createPublicMaterialDownloadStart"], routes["getGlobalDownloadStartAggregate"], routes["getMaterialDownloadStartAggregate"])
+`, digest, routes["getLibraryHealth"], routes["getLibraryConsoleSummary"], routes["getLibraryConsoleReadiness"], routes["getLibraryWorkspace"], routes["executeLibraryCommand"], routes["getLibraryOperation"], routes["getPublicMaterialCatalog"], routes["getPublicMaterialTypeCounts"], routes["createPublicMaterialDownloadStart"], routes["getGlobalDownloadStartAggregate"], routes["getMaterialDownloadStartAggregate"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/contract", 0o755))

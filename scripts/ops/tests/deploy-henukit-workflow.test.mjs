@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -274,6 +274,101 @@ test("release-contract CI exercises the production artifact deployment seam", ()
     workflow,
     /scripts\/ops\/tests\/deploy-henukit-artifact\.test\.mjs/,
   );
+});
+
+test("release-contract groups retain every boundary test within independent Linux budgets", () => {
+  const groups = {
+    "release-scoped-contract": [
+      "python3 -m unittest discover -s scripts/ops/tests -p 'test_scoped*.py' -v",
+      "python3 -m unittest discover -s scripts/ops/tests -p 'test_notice_url_transaction.py' -v",
+      'sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v python3)" -m unittest test_notice_url_transaction.NoticeURLTests.test_linux_original_source_profile_accepts_only_exact_foreign_deploy_owner -v',
+    ],
+    "release-stack-transition-contract": [
+      "python3 -m unittest discover -s scripts/ops/tests -p 'test_stack_transition.py' -v",
+      'sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v python3)" run_stack_root_gate.py',
+    ],
+    "release-node-contract": [
+      ...[
+        "bot-membership-wiring",
+        "deploy-henukit-workflow",
+        "build-henukit-actions-image",
+        "import-legacy-portal-food-images",
+        "retired-henukit-materials-sync",
+        "deploy-henukit-artifact",
+        "account-portfolio-workflow",
+        "check-account-production-boundary",
+        "oauth-continuation-release-gate",
+        "henukit-release-images",
+        "import-henukit-materials-preflight",
+        "materials-study-migration",
+        "verify-henukit-local-release",
+        "build-henukit-release-local",
+        "deploy-henukit-release-from-wsl",
+        "activate-henukit-release",
+        "auto-deploy-henukit-actions",
+        "getwork-actions-provenance",
+        "getwork-node-rollback",
+        "getwork-wsl-node-contract",
+        "package-henukit-runtime",
+      ].map((name) => `scripts/ops/tests/${name}.test.mjs`),
+      "node --test --test-concurrency=1 scripts/ops/tests/watch-henukit-actions.test.mjs",
+      'sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v node)" --test --test-name-pattern=\'^a source config belonging to another owner is refused$\' scripts/ops/tests/watch-henukit-actions.test.mjs',
+      "node scripts/ops/check-account-production-boundary.mjs",
+    ],
+  };
+  const normalize = (value) => value.replace(/\\\n\s*/g, " ").replace(/\s+/g, " ").trim();
+  for (const [name, commands] of Object.entries(groups)) {
+    const job = workflowJob(name);
+    assert.match(job, /\n    runs-on: ubuntu-24\.04\n/);
+    assert.match(job, /\n    timeout-minutes: 20\n/);
+    assert.match(job, /actions\/checkout@11d5960a326750d5838078e36cf38b85af677262/);
+    assert.doesNotMatch(job, /\n    needs:|continue-on-error:|--test-skip-pattern/);
+    for (const command of commands) {
+      const expected = normalize(command);
+      assert.ok(normalize(job).includes(expected), `${name} must retain ${command}`);
+      assert.equal(normalize(workflow).split(expected).length - 1, 1, `${command} must run exactly once`);
+    }
+  }
+});
+
+test("release-contract aggregate rejects every unsuccessful or missing group result", () => {
+  const job = workflowJob("validate-release-contract");
+  assert.match(job, /\n    name: release-contract\n/);
+  assert.match(job, /\n    if: \$\{\{ always\(\) \}\}\n/);
+  assert.match(job, /\n    needs: \[release-scoped-contract, release-stack-transition-contract, release-node-contract\]\n/);
+  const bindings = {
+    SCOPED_RESULT: "release-scoped-contract",
+    STACK_RESULT: "release-stack-transition-contract",
+    NODE_RESULT: "release-node-contract",
+  };
+  for (const [name, dependency] of Object.entries(bindings)) {
+    assert.ok(job.includes(`${name}: \${{ needs.${dependency}.result }}`));
+  }
+  const script = job.match(/\n        run: \|\n([\s\S]*)$/)?.[1].replace(/^          /gm, "");
+  assert.ok(script, "aggregate must execute its actual result check");
+  const successful = Object.fromEntries(Object.keys(bindings).map((name) => [name, "success"]));
+  const run = (results) => spawnSync("bash", ["-c", script], { encoding: "utf8", env: results });
+  assert.equal(run(successful).status, 0);
+  for (const name of Object.keys(bindings)) {
+    for (const result of ["failure", "cancelled", "skipped", "unknown", ""]) {
+      assert.notEqual(run({ ...successful, [name]: result }).status, 0, `${name}=${result} must block artifacts`);
+    }
+    const missing = { ...successful };
+    delete missing[name];
+    assert.notEqual(run(missing).status, 0, `${name} missing must block artifacts`);
+  }
+});
+
+test("release artifact and browser jobs retain the existing aggregate dependency", () => {
+  for (const name of [
+    "portal-responsive", "portal-practice-and-binding", "oauth-continuation", "release-image-matrix",
+  ]) {
+    assert.match(workflowJob(name), /\n    needs: validate-release-contract\n/);
+  }
+  assert.match(workflowJob("build-image"), /\n    needs: \[validate-release-contract, oauth-continuation, release-image-matrix\]\n/);
+  assert.match(workflowJob("package-runtime"), /\n    needs: \[validate-release-contract, oauth-continuation\]\n/);
+  assert.match(workflow, /\npermissions:\n  contents: read\n/);
+  assert.match(workflow, /\nconcurrency:\n  group: henukit-artifacts-\$\{\{ github.ref \}\}\n  cancel-in-progress: false\n/);
 });
 
 test("release-contract isolates runtime packaging from cross-file repository fixtures", () => {

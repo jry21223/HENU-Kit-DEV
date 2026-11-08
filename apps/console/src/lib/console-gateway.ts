@@ -1,4 +1,6 @@
-// Code generated from console-gateway.yaml (SHA256 a15088c1e5efdd7ca8693e4f6d8893e33c8b2e481f52c24d7788fb2d56665d49); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 bd20661f392212b45eca484c865d6c6df067e6cb0a6ab46d61eab12b53406155); DO NOT EDIT.
+import { consoleRequest, readConsoleJSON, consoleReturnTo } from "./console-session";
+
 export interface ConsoleAccessContext {
   permissions: Array<string>;
   scopes: Array<ConsoleScope>;
@@ -21,6 +23,14 @@ export interface ConsoleAccountMembership {
 
 export interface ConsoleAccountMembershipEnvelope {
   membership: ConsoleAccountMembership;
+}
+
+export type ConsoleAccountOperationKind = "membership_grant" | "membership_revoke" | "point_adjustment" | "ticket_reply" | "ticket_transition";
+
+export interface ConsoleAccountOperationResult {
+  operation: ConsoleAccountOperationKind;
+  result?: ConsoleAccountTicketCommandResult | ConsoleAccountMembershipEnvelope | ConsoleAccountPointAdjustmentResult;
+  status: "succeeded" | "unknown";
 }
 
 export interface ConsoleAccountPointAdjustmentResult {
@@ -57,6 +67,19 @@ export interface ConsoleAccountTicketEvent {
   id: string;
   kind: "operator_reply" | "status_transition" | "reopened";
   to_status: "open" | "in_progress" | "resolved";
+}
+
+export interface ConsoleAccountTicketFacts {
+  as_of: string;
+  counts: {
+  in_progress: number;
+  open: number;
+  resolved: number;
+  unresolved: number;
+};
+  scope: "global";
+  stale: boolean;
+  window: ConsoleTicketFactWindow;
 }
 
 export interface ConsoleAccountTicketMessage {
@@ -185,6 +208,26 @@ export interface ConsoleSession {
 };
 }
 
+export interface ConsoleTicketFactReference {
+  id: string;
+  reference: string;
+  status: "open" | "in_progress" | "resolved";
+  title: string;
+  updated_at: string;
+  version: number;
+}
+
+export interface ConsoleTicketFactWindow {
+  filter: ConsoleTicketFactsFilter;
+  has_more: boolean;
+  items: Array<ConsoleTicketFactReference>;
+  limit: number;
+  matched_total: number;
+  returned: number;
+}
+
+export type ConsoleTicketFactsFilter = "unresolved" | "all" | "open" | "in_progress" | "resolved";
+
 export interface ConsoleTicketTransitionRequest {
   expected_version: number;
   status: "in_progress" | "resolved";
@@ -302,6 +345,46 @@ export interface FoodCommandPayload {
   venue_name?: string;
 }
 
+export interface FoodFactReference {
+  id: string;
+  status: "pending" | "open";
+  updated_at: string;
+  version: number;
+}
+
+export interface FoodFactWindow {
+  filter: "pending" | "open";
+  has_more: boolean;
+  items: Array<FoodFactReference>;
+  limit: number;
+  returned: number;
+}
+
+export interface FoodFacts {
+  as_of: string;
+  counts: {
+  open_anomalies: number;
+  pending_submissions: number;
+  pending_tier_adjustments: number;
+};
+  scope: "global";
+  stale: boolean;
+  windows: {
+  anomalies: FoodFactWindow;
+  submissions: FoodFactWindow;
+  tier_adjustments: FoodFactWindow;
+};
+}
+
+export interface FoodFailedOperation {
+  error_code: "FOOD_CONFLICT";
+  operation: FoodCommandKind;
+  resource_id: string;
+  state: "failed";
+}
+
+export type FoodOperationOutcome = FoodOperationResult | FoodFailedOperation;
+
 export interface FoodOperationResult {
   operation: FoodCommandKind;
   resource_id?: string;
@@ -408,6 +491,17 @@ export interface LibraryOperationResult {
   operation: LibraryCommandKind;
   resource_id?: string;
   state: "succeeded" | "unknown";
+}
+
+export interface LibraryReadiness {
+  capabilities: {
+  commands: boolean;
+  operation_results: boolean;
+  workspace: boolean;
+};
+  checked_at: string;
+  management: "not_ready" | "ready";
+  reason: "management_migration_pending" | "none";
 }
 
 export interface LibraryWorkspace {
@@ -679,7 +773,7 @@ function isConsoleAccessContext(value: unknown): value is ConsoleAccessContext {
 }
 
 function isConsoleAccountLookupRequest(value: unknown): value is ConsoleAccountLookupRequest {
-  return isRecord(value) && "email" in value && typeof value["email"] === "string" && value["email"].length >= 5 && value["email"].length <= 320 && new RegExp("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").test(value["email"]) && Object.keys(value).every((key) => ["email"].includes(key));
+  return isRecord(value) && "email" in value && typeof value["email"] === "string" && Array.from(value["email"]).length >= 5 && Array.from(value["email"]).length <= 320 && new RegExp("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").test(value["email"]) && Object.keys(value).every((key) => ["email"].includes(key));
 }
 
 function isConsoleAccountLookupResult(value: unknown): value is ConsoleAccountLookupResult {
@@ -694,12 +788,20 @@ function isConsoleAccountMembershipEnvelope(value: unknown): value is ConsoleAcc
   return isRecord(value) && "membership" in value && isConsoleAccountMembership(value["membership"]) && Object.keys(value).every((key) => ["membership"].includes(key));
 }
 
+function isConsoleAccountOperationKind(value: unknown): value is ConsoleAccountOperationKind {
+  return typeof value === "string" && ["membership_grant","membership_revoke","point_adjustment","ticket_reply","ticket_transition"].includes(value);
+}
+
+function isConsoleAccountOperationResult(value: unknown): value is ConsoleAccountOperationResult {
+  return isRecord(value) && "operation" in value && isConsoleAccountOperationKind(value["operation"]) && (!("result" in value) || true && ([(isConsoleAccountTicketCommandResult(value["result"])), (isConsoleAccountMembershipEnvelope(value["result"])), (isConsoleAccountPointAdjustmentResult(value["result"]))].filter(Boolean).length === 1)) && "status" in value && typeof value["status"] === "string" && ["succeeded","unknown"].includes(value["status"]) && Object.keys(value).every((key) => ["operation","result","status"].includes(key));
+}
+
 function isConsoleAccountPointAdjustmentResult(value: unknown): value is ConsoleAccountPointAdjustmentResult {
   return isRecord(value) && "balance" in value && typeof value["balance"] === "number" && Number.isSafeInteger(value["balance"]) && value["balance"] >= 0 && value["balance"] <= 9.007199254740991e+15 && "entry" in value && isConsolePointLedgerEntry(value["entry"]) && Object.keys(value).every((key) => ["balance","entry"].includes(key));
 }
 
 function isConsoleAccountTicket(value: unknown): value is ConsoleAccountTicket {
-  return isRecord(value) && "category" in value && typeof value["category"] === "string" && value["category"].length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && (!("email" in value) || typeof value["email"] === "string" && value["email"].length <= 320) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["category","created_at","display_name","email","id","reference","status","title","updated_at","version"].includes(key));
+  return isRecord(value) && "category" in value && typeof value["category"] === "string" && Array.from(value["category"]).length <= 80 && new RegExp("^[a-z][a-z0-9_-]*$").test(value["category"]) && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && Array.from(value["display_name"]).length <= 80) && (!("email" in value) || typeof value["email"] === "string" && Array.from(value["email"]).length <= 320) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && Array.from(value["title"]).length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["category","created_at","display_name","email","id","reference","status","title","updated_at","version"].includes(key));
 }
 
 function isConsoleAccountTicketCommandResult(value: unknown): value is ConsoleAccountTicketCommandResult {
@@ -714,8 +816,12 @@ function isConsoleAccountTicketEvent(value: unknown): value is ConsoleAccountTic
   return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "from_status" in value && typeof value["from_status"] === "string" && ["open","in_progress","resolved"].includes(value["from_status"]) && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["operator_reply","status_transition","reopened"].includes(value["kind"]) && "to_status" in value && typeof value["to_status"] === "string" && ["open","in_progress","resolved"].includes(value["to_status"]) && Object.keys(value).every((key) => ["created_at","from_status","id","kind","to_status"].includes(key));
 }
 
+function isConsoleAccountTicketFacts(value: unknown): value is ConsoleAccountTicketFacts {
+  return isRecord(value) && "as_of" in value && isDateTime(value["as_of"]) && "counts" in value && isRecord(value["counts"]) && "in_progress" in value["counts"] && typeof value["counts"]["in_progress"] === "number" && Number.isSafeInteger(value["counts"]["in_progress"]) && value["counts"]["in_progress"] >= 0 && value["counts"]["in_progress"] <= 9.007199254740991e+15 && "open" in value["counts"] && typeof value["counts"]["open"] === "number" && Number.isSafeInteger(value["counts"]["open"]) && value["counts"]["open"] >= 0 && value["counts"]["open"] <= 9.007199254740991e+15 && "resolved" in value["counts"] && typeof value["counts"]["resolved"] === "number" && Number.isSafeInteger(value["counts"]["resolved"]) && value["counts"]["resolved"] >= 0 && value["counts"]["resolved"] <= 9.007199254740991e+15 && "unresolved" in value["counts"] && typeof value["counts"]["unresolved"] === "number" && Number.isSafeInteger(value["counts"]["unresolved"]) && value["counts"]["unresolved"] >= 0 && value["counts"]["unresolved"] <= 9.007199254740991e+15 && Object.keys(value["counts"]).every((key) => ["in_progress","open","resolved","unresolved"].includes(key)) && "scope" in value && value["scope"] === "global" && "stale" in value && value["stale"] === false && "window" in value && isConsoleTicketFactWindow(value["window"]) && Object.keys(value).every((key) => ["as_of","counts","scope","stale","window"].includes(key));
+}
+
 function isConsoleAccountTicketMessage(value: unknown): value is ConsoleAccountTicketMessage {
-  return isRecord(value) && "author_kind" in value && typeof value["author_kind"] === "string" && ["user","operator"].includes(value["author_kind"]) && "body" in value && typeof value["body"] === "string" && value["body"].length <= 5000 && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && Object.keys(value).every((key) => ["author_kind","body","created_at","id"].includes(key));
+  return isRecord(value) && "author_kind" in value && typeof value["author_kind"] === "string" && ["user","operator"].includes(value["author_kind"]) && "body" in value && typeof value["body"] === "string" && Array.from(value["body"]).length <= 5000 && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && Object.keys(value).every((key) => ["author_kind","body","created_at","id"].includes(key));
 }
 
 function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTicketQueue {
@@ -723,7 +829,7 @@ function isConsoleAccountTicketQueue(value: unknown): value is ConsoleAccountTic
 }
 
 function isConsoleLookedUpAccount(value: unknown): value is ConsoleLookedUpAccount {
-  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","email","id","status"].includes(key));
+  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && Array.from(value["display_name"]).length <= 80) && "email" in value && typeof value["email"] === "string" && Array.from(value["email"]).length <= 320 && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","email","id","status"].includes(key));
 }
 
 function isConsoleMembershipAccountPage(value: unknown): value is ConsoleMembershipAccountPage {
@@ -731,15 +837,15 @@ function isConsoleMembershipAccountPage(value: unknown): value is ConsoleMembers
 }
 
 function isConsoleMembershipAccountSearchRequest(value: unknown): value is ConsoleMembershipAccountSearchRequest {
-  return isRecord(value) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && value["page"] <= 10000 && "query" in value && typeof value["query"] === "string" && value["query"].length <= 100 && Object.keys(value).every((key) => ["page","query"].includes(key));
+  return isRecord(value) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && value["page"] <= 10000 && "query" in value && typeof value["query"] === "string" && Array.from(value["query"]).length <= 100 && Object.keys(value).every((key) => ["page","query"].includes(key));
 }
 
 function isConsoleMembershipAccountSummary(value: unknown): value is ConsoleMembershipAccountSummary {
-  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "id" in value && isUUID(value["id"]) && "membership" in value && true && ([(isConsoleAccountMembership(value["membership"])), (value["membership"] === null)].filter(Boolean).length === 1) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","email","id","membership","status"].includes(key));
+  return isRecord(value) && (!("display_name" in value) || typeof value["display_name"] === "string" && Array.from(value["display_name"]).length <= 80) && "email" in value && typeof value["email"] === "string" && Array.from(value["email"]).length <= 320 && "id" in value && isUUID(value["id"]) && "membership" in value && true && ([(isConsoleAccountMembership(value["membership"])), (value["membership"] === null)].filter(Boolean).length === 1) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["display_name","email","id","membership","status"].includes(key));
 }
 
 function isConsoleMembershipMutationRequest(value: unknown): value is ConsoleMembershipMutationRequest {
-  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && Array.from(value["reason"]).length >= 1 && Array.from(value["reason"]).length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
 }
 
 function isConsoleMembershipOrder(value: unknown): value is ConsoleMembershipOrder {
@@ -747,7 +853,7 @@ function isConsoleMembershipOrder(value: unknown): value is ConsoleMembershipOrd
 }
 
 function isConsoleMembershipOrderCommandRequest(value: unknown): value is ConsoleMembershipOrderCommandRequest {
-  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
+  return isRecord(value) && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && "reason" in value && typeof value["reason"] === "string" && Array.from(value["reason"]).length >= 1 && Array.from(value["reason"]).length <= 1000 && Object.keys(value).every((key) => ["expected_version","reason"].includes(key));
 }
 
 function isConsoleMembershipOrderRefund(value: unknown): value is ConsoleMembershipOrderRefund {
@@ -763,11 +869,11 @@ function isConsoleMembershipOrderResult(value: unknown): value is ConsoleMembers
 }
 
 function isConsoleModuleMetric(value: unknown): value is ConsoleModuleMetric {
-  return isRecord(value) && (!("hint" in value) || typeof value["hint"] === "string" && value["hint"].length <= 120) && "label" in value && typeof value["label"] === "string" && value["label"].length <= 40 && "value" in value && typeof value["value"] === "string" && value["value"].length <= 80 && Object.keys(value).every((key) => ["hint","label","value"].includes(key));
+  return isRecord(value) && (!("hint" in value) || typeof value["hint"] === "string" && Array.from(value["hint"]).length <= 120) && "label" in value && typeof value["label"] === "string" && Array.from(value["label"]).length <= 40 && "value" in value && typeof value["value"] === "string" && Array.from(value["value"]).length <= 80 && Object.keys(value).every((key) => ["hint","label","value"].includes(key));
 }
 
 function isConsoleModuleSummary(value: unknown): value is ConsoleModuleSummary {
-  return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 120 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && (!("unavailable_reason" in value) || isConsoleModuleUnavailableReason(value["unavailable_reason"])) && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message","unavailable_reason"].includes(key)) && true && (!(isRecord(value) && "unavailable_reason" in value && isConsoleModuleUnavailableReason(value["unavailable_reason"])) || isRecord(value) && (!("status" in value) || value["status"] === "unavailable")) && ((isRecord(value) && "as_of" in value && true && "last_success_at" in value && true) || (isRecord(value) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","unavailable"].includes(value["status"])));
+  return isRecord(value) && (!("as_of" in value) || isDateTime(value["as_of"])) && "id" in value && typeof value["id"] === "string" && ["portal","platform","notice","library","quizcraft","food"].includes(value["id"]) && (!("last_success_at" in value) || isDateTime(value["last_success_at"])) && "metrics" in value && Array.isArray(value["metrics"]) && value["metrics"].length <= 8 && value["metrics"].every((item) => isConsoleModuleMetric(item)) && "request_id" in value && typeof value["request_id"] === "string" && Array.from(value["request_id"]).length <= 120 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","stale","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && Array.from(value["status_message"]).length <= 240 && (!("unavailable_reason" in value) || isConsoleModuleUnavailableReason(value["unavailable_reason"])) && Object.keys(value).every((key) => ["as_of","id","last_success_at","metrics","request_id","status","status_message","unavailable_reason"].includes(key)) && true && (!(isRecord(value) && "unavailable_reason" in value && isConsoleModuleUnavailableReason(value["unavailable_reason"])) || isRecord(value) && (!("status" in value) || value["status"] === "unavailable")) && ((isRecord(value) && "as_of" in value && true && "last_success_at" in value && true) || (isRecord(value) && "status" in value && typeof value["status"] === "string" && ["ok","empty","partial","unavailable"].includes(value["status"])));
 }
 
 function isConsoleModuleUnavailableReason(value: unknown): value is ConsoleModuleUnavailableReason {
@@ -775,7 +881,7 @@ function isConsoleModuleUnavailableReason(value: unknown): value is ConsoleModul
 }
 
 function isConsoleOperatorReplyRequest(value: unknown): value is ConsoleOperatorReplyRequest {
-  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length >= 1 && value["body"].length <= 5000 && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && Object.keys(value).every((key) => ["body","expected_version"].includes(key));
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && Array.from(value["body"]).length >= 1 && Array.from(value["body"]).length <= 5000 && "expected_version" in value && typeof value["expected_version"] === "number" && Number.isSafeInteger(value["expected_version"]) && value["expected_version"] >= 1 && Object.keys(value).every((key) => ["body","expected_version"].includes(key));
 }
 
 function isConsoleOverview(value: unknown): value is ConsoleOverview {
@@ -783,19 +889,31 @@ function isConsoleOverview(value: unknown): value is ConsoleOverview {
 }
 
 function isConsolePointAdjustmentRequest(value: unknown): value is ConsolePointAdjustmentRequest {
-  return isRecord(value) && "amount" in value && true && ([(typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= 1 && value["amount"] <= 9.007199254740991e+15), (typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= -9.007199254740991e+15 && value["amount"] <= -1)].filter(Boolean).length === 1) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["amount","reason","user_id"].includes(key));
+  return isRecord(value) && "amount" in value && true && ([(typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= 1 && value["amount"] <= 9.007199254740991e+15), (typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= -9.007199254740991e+15 && value["amount"] <= -1)].filter(Boolean).length === 1) && "reason" in value && typeof value["reason"] === "string" && Array.from(value["reason"]).length >= 1 && Array.from(value["reason"]).length <= 1000 && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["amount","reason","user_id"].includes(key));
 }
 
 function isConsolePointLedgerEntry(value: unknown): value is ConsolePointLedgerEntry {
-  return isRecord(value) && "amount" in value && true && ([(typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= -9.007199254740991e+15 && value["amount"] <= -1), (typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= 1 && value["amount"] <= 9.007199254740991e+15)].filter(Boolean).length === 1) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length >= 1 && value["reason"].length <= 1000 && Object.keys(value).every((key) => ["amount","created_at","id","reason"].includes(key));
+  return isRecord(value) && "amount" in value && true && ([(typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= -9.007199254740991e+15 && value["amount"] <= -1), (typeof value["amount"] === "number" && Number.isSafeInteger(value["amount"]) && value["amount"] >= 1 && value["amount"] <= 9.007199254740991e+15)].filter(Boolean).length === 1) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && "reason" in value && typeof value["reason"] === "string" && Array.from(value["reason"]).length >= 1 && Array.from(value["reason"]).length <= 1000 && Object.keys(value).every((key) => ["amount","created_at","id","reason"].includes(key));
 }
 
 function isConsoleScope(value: unknown): value is ConsoleScope {
-  return isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["platform","product"].includes(value["kind"]) && (!("product_code" in value) || typeof value["product_code"] === "string" && value["product_code"].length >= 1 && value["product_code"].length <= 80) && Object.keys(value).every((key) => ["kind","product_code"].includes(key)) && true && (!(isRecord(value) && "kind" in value && value["kind"] === "product") || isRecord(value) && "product_code" in value && typeof value["product_code"] === "string" && value["product_code"].length >= 1 && value["product_code"].length <= 80);
+  return isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["platform","product"].includes(value["kind"]) && (!("product_code" in value) || typeof value["product_code"] === "string" && Array.from(value["product_code"]).length >= 1 && Array.from(value["product_code"]).length <= 80) && Object.keys(value).every((key) => ["kind","product_code"].includes(key)) && true && (!(isRecord(value) && "kind" in value && value["kind"] === "product") || isRecord(value) && "product_code" in value && typeof value["product_code"] === "string" && Array.from(value["product_code"]).length >= 1 && Array.from(value["product_code"]).length <= 80);
 }
 
 function isConsoleSession(value: unknown): value is ConsoleSession {
   return isRecord(value) && "access_context" in value && isConsoleAccessContext(value["access_context"]) && "expires_at" in value && isDateTime(value["expires_at"]) && "user" in value && isRecord(value["user"]) && "id" in value["user"] && isUUID(value["user"]["id"]) && Object.keys(value["user"]).every((key) => ["id"].includes(key)) && Object.keys(value).every((key) => ["access_context","expires_at","user"].includes(key));
+}
+
+function isConsoleTicketFactReference(value: unknown): value is ConsoleTicketFactReference {
+  return isRecord(value) && "id" in value && isUUID(value["id"]) && "reference" in value && typeof value["reference"] === "string" && new RegExp("^HKT-[0-9a-f-]{36}$").test(value["reference"]) && "status" in value && typeof value["status"] === "string" && ["open","in_progress","resolved"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && Array.from(value["title"]).length >= 1 && Array.from(value["title"]).length <= 160 && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["id","reference","status","title","updated_at","version"].includes(key));
+}
+
+function isConsoleTicketFactWindow(value: unknown): value is ConsoleTicketFactWindow {
+  return isRecord(value) && "filter" in value && isConsoleTicketFactsFilter(value["filter"]) && "has_more" in value && typeof value["has_more"] === "boolean" && "items" in value && Array.isArray(value["items"]) && value["items"].length <= 100 && value["items"].every((item) => isConsoleTicketFactReference(item)) && "limit" in value && value["limit"] === 100 && "matched_total" in value && typeof value["matched_total"] === "number" && Number.isSafeInteger(value["matched_total"]) && value["matched_total"] >= 0 && value["matched_total"] <= 9.007199254740991e+15 && "returned" in value && typeof value["returned"] === "number" && Number.isSafeInteger(value["returned"]) && value["returned"] >= 0 && value["returned"] <= 100 && Object.keys(value).every((key) => ["filter","has_more","items","limit","matched_total","returned"].includes(key));
+}
+
+function isConsoleTicketFactsFilter(value: unknown): value is ConsoleTicketFactsFilter {
+  return typeof value === "string" && ["unresolved","all","open","in_progress","resolved"].includes(value);
 }
 
 function isConsoleTicketTransitionRequest(value: unknown): value is ConsoleTicketTransitionRequest {
@@ -815,11 +933,11 @@ function isCourseCreateCommand(value: unknown): value is CourseCreateCommand {
 }
 
 function isCourseCreatePayload(value: unknown): value is CourseCreatePayload {
-  return isRecord(value) && "collegeId" in value && isUUID(value["collegeId"]) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("examScope" in value) || typeof value["examScope"] === "string" && value["examScope"].length <= 2000) && "grade" in value && typeof value["grade"] === "string" && value["grade"].length <= 32 && "majorId" in value && isUUID(value["majorId"]) && "name" in value && typeof value["name"] === "string" && value["name"].length <= 160 && "schoolId" in value && isUUID(value["schoolId"]) && "slug" in value && typeof value["slug"] === "string" && value["slug"].length <= 160 && (!("status" in value) || typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"])) && Object.keys(value).every((key) => ["collegeId","description","examScope","grade","majorId","name","schoolId","slug","status"].includes(key));
+  return isRecord(value) && "collegeId" in value && isUUID(value["collegeId"]) && (!("description" in value) || typeof value["description"] === "string" && Array.from(value["description"]).length <= 4000) && (!("examScope" in value) || typeof value["examScope"] === "string" && Array.from(value["examScope"]).length <= 2000) && "grade" in value && typeof value["grade"] === "string" && Array.from(value["grade"]).length <= 32 && "majorId" in value && isUUID(value["majorId"]) && "name" in value && typeof value["name"] === "string" && Array.from(value["name"]).length <= 160 && "schoolId" in value && isUUID(value["schoolId"]) && "slug" in value && typeof value["slug"] === "string" && Array.from(value["slug"]).length <= 160 && (!("status" in value) || typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"])) && Object.keys(value).every((key) => ["collegeId","description","examScope","grade","majorId","name","schoolId","slug","status"].includes(key));
 }
 
 function isCourseMutationPayload(value: unknown): value is CourseMutationPayload {
-  return isRecord(value) && (!("collegeId" in value) || isUUID(value["collegeId"])) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("examScope" in value) || typeof value["examScope"] === "string" && value["examScope"].length <= 2000) && (!("grade" in value) || typeof value["grade"] === "string" && value["grade"].length <= 32) && (!("majorId" in value) || isUUID(value["majorId"])) && (!("name" in value) || typeof value["name"] === "string" && value["name"].length <= 160) && (!("schoolId" in value) || isUUID(value["schoolId"])) && (!("slug" in value) || typeof value["slug"] === "string" && value["slug"].length <= 160) && (!("status" in value) || typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"])) && Object.keys(value).every((key) => ["collegeId","description","examScope","grade","majorId","name","schoolId","slug","status"].includes(key));
+  return isRecord(value) && (!("collegeId" in value) || isUUID(value["collegeId"])) && (!("description" in value) || typeof value["description"] === "string" && Array.from(value["description"]).length <= 4000) && (!("examScope" in value) || typeof value["examScope"] === "string" && Array.from(value["examScope"]).length <= 2000) && (!("grade" in value) || typeof value["grade"] === "string" && Array.from(value["grade"]).length <= 32) && (!("majorId" in value) || isUUID(value["majorId"])) && (!("name" in value) || typeof value["name"] === "string" && Array.from(value["name"]).length <= 160) && (!("schoolId" in value) || isUUID(value["schoolId"])) && (!("slug" in value) || typeof value["slug"] === "string" && Array.from(value["slug"]).length <= 160) && (!("status" in value) || typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"])) && Object.keys(value).every((key) => ["collegeId","description","examScope","grade","majorId","name","schoolId","slug","status"].includes(key));
 }
 
 function isCourseUpdateCommand(value: unknown): value is CourseUpdateCommand {
@@ -827,11 +945,11 @@ function isCourseUpdateCommand(value: unknown): value is CourseUpdateCommand {
 }
 
 function isCreateNoticeSourceRequest(value: unknown): value is CreateNoticeSourceRequest {
-  return isRecord(value) && "canonical_url" in value && typeof value["canonical_url"] === "string" && new RegExp("^https://").test(value["canonical_url"]) && "code" in value && typeof value["code"] === "string" && new RegExp("^[a-z0-9][a-z0-9-]{1,62}$").test(value["code"]) && "name" in value && typeof value["name"] === "string" && value["name"].length >= 1 && value["name"].length <= 120 && Object.keys(value).every((key) => ["canonical_url","code","name"].includes(key));
+  return isRecord(value) && "canonical_url" in value && typeof value["canonical_url"] === "string" && new RegExp("^https://").test(value["canonical_url"]) && "code" in value && typeof value["code"] === "string" && new RegExp("^[a-z0-9][a-z0-9-]{1,62}$").test(value["code"]) && "name" in value && typeof value["name"] === "string" && Array.from(value["name"]).length >= 1 && Array.from(value["name"]).length <= 120 && Object.keys(value).every((key) => ["canonical_url","code","name"].includes(key));
 }
 
 function isCreateNoticeVersionRequest(value: unknown): value is CreateNoticeVersionRequest {
-  return isRecord(value) && "body" in value && typeof value["body"] === "string" && value["body"].length >= 1 && value["body"].length <= 100000 && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && new RegExp("^https://").test(value["source_url"]) && "title" in value && typeof value["title"] === "string" && value["title"].length >= 1 && value["title"].length <= 200 && Object.keys(value).every((key) => ["body","source_published_at","source_url","title"].includes(key));
+  return isRecord(value) && "body" in value && typeof value["body"] === "string" && Array.from(value["body"]).length >= 1 && Array.from(value["body"]).length <= 100000 && (!("source_published_at" in value) || isDateTime(value["source_published_at"])) && "source_url" in value && typeof value["source_url"] === "string" && new RegExp("^https://").test(value["source_url"]) && "title" in value && typeof value["title"] === "string" && Array.from(value["title"]).length >= 1 && Array.from(value["title"]).length <= 200 && Object.keys(value).every((key) => ["body","source_published_at","source_url","title"].includes(key));
 }
 
 function isEmptyPayload(value: unknown): value is EmptyPayload {
@@ -839,7 +957,7 @@ function isEmptyPayload(value: unknown): value is EmptyPayload {
 }
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
-  return isRecord(value) && "error" in value && isErrorObject(value["error"]) && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 100 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]);
+  return isRecord(value) && "error" in value && isErrorObject(value["error"]) && "request_id" in value && typeof value["request_id"] === "string" && Array.from(value["request_id"]).length <= 100 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]);
 }
 
 function isErrorObject(value: unknown): value is ErrorObject {
@@ -847,7 +965,7 @@ function isErrorObject(value: unknown): value is ErrorObject {
 }
 
 function isFoodAnomalyTicket(value: unknown): value is FoodAnomalyTicket {
-  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "details" in value && typeof value["details"] === "string" && value["details"].length <= 2000 && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["duplicate","spam","quality","location"].includes(value["kind"]) && "severity" in value && typeof value["severity"] === "string" && ["low","medium","high"].includes(value["severity"]) && "status" in value && typeof value["status"] === "string" && ["open","resolved","dismissed"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","details","id","kind","severity","status","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "details" in value && typeof value["details"] === "string" && Array.from(value["details"]).length <= 2000 && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["duplicate","spam","quality","location"].includes(value["kind"]) && "severity" in value && typeof value["severity"] === "string" && ["low","medium","high"].includes(value["severity"]) && "status" in value && typeof value["status"] === "string" && ["open","resolved","dismissed"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && Array.from(value["venue_name"]).length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","details","id","kind","severity","status","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodCampus(value: unknown): value is FoodCampus {
@@ -863,7 +981,27 @@ function isFoodCommandKind(value: unknown): value is FoodCommandKind {
 }
 
 function isFoodCommandPayload(value: unknown): value is FoodCommandPayload {
-  return isRecord(value) && (!("campus" in value) || isFoodCampus(value["campus"])) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 2000) && (!("hidden" in value) || typeof value["hidden"] === "boolean") && (!("hours_reference" in value) || typeof value["hours_reference"] === "string" && value["hours_reference"].length <= 200) && (!("item_name" in value) || typeof value["item_name"] === "string" && value["item_name"].length >= 1 && value["item_name"].length <= 160) && "note" in value && typeof value["note"] === "string" && value["note"].length >= 2 && value["note"].length <= 1000 && (!("price_reference" in value) || typeof value["price_reference"] === "string" && value["price_reference"].length <= 200) && (!("review_text" in value) || typeof value["review_text"] === "string" && value["review_text"].length >= 2 && value["review_text"].length <= 2000) && (!("tier" in value) || isFoodPostTier(value["tier"])) && (!("venue_name" in value) || typeof value["venue_name"] === "string" && value["venue_name"].length >= 1 && value["venue_name"].length <= 160) && Object.keys(value).every((key) => ["campus","description","hidden","hours_reference","item_name","note","price_reference","review_text","tier","venue_name"].includes(key));
+  return isRecord(value) && (!("campus" in value) || isFoodCampus(value["campus"])) && (!("description" in value) || typeof value["description"] === "string" && Array.from(value["description"]).length <= 2000) && (!("hidden" in value) || typeof value["hidden"] === "boolean") && (!("hours_reference" in value) || typeof value["hours_reference"] === "string" && Array.from(value["hours_reference"]).length <= 200) && (!("item_name" in value) || typeof value["item_name"] === "string" && Array.from(value["item_name"]).length >= 1 && Array.from(value["item_name"]).length <= 160) && "note" in value && typeof value["note"] === "string" && Array.from(value["note"]).length >= 2 && Array.from(value["note"]).length <= 1000 && (!("price_reference" in value) || typeof value["price_reference"] === "string" && Array.from(value["price_reference"]).length <= 200) && (!("review_text" in value) || typeof value["review_text"] === "string" && Array.from(value["review_text"]).length >= 2 && Array.from(value["review_text"]).length <= 2000) && (!("tier" in value) || isFoodPostTier(value["tier"])) && (!("venue_name" in value) || typeof value["venue_name"] === "string" && Array.from(value["venue_name"]).length >= 1 && Array.from(value["venue_name"]).length <= 160) && Object.keys(value).every((key) => ["campus","description","hidden","hours_reference","item_name","note","price_reference","review_text","tier","venue_name"].includes(key));
+}
+
+function isFoodFactReference(value: unknown): value is FoodFactReference {
+  return isRecord(value) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["pending","open"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["id","status","updated_at","version"].includes(key));
+}
+
+function isFoodFactWindow(value: unknown): value is FoodFactWindow {
+  return isRecord(value) && "filter" in value && typeof value["filter"] === "string" && ["pending","open"].includes(value["filter"]) && "has_more" in value && typeof value["has_more"] === "boolean" && "items" in value && Array.isArray(value["items"]) && value["items"].length <= 200 && value["items"].every((item) => isFoodFactReference(item)) && "limit" in value && value["limit"] === 200 && "returned" in value && typeof value["returned"] === "number" && Number.isSafeInteger(value["returned"]) && value["returned"] >= 0 && value["returned"] <= 200 && Object.keys(value).every((key) => ["filter","has_more","items","limit","returned"].includes(key));
+}
+
+function isFoodFacts(value: unknown): value is FoodFacts {
+  return isRecord(value) && "as_of" in value && isDateTime(value["as_of"]) && "counts" in value && isRecord(value["counts"]) && "open_anomalies" in value["counts"] && typeof value["counts"]["open_anomalies"] === "number" && Number.isSafeInteger(value["counts"]["open_anomalies"]) && value["counts"]["open_anomalies"] >= 0 && value["counts"]["open_anomalies"] <= 9.007199254740991e+15 && "pending_submissions" in value["counts"] && typeof value["counts"]["pending_submissions"] === "number" && Number.isSafeInteger(value["counts"]["pending_submissions"]) && value["counts"]["pending_submissions"] >= 0 && value["counts"]["pending_submissions"] <= 9.007199254740991e+15 && "pending_tier_adjustments" in value["counts"] && typeof value["counts"]["pending_tier_adjustments"] === "number" && Number.isSafeInteger(value["counts"]["pending_tier_adjustments"]) && value["counts"]["pending_tier_adjustments"] >= 0 && value["counts"]["pending_tier_adjustments"] <= 9.007199254740991e+15 && Object.keys(value["counts"]).every((key) => ["open_anomalies","pending_submissions","pending_tier_adjustments"].includes(key)) && "scope" in value && value["scope"] === "global" && "stale" in value && value["stale"] === false && "windows" in value && isRecord(value["windows"]) && "anomalies" in value["windows"] && isFoodFactWindow(value["windows"]["anomalies"]) && "submissions" in value["windows"] && isFoodFactWindow(value["windows"]["submissions"]) && "tier_adjustments" in value["windows"] && isFoodFactWindow(value["windows"]["tier_adjustments"]) && Object.keys(value["windows"]).every((key) => ["anomalies","submissions","tier_adjustments"].includes(key)) && Object.keys(value).every((key) => ["as_of","counts","scope","stale","windows"].includes(key));
+}
+
+function isFoodFailedOperation(value: unknown): value is FoodFailedOperation {
+  return isRecord(value) && "error_code" in value && typeof value["error_code"] === "string" && ["FOOD_CONFLICT"].includes(value["error_code"]) && "operation" in value && isFoodCommandKind(value["operation"]) && "resource_id" in value && isUUID(value["resource_id"]) && "state" in value && typeof value["state"] === "string" && ["failed"].includes(value["state"]) && Object.keys(value).every((key) => ["error_code","operation","resource_id","state"].includes(key));
+}
+
+function isFoodOperationOutcome(value: unknown): value is FoodOperationOutcome {
+  return true && ([(isFoodOperationResult(value)), (isFoodFailedOperation(value))].filter(Boolean).length === 1);
 }
 
 function isFoodOperationResult(value: unknown): value is FoodOperationResult {
@@ -871,7 +1009,7 @@ function isFoodOperationResult(value: unknown): value is FoodOperationResult {
 }
 
 function isFoodPost(value: unknown): value is FoodPost {
-  return isRecord(value) && "author_display_name" in value && typeof value["author_display_name"] === "string" && value["author_display_name"].length >= 1 && value["author_display_name"].length <= 120 && "campus" in value && isFoodCampus(value["campus"]) && "created_at" in value && isDateTime(value["created_at"]) && "hidden" in value && typeof value["hidden"] === "boolean" && "hours_reference" in value && typeof value["hours_reference"] === "string" && value["hours_reference"].length <= 200 && "id" in value && isUUID(value["id"]) && "price_reference" in value && typeof value["price_reference"] === "string" && value["price_reference"].length <= 200 && "review_text" in value && typeof value["review_text"] === "string" && value["review_text"].length >= 2 && value["review_text"].length <= 2000 && "tier" in value && isFoodPostTier(value["tier"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["author_display_name","campus","created_at","hidden","hours_reference","id","price_reference","review_text","tier","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "author_display_name" in value && typeof value["author_display_name"] === "string" && Array.from(value["author_display_name"]).length >= 1 && Array.from(value["author_display_name"]).length <= 120 && "campus" in value && isFoodCampus(value["campus"]) && "created_at" in value && isDateTime(value["created_at"]) && "hidden" in value && typeof value["hidden"] === "boolean" && "hours_reference" in value && typeof value["hours_reference"] === "string" && Array.from(value["hours_reference"]).length <= 200 && "id" in value && isUUID(value["id"]) && "price_reference" in value && typeof value["price_reference"] === "string" && Array.from(value["price_reference"]).length <= 200 && "review_text" in value && typeof value["review_text"] === "string" && Array.from(value["review_text"]).length >= 2 && Array.from(value["review_text"]).length <= 2000 && "tier" in value && isFoodPostTier(value["tier"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && Array.from(value["venue_name"]).length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["author_display_name","campus","created_at","hidden","hours_reference","id","price_reference","review_text","tier","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodPostTier(value: unknown): value is FoodPostTier {
@@ -879,15 +1017,15 @@ function isFoodPostTier(value: unknown): value is FoodPostTier {
 }
 
 function isFoodSubmission(value: unknown): value is FoodSubmission {
-  return isRecord(value) && "campus" in value && true && ([(isFoodCampus(value["campus"])), (value["campus"] === null)].filter(Boolean).length === 1) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "item_name" in value && typeof value["item_name"] === "string" && value["item_name"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "submitted_at" in value && isDateTime(value["submitted_at"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["campus","description","id","item_name","status","submitted_at","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "campus" in value && true && ([(isFoodCampus(value["campus"])), (value["campus"] === null)].filter(Boolean).length === 1) && "description" in value && typeof value["description"] === "string" && Array.from(value["description"]).length <= 2000 && "id" in value && isUUID(value["id"]) && "item_name" in value && typeof value["item_name"] === "string" && Array.from(value["item_name"]).length <= 160 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "submitted_at" in value && isDateTime(value["submitted_at"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && Array.from(value["venue_name"]).length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["campus","description","id","item_name","status","submitted_at","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodTierAdjustment(value: unknown): value is FoodTierAdjustment {
-  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "current_tier" in value && typeof value["current_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["current_tier"]) && "id" in value && isUUID(value["id"]) && "proposed_tier" in value && typeof value["proposed_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["proposed_tier"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 2000 && "status" in value && typeof value["status"] === "string" && ["pending","confirmed","rejected"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && value["venue_name"].length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","current_tier","id","proposed_tier","reason","status","updated_at","venue_name","version"].includes(key));
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "current_tier" in value && typeof value["current_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["current_tier"]) && "id" in value && isUUID(value["id"]) && "proposed_tier" in value && typeof value["proposed_tier"] === "string" && ["featured","recommended","standard","watch"].includes(value["proposed_tier"]) && "reason" in value && typeof value["reason"] === "string" && Array.from(value["reason"]).length <= 2000 && "status" in value && typeof value["status"] === "string" && ["pending","confirmed","rejected"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "venue_name" in value && typeof value["venue_name"] === "string" && Array.from(value["venue_name"]).length <= 160 && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","current_tier","id","proposed_tier","reason","status","updated_at","venue_name","version"].includes(key));
 }
 
 function isFoodWorkspace(value: unknown): value is FoodWorkspace {
-  return isRecord(value) && "anomaly_tickets" in value && Array.isArray(value["anomaly_tickets"]) && value["anomaly_tickets"].length <= 200 && value["anomaly_tickets"].every((item) => isFoodAnomalyTicket(item)) && "as_of" in value && isDateTime(value["as_of"]) && "posts" in value && Array.isArray(value["posts"]) && value["posts"].length <= 200 && value["posts"].every((item) => isFoodPost(item)) && "stale" in value && typeof value["stale"] === "boolean" && "status" in value && typeof value["status"] === "string" && ["ok","empty","stale"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 200 && value["submissions"].every((item) => isFoodSubmission(item)) && "tier_adjustments" in value && Array.isArray(value["tier_adjustments"]) && value["tier_adjustments"].length <= 200 && value["tier_adjustments"].every((item) => isFoodTierAdjustment(item)) && Object.keys(value).every((key) => ["anomaly_tickets","as_of","posts","stale","status","status_message","submissions","tier_adjustments"].includes(key));
+  return isRecord(value) && "anomaly_tickets" in value && Array.isArray(value["anomaly_tickets"]) && value["anomaly_tickets"].length <= 200 && value["anomaly_tickets"].every((item) => isFoodAnomalyTicket(item)) && "as_of" in value && isDateTime(value["as_of"]) && "posts" in value && Array.isArray(value["posts"]) && value["posts"].length <= 200 && value["posts"].every((item) => isFoodPost(item)) && "stale" in value && typeof value["stale"] === "boolean" && "status" in value && typeof value["status"] === "string" && ["ok","empty","stale"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && Array.from(value["status_message"]).length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 200 && value["submissions"].every((item) => isFoodSubmission(item)) && "tier_adjustments" in value && Array.isArray(value["tier_adjustments"]) && value["tier_adjustments"].length <= 200 && value["tier_adjustments"].every((item) => isFoodTierAdjustment(item)) && Object.keys(value).every((key) => ["anomaly_tickets","as_of","posts","stale","status","status_message","submissions","tier_adjustments"].includes(key));
 }
 
 function isLibraryCommand(value: unknown): value is LibraryCommand {
@@ -899,27 +1037,31 @@ function isLibraryCommandKind(value: unknown): value is LibraryCommandKind {
 }
 
 function isLibraryCorrection(value: unknown): value is LibraryCorrection {
-  return isRecord(value) && "description" in value && typeof value["description"] === "string" && value["description"].length <= 2000 && "id" in value && isUUID(value["id"]) && "reason" in value && typeof value["reason"] === "string" && value["reason"].length <= 120 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "target_id" in value && isUUID(value["target_id"]) && "target_type" in value && typeof value["target_type"] === "string" && ["course","material"].includes(value["target_type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["description","id","reason","status","target_id","target_type","updated_at"].includes(key));
+  return isRecord(value) && "description" in value && typeof value["description"] === "string" && Array.from(value["description"]).length <= 2000 && "id" in value && isUUID(value["id"]) && "reason" in value && typeof value["reason"] === "string" && Array.from(value["reason"]).length <= 120 && "status" in value && typeof value["status"] === "string" && ["pending","approved","rejected"].includes(value["status"]) && "target_id" in value && isUUID(value["target_id"]) && "target_type" in value && typeof value["target_type"] === "string" && ["course","material"].includes(value["target_type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["description","id","reason","status","target_id","target_type","updated_at"].includes(key));
 }
 
 function isLibraryCourse(value: unknown): value is LibraryCourse {
-  return isRecord(value) && "grade" in value && typeof value["grade"] === "string" && value["grade"].length <= 32 && "id" in value && isUUID(value["id"]) && "name" in value && typeof value["name"] === "string" && value["name"].length <= 160 && "slug" in value && typeof value["slug"] === "string" && value["slug"].length <= 160 && "status" in value && typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["grade","id","name","slug","status","updated_at"].includes(key));
+  return isRecord(value) && "grade" in value && typeof value["grade"] === "string" && Array.from(value["grade"]).length <= 32 && "id" in value && isUUID(value["id"]) && "name" in value && typeof value["name"] === "string" && Array.from(value["name"]).length <= 160 && "slug" in value && typeof value["slug"] === "string" && Array.from(value["slug"]).length <= 160 && "status" in value && typeof value["status"] === "string" && ["draft","published","archived"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["grade","id","name","slug","status","updated_at"].includes(key));
 }
 
 function isLibraryDownload(value: unknown): value is LibraryDownload {
-  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "downloaded_at" in value && isDateTime(value["downloaded_at"]) && "id" in value && isUUID(value["id"]) && "material_id" in value && isUUID(value["material_id"]) && "material_title" in value && typeof value["material_title"] === "string" && value["material_title"].length <= 200 && Object.keys(value).every((key) => ["access_level","downloaded_at","id","material_id","material_title"].includes(key));
+  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "downloaded_at" in value && isDateTime(value["downloaded_at"]) && "id" in value && isUUID(value["id"]) && "material_id" in value && isUUID(value["material_id"]) && "material_title" in value && typeof value["material_title"] === "string" && Array.from(value["material_title"]).length <= 200 && Object.keys(value).every((key) => ["access_level","downloaded_at","id","material_id","material_title"].includes(key));
 }
 
 function isLibraryMaterial(value: unknown): value is LibraryMaterial {
-  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "course_id" in value && isUUID(value["course_id"]) && "file_name" in value && typeof value["file_name"] === "string" && value["file_name"].length <= 255 && "file_size" in value && typeof value["file_size"] === "number" && Number.isSafeInteger(value["file_size"]) && value["file_size"] >= 0 && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && "type" in value && typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["access_level","course_id","file_name","file_size","id","status","title","type","updated_at"].includes(key));
+  return isRecord(value) && "access_level" in value && typeof value["access_level"] === "string" && ["public","authenticated","restricted"].includes(value["access_level"]) && "course_id" in value && isUUID(value["course_id"]) && "file_name" in value && typeof value["file_name"] === "string" && Array.from(value["file_name"]).length <= 255 && "file_size" in value && typeof value["file_size"] === "number" && Number.isSafeInteger(value["file_size"]) && value["file_size"] >= 0 && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"]) && "title" in value && typeof value["title"] === "string" && Array.from(value["title"]).length <= 200 && "type" in value && typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"]) && "updated_at" in value && isDateTime(value["updated_at"]) && Object.keys(value).every((key) => ["access_level","course_id","file_name","file_size","id","status","title","type","updated_at"].includes(key));
 }
 
 function isLibraryOperationResult(value: unknown): value is LibraryOperationResult {
   return isRecord(value) && "operation" in value && isLibraryCommandKind(value["operation"]) && (!("resource_id" in value) || isUUID(value["resource_id"])) && "state" in value && typeof value["state"] === "string" && ["succeeded","unknown"].includes(value["state"]) && Object.keys(value).every((key) => ["operation","resource_id","state"].includes(key));
 }
 
+function isLibraryReadiness(value: unknown): value is LibraryReadiness {
+  return isRecord(value) && "capabilities" in value && isRecord(value["capabilities"]) && "commands" in value["capabilities"] && typeof value["capabilities"]["commands"] === "boolean" && "operation_results" in value["capabilities"] && typeof value["capabilities"]["operation_results"] === "boolean" && "workspace" in value["capabilities"] && typeof value["capabilities"]["workspace"] === "boolean" && Object.keys(value["capabilities"]).every((key) => ["commands","operation_results","workspace"].includes(key)) && "checked_at" in value && isDateTime(value["checked_at"]) && "management" in value && typeof value["management"] === "string" && ["not_ready","ready"].includes(value["management"]) && "reason" in value && typeof value["reason"] === "string" && ["management_migration_pending","none"].includes(value["reason"]) && Object.keys(value).every((key) => ["capabilities","checked_at","management","reason"].includes(key));
+}
+
 function isLibraryWorkspace(value: unknown): value is LibraryWorkspace {
-  return isRecord(value) && "corrections" in value && Array.isArray(value["corrections"]) && value["corrections"].length <= 500 && value["corrections"].every((item) => isLibraryCorrection(item)) && "courses" in value && Array.isArray(value["courses"]) && value["courses"].length <= 500 && value["courses"].every((item) => isLibraryCourse(item)) && "degraded" in value && typeof value["degraded"] === "boolean" && "downloads" in value && Array.isArray(value["downloads"]) && value["downloads"].length <= 200 && value["downloads"].every((item) => isLibraryDownload(item)) && "generated_at" in value && isDateTime(value["generated_at"]) && "materials" in value && Array.isArray(value["materials"]) && value["materials"].length <= 500 && value["materials"].every((item) => isLibraryMaterial(item)) && "status" in value && typeof value["status"] === "string" && ["ok","partial","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && value["status_message"].length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 500 && value["submissions"].every((item) => isLibraryMaterial(item)) && Object.keys(value).every((key) => ["corrections","courses","degraded","downloads","generated_at","materials","status","status_message","submissions"].includes(key));
+  return isRecord(value) && "corrections" in value && Array.isArray(value["corrections"]) && value["corrections"].length <= 500 && value["corrections"].every((item) => isLibraryCorrection(item)) && "courses" in value && Array.isArray(value["courses"]) && value["courses"].length <= 500 && value["courses"].every((item) => isLibraryCourse(item)) && "degraded" in value && typeof value["degraded"] === "boolean" && "downloads" in value && Array.isArray(value["downloads"]) && value["downloads"].length <= 200 && value["downloads"].every((item) => isLibraryDownload(item)) && "generated_at" in value && isDateTime(value["generated_at"]) && "materials" in value && Array.isArray(value["materials"]) && value["materials"].length <= 500 && value["materials"].every((item) => isLibraryMaterial(item)) && "status" in value && typeof value["status"] === "string" && ["ok","partial","unavailable"].includes(value["status"]) && "status_message" in value && typeof value["status_message"] === "string" && Array.from(value["status_message"]).length <= 240 && "submissions" in value && Array.isArray(value["submissions"]) && value["submissions"].length <= 500 && value["submissions"].every((item) => isLibraryMaterial(item)) && Object.keys(value).every((key) => ["corrections","courses","degraded","downloads","generated_at","materials","status","status_message","submissions"].includes(key));
 }
 
 function isMaterialArchiveCommand(value: unknown): value is MaterialArchiveCommand {
@@ -931,7 +1073,7 @@ function isMaterialCreateCommand(value: unknown): value is MaterialCreateCommand
 }
 
 function isMaterialCreatePayload(value: unknown): value is MaterialCreatePayload {
-  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && "courseId" in value && isUUID(value["courseId"]) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("fileName" in value) || typeof value["fileName"] === "string" && value["fileName"].length <= 255) && (!("fileSize" in value) || typeof value["fileSize"] === "number" && Number.isSafeInteger(value["fileSize"]) && value["fileSize"] >= 0) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && value["previewContent"].length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && "storageKey" in value && typeof value["storageKey"] === "string" && value["storageKey"].length <= 512 && "title" in value && typeof value["title"] === "string" && value["title"].length <= 200 && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","fileName","fileSize","previewContent","status","storageKey","title","type"].includes(key));
+  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && "courseId" in value && isUUID(value["courseId"]) && (!("description" in value) || typeof value["description"] === "string" && Array.from(value["description"]).length <= 4000) && (!("fileName" in value) || typeof value["fileName"] === "string" && Array.from(value["fileName"]).length <= 255) && (!("fileSize" in value) || typeof value["fileSize"] === "number" && Number.isSafeInteger(value["fileSize"]) && value["fileSize"] >= 0) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && Array.from(value["previewContent"]).length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && "storageKey" in value && typeof value["storageKey"] === "string" && Array.from(value["storageKey"]).length <= 512 && "title" in value && typeof value["title"] === "string" && Array.from(value["title"]).length <= 200 && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","fileName","fileSize","previewContent","status","storageKey","title","type"].includes(key));
 }
 
 function isMaterialUpdateCommand(value: unknown): value is MaterialUpdateCommand {
@@ -939,11 +1081,11 @@ function isMaterialUpdateCommand(value: unknown): value is MaterialUpdateCommand
 }
 
 function isMaterialUpdatePayload(value: unknown): value is MaterialUpdatePayload {
-  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && (!("courseId" in value) || isUUID(value["courseId"])) && (!("description" in value) || typeof value["description"] === "string" && value["description"].length <= 4000) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && value["previewContent"].length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && (!("title" in value) || typeof value["title"] === "string" && value["title"].length <= 200) && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","previewContent","status","title","type"].includes(key));
+  return isRecord(value) && (!("accessLevel" in value) || typeof value["accessLevel"] === "string" && ["free","login_required"].includes(value["accessLevel"])) && (!("courseId" in value) || isUUID(value["courseId"])) && (!("description" in value) || typeof value["description"] === "string" && Array.from(value["description"]).length <= 4000) && (!("previewContent" in value) || typeof value["previewContent"] === "string" && Array.from(value["previewContent"]).length <= 20000) && (!("status" in value) || typeof value["status"] === "string" && ["draft","pending","published","rejected","archived"].includes(value["status"])) && (!("title" in value) || typeof value["title"] === "string" && Array.from(value["title"]).length <= 200) && (!("type" in value) || typeof value["type"] === "string" && ["knowledge_note","mock_paper","answer","quick_review","past_exam","other"].includes(value["type"])) && Object.keys(value).every((key) => ["accessLevel","courseId","description","previewContent","status","title","type"].includes(key));
 }
 
 function isNoticeAudience(value: unknown): value is NoticeAudience {
-  return isRecord(value) && (!("kind" in value) || typeof value["kind"] === "string" && ["all_students","college","role"].includes(value["kind"])) && (!("value" in value) || typeof value["value"] === "string" && value["value"].length >= 1 && value["value"].length <= 120) && Object.keys(value).every((key) => ["kind","value"].includes(key)) && ((isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["all_students"].includes(value["kind"]) && Object.keys(value).every((key) => ["kind"].includes(key))) || (isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["college","role"].includes(value["kind"]) && "value" in value && typeof value["value"] === "string" && value["value"].length >= 1 && value["value"].length <= 120 && Object.keys(value).every((key) => ["kind","value"].includes(key))));
+  return isRecord(value) && (!("kind" in value) || typeof value["kind"] === "string" && ["all_students","college","role"].includes(value["kind"])) && (!("value" in value) || typeof value["value"] === "string" && Array.from(value["value"]).length >= 1 && Array.from(value["value"]).length <= 120) && Object.keys(value).every((key) => ["kind","value"].includes(key)) && ((isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["all_students"].includes(value["kind"]) && Object.keys(value).every((key) => ["kind"].includes(key))) || (isRecord(value) && "kind" in value && typeof value["kind"] === "string" && ["college","role"].includes(value["kind"]) && "value" in value && typeof value["value"] === "string" && Array.from(value["value"]).length >= 1 && Array.from(value["value"]).length <= 120 && Object.keys(value).every((key) => ["kind","value"].includes(key))));
 }
 
 function isNoticeDistributionRequest(value: unknown): value is NoticeDistributionRequest {
@@ -951,7 +1093,7 @@ function isNoticeDistributionRequest(value: unknown): value is NoticeDistributio
 }
 
 function isNoticeReviewRequest(value: unknown): value is NoticeReviewRequest {
-  return isRecord(value) && "decision" in value && typeof value["decision"] === "string" && ["approved","rejected"].includes(value["decision"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && value["expected_revision"] >= 1 && (!("note" in value) || typeof value["note"] === "string" && value["note"].length <= 1000) && Object.keys(value).every((key) => ["decision","expected_revision","note"].includes(key));
+  return isRecord(value) && "decision" in value && typeof value["decision"] === "string" && ["approved","rejected"].includes(value["decision"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && value["expected_revision"] >= 1 && (!("note" in value) || typeof value["note"] === "string" && Array.from(value["note"]).length <= 1000) && Object.keys(value).every((key) => ["decision","expected_revision","note"].includes(key));
 }
 
 function isNoticeSnapshot(value: unknown): value is NoticeSnapshot {
@@ -975,19 +1117,19 @@ function isPlatformOperationResult(value: unknown): value is PlatformOperationRe
 }
 
 function isPlatformOperationsAccount(value: unknown): value is PlatformOperationsAccount {
-  return isRecord(value) && "authorization_revision" in value && typeof value["authorization_revision"] === "number" && Number.isSafeInteger(value["authorization_revision"]) && value["authorization_revision"] >= 1 && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "email_verified" in value && typeof value["email_verified"] === "boolean" && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["authorization_revision","created_at","display_name","email","email_verified","grants","id","status"].includes(key));
+  return isRecord(value) && "authorization_revision" in value && typeof value["authorization_revision"] === "number" && Number.isSafeInteger(value["authorization_revision"]) && value["authorization_revision"] >= 1 && "created_at" in value && isDateTime(value["created_at"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && Array.from(value["display_name"]).length <= 80) && "email" in value && typeof value["email"] === "string" && Array.from(value["email"]).length <= 320 && "email_verified" in value && typeof value["email_verified"] === "boolean" && "grants" in value && Array.isArray(value["grants"]) && value["grants"].length <= 50 && value["grants"].every((item) => isPlatformAccessGrantInput(item)) && "id" in value && isUUID(value["id"]) && "status" in value && typeof value["status"] === "string" && ["active","suspended","deleted"].includes(value["status"]) && Object.keys(value).every((key) => ["authorization_revision","created_at","display_name","email","email_verified","grants","id","status"].includes(key));
 }
 
 function isPlatformOperationsAccountPage(value: unknown): value is PlatformOperationsAccountPage {
-  return isRecord(value) && "accounts" in value && Array.isArray(value["accounts"]) && value["accounts"].length <= 20 && value["accounts"].every((item) => isPlatformOperationsAccount(item)) && "next_cursor" in value && true && ([(typeof value["next_cursor"] === "string" && value["next_cursor"].length >= 1 && value["next_cursor"].length <= 512), (value["next_cursor"] === null)].filter(Boolean).length === 1) && "next_page" in value && true && ([(typeof value["next_page"] === "number" && Number.isSafeInteger(value["next_page"]) && value["next_page"] >= 2), (value["next_page"] === null)].filter(Boolean).length === 1) && Object.keys(value).every((key) => ["accounts","next_cursor","next_page"].includes(key));
+  return isRecord(value) && "accounts" in value && Array.isArray(value["accounts"]) && value["accounts"].length <= 20 && value["accounts"].every((item) => isPlatformOperationsAccount(item)) && "next_cursor" in value && true && ([(typeof value["next_cursor"] === "string" && Array.from(value["next_cursor"]).length >= 1 && Array.from(value["next_cursor"]).length <= 512), (value["next_cursor"] === null)].filter(Boolean).length === 1) && "next_page" in value && true && ([(typeof value["next_page"] === "number" && Number.isSafeInteger(value["next_page"]) && value["next_page"] >= 2), (value["next_page"] === null)].filter(Boolean).length === 1) && Object.keys(value).every((key) => ["accounts","next_cursor","next_page"].includes(key));
 }
 
 function isPlatformOperationsAccountSearchRequest(value: unknown): value is PlatformOperationsAccountSearchRequest {
-  return isRecord(value) && (!("cursor" in value) || typeof value["cursor"] === "string" && value["cursor"].length <= 512) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && "query" in value && typeof value["query"] === "string" && value["query"].length >= 2 && value["query"].length <= 100 && "snapshot_at" in value && isDateTime(value["snapshot_at"]) && Object.keys(value).every((key) => ["cursor","page","query","snapshot_at"].includes(key));
+  return isRecord(value) && (!("cursor" in value) || typeof value["cursor"] === "string" && Array.from(value["cursor"]).length <= 512) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && "query" in value && typeof value["query"] === "string" && Array.from(value["query"]).length >= 2 && Array.from(value["query"]).length <= 100 && "snapshot_at" in value && isDateTime(value["snapshot_at"]) && Object.keys(value).every((key) => ["cursor","page","query","snapshot_at"].includes(key));
 }
 
 function isPlatformOperationsAuditEvent(value: unknown): value is PlatformOperationsAuditEvent {
-  return isRecord(value) && "actor_user_id" in value && isUUID(value["actor_user_id"]) && "created_at" in value && isDateTime(value["created_at"]) && "decision" in value && typeof value["decision"] === "string" && ["allowed","denied"].includes(value["decision"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && (!("email" in value) || typeof value["email"] === "string" && value["email"].length <= 320) && "permission_code" in value && typeof value["permission_code"] === "string" && "reason_code" in value && typeof value["reason_code"] === "string" && "request_id" in value && typeof value["request_id"] === "string" && "target_kind" in value && typeof value["target_kind"] === "string" && ["platform","product","resource"].includes(value["target_kind"]) && (!("target_product_code" in value) || typeof value["target_product_code"] === "string") && (!("target_resource_id" in value) || typeof value["target_resource_id"] === "string") && (!("target_resource_type" in value) || typeof value["target_resource_type"] === "string") && Object.keys(value).every((key) => ["actor_user_id","created_at","decision","display_name","email","permission_code","reason_code","request_id","target_kind","target_product_code","target_resource_id","target_resource_type"].includes(key));
+  return isRecord(value) && "actor_user_id" in value && isUUID(value["actor_user_id"]) && "created_at" in value && isDateTime(value["created_at"]) && "decision" in value && typeof value["decision"] === "string" && ["allowed","denied"].includes(value["decision"]) && (!("display_name" in value) || typeof value["display_name"] === "string" && Array.from(value["display_name"]).length <= 80) && (!("email" in value) || typeof value["email"] === "string" && Array.from(value["email"]).length <= 320) && "permission_code" in value && typeof value["permission_code"] === "string" && "reason_code" in value && typeof value["reason_code"] === "string" && "request_id" in value && typeof value["request_id"] === "string" && "target_kind" in value && typeof value["target_kind"] === "string" && ["platform","product","resource"].includes(value["target_kind"]) && (!("target_product_code" in value) || typeof value["target_product_code"] === "string") && (!("target_resource_id" in value) || typeof value["target_resource_id"] === "string") && (!("target_resource_type" in value) || typeof value["target_resource_type"] === "string") && Object.keys(value).every((key) => ["actor_user_id","created_at","decision","display_name","email","permission_code","reason_code","request_id","target_kind","target_product_code","target_resource_id","target_resource_type"].includes(key));
 }
 
 function isPlatformOperationsDependencies(value: unknown): value is PlatformOperationsDependencies {
@@ -1003,7 +1145,7 @@ function isPlatformOperationsMailStatus(value: unknown): value is PlatformOperat
 }
 
 function isPlatformOperationsPageState(value: unknown): value is PlatformOperationsPageState {
-  return isRecord(value) && "next_cursor" in value && true && ([(typeof value["next_cursor"] === "string" && value["next_cursor"].length >= 1 && value["next_cursor"].length <= 512), (value["next_cursor"] === null)].filter(Boolean).length === 1) && "next_page" in value && true && ([(typeof value["next_page"] === "number" && Number.isSafeInteger(value["next_page"]) && value["next_page"] >= 2), (value["next_page"] === null)].filter(Boolean).length === 1) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && Object.keys(value).every((key) => ["next_cursor","next_page","page"].includes(key));
+  return isRecord(value) && "next_cursor" in value && true && ([(typeof value["next_cursor"] === "string" && Array.from(value["next_cursor"]).length >= 1 && Array.from(value["next_cursor"]).length <= 512), (value["next_cursor"] === null)].filter(Boolean).length === 1) && "next_page" in value && true && ([(typeof value["next_page"] === "number" && Number.isSafeInteger(value["next_page"]) && value["next_page"] >= 2), (value["next_page"] === null)].filter(Boolean).length === 1) && "page" in value && typeof value["page"] === "number" && Number.isSafeInteger(value["page"]) && value["page"] >= 1 && Object.keys(value).every((key) => ["next_cursor","next_page","page"].includes(key));
 }
 
 function isPlatformOperationsPagination(value: unknown): value is PlatformOperationsPagination {
@@ -1011,7 +1153,7 @@ function isPlatformOperationsPagination(value: unknown): value is PlatformOperat
 }
 
 function isPlatformOperationsSession(value: unknown): value is PlatformOperationsSession {
-  return isRecord(value) && (!("client_id" in value) || typeof value["client_id"] === "string") && (!("display_name" in value) || typeof value["display_name"] === "string" && value["display_name"].length <= 80) && "email" in value && typeof value["email"] === "string" && value["email"].length <= 320 && "expires_at" in value && isDateTime(value["expires_at"]) && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["core","client_exchange"].includes(value["kind"]) && "last_seen_at" in value && isDateTime(value["last_seen_at"]) && (!("revoked_at" in value) || isDateTime(value["revoked_at"])) && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["client_id","display_name","email","expires_at","id","kind","last_seen_at","revoked_at","user_id"].includes(key));
+  return isRecord(value) && (!("client_id" in value) || typeof value["client_id"] === "string") && (!("display_name" in value) || typeof value["display_name"] === "string" && Array.from(value["display_name"]).length <= 80) && "email" in value && typeof value["email"] === "string" && Array.from(value["email"]).length <= 320 && "expires_at" in value && isDateTime(value["expires_at"]) && "id" in value && isUUID(value["id"]) && "kind" in value && typeof value["kind"] === "string" && ["core","client_exchange"].includes(value["kind"]) && "last_seen_at" in value && isDateTime(value["last_seen_at"]) && (!("revoked_at" in value) || isDateTime(value["revoked_at"])) && "user_id" in value && isUUID(value["user_id"]) && Object.keys(value).every((key) => ["client_id","display_name","email","expires_at","id","kind","last_seen_at","revoked_at","user_id"].includes(key));
 }
 
 function isPlatformOperationsSnapshot(value: unknown): value is PlatformOperationsSnapshot {
@@ -1023,7 +1165,7 @@ function isPlatformScope(value: unknown): value is PlatformScope {
 }
 
 function isReviewPayload(value: unknown): value is ReviewPayload {
-  return isRecord(value) && (!("reviewReason" in value) || typeof value["reviewReason"] === "string" && value["reviewReason"].length <= 1000) && Object.keys(value).every((key) => ["reviewReason"].includes(key));
+  return isRecord(value) && (!("reviewReason" in value) || typeof value["reviewReason"] === "string" && Array.from(value["reviewReason"]).length <= 1000) && Object.keys(value).every((key) => ["reviewReason"].includes(key));
 }
 
 function isRevokePlatformSessionRequest(value: unknown): value is RevokePlatformSessionRequest {
@@ -1035,7 +1177,7 @@ function isSubmissionReviewCommand(value: unknown): value is SubmissionReviewCom
 }
 
 function isSuccessEnvelope(value: unknown): value is SuccessEnvelope {
-  return isRecord(value) && "data" in value && true && "request_id" in value && typeof value["request_id"] === "string" && value["request_id"].length <= 100 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]);
+  return isRecord(value) && "data" in value && true && "request_id" in value && typeof value["request_id"] === "string" && Array.from(value["request_id"]).length <= 100 && new RegExp("^req_[A-Za-z0-9_-]+$").test(value["request_id"]);
 }
 
 function isUpdatePlatformAccessRequest(value: unknown): value is UpdatePlatformAccessRequest {
@@ -1048,11 +1190,11 @@ export type ConsoleSessionResult =
 
 export async function fetchConsoleSession(): Promise<ConsoleSessionResult> {
   try {
-    const response = await fetch("/api/v1/session", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/session", { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleSession(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", session: envelope.data };
   } catch {
@@ -1064,13 +1206,13 @@ export type ConsoleOverviewResult =
   | { state: "authenticated"; overview: ConsoleOverview }
   | { state: "signed_out" | "denied" | "unavailable" };
 
-export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
+export async function fetchConsoleOverview(options: { signal?: AbortSignal } = {}): Promise<ConsoleOverviewResult> {
   try {
-    const response = await fetch("/api/v1/overview", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/overview", { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleOverview(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", overview: envelope.data };
   } catch {
@@ -1080,7 +1222,7 @@ export async function fetchConsoleOverview(): Promise<ConsoleOverviewResult> {
 
 export type PlatformOperationsResult =
   | { state: "authenticated"; operations: PlatformOperationsSnapshot }
-  | { state: "signed_out" | "denied" | "rate_limited" | "unavailable" };
+  | { state: "signed_out" | "denied" | "invalid" | "rate_limited" | "unavailable" };
 
 export interface PlatformOperationsPageRequest {
   accounts_page: number;
@@ -1094,15 +1236,16 @@ export interface PlatformOperationsPageRequest {
   audit_cursor?: string;
 }
 
-export async function fetchPlatformOperations(pages: PlatformOperationsPageRequest = { accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 }): Promise<PlatformOperationsResult> {
+export async function fetchPlatformOperations(pages: PlatformOperationsPageRequest = { accounts_page: 1, sessions_page: 1, inbox_page: 1, audit_page: 1 }, options: { signal?: AbortSignal } = {}): Promise<PlatformOperationsResult> {
   try {
     const query = new URLSearchParams(Object.entries(pages).filter((entry): entry is [string, string | number] => entry[1] !== undefined).map(([key, value]) => [key, String(value)]));
-    const response = await fetch("/api/v1/operations?" + query.toString(), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/operations?" + query.toString(), { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 400) return { state: "invalid" };
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 429) return { state: "rate_limited" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationsSnapshot(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", operations: envelope.data };
   } catch {
@@ -1116,13 +1259,13 @@ export type PlatformOperationAccountSearchResult =
 
 export async function searchPlatformOperationAccounts(input: PlatformOperationsAccountSearchRequest): Promise<PlatformOperationAccountSearchResult> {
   try {
-    const response = await fetch("/api/v1/operations/accounts/search", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    const response = await consoleRequest("/api/v1/operations/accounts/search", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (response.status === 429) return { state: "rate_limited" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationsAccountPage(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", page: envelope.data };
   } catch {
@@ -1136,14 +1279,14 @@ export type PlatformOperationWriteResult =
 
 async function writePlatformOperation(path: string, body: unknown, idempotencyKey: string): Promise<PlatformOperationWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" as const, result: { operation: path.includes("access-updates") ? "access_update" : "session_revoke", status: "unknown" } };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationResult(envelope.data)) return { state: "unknown" as const, result: { operation: path.includes("access-updates") ? "access_update" : "session_revoke", status: "unknown" } };
     return { state: envelope.data.status, result: envelope.data };
   } catch {
@@ -1162,12 +1305,12 @@ export function updatePlatformAccess(userID: string, input: UpdatePlatformAccess
 export async function resolvePlatformOperation(operation: "session_revoke" | "access_update", idempotencyKey: string): Promise<PlatformOperationWriteResult> {
   try {
     const path = "/api/v1/operations/results/{operation}".replace("{operation}", operation);
-    const response = await fetch(path, { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest(path, { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isPlatformOperationResult(envelope.data)) return { state: "unavailable" };
     return { state: envelope.data.status, result: envelope.data };
   } catch {
@@ -1181,12 +1324,12 @@ export type AccountLookupResult =
 
 export async function lookupConsoleAccount(email: string): Promise<AccountLookupResult> {
   try {
-    const response = await fetch("/api/v1/operations/account-lookups", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    const response = await consoleRequest("/api/v1/operations/account-lookups", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountLookupResult(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", account: envelope.data.account };
   } catch { return { state: "unavailable" }; }
@@ -1194,15 +1337,19 @@ export async function lookupConsoleAccount(email: string): Promise<AccountLookup
 
 export type NoticeSnapshotResult =
   | { state: "authenticated"; snapshot: NoticeSnapshot }
-  | { state: "signed_out" | "denied" | "unavailable" };
+  | { state: "signed_out" | "denied" | "not_configured" | "unavailable" };
 
-export async function fetchNoticeSnapshot(): Promise<NoticeSnapshotResult> {
+export async function fetchNoticeSnapshot(options: { signal?: AbortSignal } = {}): Promise<NoticeSnapshotResult> {
   try {
-    const response = await fetch("/api/v1/notices", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/notices", { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
+    if (response.status === 503) {
+      const failure: unknown = await readConsoleJSON(response);
+      return isErrorEnvelope(failure) && failure.error.code === "NOTICE_NOT_CONFIGURED" ? { state: "not_configured" } : { state: "unavailable" };
+    }
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isNoticeSnapshot(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", snapshot: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -1212,14 +1359,14 @@ export type NoticeWriteResult = { state: "succeeded"; result: Record<string, unk
 
 async function writeNotice(path: string, input: unknown, idempotencyKey: string): Promise<NoticeWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unknown" };
     return { state: "succeeded", result: envelope.data };
   } catch { return { state: "unknown" }; }
@@ -1232,14 +1379,28 @@ export function distributeNoticeVersion(versionID: string, input: NoticeDistribu
 
 export async function resolveNoticeOperation(operation: "source_create" | "version_create" | "review" | "distribution", idempotencyKey: string): Promise<NoticeWriteResult> {
   try {
-    const response = await fetch("/api/v1/notices/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest("/api/v1/notices/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isRecord(envelope.data)) return { state: "unavailable" };
     return envelope.data.status === "unknown" ? { state: "unknown" } : { state: "succeeded", result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type LibraryReadinessResult = { state: "authenticated"; readiness: LibraryReadiness } | { state: "signed_out" | "denied" | "unavailable" };
+
+export async function fetchLibraryReadiness(options: { signal?: AbortSignal } = {}): Promise<LibraryReadinessResult> {
+  try {
+    const response = await consoleRequest("/api/v1/library/readiness", { signal: options.signal, credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isLibraryReadiness(envelope.data)) return { state: "unavailable" };
+    return { state: "authenticated", readiness: envelope.data };
   } catch { return { state: "unavailable" }; }
 }
 
@@ -1247,11 +1408,11 @@ export type LibraryWorkspaceResult = { state: "authenticated"; workspace: Librar
 
 export async function fetchLibraryWorkspace(): Promise<LibraryWorkspaceResult> {
   try {
-    const response = await fetch("/api/v1/library", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/library", { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isLibraryWorkspace(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", workspace: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -1261,13 +1422,13 @@ export type LibraryWriteResult = { state: "succeeded" | "unknown"; result?: Libr
 
 export async function executeLibraryCommand(input: LibraryCommand, idempotencyKey: string): Promise<LibraryWriteResult> {
   try {
-    const response = await fetch("/api/v1/library/commands", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest("/api/v1/library/commands", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unknown" };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unknown" }; }
@@ -1275,14 +1436,51 @@ export async function executeLibraryCommand(input: LibraryCommand, idempotencyKe
 
 export async function resolveLibraryOperation(operation: LibraryCommandKind, idempotencyKey: string): Promise<LibraryWriteResult> {
   try {
-    const response = await fetch("/api/v1/library/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest("/api/v1/library/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isLibraryOperationResult(envelope.data)) return { state: "unavailable" };
     return { state: envelope.data.state, result: envelope.data };
+  } catch { return { state: "unavailable" }; }
+}
+
+export type FoodFactsResult = { state: "authenticated"; facts: FoodFacts } | { state: "signed_out" | "denied" | "unavailable" };
+export type AccountTicketFactsResult = { state: "authenticated"; facts: ConsoleAccountTicketFacts } | { state: "signed_out" | "denied" | "unavailable" };
+
+function factWindowMatches(window: FoodFactWindow, count: number, status: "pending" | "open"): boolean {
+  return window.filter === status && window.returned === window.items.length && window.returned === Math.min(count, 200) && window.has_more === (count > window.returned) && window.items.every(item => item.status === status) && new Set(window.items.map(item => item.id)).size === window.returned;
+}
+
+export async function fetchFoodFacts(options: { signal?: AbortSignal } = {}): Promise<FoodFactsResult> {
+  try {
+    const response = await consoleRequest("/api/v1/food/facts", { credentials: "same-origin", signal: options.signal, headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isFoodFacts(envelope.data)) return { state: "unavailable" };
+    const facts = envelope.data;
+    if (!factWindowMatches(facts.windows.submissions, facts.counts.pending_submissions, "pending") || !factWindowMatches(facts.windows.anomalies, facts.counts.open_anomalies, "open") || !factWindowMatches(facts.windows.tier_adjustments, facts.counts.pending_tier_adjustments, "pending")) return { state: "unavailable" };
+    return { state: "authenticated", facts };
+  } catch { return { state: "unavailable" }; }
+}
+
+export async function fetchAccountTicketFacts(status: ConsoleTicketFactsFilter = "unresolved", options: { signal?: AbortSignal } = {}): Promise<AccountTicketFactsResult> {
+  if (!["unresolved", "all", "open", "in_progress", "resolved"].includes(status)) return { state: "unavailable" };
+  try {
+    const response = await consoleRequest("/api/v1/account/tickets/facts" + "?status=" + encodeURIComponent(status), { credentials: "same-origin", signal: options.signal, headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketFacts(envelope.data)) return { state: "unavailable" };
+    const facts = envelope.data, counts = facts.counts, window = facts.window;
+    const total = status === "all" ? counts.unresolved + counts.resolved : counts[status];
+    if (!Number.isSafeInteger(counts.unresolved + counts.resolved) || counts.unresolved !== counts.open + counts.in_progress || window.filter !== status || window.matched_total !== total || window.returned !== window.items.length || window.returned !== Math.min(total, 100) || window.has_more !== (total > window.returned) || new Set(window.items.map(item => item.id)).size !== window.returned || !window.items.every(item => item.reference === "HKT-" + item.id.toLowerCase() && (status === "all" || (status === "unresolved" ? item.status !== "resolved" : item.status === status)))) return { state: "unavailable" };
+    return { state: "authenticated", facts };
   } catch { return { state: "unavailable" }; }
 }
 
@@ -1291,11 +1489,11 @@ export type FoodWorkspaceResult = { state: "authenticated"; workspace: FoodWorks
 export async function fetchFoodWorkspace(campus?: FoodCampus): Promise<FoodWorkspaceResult> {
   try {
     const route = "/api/v1/food" + (campus ? "?campus=" + encodeURIComponent(campus) : "");
-    const response = await fetch(route, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest(route, { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isFoodWorkspace(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", workspace: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -1305,27 +1503,30 @@ export type FoodWriteResult = { state: "succeeded" | "unknown"; result?: FoodOpe
 
 export async function executeFoodCommand(input: FoodCommand, idempotencyKey: string): Promise<FoodWriteResult> {
   try {
-    const response = await fetch("/api/v1/food/commands", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest("/api/v1/food/commands", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unknown" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unknown" };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unknown" }; }
 }
 
-export async function resolveFoodOperation(operation: FoodCommandKind, idempotencyKey: string): Promise<FoodWriteResult> {
+export type FoodOperationLookupResult = FoodWriteResult | { state: "failed"; result: FoodFailedOperation };
+
+export async function resolveFoodOperation(operation: FoodCommandKind, idempotencyKey: string): Promise<FoodOperationLookupResult> {
   try {
-    const response = await fetch("/api/v1/food/operations/{operation}".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest("/api/v1/food/operations/{operation}/outcome".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
-    if (!isSuccessEnvelope(envelope) || !isFoodOperationResult(envelope.data)) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isFoodOperationOutcome(envelope.data) || envelope.data.operation !== operation) return { state: "unavailable" };
+    if (envelope.data.state === "failed") return { state: "failed", result: envelope.data };
     return { state: envelope.data.state, result: envelope.data };
   } catch { return { state: "unavailable" }; }
 }
@@ -1340,12 +1541,12 @@ export type AccountMembershipPageResult =
 
 export async function searchAccountMemberships(input: ConsoleMembershipAccountSearchRequest): Promise<AccountMembershipPageResult> {
   try {
-    const response = await fetch("/api/v1/account/memberships/search", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    const response = await consoleRequest("/api/v1/account/memberships/search", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleMembershipAccountPage(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", page: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -1353,13 +1554,13 @@ export async function searchAccountMemberships(input: ConsoleMembershipAccountSe
 
 export async function fetchAccountMembership(userID: string): Promise<AccountMembershipReadResult> {
   try {
-    const response = await fetch("/api/v1/account/memberships/{user_id}".replace("{user_id}", encodeURIComponent(userID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/account/memberships/{user_id}".replace("{user_id}", encodeURIComponent(userID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", membership: envelope.data.membership };
   } catch { return { state: "unavailable" }; }
@@ -1371,14 +1572,14 @@ export type AccountMembershipWriteResult =
 
 async function writeAccountMembership(path: string, input: ConsoleMembershipMutationRequest, idempotencyKey: string): Promise<AccountMembershipWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountMembershipEnvelope(envelope.data)) return { state: "unavailable" };
     return { state: "succeeded", membership: envelope.data.membership };
   } catch { return { state: "unavailable" }; }
@@ -1398,27 +1599,57 @@ export type AccountPointAdjustmentWriteResult =
 
 export async function adjustAccountPoints(input: ConsolePointAdjustmentRequest, idempotencyKey: string): Promise<AccountPointAdjustmentWriteResult> {
   try {
-    const response = await fetch("/api/v1/account/points/adjustments", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest("/api/v1/account/points/adjustments", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountPointAdjustmentResult(envelope.data)) return { state: "unavailable" };
     return { state: "succeeded", result: envelope.data };
   } catch { return { state: "unavailable" }; }
+}
+
+export type AccountOperationReadResult =
+  | { state: "succeeded" | "unknown"; result: ConsoleAccountOperationResult }
+  | { state: "signed_out" | "denied" | "invalid" | "unavailable" };
+
+export async function resolveAccountOperation(operation: ConsoleAccountOperationKind, key: string): Promise<AccountOperationReadResult> {
+  try {
+    const path = "/api/v1/account/operations/{operation}/{idempotency_key}".replace("{operation}", encodeURIComponent(operation)).replace("{idempotency_key}", encodeURIComponent(key));
+    const response = await consoleRequest(path, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (response.status === 401) return { state: "signed_out" };
+    if (response.status === 403) return { state: "denied" };
+    if (response.status === 400) return { state: "invalid" };
+    if (!response.ok) return { state: "unavailable" };
+    const envelope: unknown = await readConsoleJSON(response);
+    if (!isSuccessEnvelope(envelope) || !isConsoleAccountOperationResult(envelope.data) || envelope.data.operation !== operation) return { state: "unavailable" };
+    const result = envelope.data;
+    if (result.status === "unknown") return result.result === undefined ? { state: "unknown", result } : { state: "unavailable" };
+    const valid = operation === "point_adjustment" ? isConsoleAccountPointAdjustmentResult(result.result)
+      : operation === "membership_grant" || operation === "membership_revoke" ? isConsoleAccountMembershipEnvelope(result.result)
+      : isConsoleAccountTicketCommandResult(result.result);
+    return valid ? { state: "succeeded", result } : { state: "unavailable" };
+  } catch { return { state: "unavailable" }; }
+}
+
+export async function resolveAccountTicketOperation(operation: "ticket_reply" | "ticket_transition", key: string): Promise<AccountTicketWriteResult | { state: "unknown" }> {
+  const result = await resolveAccountOperation(operation, key);
+  if (result.state !== "succeeded") return { state: result.state };
+  if (!isConsoleAccountTicketCommandResult(result.result.result)) return { state: "unavailable" };
+  return { state: "succeeded", ticket: result.result.result.ticket };
 }
 
 export type AccountTicketQueueResult = { state: "authenticated"; queue: ConsoleAccountTicketQueue } | { state: "signed_out" | "denied" | "unavailable" };
 
 export async function fetchAccountTicketQueue(): Promise<AccountTicketQueueResult> {
   try {
-    const response = await fetch("/api/v1/account/tickets", { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/account/tickets", { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketQueue(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", queue: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -1428,13 +1659,13 @@ export type AccountTicketDetailResult = { state: "authenticated"; ticket: Consol
 
 export async function fetchAccountTicket(ticketID: string): Promise<AccountTicketDetailResult> {
   try {
-    const response = await fetch("/api/v1/account/tickets/{ticket_id}".replace("{ticket_id}", encodeURIComponent(ticketID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const response = await consoleRequest("/api/v1/account/tickets/{ticket_id}".replace("{ticket_id}", encodeURIComponent(ticketID)), { credentials: "same-origin", headers: { Accept: "application/json" } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketDetail(envelope.data)) return { state: "unavailable" };
     return { state: "authenticated", ticket: envelope.data };
   } catch { return { state: "unavailable" }; }
@@ -1444,14 +1675,14 @@ export type AccountTicketWriteResult = { state: "succeeded"; ticket: ConsoleAcco
 
 async function writeAccountTicket(path: string, input: ConsoleOperatorReplyRequest | ConsoleTicketTransitionRequest, idempotencyKey: string): Promise<AccountTicketWriteResult> {
   try {
-    const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
+    const response = await consoleRequest(path, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input) });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 404) return { state: "not_found" };
     if (response.status === 409) return { state: "conflict" };
     if (response.status === 400) return { state: "invalid" };
     if (!response.ok) return { state: "unavailable" };
-    const envelope: unknown = await response.json();
+    const envelope: unknown = await readConsoleJSON(response);
     if (!isSuccessEnvelope(envelope) || !isConsoleAccountTicketCommandResult(envelope.data)) return { state: "unavailable" };
     return { state: "succeeded", ticket: envelope.data.ticket };
   } catch { return { state: "unavailable" }; }
@@ -1466,11 +1697,11 @@ export function transitionAccountTicket(ticketID: string, input: ConsoleTicketTr
 }
 
 export async function logoutConsoleSession(): Promise<void> {
-  const response = await fetch("/api/v1/session/logout", { method: "POST", credentials: "same-origin" });
+  const response = await consoleRequest("/api/v1/session/logout", { method: "POST", credentials: "same-origin" });
   if (!response.ok) throw new Error("Console logout failed");
 }
 
 export function consoleLoginHref(): string {
-  const returnTo = window.location.pathname + window.location.search + window.location.hash;
+  const returnTo = consoleReturnTo();
   return "/api/v1/auth/login?return_to=" + encodeURIComponent(returnTo);
 }

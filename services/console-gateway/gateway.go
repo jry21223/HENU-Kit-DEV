@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -43,7 +44,7 @@ type Config struct {
 
 func New(config Config) (http.Handler, error) {
 	if config.HTTPClient == nil {
-		config.HTTPClient = &http.Client{}
+		config.HTTPClient = &http.Client{Timeout: 5 * time.Second}
 	}
 	codec, err := session.New(config.SessionKey)
 	if err != nil {

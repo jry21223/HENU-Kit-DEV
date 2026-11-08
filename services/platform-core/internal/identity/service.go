@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,19 +24,21 @@ import (
 )
 
 var (
-	ErrUnauthorized    = errors.New("authentication failed")
-	ErrForbidden       = errors.New("permission or scope is not granted")
-	ErrInvalid         = errors.New("invalid authorization request")
-	ErrCallback        = errors.New("callback is not registered")
-	ErrCodeUsed        = errors.New("authorization code was already used")
-	ErrCodeExpired     = errors.New("authorization code expired")
-	ErrCodeBusy        = errors.New("authorization code exchange in progress")
-	ErrDependency      = errors.New("coordination dependency unavailable")
-	ErrNonceReplay     = errors.New("request nonce was already used")
-	ErrSignature       = errors.New("request signature is invalid")
-	ErrTimestamp       = errors.New("request timestamp is invalid")
-	ErrIdempotency     = errors.New("idempotency key conflicts with another request")
-	ErrIdempotencyBusy = errors.New("idempotent request is still in progress")
+	ErrUnauthorized          = errors.New("authentication failed")
+	ErrServiceAuthentication = errors.New("service authentication failed")
+	ErrSessionInvalid        = fmt.Errorf("exchange Session is invalid: %w", ErrUnauthorized)
+	ErrForbidden             = errors.New("permission or scope is not granted")
+	ErrInvalid               = errors.New("invalid authorization request")
+	ErrCallback              = errors.New("callback is not registered")
+	ErrCodeUsed              = errors.New("authorization code was already used")
+	ErrCodeExpired           = errors.New("authorization code expired")
+	ErrCodeBusy              = errors.New("authorization code exchange in progress")
+	ErrDependency            = errors.New("coordination dependency unavailable")
+	ErrNonceReplay           = errors.New("request nonce was already used")
+	ErrSignature             = errors.New("request signature is invalid")
+	ErrTimestamp             = errors.New("request timestamp is invalid")
+	ErrIdempotency           = errors.New("idempotency key conflicts with another request")
+	ErrIdempotencyBusy       = errors.New("idempotent request is still in progress")
 )
 
 var (
@@ -415,6 +418,9 @@ func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationChe
 		Timestamp: input.Timestamp, Nonce: input.Nonce, Signature: input.Signature,
 		BodyHash: input.BodyHash, PathAndQuery: input.PathAndQuery, NonceNamespace: "authorization",
 	}); err != nil {
+		if errors.Is(err, ErrUnauthorized) {
+			return AuthorizationDecision{}, ErrServiceAuthentication
+		}
 		return AuthorizationDecision{}, err
 	}
 	tokenHash := sha256.Sum256([]byte(input.SessionToken))
@@ -427,12 +433,12 @@ func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationChe
 	session, err := queries.GetExchangeSessionAuthorizationContext(ctx, tokenHash[:])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return AuthorizationDecision{}, ErrUnauthorized
+			return AuthorizationDecision{}, ErrSessionInvalid
 		}
 		return AuthorizationDecision{}, err
 	}
 	if !session.ClientID.Valid || session.ClientID.String != input.ServiceID {
-		return AuthorizationDecision{}, ErrUnauthorized
+		return AuthorizationDecision{}, ErrSessionInvalid
 	}
 	deniedSession := func(reason string) (AuthorizationDecision, error) {
 		if auditErr := queries.CreateAuthorizationAuditEvent(ctx, store.CreateAuthorizationAuditEventParams{
@@ -446,7 +452,7 @@ func (s *Service) CheckAuthorization(ctx context.Context, input AuthorizationChe
 		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return AuthorizationDecision{}, commitErr
 		}
-		return AuthorizationDecision{}, ErrUnauthorized
+		return AuthorizationDecision{}, ErrSessionInvalid
 	}
 	now := time.Now().UTC()
 	switch {

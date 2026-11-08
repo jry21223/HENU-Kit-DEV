@@ -29,7 +29,7 @@ const (
 	ConsoleUserIdentityResolutionRoute        = "/api/v1/console-user-identities/resolutions"
 	PlatformOperationsMembershipAccountsRoute = "/api/v1/platform-operations/membership-accounts/search"
 	DisplayNamesRoute                         = "/api/v1/users/display-names"
-	SourceSHA256                              = "203c94ea15cf719f1b38a9eecaee8c74cf03ffb4acdf0b7d7d4ac0dbeeea8c8c"
+	SourceSHA256                              = "8ccd83245dd5647140c261b5e56fb72d304da7b49517b1d5ec4d755455ecd256"
 )
 
 const SessionExchangeTokenHeader = "X-Session-Exchange-Token"

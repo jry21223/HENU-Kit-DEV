@@ -21,17 +21,22 @@ const (
 	NoticeReviewRoute                   = "/api/v1/notices/versions/{version_id}/reviews"
 	NoticeDistributionRoute             = "/api/v1/notices/versions/{version_id}/distributions"
 	NoticeOperationRoute                = "/api/v1/notices/operations/{operation}"
+	LibraryReadinessRoute               = "/api/v1/library/readiness"
 	LibraryWorkspaceRoute               = "/api/v1/library"
 	LibraryCommandRoute                 = "/api/v1/library/commands"
 	LibraryOperationRoute               = "/api/v1/library/operations/{operation}"
+	FoodFactsRoute                      = "/api/v1/food/facts"
 	FoodWorkspaceRoute                  = "/api/v1/food"
 	FoodCommandRoute                    = "/api/v1/food/commands"
 	FoodOperationRoute                  = "/api/v1/food/operations/{operation}"
+	FoodOperationOutcomeRoute           = "/api/v1/food/operations/{operation}/outcome"
 	AccountMembershipRoute              = "/api/v1/account/memberships/{user_id}"
 	SearchAccountMembershipsRoute       = "/api/v1/account/memberships/search"
 	AccountMembershipGrantsRoute        = "/api/v1/account/memberships/{user_id}/grants"
 	AccountMembershipRevocationsRoute   = "/api/v1/account/memberships/{user_id}/revocations"
 	AccountPointAdjustmentsRoute        = "/api/v1/account/points/adjustments"
+	AccountOperationRoute               = "/api/v1/account/operations/{operation}/{idempotency_key}"
+	AccountTicketFactsRoute             = "/api/v1/account/tickets/facts"
 	AccountTicketsRoute                 = "/api/v1/account/tickets"
 	AccountTicketRoute                  = "/api/v1/account/tickets/{ticket_id}"
 	AccountTicketRepliesRoute           = "/api/v1/account/tickets/{ticket_id}/replies"
@@ -40,7 +45,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "a15088c1e5efdd7ca8693e4f6d8893e33c8b2e481f52c24d7788fb2d56665d49"
+	SourceSHA256                        = "bd20661f392212b45eca484c865d6c6df067e6cb0a6ab46d61eab12b53406155"
 )
 
 type ConsoleAccessContext struct {
@@ -65,6 +70,14 @@ type ConsoleAccountMembership struct {
 
 type ConsoleAccountMembershipEnvelope struct {
 	Membership ConsoleAccountMembership `json:"membership"`
+}
+
+type ConsoleAccountOperationKind string
+
+type ConsoleAccountOperationResult struct {
+	Operation ConsoleAccountOperationKind `json:"operation"`
+	Result    *any                        `json:"result,omitempty"`
+	Status    string                      `json:"status"`
 }
 
 type ConsoleAccountPointAdjustmentResult struct {
@@ -101,6 +114,19 @@ type ConsoleAccountTicketEvent struct {
 	ID         string    `json:"id"`
 	Kind       string    `json:"kind"`
 	ToStatus   string    `json:"to_status"`
+}
+
+type ConsoleAccountTicketFacts struct {
+	AsOf   time.Time `json:"as_of"`
+	Counts struct {
+		InProgress int64 `json:"in_progress"`
+		Open       int64 `json:"open"`
+		Resolved   int64 `json:"resolved"`
+		Unresolved int64 `json:"unresolved"`
+	} `json:"counts"`
+	Scope  string                  `json:"scope"`
+	Stale  bool                    `json:"stale"`
+	Window ConsoleTicketFactWindow `json:"window"`
 }
 
 type ConsoleAccountTicketMessage struct {
@@ -229,6 +255,26 @@ type ConsoleSession struct {
 	} `json:"user"`
 }
 
+type ConsoleTicketFactReference struct {
+	ID        string    `json:"id"`
+	Reference string    `json:"reference"`
+	Status    string    `json:"status"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+type ConsoleTicketFactWindow struct {
+	Filter       ConsoleTicketFactsFilter     `json:"filter"`
+	HasMore      bool                         `json:"has_more"`
+	Items        []ConsoleTicketFactReference `json:"items"`
+	Limit        int64                        `json:"limit"`
+	MatchedTotal int64                        `json:"matched_total"`
+	Returned     int64                        `json:"returned"`
+}
+
+type ConsoleTicketFactsFilter string
+
 type ConsoleTicketTransitionRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	Status          string `json:"status"`
@@ -346,6 +392,46 @@ type FoodCommandPayload struct {
 	VenueName      *string       `json:"venue_name,omitempty"`
 }
 
+type FoodFactReference struct {
+	ID        string    `json:"id"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+type FoodFactWindow struct {
+	Filter   string              `json:"filter"`
+	HasMore  bool                `json:"has_more"`
+	Items    []FoodFactReference `json:"items"`
+	Limit    int64               `json:"limit"`
+	Returned int64               `json:"returned"`
+}
+
+type FoodFacts struct {
+	AsOf   time.Time `json:"as_of"`
+	Counts struct {
+		OpenAnomalies          int64 `json:"open_anomalies"`
+		PendingSubmissions     int64 `json:"pending_submissions"`
+		PendingTierAdjustments int64 `json:"pending_tier_adjustments"`
+	} `json:"counts"`
+	Scope   string `json:"scope"`
+	Stale   bool   `json:"stale"`
+	Windows struct {
+		Anomalies       FoodFactWindow `json:"anomalies"`
+		Submissions     FoodFactWindow `json:"submissions"`
+		TierAdjustments FoodFactWindow `json:"tier_adjustments"`
+	} `json:"windows"`
+}
+
+type FoodFailedOperation struct {
+	ErrorCode  string          `json:"error_code"`
+	Operation  FoodCommandKind `json:"operation"`
+	ResourceID string          `json:"resource_id"`
+	State      string          `json:"state"`
+}
+
+type FoodOperationOutcome any
+
 type FoodOperationResult struct {
 	Operation  FoodCommandKind `json:"operation"`
 	ResourceID *string         `json:"resource_id,omitempty"`
@@ -452,6 +538,17 @@ type LibraryOperationResult struct {
 	Operation  LibraryCommandKind `json:"operation"`
 	ResourceID *string            `json:"resource_id,omitempty"`
 	State      string             `json:"state"`
+}
+
+type LibraryReadiness struct {
+	Capabilities struct {
+		Commands         bool `json:"commands"`
+		OperationResults bool `json:"operation_results"`
+		Workspace        bool `json:"workspace"`
+	} `json:"capabilities"`
+	CheckedAt  time.Time `json:"checked_at"`
+	Management string    `json:"management"`
+	Reason     string    `json:"reason"`
 }
 
 type LibraryWorkspace struct {

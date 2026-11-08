@@ -31,7 +31,9 @@ func main() {
 		"MembershipGrantsPath":        "grantConsoleAccountMembership",
 		"MembershipRevocationsPath":   "revokeConsoleAccountMembership",
 		"PointAdjustmentsPath":        "adjustConsoleAccountPoints",
+		"TicketFactsPath":             "getConsoleAccountTicketFacts",
 		"TicketsPath":                 "getConsoleAccountTickets",
+		"OperationPath":               "getConsoleAccountOperation",
 		"TicketPath":                  "getConsoleAccountTicket",
 		"TicketRepliesPath":           "replyConsoleAccountTicket",
 		"TicketTransitionsPath":       "transitionConsoleAccountTicket",
@@ -53,7 +55,9 @@ const (
 	MembershipGrantsPathTemplate = %q
 	MembershipRevocationsPathTemplate = %q
 	PointAdjustmentsPath = %q
-	TicketsPath = %q
+	OperationPathTemplate = %q
+ TicketFactsPath = %q
+ TicketsPath = %q
 	TicketPathTemplate = %q
 	TicketRepliesPathTemplate = %q
 	TicketTransitionsPathTemplate = %q
@@ -61,7 +65,7 @@ const (
 	MembershipOrderRefundsPathTemplate = %q
 	MembershipOrderRefundPathTemplate = %q
 )
-`, digest, routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"])
+`, digest, routes["getConsoleAccountMembership"], routes["grantConsoleAccountMembership"], routes["revokeConsoleAccountMembership"], routes["adjustConsoleAccountPoints"], routes["getConsoleAccountOperation"], routes["getConsoleAccountTicketFacts"], routes["getConsoleAccountTickets"], routes["getConsoleAccountTicket"], routes["replyConsoleAccountTicket"], routes["transitionConsoleAccountTicket"], routes["closeConsoleMembershipOrder"], routes["refundConsoleMembershipOrder"], routes["getConsoleMembershipOrderRefund"])
 	formatted, err := format.Source([]byte(generated))
 	fail(err)
 	fail(os.MkdirAll("internal/accountportfolio", 0o755))
