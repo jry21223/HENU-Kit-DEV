@@ -564,7 +564,7 @@ paths:
         - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/FoodCommandKind" } }
         - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
       responses:
-        "200": { description: Original result, unknown outcome, or confirmed stored failure, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationOutcome" } } }] } } } }
+        "200": { description: "Original result, unknown outcome, or confirmed stored failure", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationOutcome" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

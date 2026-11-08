@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 a40194f23befccfd2f79959be084507b007e7b7b81e856065f82adaf08584f99); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 bd20661f392212b45eca484c865d6c6df067e6cb0a6ab46d61eab12b53406155); DO NOT EDIT.
 import { consoleRequest, readConsoleJSON, consoleReturnTo } from "./console-session";
 
 export interface ConsoleAccessContext {
