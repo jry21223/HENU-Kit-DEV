@@ -19,15 +19,17 @@ import (
 func TestFoodOutcomeRepresentationIsExplicitAndKeepsQueryErrorsUnconfirmed(t *testing.T) {
 	for _, tc := range []struct {
 		name, query   string
+		outcome       bool
 		queryConflict bool
 		accessErr     error
 		want          int
 	}{
 		{name: "legacy", want: 409},
-		{name: "stored failure", query: "?outcome=v1", want: 200},
-		{name: "query conflict", query: "?outcome=v1", queryConflict: true, want: 409},
-		{name: "expired", query: "?outcome=v1", accessErr: platformcore.ErrUnauthorized, want: 401},
-		{name: "denied", query: "?outcome=v1", accessErr: platformcore.ErrForbidden, want: 403},
+		{name: "legacy query does not expand the response", query: "?outcome=v1", want: 409},
+		{name: "stored failure", outcome: true, want: 200},
+		{name: "query conflict", outcome: true, queryConflict: true, want: 409},
+		{name: "expired", outcome: true, accessErr: platformcore.ErrUnauthorized, want: 401},
+		{name: "denied", outcome: true, accessErr: platformcore.ErrForbidden, want: 403},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cache := miniredis.RunT(t)
@@ -60,7 +62,11 @@ func TestFoodOutcomeRepresentationIsExplicitAndKeepsQueryErrorsUnconfirmed(t *te
 			gateway := httptest.NewTLSServer(handler)
 			t.Cleanup(gateway.Close)
 			cookie, _ := codec.Encode(session.Value{UserID: userID, ExchangeToken: token, ExpiresAt: time.Now().Add(time.Minute)})
-			request, _ := http.NewRequest(http.MethodGet, gateway.URL+"/api/v1/food/operations/post_edit"+tc.query, nil)
+			path, ownerQuery := "/api/v1/food/operations/post_edit", ""
+			if tc.outcome {
+				path, ownerQuery = path+"/outcome", "?outcome=v1"
+			}
+			request, _ := http.NewRequest(http.MethodGet, gateway.URL+path+tc.query, nil)
 			request.AddCookie(&http.Cookie{Name: sessionCookie, Value: cookie})
 			request.Header.Set("Idempotency-Key", "idem_food_outcome_query")
 			response, err := gateway.Client().Do(request)
@@ -80,7 +86,7 @@ func TestFoodOutcomeRepresentationIsExplicitAndKeepsQueryErrorsUnconfirmed(t *te
 			}
 			select {
 			case call := <-requests:
-				if tc.accessErr != nil || call.uri != "/api/v1/operations/post_edit"+tc.query || call.actor != userID || call.permission != "food.review" || call.key != "idem_food_outcome_query" {
+				if tc.accessErr != nil || call.uri != "/api/v1/operations/post_edit"+ownerQuery || call.actor != userID || call.permission != "food.review" || call.key != "idem_food_outcome_query" {
 					t.Fatalf("wrong owner request: %+v", call)
 				}
 			default:

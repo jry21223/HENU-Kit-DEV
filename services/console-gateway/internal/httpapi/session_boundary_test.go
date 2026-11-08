@@ -85,7 +85,7 @@ func (*rejectedAccountService) Operation(context.Context, string, string, string
 }
 
 func TestConsoleOwnerServiceAuthenticationFailureDoesNotExpireBrowserSession(t *testing.T) {
-	for _, path := range []string{"/api/v1/notices", "/api/v1/library", "/api/v1/food", "/api/v1/account/tickets", "/api/v1/account/operations/ticket_reply/idem_original_operation", "/api/v1/food/operations/post_edit?outcome=v1"} {
+	for _, path := range []string{"/api/v1/notices", "/api/v1/library", "/api/v1/food", "/api/v1/account/tickets", "/api/v1/account/operations/ticket_reply/idem_original_operation", "/api/v1/food/operations/post_edit", "/api/v1/food/operations/post_edit/outcome"} {
 		t.Run(path, func(t *testing.T) {
 			codec, _ := session.New([]byte("0123456789abcdef0123456789abcdef"))
 			redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
@@ -282,7 +282,8 @@ func TestConsoleSessionPreservesExactlyGrantedPermissionsAndProductScopes(t *tes
 func TestOperationQueriesDistinguishCoreAuthenticationFailureFromSessionExpiry(t *testing.T) {
 	for _, route := range []struct{ path, permission, product string }{
 		{"/api/v1/account/operations/ticket_reply/idem_original_operation", "account.tickets.reply", "account-portfolio"},
-		{"/api/v1/food/operations/post_edit?outcome=v1", "food.review", "food"},
+		{"/api/v1/food/operations/post_edit", "food.review", "food"},
+		{"/api/v1/food/operations/post_edit/outcome", "food.review", "food"},
 	} {
 		for _, outcome := range []struct {
 			code             string

@@ -208,7 +208,7 @@ it("ends recovery only after the owner explicitly confirms the stored operation 
   await flushPromises();
   expect(sessionStorage.getItem(storageKey)).toBeNull();
   expect(view.text()).toContain("原操作已确认未完成");
-  expect(reads[0]).toContain("outcome=v1");
+  expect(reads[0]).toBe("/api/v1/food/operations/post_edit/outcome");
   expect(writes).toHaveLength(0);
   expect(view.findAll("button").find((button) => button.text() === "隐藏投稿")!.attributes("disabled")).toBeUndefined();
   view.unmount();

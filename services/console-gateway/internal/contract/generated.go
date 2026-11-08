@@ -29,6 +29,7 @@ const (
 	FoodWorkspaceRoute                  = "/api/v1/food"
 	FoodCommandRoute                    = "/api/v1/food/commands"
 	FoodOperationRoute                  = "/api/v1/food/operations/{operation}"
+	FoodOperationOutcomeRoute           = "/api/v1/food/operations/{operation}/outcome"
 	AccountMembershipRoute              = "/api/v1/account/memberships/{user_id}"
 	SearchAccountMembershipsRoute       = "/api/v1/account/memberships/search"
 	AccountMembershipGrantsRoute        = "/api/v1/account/memberships/{user_id}/grants"
@@ -44,7 +45,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "d66400d0e449fb0d5a12d52493c7e47835d5d24c3ac23027e83480ba6c8387ec"
+	SourceSHA256                        = "a40194f23befccfd2f79959be084507b007e7b7b81e856065f82adaf08584f99"
 )
 
 type ConsoleAccessContext struct {

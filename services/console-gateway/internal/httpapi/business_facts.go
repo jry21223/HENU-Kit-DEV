@@ -34,7 +34,7 @@ func (h *Handler) getFoodFacts(w http.ResponseWriter, r *http.Request) {
 	}
 	client, ok := h.food.(foodFactsClient)
 	if !ok {
-		h.unavailable(w, r, errors.New("Food facts are not configured"))
+		h.unavailable(w, r, errors.New("food facts are not configured"))
 		return
 	}
 	data, err := client.Facts(foodapi.WithRequestID(ctx, requestID(r)), actor.UserID)
@@ -71,7 +71,7 @@ func (h *Handler) getAccountTicketFacts(w http.ResponseWriter, r *http.Request) 
 	}
 	client, ok := h.account.(accountTicketFactsClient)
 	if !ok {
-		h.unavailable(w, r, errors.New("Ticket facts are not configured"))
+		h.unavailable(w, r, errors.New("ticket facts are not configured"))
 		return
 	}
 	data, err := client.TicketFacts(accountapi.WithRequestID(ctx, requestID(r)), actor.UserID, status)

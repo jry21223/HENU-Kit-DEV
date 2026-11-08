@@ -546,10 +546,25 @@ paths:
       security: [{ consoleSession: [] }]
       parameters:
         - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/FoodCommandKind" } }
-        - { name: outcome, in: query, required: false, description: Opt in to explicit persisted failure facts; omitted preserves legacy raw results, schema: { type: string, enum: [v1] } }
         - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
       responses:
-        "200": { description: Original result or unknown; opt-in outcome v1 also exposes confirmed stored failure, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationOutcome" } } }] } } } }
+        "200": { description: Original result or unknown state, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationResult" } } }] } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /food/operations/{operation}/outcome:
+    get:
+      tags: [Food]
+      operationId: getConsoleFoodOperationOutcome
+      summary: Read explicit persisted Food command outcomes
+      security: [{ consoleSession: [] }]
+      parameters:
+        - { name: operation, in: path, required: true, schema: { $ref: "#/components/schemas/FoodCommandKind" } }
+        - { $ref: "#/components/parameters/RequiredIdempotencyKey" }
+      responses:
+        "200": { description: Original result, unknown outcome, or confirmed stored failure, content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/SuccessEnvelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/FoodOperationOutcome" } } }] } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -936,14 +951,6 @@ components:
       type: object
       additionalProperties: false
       required: [decision, expected_revision]
-      allOf:
-        - oneOf:
-            - properties:
-                decision: { type: string, enum: [approved] }
-            - required: [note]
-              properties:
-                decision: { type: string, enum: [rejected] }
-                note: { type: string, minLength: 1, pattern: '\S' }
       properties:
         decision: { type: string, enum: [approved, rejected] }
         note: { type: string, maxLength: 1000 }

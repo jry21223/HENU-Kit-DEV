@@ -184,7 +184,7 @@ func (h *service) review(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if (input.Decision != "approved" && input.Decision != "rejected") || (input.Decision == "rejected" && strings.TrimSpace(input.Note) == "") {
+	if input.Decision != "approved" && input.Decision != "rejected" {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "review decision is invalid")
 		return
 	}

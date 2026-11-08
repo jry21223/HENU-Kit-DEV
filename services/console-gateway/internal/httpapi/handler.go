@@ -229,6 +229,7 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.FoodWorkspaceRoute, handler.getFoodWorkspace)
 	router.Post(contract.FoodCommandRoute, handler.executeFoodCommand)
 	router.Get(contract.FoodOperationRoute, handler.getFoodOperation)
+	router.Get(contract.FoodOperationOutcomeRoute, handler.getFoodOperationOutcome)
 	router.Get(contract.AccountMembershipRoute, handler.getAccountMembership)
 	router.Post(contract.SearchAccountMembershipsRoute, handler.searchAccountMemberships)
 	router.Post(contract.AccountMembershipGrantsRoute, handler.grantAccountMembership)
@@ -294,6 +295,14 @@ func (h *Handler) executeFoodCommand(writer http.ResponseWriter, request *http.R
 }
 
 func (h *Handler) getFoodOperation(writer http.ResponseWriter, request *http.Request) {
+	h.readFoodOperation(writer, request, false)
+}
+
+func (h *Handler) getFoodOperationOutcome(writer http.ResponseWriter, request *http.Request) {
+	h.readFoodOperation(writer, request, true)
+}
+
+func (h *Handler) readFoodOperation(writer http.ResponseWriter, request *http.Request, includeStoredFailure bool) {
 	operation, key := chi.URLParam(request, "operation"), request.Header.Get("Idempotency-Key")
 	if len(key) < 8 || len(key) > 200 {
 		writeError(writer, request, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "请求内容不完整，请检查后重试")
@@ -309,7 +318,7 @@ func (h *Handler) getFoodOperation(writer http.ResponseWriter, request *http.Req
 		return
 	}
 	ctx := foodapi.WithRequestID(request.Context(), requestID(request))
-	if request.URL.Query().Get("outcome") == "v1" {
+	if includeStoredFailure {
 		ctx = foodapi.WithOperationOutcome(ctx)
 	}
 	data, err := h.food.Operation(ctx, value.UserID, operation, key)

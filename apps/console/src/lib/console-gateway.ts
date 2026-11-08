@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 d66400d0e449fb0d5a12d52493c7e47835d5d24c3ac23027e83480ba6c8387ec); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 a40194f23befccfd2f79959be084507b007e7b7b81e856065f82adaf08584f99); DO NOT EDIT.
 import { consoleRequest, readConsoleJSON, consoleReturnTo } from "./console-session";
 
 export interface ConsoleAccessContext {
@@ -1093,7 +1093,7 @@ function isNoticeDistributionRequest(value: unknown): value is NoticeDistributio
 }
 
 function isNoticeReviewRequest(value: unknown): value is NoticeReviewRequest {
-  return isRecord(value) && "decision" in value && typeof value["decision"] === "string" && ["approved","rejected"].includes(value["decision"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && value["expected_revision"] >= 1 && (!("note" in value) || typeof value["note"] === "string" && Array.from(value["note"]).length <= 1000) && Object.keys(value).every((key) => ["decision","expected_revision","note"].includes(key)) && true && ([(isRecord(value) && (!("decision" in value) || typeof value["decision"] === "string" && ["approved"].includes(value["decision"]))), (isRecord(value) && (!("decision" in value) || typeof value["decision"] === "string" && ["rejected"].includes(value["decision"])) && "note" in value && typeof value["note"] === "string" && Array.from(value["note"]).length >= 1 && new RegExp("\\S").test(value["note"]))].filter(Boolean).length === 1);
+  return isRecord(value) && "decision" in value && typeof value["decision"] === "string" && ["approved","rejected"].includes(value["decision"]) && "expected_revision" in value && typeof value["expected_revision"] === "number" && Number.isSafeInteger(value["expected_revision"]) && value["expected_revision"] >= 1 && (!("note" in value) || typeof value["note"] === "string" && Array.from(value["note"]).length <= 1000) && Object.keys(value).every((key) => ["decision","expected_revision","note"].includes(key));
 }
 
 function isNoticeSnapshot(value: unknown): value is NoticeSnapshot {
@@ -1519,7 +1519,7 @@ export type FoodOperationLookupResult = FoodWriteResult | { state: "failed"; res
 
 export async function resolveFoodOperation(operation: FoodCommandKind, idempotencyKey: string): Promise<FoodOperationLookupResult> {
   try {
-    const response = await consoleRequest("/api/v1/food/operations/{operation}".replace("{operation}", operation) + "?outcome=v1", { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
+    const response = await consoleRequest("/api/v1/food/operations/{operation}/outcome".replace("{operation}", operation), { credentials: "same-origin", headers: { Accept: "application/json", "Idempotency-Key": idempotencyKey } });
     if (response.status === 401) return { state: "signed_out" };
     if (response.status === 403) return { state: "denied" };
     if (response.status === 409) return { state: "conflict" };

@@ -72,7 +72,7 @@ func TestFactsOwner403IsDependencyFailureAfterCoreAllows(t *testing.T) {
 					return
 				}
 				if tc.coreDeny {
-					http.Error(w, "denied", 403)
+					http.Error(w, "denied", http.StatusForbidden)
 					return
 				}
 				w.WriteHeader(200)

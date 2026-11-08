@@ -73,9 +73,29 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 		t.Fatal("append-only Notice audit accepted TRUNCATE")
 	}
 
-	blankRejection := `{"decision":"rejected","note":"  \t ","expected_revision":1}`
-	if status := sendStatus(t, server.URL, actor, "notice.review", "product", http.MethodPost, "/api/v1/versions/"+versionID+"/reviews", blankRejection, "idem_blank_rejection"); status != http.StatusBadRequest {
-		t.Fatalf("rejection without a meaningful reason = %d, want 400 without changing the immutable version or review state", status)
+	for index, legacyReview := range []string{
+		`{"decision":"rejected","expected_revision":1}`,
+		`{"decision":"rejected","note":"  \t ","expected_revision":1}`,
+	} {
+		legacyVersion := send(t, server.URL, actor, "notice.manage", http.MethodPost, "/api/v1/sources/"+sourceID+"/versions", fmt.Sprintf(`{"title":"兼容原有审核","body":"不可变正文","source_url":"https://example.edu/notices/legacy/%d"}`, index), fmt.Sprintf("idem_legacy_version_%d", index))
+		legacyID := dataString(t, legacyVersion, "id")
+		legacyKey := fmt.Sprintf("idem_legacy_review_%d", index)
+		legacyResult := send(t, server.URL, actor, "notice.review", http.MethodPost, "/api/v1/versions/"+legacyID+"/reviews", legacyReview, legacyKey)
+		if dataString(t, legacyResult, "state") != "rejected" || dataObject(t, legacyResult)["revision"] != float64(2) {
+			t.Fatalf("legacy optional-note review did not commit its original result: %s", legacyResult)
+		}
+		legacyReplay := send(t, server.URL, actor, "notice.review", http.MethodPost, "/api/v1/versions/"+legacyID+"/reviews", legacyReview, legacyKey)
+		if fmt.Sprint(dataObject(t, legacyReplay)) != fmt.Sprint(dataObject(t, legacyResult)) {
+			t.Fatalf("legacy optional-note review replay changed its result: %s != %s", legacyReplay, legacyResult)
+		}
+		var legacyReviews int
+		var legacyAudits []string
+		if err := pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM notice_reviews WHERE notice_version_id=$1), ARRAY(SELECT action FROM notice_audit_events WHERE resource_id=$1 ORDER BY action)`, legacyID).Scan(&legacyReviews, &legacyAudits); err != nil {
+			t.Fatal(err)
+		}
+		if legacyReviews != 1 || fmt.Sprint(legacyAudits) != "[review.rejected version.create]" {
+			t.Fatalf("legacy optional-note facts reviews=%d audits=%v, want one review and its create/reject audits after replay", legacyReviews, legacyAudits)
+		}
 	}
 	reviewBody := `{"decision":"approved","note":"来源与正文已核验","expected_revision":1}`
 	firstReview := send(t, server.URL, actor, "notice.review", http.MethodPost, "/api/v1/versions/"+versionID+"/reviews", reviewBody, "idem_review_1")
@@ -178,7 +198,10 @@ func TestNoticeLifecycleIsImmutableScopedIdempotentAndAudited(t *testing.T) {
 	}
 
 	var reviews, distributions, audits int
-	if err := pool.QueryRow(context.Background(), "SELECT (SELECT count(*) FROM notice_reviews), (SELECT count(*) FROM notice_distributions), (SELECT count(*) FROM notice_audit_events)").Scan(&reviews, &distributions, &audits); err != nil {
+	if err := pool.QueryRow(context.Background(), `SELECT
+		(SELECT count(*) FROM notice_reviews WHERE notice_version_id=$1),
+		(SELECT count(*) FROM notice_distributions WHERE notice_version_id=$1),
+		(SELECT count(*) FROM notice_audit_events WHERE resource_id IN ($1,$2,$3,$4))`, versionID, sourceID, dataString(t, distribution, "id"), failedDistributionID).Scan(&reviews, &distributions, &audits); err != nil {
 		t.Fatal(err)
 	}
 	if reviews != 1 || distributions != 2 || audits != 9 {
