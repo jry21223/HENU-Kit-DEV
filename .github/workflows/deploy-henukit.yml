@@ -32,6 +32,7 @@ jobs:
           run_contract_tests() {
             python3 -m unittest discover -s scripts/ops/tests -p 'test_scoped*.py' -v
             python3 -m unittest discover -s scripts/ops/tests -p 'test_stack_transition.py' -v
+            python3 -m unittest discover -s scripts/ops/tests -p 'test_notice_url_transaction.py' -v
             node --test \
               scripts/ops/tests/bot-membership-wiring.test.mjs \
               scripts/ops/tests/deploy-henukit-workflow.test.mjs \
@@ -67,6 +68,20 @@ jobs:
               scripts/ops/tests/watch-henukit-actions.test.mjs
           }
           run_contract_tests
+      - name: Require Linux foreign-owner authority rejection
+        run: |
+          set -euo pipefail
+          sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v node)" --test \
+            --test-name-pattern='^a source config belonging to another owner is refused$' \
+            scripts/ops/tests/watch-henukit-actions.test.mjs
+          (
+            cd scripts/ops/tests
+            # Historical CLI test roots stay nonroot. Root only changes the
+            # exact private config FD used by the original ownership test.
+            sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v python3)" run_stack_root_gate.py
+            sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v python3)" -m unittest \
+              test_notice_url_transaction.NoticeURLTests.test_linux_original_source_profile_accepts_only_exact_foreign_deploy_owner -v
+          )
       - name: Reject Account mock and fallback sources
         run: node scripts/ops/check-account-production-boundary.mjs
 

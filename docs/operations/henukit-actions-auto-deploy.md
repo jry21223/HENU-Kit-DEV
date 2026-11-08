@@ -118,6 +118,147 @@ active aliases, service image set, full activation marker, mandatory product
 checks and private release evidence to agree. Do not call Ping or HTTP 202 a
 deployment.
 
+### Active aliases are part of the existing activation transaction
+
+The versioned topology is a fixed, root-owned outer symlink
+`/opt/henukit-current → /opt/henukit/current` and a mutable, root-owned inner
+symlink `/opt/henukit/current → /opt/henukit-releases/<accepted SHA>`.
+Both paths must resolve to the extracted fixed-SHA directory whose `RELEASE_SHA`
+agrees with the running release and full activation marker. The watcher and
+stack transition update only the inner link. This keeps the existing scheduler's
+`ProtectSystem=strict` and writable `/opt/henukit` boundary; it never requests
+writable access to the parent `/opt`.
+
+An operator-installed, regular root-owned `0400` file at
+`<state>/active-alias-contract.json` is mandatory. Its exact schema is:
+
+```text
+format: henukit-active-alias-forwarder-v1
+release_root: absolute canonical release directory
+inner: absolute canonical mutable link path
+outer: absolute canonical fixed link path
+outer_snapshot: dev, ino, uid, gid, mode and exact raw text of the outer symlink
+parents: exact dev, ino, uid, gid and mode for both link parents
+```
+
+No command in this release bootstraps, adopts or repairs that contract. Missing
+authority, another schema, two legacy direct links, replaced outer inodes or
+changed protected parents stop activation. The activator checks the contract
+before remote gateway/environment/approval writes; the scheduler checks it before
+recording a new attempt. A marker alone cannot justify an already-active return
+or success audit. These checks do not enable another publisher, retry a failed
+automatic attempt, or consume the retired source queue.
+
+The existing automatic path retains `direct-deploy.lock → watcher.lock` order.
+Within the watcher, the state-directory FD (shared with baseline adoption) and
+the original source-deployment protocol lock are held until the invocation
+finishes. Do not acquire the direct lock again after the watcher lock. The
+source config remains `/etc/henukit-deploy/deploy.env`; its literal lock setting
+must agree with `/run/lock/henukit-deploy.lock`. That existing empty lock must
+keep the deployed `henukit-deploy` account's owner/group and mode `0640`.
+The watcher and stack transition check and hold it; neither creates, unlinks,
+chowns or repairs it.
+If the protocol file, account, config, or its identity is unavailable, stop and
+resolve that readiness failure through the original operator procedure. Do not
+start the retired runner or edit its queue to make the check pass. Python 3 is
+required; the private transaction runs in isolated interpreter mode.
+
+The original eight-line rollback contract remains unchanged. A separate private
+`<state>/active-aliases/<candidate>/<contract-identity>/` journal binds its exact
+inode/hash, candidate/previous release authority, watcher source, source lock,
+versioned topology contract identity/hash and the original inner snapshot.
+The original rollback contract file and its parent directories are synchronized
+before the alias intent. The exact original approval inode/content is bound to
+that intent. Consumption synchronizes the consumed file and both approval
+directories, then durably records `activation-started` before image loads or
+the deployment helper. A newly created same-SHA approval cannot replay a pending
+attempt whose original approval has already been consumed.
+
+Each temporary inner symlink inode is recorded and synchronized **before** its
+atomic replacement; the parent is synchronized on initial execution and resume.
+One inner rename makes both resolved paths change together. Only after runtime
+acceptance and durable alias publication can the full activation marker be
+atomically written/synchronized, the rollback contract complete, and the
+scheduler publish success. The stack transition keeps its original receipt and
+adds private prepared-inode journals for its inner commit and rollback; it pins
+the same topology authority and preserves the fixed outer inode.
+
+For an interruption, first read the original pending contract, journal and live
+runtime. Use the existing reviewed watcher reconciliation path for that attempt;
+do not rerun a build or issue a new activation to guess its outcome. A candidate
+already running can finish its owned metadata without another deployment.
+Third targets, foreign inodes and changed authority stop reconciliation and
+retain the evidence. A new exact-SHA approval after a completed rollback obtains
+a distinct contract identity; it does not overwrite the old journal. An already
+published unresolved attempt must be reconciled before a new approval can cause
+another deployment.
+
+A normal rollback verifies the actual previous runtime, restores only the inner
+link owned by that transaction and records the verified previous marker. Explicit
+degraded-baseline recovery keeps its original weaker *health* claim: it restores
+the known image/link baseline and preserves the prior full-activation marker;
+it does not promote an unhealthy baseline to a successful full activation.
+Historical failed automatic audits remain immutable after manual reconciliation.
+Report the subsequent journal/rollback outcome as additional evidence rather
+than relabeling the failed scheduling attempt.
+
+### Legacy migration is a separate operator action
+
+Installing these source files alone does not migrate a live direct-link setup.
+Before any production bootstrap, review and authorize the topology change,
+inspect the installed service/drop-ins and every alias writer, reconcile all
+pending full/scoped work, and prove the current runtime/marker/direct links agree.
+Use the original direct → watcher → directory → source leases. A separately
+reviewed bootstrap must persist the original outer target/identity and prepared
+replacement inode, replace only that owned outer link, synchronize `/opt`, then
+install and synchronize the immutable contract under the existing private state
+directory. Runtime containers and the inner link remain unchanged. Do not modify
+the service sandbox, directory ownership/mode, credentials or old source queue.
+
+Before a subsequent activation, an owned bootstrap may be reverted only by its
+saved exact inode/hash proof; preserve foreign objects and stop. After activation,
+normal runtime rollback preserves the fixed outer link and restores the verified
+previous inner target/marker. Do not use bootstrap rollback to undo later work.
+Historical direct-link acceptance records and their validator remain historical;
+accept the new topology under its distinct versioned contract. Unresolved legacy
+transition receipts must be reconciled before bootstrap, not silently rewritten
+to claim the new authority.
+
+The existing explicit `--recover-transition` for the originally pinned failed
+transition remains available **before** migration. It retains the original
+receipt/helper SHA, attested historical bytes, successor Actions/recovery proof
+and all original rollback gates. It may restore the original two protected
+direct links only when the versioned contract is truly absent (including no
+dangling symlink) and neither `<state>/active-alias-bootstrap` nor the new
+`<state>/active-aliases` journal path exists. Any present, malformed, dangling or
+started migration authority blocks this legacy writer. Ordinary activation never
+uses this fallback, and no historical receipt gains fabricated new fields.
+
+The separately approved bootstrap must establish the fixed private
+`<state>/active-alias-bootstrap` path and durably record its intent and prepared
+inode before the first outer rename. Write the terminal receipt in that same
+path only after the outer link and contract are synchronized and live acceptance
+passes. The path is a downgrade fence even if the contract is
+later missing. Do not remove it to enable legacy recovery. The earlier one-time
+metadata-reconciliation records under `alias-completions` preserve the old direct
+topology; they are not a forwarder bootstrap. New normal and rollback writers
+always retain the fixed outer inode and use their own exact prepared inner inode.
+
+After an audited legacy recovery completes, a normal new preflight may verify
+that historical terminal evidence read-only under the new contract. It still
+verifies the pinned helper, original recovery audit/proof, actual restored runtime
+and complete current alias chain. The new intent links the old receipt/audit
+hashes to the current topology contract identity and inner snapshot. This verifier
+cannot execute recovery writes or change the old receipt; the legacy writer
+remains unavailable after migration.
+
+Permission regression tests probe the actual fixture filesystem before setting
+SUID/SGID. A Mac filesystem that immediately strips a requested special bit can
+report that specific case as unavailable; this is not a passing security check.
+Linux and CI must support and run both cases, or fail the gate. The normal mode,
+foreign-byte, backup and proof checks still run on the Mac. Production acceptance
+requires the full supported-filesystem gate; local skips cannot authorize release.
+
 ## Failure, interruption and shutdown
 
 The scheduler synchronizes immutable `<sha>.attempted.json` before calling the

@@ -9,6 +9,7 @@ mode=""
 usage() {
   cat >&2 <<'EOF'
 usage: watch-henukit-actions.sh --once|--watch
+       watch-henukit-actions.sh --notice-url <apply|reconcile|restore|accept> --sha <active-sha> --plan <private-plan> [--evidence <private-evidence>]
        watch-henukit-actions.sh --once \
          --recover-degraded-baseline <full-current-sha>
        watch-henukit-actions.sh --local-artifacts <artifact-dir> --sha <full-main-sha>
@@ -43,6 +44,14 @@ Optional configuration:
   HENUKIT_IMAGE_INVENTORY Trusted canonical image inventory beside this script
   HENUKIT_LOCAL_ARTIFACT_VERIFIER Trusted signed-artifact verifier beside this script
   HENUKIT_RELEASE_SIGNERS_FILE Root-managed allowed-signers file for local artifacts
+  HENUKIT_CURRENT_LINK    Fixed outer alias (default: /opt/henukit-current)
+  HENUKIT_COMPAT_CURRENT_LINK Mutable inner alias (default: /opt/henukit/current)
+  HENUKIT_SOURCE_DEPLOY_LOCK Original source protocol lock (default: /run/lock/henukit-deploy.lock)
+  HENUKIT_SOURCE_DEPLOY_CONFIG Original private source config (default: /etc/henukit-deploy/deploy.env)
+                         Overrides require a completely isolated private root;
+                         production paths cannot be mixed with test overrides.
+                         An operator-installed active-alias-forwarder-v1
+                         contract is mandatory; this command never migrates links
 EOF
 }
 
@@ -58,8 +67,24 @@ die() {
 local_artifact_dir=""
 local_release_sha=""
 recovery_baseline_sha=""
+notice_url_action=""
+notice_url_sha=""
+notice_url_plan="${HENUKIT_NOTICE_URL_PLAN:-}"
+notice_url_evidence=""
 if [[ $# -eq 1 && ( "$1" == "--once" || "$1" == "--watch" ) ]]; then
   mode="$1"
+elif [[ ( $# -eq 6 || $# -eq 8 ) && "$1" == "--notice-url" && "$3" == "--sha" && "$5" == "--plan" ]]; then
+  mode="--notice-url"
+  notice_url_action="$2"; notice_url_sha="$4"; notice_url_plan="$6"
+  [[ "$notice_url_sha" =~ ^[0-9a-f]{40}$ && ( "$notice_url_action" == "apply" ||
+      "$notice_url_action" == "reconcile" || "$notice_url_action" == "restore" || "$notice_url_action" == "accept" ) ]] ||
+    die "invalid Notice URL mode or SHA"
+  if [[ $# -eq 8 ]]; then
+    [[ "$notice_url_action" == "accept" && "$7" == "--evidence" ]] || { usage; exit 64; }
+    notice_url_evidence="$8"
+  else
+    [[ "$notice_url_action" != "accept" ]] || { usage; exit 64; }
+  fi
 elif [[ $# -eq 3 && "$1" == "--once" &&
         "$2" == "--recover-degraded-baseline" ]]; then
   mode="--once"
@@ -125,6 +150,13 @@ image_inventory="${HENUKIT_IMAGE_INVENTORY:-$script_dir/henukit-release-images.s
 local_artifact_verifier="${HENUKIT_LOCAL_ARTIFACT_VERIFIER:-$script_dir/verify-henukit-local-release.sh}"
 release_signers_file="${HENUKIT_RELEASE_SIGNERS_FILE:-/etc/henukit/release-signers}"
 current_release_link="${HENUKIT_CURRENT_LINK:-/opt/henukit-current}"
+compatibility_release_link="${HENUKIT_COMPAT_CURRENT_LINK:-/opt/henukit/current}"
+source_deploy_lock="${HENUKIT_SOURCE_DEPLOY_LOCK:-/run/lock/henukit-deploy.lock}"
+source_deploy_config="${HENUKIT_SOURCE_DEPLOY_CONFIG:-/etc/henukit-deploy/deploy.env}"
+source_deploy_identity=""
+notice_url_helper="${HENUKIT_NOTICE_URL_HELPER:-$script_dir/henukit-notice-url-transaction.py}"
+[[ -z "$notice_url_plan" || -z "$recovery_baseline_sha" ]] ||
+  die "Notice URL change cannot be combined with degraded-baseline recovery"
 
 images=()
 load_images=()
@@ -175,6 +207,7 @@ command -v jq >/dev/null 2>&1 || die "jq is required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
 command -v systemctl >/dev/null 2>&1 || die "systemctl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+command -v python3 >/dev/null 2>&1 || die "python3 is required for durable active-alias transactions"
 
 file_mode() {
   stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
@@ -653,6 +686,11 @@ degraded_baseline_matches() {
   expected_target="$(cd "$release_root/$release_sha" 2>/dev/null && pwd -P)" || return 1
   actual_target="$(readlink -f "$current_release_link" 2>/dev/null)" || return 1
   [[ "$actual_target" == "$expected_target" ]] || return 1
+  degraded_baseline_images_match "$release_sha"
+}
+
+degraded_baseline_images_match() {
+  local release_sha="$1" image index service container actual_image
   for image in "${base_images[@]}"; do
     if [[ "$image" == "henukit-portal-summary" ]]; then
       if release_has_service "$release_sha" "portal-summary"; then
@@ -1024,12 +1062,331 @@ grant_account_operator_permissions() {
   log "Platform Core audited the Account Console permission grant for role $account_operator_role"
 }
 
+active_alias_transaction() {
+  python3 -I - "$1" "${2:-}" "${3:-}" "$state_root" "$release_root" \
+    "$compatibility_release_link" "$current_release_link" "$source_deploy_lock" \
+    "$source_deploy_config" "$source_deploy_identity" "${BASH_SOURCE[0]}" <<'ACTIVE_ALIAS_TRANSACTION'
+import fcntl, hashlib, json, os, pathlib, pwd, re, secrets, shlex, stat, sys
+
+mode, candidate, previous, state, releases, primary, secondary, source, config, source_identity, program = sys.argv[1:]
+state, releases, source, config = map(pathlib.Path, (state, releases, source, config))
+inner, outer = map(pathlib.Path, (primary, secondary))
+aliases = (inner,)
+uid = os.geteuid()
+anchor = pathlib.Path(os.path.commonpath([str(state), str(releases), str(inner.parent), str(outer.parent)]))
+
+def require(value, message):
+    if not value: raise RuntimeError(message)
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+def metadata(info):
+    return {"dev": info.st_dev, "ino": info.st_ino, "uid": info.st_uid, "gid": info.st_gid, "mode": stat.S_IMODE(info.st_mode)}
+def sync(directory):
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+def sync_file(path):
+    expected = metadata(trusted(path))
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        require(metadata(os.fstat(fd)) == expected, "durable authority file changed before sync")
+        os.fsync(fd)
+        require(metadata(path.lstat()) == expected, "durable authority file changed during sync")
+    finally: os.close(fd)
+paths = (state, releases, inner, outer, source, config)
+require(all(path.is_absolute() and ".." not in path.parts for path in paths) and inner != outer, "alias roots must be absolute and distinct")
+production = tuple(map(pathlib.Path, ("/var/lib/henukit-actions-watch", "/opt/henukit-releases", "/opt/henukit/current",
+    "/opt/henukit-current", "/run/lock/henukit-deploy.lock", "/etc/henukit-deploy/deploy.env")))
+if any(path == expected for path, expected in zip(paths, production)):
+    require(paths == production and uid == 0, "production aliases cannot be mixed with isolated overrides")
+else:
+    require(anchor != pathlib.Path("/") and anchor.lstat().st_uid == uid and stat.S_IMODE(anchor.lstat().st_mode) == 0o700,
+            "isolated alias roots require a private deployment root")
+def trusted(path, directory=False):
+    info = path.lstat()
+    require(info.st_uid == uid and not info.st_mode & 0o022 and
+            (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)), "untrusted alias authority path")
+    if path == anchor: return info
+    for parent in path.parents:
+        if parent == anchor: break
+        require(parent.is_relative_to(anchor), "alias authority escaped its root")
+        entry = parent.lstat()
+        require(stat.S_ISDIR(entry.st_mode) and entry.st_uid == uid and not entry.st_mode & 0o022, "untrusted alias parent")
+    return info
+def hashed(path):
+    trusted(path)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        result = hashlib.sha256(stream.read()).hexdigest()
+        after = os.fstat(stream.fileno())
+        require((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) ==
+                (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns), "alias authority changed while reading")
+    return result
+def snapshot(path):
+    trusted(path.parent, True)
+    info = path.lstat()
+    require(stat.S_ISLNK(info.st_mode) and info.st_uid == uid, "active alias must be an owned symlink")
+    return {**metadata(info), "text": os.readlink(path), "mtime_ns": info.st_mtime_ns}
+def alias_contract():
+    path = state / "active-alias-contract.json"
+    info = trusted(path)
+    require(stat.S_IMODE(info.st_mode) == 0o400, "active alias contract must be immutable")
+    value = json.loads(path.read_bytes())
+    require(set(value) == {"format", "release_root", "inner", "outer", "outer_snapshot", "parents"} and
+            value["format"] == "henukit-active-alias-forwarder-v1" and value["release_root"] == str(releases) and
+            value["inner"] == str(inner) and value["outer"] == str(outer), "active alias topology requires an explicit versioned bootstrap")
+    require(value["outer_snapshot"] == {**metadata(outer.lstat()), "text": os.readlink(outer)} and
+            snapshot(outer)["text"] == str(inner), "fixed outer alias identity changed")
+    require(set(value["parents"]) == {str(inner.parent), str(outer.parent)} and
+            all(metadata(trusted(pathlib.Path(parent), True)) == expected for parent, expected in value["parents"].items()),
+            "active alias topology parent changed")
+    return {"identity": metadata(info), "sha256": hashed(path)}
+def source_proof():
+    require(config.is_relative_to(anchor) and source.is_relative_to(anchor), "source coordination escaped its root")
+    info = trusted(config)
+    config_group = pwd.getpwnam("henukit-deploy").pw_gid if anchor == pathlib.Path("/") else os.getegid()
+    require(stat.S_IMODE(info.st_mode) in (0o400, 0o600) or
+            (stat.S_IMODE(info.st_mode) == 0o640 and info.st_gid == config_group),
+            "source deploy config differs from its protected authority profile")
+    configured = "/run/lock/henukit-deploy.lock"
+    for line in config.read_text().splitlines():
+        match = re.match(r"\s*(?:export\s+)?HENUKIT_DEPLOY_LOCK_FILE\s*=(.*)$", line)
+        if match:
+            values = shlex.split(match.group(1), comments=True)
+            require(len(values) == 1, "source lock configuration is not literal")
+            configured = values[0]
+    require(configured == str(source), "source protocol lock differs from its original config")
+    parent = source.parent.lstat()
+    if anchor == pathlib.Path("/"):
+        account = pwd.getpwnam("henukit-deploy")
+        owner, group = account.pw_uid, account.pw_gid
+        require(source == pathlib.Path("/run/lock/henukit-deploy.lock") and stat.S_ISDIR(parent.st_mode)
+                and parent.st_uid == 0 and stat.S_IMODE(parent.st_mode) == 0o1777, "original source lock parent changed")
+    else:
+        trusted(source.parent, True)
+        owner, group = uid, os.getegid()
+    info = source.lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == owner and info.st_gid == group
+            and stat.S_IMODE(info.st_mode) == 0o640 and info.st_size == 0, "original source protocol lock is unavailable")
+    return {"file": metadata(info), "parent": metadata(parent), "config_metadata": metadata(config.lstat()), "config_sha256": hashed(config),
+            "alias_contract": alias_contract()}
+
+trusted(state, True)
+trusted(releases, True)
+if mode == "source":
+    print(json.dumps(source_proof(), sort_keys=True)); sys.exit(0)
+frozen_source = json.loads(source_identity)
+def locks():
+    require(source_proof() == frozen_source, "source coordination identity changed")
+    for fd, path in ((9, state / "watcher.lock"), (6, state), (7, source)):
+        held, current = os.fstat(fd), path.lstat()
+        require(metadata(held) == metadata(current), "inherited deployment lock inode changed")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+locks()
+if mode == "locks": sys.exit(0)
+if mode == "sync":
+    for path in (state, state / "rollback-contracts/pending", state / "rollback-contracts/completed"):
+        trusted(path, True); sync(path)
+    sys.exit(0)
+require(re.fullmatch(r"[0-9a-f]{40}", candidate), "invalid active-alias release SHA")
+target = releases / candidate
+def release_proof(sha):
+    directory = releases / sha
+    trusted(directory, True)
+    marker, compose = directory / "RELEASE_SHA", directory / "docker-compose.henukit.release.yml"
+    result = {"directory": metadata(directory.lstat()), "marker_sha256": hashed(marker), "compose_sha256": hashed(compose)}
+    require(marker.read_text().strip() == sha, "active-alias target RELEASE_SHA differs")
+    return result
+release_proof(candidate)
+if mode == "check":
+    for path in aliases: require(snapshot(path)["text"] == str(target), "active aliases disagree with the accepted runtime")
+    sys.exit(0)
+base_namespace = state / "active-aliases" / candidate
+pending_contract = state / "rollback-contracts/pending" / candidate
+if mode == "sync-contract":
+    require(stat.S_IMODE(trusted(pending_contract).st_mode) == 0o400, "rollback contract must remain immutable")
+    require(f"candidate_sha={candidate}" in pending_contract.read_text().splitlines(), "durable rollback contract differs")
+    sync_file(pending_contract)
+    sync(pending_contract.parent)
+    sync(pending_contract.parent.parent)
+    sync(state)
+    sys.exit(0)
+if pending_contract.exists() or pending_contract.is_symlink():
+    contract_identity = metadata(trusted(pending_contract))
+    namespace = base_namespace / digest({"identity": contract_identity, "sha256": hashed(pending_contract)})
+else:
+    require(base_namespace.exists(), "active alias attempt evidence is missing")
+    trusted(base_namespace, True)
+    attempts = []
+    for path in base_namespace.iterdir():
+        trusted(path, True)
+        if not (path / "rolled-back.json").exists(): attempts.append(path)
+    require(len(attempts) == 1, "active alias attempt is ambiguous or already rolled back")
+    namespace = attempts[0]
+def read(name):
+    path = namespace / name
+    if not path.exists():
+        require(not path.is_symlink(), "alias audit is a dangling symlink"); return None
+    info = trusted(path)
+    require(stat.S_IMODE(info.st_mode) == 0o400, "alias audit lost its immutable mode")
+    return json.loads(path.read_bytes())
+def publish(name, value):
+    require(not (namespace / name).exists() and not (namespace / name).is_symlink(), "alias audit already exists")
+    temporary = namespace / (".audit-" + secrets.token_hex(12))
+    fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o400)
+    with os.fdopen(fd, "wb") as stream:
+        stream.write((json.dumps(value, sort_keys=True, indent=2) + "\n").encode()); stream.flush(); os.fsync(stream.fileno())
+    os.link(temporary, namespace / name, follow_symlinks=False); sync(namespace)
+    temporary.unlink(); sync(namespace)
+def approval_proof(path):
+    info = trusted(path)
+    require(stat.S_IMODE(info.st_mode) in (0o400, 0o600) and path.read_text().strip() == candidate,
+            "alias attempt has no exact private approval")
+    return {**metadata(info), "sha256": hashed(path)}
+
+intent = read("intent.json") if namespace.exists() else None
+if intent is None:
+    require(mode in ("prepare", "links") and re.fullmatch(r"[0-9a-f]{40}", previous or ""), "active alias publication has no persisted baseline")
+    before = {str(path): snapshot(path) for path in aliases}
+    require(all(value["text"] == str(releases / previous) for value in before.values()), "active aliases do not own the declared previous release")
+    contract = pending_contract
+    contract_sha = hashed(contract)
+    require(f"candidate_sha={candidate}" in contract.read_text().splitlines() and
+            f"previous_sha={previous}" in contract.read_text().splitlines(), "alias baseline differs from rollback contract")
+    for path in (namespace.parent.parent, namespace.parent, namespace):
+        if not path.exists(): path.mkdir(mode=0o700); sync(path.parent)
+        require(stat.S_IMODE(trusted(path, True).st_mode) == 0o700, "alias audit directory is not private")
+    intent = {"format": "henukit-active-alias-v2", "candidate": candidate, "previous": previous,
+        "writer_sha256": hashlib.sha256(pathlib.Path(program).read_bytes()).hexdigest(), "source": frozen_source,
+        "rollback_contract_sha256": contract_sha, "rollback_contract_identity": metadata(contract.lstat()), "before": before,
+        "approval": approval_proof(state / "approvals" / candidate),
+        "parents": {str(path.parent): metadata(path.parent.lstat()) for path in aliases},
+        "candidate_proof": release_proof(candidate), "previous_proof": release_proof(previous)}
+    publish("intent.json", intent)
+def verify():
+    locks()
+    require(intent.get("format") == "henukit-active-alias-v2" and re.fullmatch(r"[0-9a-f]{40}", intent.get("previous", ""))
+            and set(intent.get("before", {})) == {str(path) for path in aliases}, "unsupported active alias journal")
+    require(all(value["text"] == str(releases / intent["previous"]) for value in intent["before"].values()), "journal previous target escaped its release authority")
+    require(intent["candidate"] == candidate and intent["source"] == frozen_source and
+            intent["writer_sha256"] == hashlib.sha256(pathlib.Path(program).read_bytes()).hexdigest(), "active alias transaction identity changed")
+    require(not previous or previous == intent["previous"], "active alias baseline changed")
+    contracts = [pending_contract] if pending_contract.exists() or pending_contract.is_symlink() else list((state / "rollback-contracts/completed").glob(candidate + ".*"))
+    matches = [path for path in contracts if metadata(trusted(path)) == intent["rollback_contract_identity"]
+               and hashed(path) == intent["rollback_contract_sha256"]]
+    require(len(matches) == 1, "active alias attempt lost its exact rollback contract")
+    for parent, value in intent["parents"].items(): require(metadata(trusted(pathlib.Path(parent), True)) == value, "active alias parent changed")
+    require(release_proof(candidate) == intent["candidate_proof"] and release_proof(intent["previous"]) == intent["previous_proof"], "active alias release authority changed")
+def known(index, current):
+    candidates = [intent["before"][str(aliases[index])]]
+    for prefix in ("prepared", "restore-prepared"):
+        record = read(f"{prefix}-{index}.json")
+        if record: candidates.append(record["link"])
+    return current in candidates
+def change(index, destination, restoring=False):
+    path = aliases[index]
+    before = snapshot(path)
+    require(known(index, before), "foreign active alias inode; refusing replacement")
+    prefix = "restore-prepared" if restoring else "prepared"
+    record = read(f"{prefix}-{index}.json")
+    if record is None:
+        temporary = path.parent / (".henukit-active-" + secrets.token_hex(12))
+        temporary.symlink_to(destination)
+        original = intent["before"][str(path)]
+        if temporary.lstat().st_gid != original["gid"]: os.lchown(temporary, uid, original["gid"])
+        sync(path.parent)
+        record = {"path": str(temporary), "link": snapshot(temporary)}
+        publish(f"{prefix}-{index}.json", record)
+    temporary = pathlib.Path(record["path"])
+    require(temporary.parent == path.parent and temporary.name.startswith(".henukit-active-") and record["link"]["text"] == destination, "prepared active alias identity differs")
+    if before != record["link"]:
+        require(temporary.is_symlink() and snapshot(temporary) == record["link"], "prepared active alias inode unavailable")
+        verify(); require(snapshot(path) == before, "active alias changed before replacement")
+        os.replace(temporary, path)
+    sync(path.parent)
+    require(snapshot(path) == record["link"], "active alias replacement ownership unproved")
+    name = f"{'restored' if restoring else 'applied'}-{index}.json"
+    if read(name) is None: publish(name, {"link": snapshot(path)})
+verify()
+if mode == "unconsumed":
+    require(read("activation-started.json") is None and
+            approval_proof(state / "approvals" / candidate) == intent["approval"],
+            "pending approval is not the original unconsumed approval")
+    sys.exit(0)
+if mode == "consumed":
+    require(read("activation-started.json") is None, "consumed activation attempt cannot be replayed")
+    expected = {key: value for key, value in intent["approval"].items() if key != "mode"}
+    consumed = []
+    for path in (state / "approvals/consumed").glob(candidate + ".*"):
+        proof = approval_proof(path)
+        if {key: value for key, value in proof.items() if key != "mode"} == expected:
+            require(proof["mode"] == 0o400, "consumed approval lost its immutable mode")
+            consumed.append((path, proof))
+    require(len(consumed) == 1, "activation lost its exact original consumed approval")
+    path, proof = consumed[0]
+    sync_file(path)
+    sync(path.parent)
+    sync(path.parent.parent)
+    sync(state)
+    publish("activation-started.json", {"intent_sha256": digest(intent), "approval_path": str(path), "approval": proof})
+    sys.exit(0)
+if mode == "prepare":
+    require(not any(read(name) is not None for name in ("completed.json", "rolled-back.json", "prepared-0.json", "prepared-1.json",
+                "restore-prepared-0.json", "restore-prepared-1.json")), "published active alias attempt requires reconciliation before any new activation")
+    require(read("activation-started.json") is None and approval_proof(state / "approvals" / candidate) == intent["approval"],
+            "activation requires its original unconsumed approval")
+    require(all(snapshot(path) == intent["before"][str(path)] for path in aliases), "alias baseline changed before activation")
+    sys.exit(0)
+if read("rolled-back.json"):
+    require(mode in ("restore", "restore-aliases"), "rolled-back active alias attempt cannot be replayed")
+if mode in ("links", "marker"):
+    require(not read("rolled-back.json"), "rolled-back alias transaction cannot activate")
+    if mode == "links":
+        for index, path in enumerate(aliases): change(index, str(target))
+    for index, path in enumerate(aliases):
+        require(snapshot(path)["text"] == str(target) and known(index, snapshot(path)), "active alias pair is incomplete or foreign")
+elif mode in ("restore", "restore-aliases"):
+    require(all(known(index, snapshot(path)) for index, path in enumerate(aliases)), "foreign alias prevents all rollback writes")
+    for index in reversed(range(len(aliases))):
+        path = aliases[index]
+        if snapshot(path)["text"] != intent["before"][str(path)]["text"]:
+            change(index, intent["before"][str(path)]["text"], True)
+    target = releases / intent["previous"]
+    require(all(snapshot(path)["text"] == str(target) and known(index, snapshot(path)) for index, path in enumerate(aliases)), "rollback alias pair did not converge")
+else: require(mode == "prepare", "unknown active alias transaction action")
+if mode in ("marker", "restore", "restore-aliases"):
+    verify()
+    marker = state / "last-activated-sha"
+    if mode != "restore-aliases" and (not marker.exists() or marker.read_text().strip() != target.name):
+        temporary = state / (".active-marker-" + secrets.token_hex(12))
+        fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write((target.name + "\n").encode()); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, marker)
+    sync(state)
+    name = "completed.json" if mode == "marker" else "rolled-back.json"
+    if read(name) is None: publish(name, {"intent_sha256": digest(intent), "active": target.name,
+        "full_marker_preserved": mode == "restore-aliases", "after": {str(path): snapshot(path) for path in aliases}})
+ACTIVE_ALIAS_TRANSACTION
+}
+
 record_activation() {
   local release_sha="$1"
-  local temporary="$state_root/.last-activated-sha.$$"
-  printf '%s\n' "$release_sha" > "$temporary"
-  chmod 0600 "$temporary"
-  mv "$temporary" "$state_root/last-activated-sha"
+  verify_active_release "$release_sha" || die "active-alias publication requires a verified running release"
+  if [[ ! -e "$state_root/active-aliases/$release_sha" &&
+        ! -e "$state_root/rollback-contracts/pending/$release_sha" &&
+        -f "$state_root/last-activated-sha" &&
+        "$(tr -d '\r\n' < "$state_root/last-activated-sha")" == "$release_sha" ]]; then
+    trusted_root_file "$state_root/last-activated-sha" "activation marker"
+    [[ "$(file_mode "$state_root/last-activated-sha")" == 600 || "$(file_mode "$state_root/last-activated-sha")" == 400 ]] ||
+      die "activation marker must remain private"
+    active_alias_transaction check "$release_sha" || die "recorded active aliases require reconciliation"
+    return 0
+  fi
+  active_alias_transaction links "$release_sha" "${rollback_contract_previous_sha:-}" || die "active-alias publication requires reconciliation"
+  verify_active_release "$release_sha" || die "runtime changed before the durable activation marker"
+  active_alias_transaction marker "$release_sha" "${rollback_contract_previous_sha:-}" || die "durable active-alias marker did not converge"
   complete_rollback_state_contract "$release_sha" ||
     die "could not complete rollback state contract for activated release $release_sha"
 }
@@ -1239,6 +1596,8 @@ consume_approval() {
   release_is_approved "$release_sha" || die "exact-SHA approval disappeared before activation"
   mv "$approval" "$consumed"
   chmod 0400 "$consumed"
+  active_alias_transaction consumed "$release_sha" ||
+    die "original approval consumption requires reconciliation before activation"
 }
 
 require_activation_disk_headroom() {
@@ -1305,7 +1664,8 @@ persist_rollback_state_contract() {
   if [[ -e "$target" ]]; then
     rollback_state_contract_matches \
       "$target" "$candidate_sha" "$previous_sha" "$path_state" "$deploy_state" \
-      "$contract_mode" "$compose_sha" "$env_sha" "$materials_sha"
+      "$contract_mode" "$compose_sha" "$env_sha" "$materials_sha" || return 1
+    active_alias_transaction sync-contract "$candidate_sha"
     return
   fi
   umask 077
@@ -1321,6 +1681,7 @@ persist_rollback_state_contract() {
   } > "$incoming"
   chmod 0400 "$incoming"
   mv "$incoming" "$target"
+  active_alias_transaction sync-contract "$candidate_sha"
 }
 
 load_rollback_state_contract() {
@@ -1366,6 +1727,7 @@ complete_rollback_state_contract() {
     sequence=$((sequence + 1))
   done
   mv "$pending" "$completed" || return 1
+  active_alias_transaction sync || return 1
   if [[ "$pending_approved_release_sha" == "$candidate_sha" ]]; then
     pending_approved_release_sha=""
   fi
@@ -1691,7 +2053,20 @@ capture_rollback_contract() {
     "$rollback_contract_materials_path_state" "$rollback_contract_deploy_webhook_state" \
     normal \
     "$rollback_contract_compose_sha" "$rollback_contract_env_sha" \
-    "$rollback_contract_materials_sha"
+    "$rollback_contract_materials_sha" || return 1
+  active_alias_transaction prepare "$candidate_sha" "$previous_sha"
+}
+
+notice_url_transaction() {
+  local action="$1" sha="$2"
+  trusted_root_file "$notice_url_helper" "Notice URL transaction helper"
+  trusted_root_parent_chain "$notice_url_helper" "Notice URL transaction helper"
+  local args=(--mode "$action" --sha "$sha" --env-file "$env_file" --state-root "$state_root"
+    --release-root "$release_root" --inner "$compatibility_release_link" --outer "$current_release_link"
+    --source-lock "$source_deploy_lock" --plan "$notice_url_plan")
+  [[ "$action" != "stage" ]] || args+=(--baseline-env "$rollback_env_file")
+  [[ -z "$notice_url_evidence" ]] || args+=(--evidence "$notice_url_evidence")
+  python3 -I "$notice_url_helper" "${args[@]}"
 }
 
 degraded_rollback_contract_is_ready() {
@@ -1735,7 +2110,8 @@ capture_degraded_rollback_contract() {
     "$rollback_contract_materials_path_state" "$rollback_contract_deploy_webhook_state" \
     degraded \
     "$rollback_contract_compose_sha" "$rollback_contract_env_sha" \
-    "$rollback_contract_materials_sha"
+    "$rollback_contract_materials_sha" || return 1
+  active_alias_transaction prepare "$candidate_sha" "$previous_sha"
 }
 
 rollback_release() {
@@ -1764,6 +2140,7 @@ rollback_release() {
   if verify_active_release "$previous_sha"; then
     restore_materials_runtime_backup "$candidate_sha" || return 1
     restore_materials_control_plane || return 1
+    active_alias_transaction restore "$candidate_sha" "$previous_sha" || return 1
     log "release $previous_sha remained active; rollback needs no container replacement"
     return 0
   fi
@@ -1778,7 +2155,8 @@ rollback_release() {
   "${rollback_compose[@]}" up -d --remove-orphans || return 1
   restore_materials_runtime_backup "$candidate_sha" || return 1
   restore_materials_control_plane || return 1
-  wait_for_active_release "$previous_sha"
+  wait_for_active_release "$previous_sha" || return 1
+  active_alias_transaction restore "$candidate_sha" "$previous_sha"
 }
 
 rollback_release_is_ready() {
@@ -1859,6 +2237,8 @@ restore_degraded_baseline() {
   [[ -x "$previous_helper" ]] || return 1
   log "restoring known degraded baseline $previous_sha"
   "$previous_helper" "$previous_dir" "$rollback_env_file" || return 1
+  degraded_baseline_images_match "$previous_sha" || return 1
+  active_alias_transaction restore-aliases "$rollback_contract_candidate_sha" "$previous_sha" || return 1
   degraded_baseline_matches "$previous_sha"
 }
 
@@ -2015,6 +2395,11 @@ deploy_release() {
     previous_sha="$(current_release_sha 2>/dev/null || true)"
     rollback_release_is_ready "$previous_sha" ||
       die "no healthy fixed-SHA rollback release is ready; refusing production activation"
+    # Original activator has already made its private full-env backup. Keep the
+    # single ordinary URL preimage independently before binding normal rollback.
+    if [[ -n "$notice_url_plan" ]]; then
+      notice_url_transaction stage "$release_sha" || die "Notice URL stage requires reconciliation"
+    fi
     capture_rollback_contract "$previous_sha" "$release_sha" ||
       die "candidate and previous releases do not satisfy the exact rollback contract; refusing production activation"
   fi
@@ -2075,6 +2460,13 @@ deploy_release() {
     ensure_degraded_recovery_audit "$release_sha" "$previous_sha" activated activated
   fi
   record_activation "$release_sha"
+  if [[ -n "$notice_url_plan" ]]; then
+    # Activation is already committed. Returning failure here would make the
+    # outer activator restore its temporary whole-env copy underneath the new
+    # healthy containers. Keep this independent receipt pending for reconciliation.
+    notice_url_transaction health "$release_sha" ||
+      log "release active; Notice URL receipt requires explicit reconciliation before business acceptance"
+  fi
   log "release $release_sha activated and deterministic smoke checks passed; manual acceptance remains"
 }
 
@@ -2098,13 +2490,16 @@ reconcile_pending_rollback_contract() {
     activation_record="$(tr -d '[:space:]' < "$state_root/last-activated-sha")"
   fi
   if [[ "$activation_record" == "$candidate_sha" ]]; then
-    complete_rollback_state_contract "$candidate_sha" ||
-      die "activated release has an incomplete rollback contract"
+    load_rollback_state_contract "$candidate_sha" ||
+      die "activated release has an invalid pending rollback contract"
+    record_activation "$candidate_sha"
     rollback_reconciliation_handled="1"
     return 0
   fi
-  if release_is_approved "$candidate_sha"; then
-    # The exact approval still exists, so activation has not consumed it yet.
+  if release_is_approved "$candidate_sha" &&
+     active_alias_transaction unconsumed "$candidate_sha" >/dev/null 2>&1; then
+    # Resume only the exact original approval inode before consumption. A new
+    # same-SHA approval cannot replay an interrupted migration/helper attempt.
     pending_approved_release_sha="$candidate_sha"
     return 0
   fi
@@ -2255,6 +2650,26 @@ acknowledge_quiesce() {
   chmod 0600 "$incoming"
   mv "$incoming" "$quiesced_file"
 }
+
+source_deploy_identity="$(active_alias_transaction source)" || die "original source coordination is unavailable"
+exec 6<"$state_root"
+flock -n 6 || die "baseline adoption holds the release state lock"
+exec 7<"$source_deploy_lock"
+flock -n 7 || die "original source deployment holds its protocol lock"
+active_alias_transaction locks || die "inherited release coordination changed"
+
+if [[ "$mode" == "--notice-url" ]]; then
+  # Only the accepted fixed runtime and this one ordinary key are reconciled.
+  # Do not invoke verify_active_release: its legacy full smoke includes POSTs.
+  notice_active_sha="$(tr -d '\r\n' < "$state_root/last-activated-sha")"
+  [[ "$notice_active_sha" =~ ^[0-9a-f]{40}$ ]] || die "Notice URL requires an accepted active release marker"
+  active_alias_transaction check "$notice_active_sha" || die "active aliases need original owner reconciliation"
+  if [[ "$notice_url_action" == "apply" ]]; then
+    [[ "$(github_branch_head)" == "$notice_url_sha" ]] || die "Notice URL target is no longer current main"
+  fi
+  notice_url_transaction "$notice_url_action" "$notice_url_sha"
+  exit 0
+fi
 
 if [[ "$mode" == "--local-artifacts" ]]; then
   check_local_artifacts

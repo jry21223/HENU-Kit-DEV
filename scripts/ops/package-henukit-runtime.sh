@@ -202,6 +202,7 @@ for helper in \
   deploy-henukit-portal-successor.py \
   deploy-henukit-account-membership.py \
   deploy-henukit-stack-transition.py \
+  henukit-notice-url-transaction.py \
   deploy-henukit-artifact.sh \
   watch-henukit-actions.sh \
   auto-deploy-henukit-actions.sh \

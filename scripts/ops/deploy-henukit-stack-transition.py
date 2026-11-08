@@ -14,9 +14,12 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import secrets
 import shutil
+import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -182,8 +185,199 @@ class Release(engine.Release):
     state_scope = "stack-transition"
     receipt_format = FORMAT
 
-    def __init__(self, options):
+    @staticmethod
+    def alias_metadata(path):
+        info = path.lstat()
+        return dict(dev=info.st_dev, ino=info.st_ino, uid=info.st_uid,
+                    gid=info.st_gid, mode=stat.S_IMODE(info.st_mode))
+
+    def alias_snapshot(self, path):
+        self.trusted_directory(path.parent)
+        require(path.is_symlink() and path.lstat().st_uid == self.uid, "full alias is not an owned symlink")
+        return {**self.alias_metadata(path), "text": os.readlink(path), "mtime_ns": path.lstat().st_mtime_ns}
+
+    def alias_contract(self):
+        path = self.watch / "active-alias-contract.json"
+        inner, outer = self.path("/opt/henukit/current"), self.path("/opt/henukit-current")
+        self.trusted(path, private=True)
+        require(stat.S_IMODE(path.lstat().st_mode) == 0o400, "full alias contract must be immutable")
+        value = json.loads(path.read_bytes())
+        require(set(value) == {"format", "release_root", "inner", "outer", "outer_snapshot", "parents"}
+                and value["format"] == "henukit-active-alias-forwarder-v1"
+                and (value["release_root"], value["inner"], value["outer"]) ==
+                    tuple(map(str, (self.path("/opt/henukit-releases"), inner, outer))),
+                "full alias topology requires an explicit versioned bootstrap")
+        require(value["outer_snapshot"] == {**self.alias_metadata(outer), "text": os.readlink(outer)}
+                and self.alias_snapshot(outer)["text"] == str(inner), "fixed outer full alias changed")
+        for parent in (inner.parent, outer.parent):
+            self.trusted_directory(parent)
+        require(value["parents"] == {str(p): self.alias_metadata(p) for p in (inner.parent, outer.parent)},
+                "full alias parent identity changed")
+        return {"identity": self.alias_metadata(path), "sha256": engine.digest(path), "source": self.alias_source_proof()}
+
+    def alias_source_proof(self):
+        config = self.path("/etc/henukit-deploy/deploy.env")
+        source = self.path("/run/lock/henukit-deploy.lock")
+        self.trusted(config)
+        config_info = config.lstat()
+        config_group = pwd.getpwnam("henukit-deploy").pw_gid if self.prefix == Path("/") else os.getegid()
+        require(stat.S_IMODE(config_info.st_mode) in (0o400, 0o600) or
+                (stat.S_IMODE(config_info.st_mode) == 0o640 and config_info.st_gid == config_group),
+                "source deploy config differs from its protected authority profile")
+        configured = "/run/lock/henukit-deploy.lock"
+        for line in config.read_text().splitlines():
+            match = re.match(r"\s*(?:export\s+)?HENUKIT_DEPLOY_LOCK_FILE\s*=(.*)$", line)
+            if match:
+                values = shlex.split(match.group(1), comments=True)
+                require(len(values) == 1, "source lock config is not literal")
+                configured = values[0]
+        require(configured == str(source), "source protocol lock differs from its original config")
+        info, parent = source.lstat(), source.parent.lstat()
+        if self.prefix == Path("/"):
+            account = pwd.getpwnam("henukit-deploy")
+            owner, group = account.pw_uid, account.pw_gid
+            require(stat.S_ISDIR(parent.st_mode) and parent.st_uid == 0 and stat.S_IMODE(parent.st_mode) == 0o1777,
+                    "source lock parent differs")
+        else:
+            self.trusted_directory(source.parent)
+            owner, group = self.uid, os.getegid()
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == owner and info.st_gid == group
+                and stat.S_IMODE(info.st_mode) == 0o640 and info.st_size == 0, "original source lock is unavailable")
+        return {"file": self.alias_metadata(source), "parent": self.alias_metadata(source.parent),
+                "config": self.alias_metadata(config), "config_sha256": engine.digest(config)}
+
+    @contextlib.contextmanager
+    def lock_watcher(self):
+        # Keep the original outer direct→watcher protocol, then coordinate with
+        # the existing directory adopter and retired source writer. Never create
+        # or change their lock files, users, services or queue.
+        with super().lock_watcher():
+            frozen = self.alias_source_proof()
+            held = []
+            try:
+                for path, directory in ((self.watch, True), (self.path("/run/lock/henukit-deploy.lock"), False)):
+                    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | (os.O_DIRECTORY if directory else 0))
+                    held.append((fd, path))
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    current = path.lstat()
+                    require((os.fstat(fd).st_dev, os.fstat(fd).st_ino) == (current.st_dev, current.st_ino), "full alias lease identity changed")
+                require(self.alias_source_proof() == frozen, "source coordination changed before lease")
+                self._alias_leases = [(fd, path, self.alias_metadata(path)) for fd, path in held]
+                yield
+            finally:
+                self._alias_leases = []
+                for fd, _ in reversed(held): os.close(fd)
+
+    def alias_journal(self, name):
+        path = self.record.parent / name
+        if not path.exists():
+            require(not path.is_symlink(), "full alias journal is a dangling symlink")
+            return None
+        self.trusted(path, private=True)
+        require(stat.S_IMODE(path.lstat().st_mode) == 0o400, "full alias journal lost immutable mode")
+        return json.loads(path.read_bytes())
+
+    def verify_alias_authority(self, data):
+        for fd, path, frozen in getattr(self, "_alias_leases", []):
+            current = os.fstat(fd)
+            held = dict(dev=current.st_dev, ino=current.st_ino, uid=current.st_uid, gid=current.st_gid, mode=stat.S_IMODE(current.st_mode))
+            require(held == frozen == self.alias_metadata(path), "full alias lease authority changed")
+        if self.terminal_alias_authority is not None:
+            authority = self.terminal_alias_authority
+            self.pinned_receipt(data)
+            require(data["status"] == "rolled_back" and self.recovery_authority,
+                    "read-only historical verification requires a completed pinned recovery")
+            self.recovery_unchanged(data)
+            require(engine.digest(self.record) == authority["receipt_sha256"]
+                    and engine.digest(Path(authority["audit"])) == authority["audit_sha256"]
+                    and self.alias_contract() == authority["alias_contract"],
+                    "historical evidence or bootstrap identity changed")
+            inner, outer = self.path("/opt/henukit/current"), self.path("/opt/henukit-current")
+            current = self.alias_snapshot(inner)
+            require(current["text"] == data["baseline_runtime"] and str(outer.resolve()) == data["baseline_runtime"],
+                    "versioned aliases do not own the recovered historical baseline")
+            return current
+        if self.legacy_alias_recovery(data):
+            return None
+        require(self.alias_contract() == data.get("alias_contract"), "full alias contract changed or legacy receipt needs migration")
+        current = self.alias_snapshot(self.path("/opt/henukit/current"))
+        known = [data["full_alias_before"]]
+        for name in ("full-alias-commit.json", "full-alias-rollback.json"):
+            record = self.alias_journal(name)
+            if record:
+                require(record["binding"] == self.alias_binding(data), "full alias journal belongs to another transition")
+                known.append(record["link"])
+        require(current in known, "foreign full alias inode prevents transition writes")
+        return current
+
+    def legacy_alias_recovery(self, data):
+        require(self.terminal_alias_authority is None, "read-only history cannot authorize legacy writes")
+        if "alias_contract" in data or "full_alias_before" in data:
+            return False
+        require(self.recovery, "legacy receipt requires the original explicit pinned recovery")
+        for path in (self.watch / "active-alias-contract.json", self.watch / "active-alias-bootstrap", self.watch / "active-aliases"):
+            # lstat also rejects dangling links and propagates access/I/O errors;
+            # deleting the contract cannot downgrade a started migration.
+            try: path.lstat()
+            except FileNotFoundError: pass
+            else: raise engine.ReleaseError("legacy recovery is forbidden after alias migration authority exists")
+        self.pinned_receipt(data)
+        require(self.recovery_authority, "legacy recovery has no verified immutable authority")
+        self.recovery_unchanged(data)
+        for path in (self.path("/opt/henukit/current"), self.path("/opt/henukit-current")):
+            snapshot = self.alias_snapshot(path)
+            require(snapshot["text"] in (data["baseline_runtime"], data["runtime"]),
+                    "legacy recovery requires the original protected direct aliases")
+        return True
+
+    @staticmethod
+    def alias_binding(data):
+        return hashlib.sha256(json.dumps({key: data[key] for key in
+            ("sha", "run_id", "helper_sha256", "alias_contract", "full_alias_before", "baseline_runtime", "runtime")}, sort_keys=True).encode()).hexdigest()
+
+    def publish_full_alias(self, data, target, restoring=False):
+        self.require_mutable_recovery()
+        self.verify_alias_authority(data)
+        if self.legacy_alias_recovery(data):
+            require(restoring and str(target) == data["baseline_runtime"], "legacy aliases may only restore the original baseline")
+            for path in (self.path("/opt/henukit/current"), self.path("/opt/henukit-current")):
+                self.verify_alias_authority(data)
+                self.alias(path, target)
+            return
+        inner = self.path("/opt/henukit/current")
+        name = "full-alias-rollback.json" if restoring else "full-alias-commit.json"
+        record = self.alias_journal(name)
+        if record is None:
+            temporary = inner.parent / (".transition-full-alias-" + secrets.token_hex(12))
+            temporary.symlink_to(target)
+            original = data["full_alias_before"]
+            if temporary.lstat().st_gid != original["gid"]:
+                os.lchown(temporary, self.uid, original["gid"])
+            self.durable_directory(inner.parent)
+            record = {"binding": self.alias_binding(data), "path": str(temporary), "link": self.alias_snapshot(temporary)}
+            incoming = self.record.parent / (".full-alias-journal-" + secrets.token_hex(12))
+            descriptor = os.open(incoming, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o400)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(json.dumps(record, sort_keys=True).encode()); stream.flush(); os.fsync(stream.fileno())
+            os.link(incoming, self.record.parent / name, follow_symlinks=False)
+            self.durable_directory(self.record.parent)
+            incoming.unlink(); self.durable_directory(self.record.parent)
+        temporary = Path(record["path"])
+        require(record["binding"] == self.alias_binding(data) and temporary.parent == inner.parent
+                and temporary.name.startswith(".transition-full-alias-") and record["link"]["text"] == str(target),
+                "prepared full alias identity differs")
+        before = self.verify_alias_authority(data)
+        if before != record["link"]:
+            require(temporary.is_symlink() and self.alias_snapshot(temporary) == record["link"], "prepared full alias inode is unavailable")
+            require(self.verify_alias_authority(data) == before and self.alias_snapshot(inner) == before,
+                    "full alias changed before replacement")
+            os.replace(temporary, inner)
+        self.durable_directory(inner.parent)
+        require(self.alias_snapshot(inner) == record["link"], "full alias replacement ownership is unproved")
+
+    def __init__(self, options, *, terminal_alias_authority=None):
         super().__init__(options)
+        self.terminal_alias_authority = terminal_alias_authority
         self.guard = portal.Release(options)
         self.recovery = bool(options.recover_transition)
         self.recovery_authority = None
@@ -193,6 +387,9 @@ class Release(engine.Release):
             self.trusted(token, private=True)
             self.env["GH_TOKEN"] = token.read_text().strip()
             require(self.env["GH_TOKEN"], "existing Actions read token is empty")
+
+    def require_mutable_recovery(self):
+        require(self.terminal_alias_authority is None, "read-only historical verification cannot mutate the transition")
 
     def active_chain(self):
         require(self.marker.is_symlink(), "an active Portal v3 checkpoint is required")
@@ -233,7 +430,11 @@ class Release(engine.Release):
         selected.rollback = True
         selected.recover_transition = FAILED_SHA
         selected.recovery_proof_dir = saved["target"]["proof_dir"]
-        recovery = Release(selected)
+        terminal_alias_authority = {
+            "receipt_sha256": engine.digest(record), "audit": str(audit),
+            "audit_sha256": engine.digest(audit), "alias_contract": self.alias_contract(),
+        }
+        recovery = Release(selected, terminal_alias_authority=terminal_alias_authority)
         authority = recovery.prepare_recovery(data, Path(selected.recovery_proof_dir))
         require(
             authority == saved,
@@ -250,9 +451,13 @@ class Release(engine.Release):
             "audit_sha256": engine.digest(audit),
             "target": authority["target"],
             "successor": authority["successor"],
+            "alias_transition": {**terminal_alias_authority,
+                "inner_snapshot": self.alias_snapshot(self.path("/opt/henukit/current")),
+                "baseline_runtime": data["baseline_runtime"]},
         }
 
     def preflight(self):
+        alias_contract = self.alias_contract()
         recovered = self.adopt_recovered_checkpoint()
         record, current = self.active_chain()
         require(
@@ -370,6 +575,8 @@ class Release(engine.Release):
             "attempt": attempt,
             "runtime": str(self.runtime),
             "helper_sha256": engine.digest(self.helper_file),
+            "alias_contract": alias_contract,
+            "full_alias_before": self.alias_snapshot(self.path("/opt/henukit/current")),
             "baseline": baseline_sha,
             "baseline_runtime": str(baseline),
             "deployed_at": candidate_deployed_at,
@@ -1558,6 +1765,7 @@ printf gateway_ready
         return {"path": path, "deploy": deploy}
 
     def atomic(self, path, content, mode=0o600):
+        self.require_mutable_recovery()
         require(path.parent.is_dir(), "durable target parent is missing")
         self.trusted_directory(path.parent)
         temporary = path.parent / (".transition-" + secrets.token_hex(12))
@@ -1573,12 +1781,14 @@ printf gateway_ready
         self.durable_directory(path.parent)
 
     def alias(self, path, target):
+        self.require_mutable_recovery()
         temporary = path.parent / (".transition-alias-" + secrets.token_hex(12))
         temporary.symlink_to(target)
         os.replace(temporary, path)
         self.durable_directory(path.parent)
 
     def checkpoint(self, data, phase):
+        self.require_mutable_recovery()
         # Mutable state uses a unique, fsynced temporary. A killed writer can
         # leave an orphan without blocking the next owned recovery attempt.
         data["status"] = phase
@@ -1606,6 +1816,8 @@ printf gateway_ready
         return path
 
     def still_before(self, data, verify_source=True):
+        self.verify_alias_authority(data)
+        require(self.alias_snapshot(self.path("/opt/henukit/current")) == data["full_alias_before"], "full alias changed before activation")
         if verify_source:
             self.fresh_source(data)
         self.guard.pending()
@@ -1704,6 +1916,7 @@ printf gateway_ready
         return result
 
     def backup(self, data):
+        self.require_mutable_recovery()
         self.atomic(
             self.record.parent / "configuration.backup", self.envfile.read_bytes()
         )
@@ -2307,6 +2520,7 @@ printf gateway_ready
         )
 
     def validate(self, data):
+        self.verify_alias_authority(data)
         if self.o.materials_baseline_sha:
             selected = data.get("materials", {}).get("baseline", {})
             require(
@@ -2509,6 +2723,7 @@ printf gateway_ready
         return authority
 
     def recovery_audit(self, data, authority):
+        self.require_mutable_recovery()
         name = "recovery-" + self.o.sha + "-" + str(authority["attempt"]) + ".json"
         path = self.record.parent / name
         if path.exists():
@@ -2609,6 +2824,7 @@ printf gateway_ready
             )
 
     def final_state(self, data, candidate):
+        self.verify_alias_authority(data)
         expected = data["runtime" if candidate else "baseline_runtime"]
         for path in (
             self.path("/opt/henukit/current"),
@@ -2643,6 +2859,8 @@ printf gateway_ready
         )
 
     def rollback(self, data):
+        self.require_mutable_recovery()
+        self.verify_alias_authority(data)
         self.validate(data)
         status = data["status"]
         if status == "rolled_back":
@@ -2668,6 +2886,7 @@ printf gateway_ready
             return self.restore_mixed(data)
 
     def restore_mixed(self, data):
+        self.require_mutable_recovery()
         self.materials_owned(data)
         self.rollback_images(data["selected"])
         self.run("systemctl", "disable", "--now", "henukit-materials-webhook.path")
@@ -2718,11 +2937,7 @@ printf gateway_ready
         else:
             self.materials_matches(data, False)
         self.health(data, False)
-        for path in (
-            self.path("/opt/henukit/current"),
-            self.path("/opt/henukit-current"),
-        ):
-            self.alias(path, data["baseline_runtime"])
+        self.publish_full_alias(data, data["baseline_runtime"], restoring=True)
         self.atomic(
             self.watch / "last-activated-sha", (data["baseline"] + "\n").encode()
         )
@@ -2737,6 +2952,7 @@ printf gateway_ready
         return "rolled_back"
 
     def execute(self):
+        self.require_mutable_recovery()
         if self.recovery:
             self.trusted(self.record, private=True)
             data = json.loads(self.record.read_text())
@@ -2850,11 +3066,7 @@ printf gateway_ready
                     "scoped checkpoint changed before commit",
                 )
                 self.checkpoint(data, "committing")
-                for path in (
-                    self.path("/opt/henukit/current"),
-                    self.path("/opt/henukit-current"),
-                ):
-                    self.alias(path, self.runtime)
+                self.publish_full_alias(data, self.runtime)
                 self.atomic(
                     self.watch / "last-activated-sha", (self.o.sha + "\n").encode()
                 )
