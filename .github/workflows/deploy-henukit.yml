@@ -76,8 +76,9 @@ jobs:
             scripts/ops/tests/watch-henukit-actions.test.mjs
           (
             cd scripts/ops/tests
-            sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v python3)" -m unittest \
-              test_stack_transition.StackTransitionCheckpoint.test_source_config_foreign_owner_is_refused -v
+            # Historical CLI test roots stay nonroot. Root only changes the
+            # exact private config FD used by the original ownership test.
+            sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v python3)" run_stack_root_gate.py
             sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v python3)" -m unittest \
               test_notice_url_transaction.NoticeURLTests.test_linux_original_source_profile_accepts_only_exact_foreign_deploy_owner -v
           )
