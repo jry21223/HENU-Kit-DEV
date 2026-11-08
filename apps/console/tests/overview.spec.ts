@@ -114,7 +114,7 @@ test("expired session completes sign-in callback and returns to the intended pat
       : route.fulfill({ status: 401, contentType: "application/json", body: "{}" });
   });
   let storedReturn = "/";
-  await context.route(/\/api\/v1\/auth\/login(?:\?|$)/, (route) => {
+  await page.route(/\/api\/v1\/auth\/login(?:\?|$)/, (route) => {
     storedReturn = new URL(route.request().url()).searchParams.get("return_to") ?? "/";
     return route.fulfill({
       status: 200,
@@ -122,7 +122,7 @@ test("expired session completes sign-in callback and returns to the intended pat
       body: `<script>location.replace('/api/v1/auth/callback?code=authorization_code_123456&state=browser_bound_state_123456789012345')</script>`,
     });
   });
-  await context.route(/\/api\/v1\/auth\/callback(?:\?|$)/, async (route) => {
+  await page.route(/\/api\/v1\/auth\/callback(?:\?|$)/, async (route) => {
     await context.addCookies([{ name: "henukit_console_e2e", value: "bound", url: "http://127.0.0.1:4174", httpOnly: true, sameSite: "Lax" }]);
     return route.fulfill({ status: 200, contentType: "text/html", body: `<script>location.replace(${JSON.stringify(storedReturn)})</script>` });
   });

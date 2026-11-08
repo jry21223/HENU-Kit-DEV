@@ -121,9 +121,12 @@ test("Food review recovery queries the original key without replaying the write"
   await page.getByRole("button", { name: "批准投稿" }).click();
   await page.getByLabel("操作理由").fill("人工核验通过");
   await page.getByRole("button", { name: "确认批准投稿" }).click();
-  await expect(page.getByRole("button", { name: "查询操作结果" })).toBeVisible();
+  const queryResult = page.getByRole("button", { name: "查询操作结果" });
+  await expect(queryResult).toBeVisible();
+  await expect(queryResult).toBeEnabled();
+  expect(queriedKeys.length).toBeGreaterThan(0);
   resolved = true;
-  await page.getByRole("button", { name: "查询操作结果" }).click();
+  await queryResult.click();
   await expect(page.getByText("投稿已批准。", { exact: true })).toBeVisible();
   expect(keys.length).toBe(1);
   expect(keys[0]).toBeTruthy();

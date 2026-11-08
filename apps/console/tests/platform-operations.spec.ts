@@ -426,7 +426,8 @@ test("Platform Operations tells signed-out account search users to log in again"
   await gotoOperations(page);
   await page.getByLabel("账户搜索").fill("目标运营");
   await page.getByRole("button", { name: "搜索账户" }).click();
-  await expect(page.getByRole("status")).toContainText("登录状态已过期，请重新登录后再操作");
+  await expect(page.getByRole("status")).toContainText("登录已过期，请重新登录后继续。");
+  await expect(page.getByRole("link", { name: "登录 Console", exact: true })).toHaveAttribute("href", /return_to=%2Foperations/);
 });
 
 test("Platform Operations explains rate limits and blocks paging while account search is pending", async ({ page }) => {
@@ -462,7 +463,7 @@ test("Platform Operations refresh starts a new first-page snapshot", async ({ pa
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: operations, request_id: "req_operations_refresh" }) });
   });
   await gotoOperations(page);
-  await expect(page.getByText(/数据快照/)).toBeVisible();
+  await expect(page.getByText(/^列表创建时间上限 /)).toBeVisible();
   await page.getByRole("button", { name: "账户下一页" }).click();
   await page.getByRole("button", { name: "刷新数据" }).click();
   await expect.poll(() => requests.length).toBeGreaterThanOrEqual(3);

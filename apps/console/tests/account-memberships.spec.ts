@@ -195,7 +195,8 @@ test("Console shows bounded-list empty, outage, permission, and signed-out state
     route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { code: "unauthorized", message: "expired" }, request_id: "req_membership_signed_out" }) }),
   );
   await page.reload();
-  await expect(page.getByText("登录状态已过期，请重新登录后再操作。")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("请登录后继续，登录成功后将回到当前页面。");
+  await expect(page.getByRole("link", { name: "登录 Console", exact: true })).toHaveAttribute("href", /return_to=%2Faccount%2Fmemberships/);
   await expect(page.getByRole("button", { name: "搜索" })).toHaveCount(0);
 });
 

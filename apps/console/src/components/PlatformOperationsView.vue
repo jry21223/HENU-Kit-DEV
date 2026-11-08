@@ -555,7 +555,7 @@ onBeforeUnmount(() => {
       <div class="operation-two-column">
         <section class="operation-panel"><h2>邮件基础设施</h2><p class="mt-2 text-sm text-muted-foreground">当前邮件事件各状态的全量聚合，不代表用户数或业务完成量；随本次读取更新。</p><dl class="mail-grid"><template v-for="(value, key) in operations.mail" :key="key"><dt>{{ mailLabel(key) }}</dt><dd>{{ value }}</dd></template></dl></section>
         <section class="operation-panel" aria-labelledby="inbox-heading"><h2 id="inbox-heading">运营收件箱</h2>
-          <label class="mt-3 grid gap-1 text-sm">本页状态<select v-model="inboxStatus" class="rounded-md border bg-background px-3 py-2"><option value="all">全部状态</option><option value="open">待处理</option><option value="in_progress">处理中</option><option value="blocked">受阻</option><option value="resolved">已解决</option><option value="archived">已归档</option></select></label>
+          <div class="mt-3 grid gap-1 text-sm"><label for="platform-inbox-status">本页状态</label><select id="platform-inbox-status" v-model="inboxStatus" class="rounded-md border bg-background px-3 py-2"><option value="all">全部状态</option><option value="open">待处理</option><option value="in_progress">处理中</option><option value="blocked">受阻</option><option value="resolved">已解决</option><option value="archived">已归档</option></select></div>
           <p class="mt-2 text-sm text-muted-foreground">本页返回 {{ operations.inbox_items.length }} 条，当前显示 {{ visibleInbox.length }} 条。</p>
           <p v-if="selectedInboxID && !visibleInbox.some((item) => item.id === selectedInboxID)" class="mt-2 text-sm" role="status">先前选中的引用未出现在本页筛选结果中，请调整状态或页码查看。</p>
           <article v-for="item in visibleInbox" :key="item.id" :data-inbox-id="item.id" :aria-current="selectedInboxID === item.id ? 'true' : undefined" class="compact-row">

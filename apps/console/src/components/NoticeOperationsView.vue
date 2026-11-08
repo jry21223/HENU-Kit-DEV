@@ -18,6 +18,7 @@ const selectionEstablished = ref(initialQuery.has("selected"));
 const selectedID = ref(isUUID(initialQuery.get("selected")) ? initialQuery.get("selected")! : "");
 const filteredVersions = computed(() => snapshot.value?.items.filter((item) => stateFilter.value === "all" || item.state === stateFilter.value) ?? []);
 const selectedVersion = computed(() => snapshot.value?.items.find((item) => item.id === selectedID.value));
+const managementOpen = ref(false);
 const detailHeading = ref<HTMLElement>();
 const filterControl = ref<HTMLSelectElement>();
 
@@ -38,6 +39,9 @@ function selectVersion(id: string) {
   selectedID.value = id;
   saveViewContext();
   void nextTick(() => detailHeading.value?.focus({ preventScroll: true }));
+}
+function rememberManagementDisclosure(event: Event) {
+  managementOpen.value = (event.currentTarget as HTMLDetailsElement).open;
 }
 watch(stateFilter, () => { selectionEstablished.value = true; if (selectedVersion.value) selectedID.value = ""; saveViewContext(); });
 const state = ref<"loading" | "ready" | "stale" | "denied" | "not_configured" | "unavailable">("loading");
@@ -158,9 +162,9 @@ async function finishOperation(command: PendingNoticeOperation, initial: () => P
   }
   let result = await initial();
   if (!ownsOperation()) return;
-  if (result.state === "conflict" || result.state === "invalid") {
+  if (result.state === "conflict" || result.state === "invalid" || result.state === "denied") {
     clearPendingOperation(); busyID.value = "";
-    feedback.value = result.state === "conflict" ? "内容已更新，请核对最新修订后操作。" : "操作内容无效，请检查后重试。";
+    feedback.value = result.state === "conflict" ? "内容已更新，请核对最新修订后操作。" : result.state === "denied" ? "操作被拒绝，请联系管理员确认权限。" : "操作内容无效，请检查后重试。";
     await refresh(); return;
   }
   if (result.state !== "succeeded" || !confirmedOperation(command, result.result)) {
@@ -267,6 +271,7 @@ watch(() => [props.authState, props.operatorID] as const, ([authState]) => {
   actorGeneration++; readGeneration++; operationGeneration++;
   snapshot.value = undefined;
   reviewReasons.value = {};
+  managementOpen.value = false;
   sourceCode.value = ""; sourceName.value = ""; sourceCanonicalURL.value = "";
   versionSourceID.value = ""; versionTitle.value = ""; versionBody.value = ""; versionSourceURL.value = ""; versionPublishedAt.value = "";
   audienceValue.value = "";
@@ -286,7 +291,7 @@ watch(() => [props.authState, props.operatorID] as const, ([authState]) => {
     <div v-else-if="state === 'denied'" class="mt-6 rounded-lg bg-white p-6">当前账户无权查看通知工作台，请联系管理员。</div>
     <div v-else-if="state === 'not_configured'" class="mt-6 rounded-lg border border-border bg-background p-6"><p>通知工作台尚未接入，请联系管理员完成接入。此状态不代表校园通知停止服务。</p><Button class="mt-4" @click="refresh">重新检查接入</Button></div>
     <div v-else-if="state === 'unavailable'" class="mt-6 rounded-lg bg-white p-6"><p>通知服务暂时不可用，请稍后重试。</p><Button class="mt-4" @click="refresh">重新加载</Button></div>
-    <details v-if="state === 'ready' && canManage" class="mt-6 rounded-lg border border-border bg-background p-4">
+    <details v-if="state === 'ready' && canManage" :open="managementOpen" class="mt-6 rounded-lg border border-border bg-background p-4" @toggle="rememberManagementDisclosure">
       <summary class="cursor-pointer text-sm font-medium">管理来源与通知版本</summary>
       <div class="mt-4 grid gap-4 lg:grid-cols-2">
       <form class="rounded-lg border border-border bg-white p-5" @submit.prevent="addSource">

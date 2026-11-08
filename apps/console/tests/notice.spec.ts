@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const session = { user: { id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302" }, access_context: { permissions: ["notice.read", "notice.manage", "notice.review", "notice.distribute"], scopes: [{ kind: "product", product_code: "notice" }], verified_at: "2026-07-19T00:00:00Z" }, expires_at: "2026-07-19T01:00:00Z" };
 let state: "pending_review" | "approved" | "rejected" | "distributed" = "pending_review";
@@ -7,6 +7,12 @@ let lastReviewBody: Record<string, unknown> = {};
 let distributionCalls = 0;
 
 function snapshot() { return { items: [{ id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", source: { id: "571f1c6f-7b10-4c92-91a2-b39bf5af5302", code: "henu-office", name: "学校办公室" }, version: 1, title: "暑期安排", body: "不可变正文", source_url: "https://example.edu/notices/1", content_hash: "a".repeat(64), state, revision: state === "distributed" ? 3 : state === "pending_review" ? 1 : 2, created_at: "2026-07-19T00:00:00Z", distribution_count: state === "distributed" ? 1 : 0, ...(state === "distributed" ? { distribution_status: "queued" } : {}) }], generated_at: "2026-07-19T00:00:00Z" }; }
+
+async function selectApprovedVersion(page: Page) {
+  await page.getByLabel("版本状态筛选", { exact: true }).selectOption("approved");
+  await page.locator("[data-notice-list]").getByRole("button", { name: /暑期安排/ }).click();
+  await expect(page.locator("[data-notice-detail]")).toContainText("已通过 · 修订 r2");
+}
 
 test.beforeEach(async ({ page }) => {
   state = "pending_review";
@@ -151,9 +157,10 @@ test("Notice distribution reload reconciles the original audience, revision, and
     resolvedKeys.push(route.request().headers()["idempotency-key"] ?? "");
     const succeeded = resolvedKeys.length > 1;
     if (succeeded) state = "distributed";
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { status: succeeded ? "succeeded" : "unknown", resource_id: snapshot().items[0].id, ...(succeeded ? { resource_version: 3 } : {}) }, request_id: "req_notice_distribution_reload" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: succeeded ? { version_id: snapshot().items[0].id, status: "queued", revision: 3 } : { operation: "distribution", status: "unknown" }, request_id: "req_notice_distribution_reload" }) });
   });
   await page.goto("/notices");
+  await selectApprovedVersion(page);
   await page.getByLabel("渠道").selectOption("email");
   await page.getByLabel("受众").selectOption("college");
   await page.getByLabel("受众值").fill("software-college");
@@ -180,6 +187,7 @@ test("Notice discards pending distribution state owned by another operator", asy
   await page.addInitScript(() => sessionStorage.setItem("henukit.console.pending-notice-operation.v1", JSON.stringify({ version: 1, operator_id: "271f1c6f-7b10-4c92-91a2-b39bf5af5302", operation: "distribution", idempotency_key: "idem_notice_distribution_11111111-1111-4111-8111-111111111111", resource_id: "471f1c6f-7b10-4c92-91a2-b39bf5af5302", target_label: "其他运营员的通知", distribution: { channel: "email", audience: { kind: "college", value: "software-college" }, expected_revision: 2 } })));
   await page.route("**/api/v1/notices/operations/distribution", (route) => { resolveCalls += 1; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { status: "unknown" }, request_id: "req_notice_foreign_pending" }) }); });
   await page.goto("/notices");
+  await selectApprovedVersion(page);
   await expect(page.getByRole("button", { name: "创建分发任务" })).toBeEnabled();
   expect(resolveCalls).toBe(0);
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("henukit.console.pending-notice-operation.v1"))).toBeNull();

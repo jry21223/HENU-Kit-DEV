@@ -15,6 +15,64 @@ let wrapper: VueWrapper | undefined;
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals(); sessionStorage.clear(); window.history.replaceState({}, "", "/notices"); });
 
 describe("Notice operational loop", () => {
+  it("keeps the open management form and its draft after creating a source", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
+      ? new Response(JSON.stringify({ data: { id: secondID, code: "fixture-source", name: "新来源", canonical_url: "https://example.edu/new" }, request_id: "req_created_source" }), { status: 200 })
+      : response()));
+    wrapper = mount(NoticeOperationsView, { props: { authState: "authenticated", operatorID, permissions } });
+    await flushPromises();
+    const disclosure = wrapper.get("details");
+    (disclosure.element as HTMLDetailsElement).open = true;
+    await disclosure.trigger("toggle");
+    await wrapper.findAll("form")[1]!.findAll("input")[1]!.setValue("下一条通知草稿");
+    const sourceForm = wrapper.findAll("form")[0]!;
+    await sourceForm.findAll("input")[0]!.setValue("fixture-source");
+    await sourceForm.findAll("input")[1]!.setValue("新来源");
+    await sourceForm.findAll("input")[2]!.setValue("https://example.edu/new");
+    await sourceForm.trigger("submit");
+    await flushPromises();
+    expect(wrapper.text()).toContain("通知来源已创建");
+    expect((wrapper.get("details").element as HTMLDetailsElement).open).toBe(true);
+    const versionInputs = wrapper.findAll("form")[1]!.findAll("input");
+    expect((versionInputs[0]!.element as HTMLInputElement).value).toBe(secondID);
+    expect((versionInputs[1]!.element as HTMLInputElement).value).toBe("下一条通知草稿");
+  });
+  it("does not resolve a definitively denied write and permits a corrected new command", async () => {
+    let allowed = false;
+    let approved = false;
+    let lookups = 0;
+    const keys: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        keys.push(new Headers(init.headers).get("Idempotency-Key")!);
+        if (!allowed) return new Response(JSON.stringify({ error: { code: "PERMISSION_DENIED", message: "denied" }, request_id: "req_denied_write" }), { status: 403 });
+        approved = true;
+        return new Response(JSON.stringify({ data: { version_id: firstID, state: "approved", revision: 2 }, request_id: "req_corrected_write" }), { status: 200 });
+      }
+      if (String(input).includes("/operations/")) {
+        lookups++;
+        return new Response(JSON.stringify({ data: { version_id: firstID, state: "approved", revision: 2 }, request_id: "req_unrelated_lookup" }), { status: 200 });
+      }
+      return response([notice(firstID, approved ? "approved" : "pending_review")]);
+    }));
+    wrapper = mount(NoticeOperationsView, { props: { authState: "authenticated", operatorID, permissions } });
+    await flushPromises();
+    await wrapper.findAll("button").find((button) => button.text() === "批准")!.trigger("click");
+    await flushPromises();
+    expect(lookups).toBe(0);
+    expect(wrapper.text()).toContain("操作被拒绝");
+    expect(wrapper.text()).not.toContain("审核已批准");
+    expect(sessionStorage.getItem("henukit.console.pending-notice-operation.v1")).toBeNull();
+    const retry = wrapper.findAll("button").find((button) => button.text() === "批准")!;
+    expect(retry.attributes("disabled")).toBeUndefined();
+    allowed = true;
+    await retry.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("审核已批准");
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).not.toBe(keys[0]);
+    expect(lookups).toBe(0);
+  });
   it("distinguishes a missing management connection from an owner outage", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { code: "NOTICE_NOT_CONFIGURED", message: "通知工作台尚未接入" }, request_id: "req_notice_not_configured" }), { status: 503 })));
     wrapper = mount(NoticeOperationsView, { props: { authState: "authenticated", operatorID, permissions } });
