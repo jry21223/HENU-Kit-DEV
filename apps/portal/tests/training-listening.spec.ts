@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { TrainingSession } from "../src/lib/api/generated/training";
+import type { TrainingSentenceSegment, TrainingSession } from "../src/lib/api/generated/training";
 
 const sessionID = "22222222-2222-4222-8222-222222222222";
 const unitID = "33333333-3333-4333-8333-333333333333";
@@ -28,6 +28,61 @@ async function ownerFixture(page: Page) {
   });
   return { get: () => current, set: (value: TrainingSession) => { current = value; } };
 }
+
+test("a missing or inaccessible training record returns to the catalog without a blind retry", async ({ page }, testInfo) => {
+  await ownerFixture(page);
+  await page.route(`**/api/v1/practice/training/sessions/${sessionID}`, route => route.fulfill({ status: 404, json: { error: "not_found" } }));
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto(`/practice/training/${sessionID}`);
+  await expect(page.getByText("404 / NOT FOUND", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "无法找到这次训练", exact: true })).toBeVisible();
+  await expect(page.getByText("训练记录不存在，或当前身份无法访问。请返回训练目录选择训练。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "重试", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("session-not-found-360.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: testInfo.outputPath("session-not-found-wide.png"), fullPage: true });
+  await page.getByRole("link", { name: "返回训练目录", exact: true }).click();
+  await expect(page).toHaveURL(/\/practice\/training$/);
+  await expect(page.getByRole("button", { name: "开始听力训练", exact: true })).toBeVisible();
+});
+
+for (const status of [502, 503]) {
+  test(`a temporary ${status} training read can retry and recover the session`, async ({ page }, testInfo) => {
+    await ownerFixture(page);
+    const unavailable = (route: import("@playwright/test").Route) => route.fulfill({ status, json: { error: "unavailable" } });
+    await page.route(`**/api/v1/practice/training/sessions/${sessionID}`, unavailable);
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto(`/practice/training/${sessionID}`);
+    const error = page.getByRole("alert").filter({ hasText: "这次训练暂时无法读取" });
+    await expect(error).toContainText("请重试；若仍无法打开，可返回训练目录。");
+    await expect(error.getByRole("button", { name: "重试", exact: true })).toBeVisible();
+    await expect(page.getByText("404 / NOT FOUND", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "返回训练目录", exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`session-${status}-360.png`), fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.screenshot({ path: testInfo.outputPath(`session-${status}-wide.png`), fullPage: true });
+    await page.unroute(`**/api/v1/practice/training/sessions/${sessionID}`, unavailable);
+    await error.getByRole("button", { name: "重试", exact: true }).click();
+    await expect(page.getByRole("heading", { name: unit.title, exact: true })).toBeVisible();
+    await expect(page.getByRole("group", { name: /Listening question/ })).toHaveCount(4);
+    await expect(error).toHaveCount(0);
+  });
+}
+
+test("an expired training identity retains the login recovery explanation", async ({ page }, testInfo) => {
+  await ownerFixture(page);
+  await page.route(`**/api/v1/practice/training/sessions/${sessionID}`, route => route.fulfill({ status: 401, json: { error: "unauthenticated" } }));
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto(`/practice/training/${sessionID}`);
+  await expect(page.getByRole("alert").filter({ hasText: "登录状态已失效，请重新登录后打开这次训练。" })).toBeVisible();
+  await expect(page.getByText("404 / NOT FOUND", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "返回训练目录", exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("session-401-360.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: testInfo.outputPath("session-401-wide.png"), fullPage: true });
+});
 
 test("Practice discovers listening, starts a whole unit, and plays actual MP3 audio", async ({ page }) => {
   await ownerFixture(page);
@@ -197,7 +252,8 @@ test("completed review discloses English then Chinese through Core and refresh r
 });
 
 test("evidence playback uses authored sentence boundaries at changed speed and cancels old loops", async ({ page }, testInfo) => {
-  await completedFixture(page);
+  const fixture = await completedFixture(page);
+  const sentence = (fixture.review().segments as TrainingSentenceSegment[]).find(segment => segment.segment_id === "s4")!;
   await page.goto(`/practice/training/${sessionID}`);
   const audio = page.locator("audio");
   await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).readyState)).toBeGreaterThanOrEqual(2);
@@ -217,8 +273,9 @@ test("evidence playback uses authored sentence boundaries at changed speed and c
       if (approachedEnd && element.currentTime < 27) { clearInterval(sample); clearTimeout(timeout); resolve({ max: maximum, elapsed: performance.now() - start }); }
     }, 10);
   }));
-  // Chromium media clocks advance in output quanta; the following sentence
-  // starts at the authored31.690s. Keep the observed bound well before it.
+  // Chromium media clocks advance in output quanta. The next source caption
+  // starts at 31.690s; its padded replay segment starts earlier at 31.588s.
+  // The 31.60s loop bound stays before that caption's speech onset.
   expect(cycle.max).toBeLessThan(31.60);
   expect(cycle.elapsed).toBeGreaterThan(2_000);
   expect(cycle.elapsed).toBeLessThan(6_000);
@@ -235,7 +292,7 @@ test("evidence playback uses authored sentence boundaries at changed speed and c
   await page.getByRole("button", { name: "播放第 4 句", exact: true }).click();
   await audio.evaluate(node => { (node as HTMLAudioElement).currentTime = 31.42; });
   await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).paused), { intervals: [20, 30, 50] }).toBe(true);
-  expect(await audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeLessThanOrEqual(31.486);
+  expect(await audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeLessThanOrEqual(sentence.end_ms / 1000);
   await page.screenshot({ path: testInfo.outputPath("listening-evidence-wide.png"), fullPage: true });
 });
 

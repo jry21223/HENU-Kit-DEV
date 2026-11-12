@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { Button } from "@/components/ui/button";
-import { PortalUnauthorizedError } from "@/lib/api/client";
+import { PortalHttpError, PortalUnauthorizedError } from "@/lib/api/client";
 import { discloseTrainingHint, fetchTrainingReview, fetchTrainingSession, revealTrainingLayer, submitTrainingAnswer } from "@/lib/api/training";
 import type { TrainingAnswerSubmission, TrainingReview, TrainingSession } from "@/lib/api/generated/training";
 import { createIdempotencyKey } from "@/lib/practice/session-handoff";
@@ -47,6 +47,7 @@ export default function TrainingSessionView({ sessionID }: { sessionID: string }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionMissing, setSessionMissing] = useState(false);
   const [review, setReview] = useState<TrainingReview | null>(null);
   const [activeQuestion, setActiveQuestion] = useState("");
   const [hinting, setHinting] = useState<string | null>(null);
@@ -68,13 +69,17 @@ export default function TrainingSessionView({ sessionID }: { sessionID: string }
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
+    setSessionMissing(false);
     try {
       const response = await fetchTrainingSession(sessionID, signal);
       if (signal?.aborted) return;
       setSession(response.data);
       setDrafts(readDrafts(response.data));
     } catch (cause) {
-      if (!signal?.aborted) setError(cause instanceof PortalUnauthorizedError ? "登录状态已失效，请重新登录后打开这次训练。" : "这次训练暂时无法读取，请重试；若仍无法打开，可返回训练目录。");
+      if (!signal?.aborted) {
+        if (cause instanceof PortalHttpError && cause.status === 404) setSessionMissing(true);
+        else setError(cause instanceof PortalUnauthorizedError ? "登录状态已失效，请重新登录后打开这次训练。" : "这次训练暂时无法读取，请重试；若仍无法打开，可返回训练目录。");
+      }
     } finally { if (!signal?.aborted) setLoading(false); }
   }, [sessionID]);
 
@@ -261,6 +266,14 @@ export default function TrainingSessionView({ sessionID }: { sessionID: string }
   }
 
   if (loading) return <main className="mx-auto max-w-site px-5 py-10 md:px-8"><LoadingBlock label="恢复英语训练" /></main>;
+  if (!session && sessionMissing) return (
+    <main className="mx-auto max-w-3xl px-5 py-24 text-center md:px-8">
+      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">404 / NOT FOUND</p>
+      <h1 className="mt-4 font-display text-2xl font-bold">无法找到这次训练</h1>
+      <p className="mt-4 text-sm leading-7 text-ink/70">训练记录不存在，或当前身份无法访问。请返回训练目录选择训练。</p>
+      <div className="mt-6"><Button asChild variant="outline"><Link href="/practice/training">返回训练目录</Link></Button></div>
+    </main>
+  );
   if (!session) return <main className="mx-auto max-w-site px-5 py-10 md:px-8"><ErrorBanner message={error || "无法读取这次训练。"} onRetry={() => void load()} /><div className="mt-6"><Button asChild variant="outline"><Link href="/practice/training">返回训练目录</Link></Button></div></main>;
 
   const activeQuestionID = activeQuestion || session.unit.questions[0]?.question_id;

@@ -11,7 +11,7 @@ acceptance remain separate release gates; no production write is performed here.
 
 The explicit Workshop package is
 `products/quizcraft/go-service/content/english-training/campus-repair.import.json`.
-Its original 222-word passage has 35 parts, ten exact stable blanks/questions,
+Its original passage of about 220 words has 35 parts, ten exact stable blanks/questions,
 two hint levels each, full English/Chinese layers and contextual evidence.
 Source, first-party terms, editorial review and exact payload/source hashes are
 in the adjacent README. Private keys/hints/full layers remain owner content;

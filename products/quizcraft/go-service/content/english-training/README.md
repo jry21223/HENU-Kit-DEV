@@ -77,7 +77,7 @@ and the forward-recovery rule above applies.
 `campus-repair.import.json` is the complete first-party cloze publication payload,
 following the same explicit Workshop import → validate → publish lifecycle. It is
 not seeded at startup or bundled with Portal. Production publication is pending.
-The 222-word, four-paragraph passage has 35 stable parts and ten one-to-one
+The four-paragraph passage of about 220 words has 35 stable parts and ten one-to-one
 blank/question bindings. All ten questions use the existing single-choice grader.
 Each hint has two authored levels; a hint affects every still-unsubmitted question
 in the session. Categories describe the author's explanation of the question,

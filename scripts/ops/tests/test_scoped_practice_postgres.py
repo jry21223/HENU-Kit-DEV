@@ -24,7 +24,7 @@ class PostgreSQLSnapshot(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='henukit-practice-pg16-') as directory:
             root = Path(directory).resolve()
             runtime = root / 'runtime'; runtime.mkdir()
-            for name in ('deploy-henukit-food-scoped.py', 'deploy-henukit-practice-scoped.py'):
+            for name in ('deploy-henukit-food-scoped.py', 'deploy-henukit-practice-scoped.py', 'henukit-quizcraft-database.py'):
                 shutil.copy(ROOT / name, runtime / name)
             with patch.object(sys, 'argv', ['test', '--test-root', str(root)]):
                 spec = importlib.util.spec_from_file_location('practice_pg16_contract', runtime / 'deploy-henukit-practice-scoped.py')
