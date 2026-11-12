@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 // Product data is owned by a real Core/PostgreSQL behind the real signed Gateway.
 // Only transport loss is injected; no catalog/session/answer/review is fabricated.
 test("real listening stack recovers a lost response, saves four first answers and keeps review private", async ({ page, context }, testInfo) => {
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 360, height: 800 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   const trainingResponses: Array<{ path: string; status: number; body: string }> = [];
@@ -64,16 +65,94 @@ test("real listening stack recovers a lost response, saves four first answers an
   const completedBody = await page.evaluate(async url => (await fetch(url)).json(), `/api/v1/practice/training/sessions/${sessionID}`);expect(completedBody.data.saved_count).toBe(4);expect(completedBody.data.receipts).toHaveLength(4);
   const review = await page.evaluate(async url => { const response = await fetch(url); return { status: response.status, body: await response.json() }; }, `/api/v1/practice/training/sessions/${sessionID}/review`);
   expect(review.status).toBe(200);expect(review.body.data.layers).toEqual([]);
+  // These are real authored sentence ranges from the pinned Core review. A
+  // high-frequency boundary timer must wrap before the next sentence can sound.
+  await page.getByLabel("播放速度", { exact: true }).selectOption("2");
+  expect(await audio.evaluate(node => (node as HTMLAudioElement).playbackRate)).toBe(2);
+  await page.getByRole("button", { name: "播放第 4 句", exact: true }).click();
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeGreaterThanOrEqual(26.5);
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).paused)).toBe(false);
+  await page.getByRole("button", { name: "循环第 4 句", exact: true }).click();
+  await audio.evaluate(node => { (node as HTMLAudioElement).currentTime = 31.40; });
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeLessThan(27.2);
+  const boundary = await audio.evaluate(async node => {
+    const media = node as HTMLAudioElement;
+    media.currentTime = 31.40;
+    const samples: number[] = [];
+    await new Promise<void>(resolve => {
+      const timer = window.setInterval(() => {
+        samples.push(media.currentTime);
+        if (samples.length >= 24) { window.clearInterval(timer); resolve(); }
+      }, 10);
+    });
+    return Math.max(...samples);
+  });
+  expect(boundary).toBeLessThan(31.60); // Next sentence starts at 31.690s.
+  await page.getByRole("button", { name: "循环第 1 句", exact: true }).click();
+  await audio.evaluate(node => { (node as HTMLAudioElement).currentTime = 6.70; });
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeLessThan(0.8);
+  await page.getByRole("button", { name: "停止单句循环", exact: true }).click();
+  await audio.evaluate(node => (node as HTMLAudioElement).pause());
+  // Lose the first committed reveal response, then recover only Core facts.
+  let lostReveal = false;
+  await page.route("**/api/v1/practice/training/sessions/*/reveals", async route => {
+    if (!lostReveal) {
+      lostReveal = true;
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      await route.abort("failed");
+    } else await route.continue();
+  });
+  await page.getByRole("button", { name: "查看英文原文", exact: true }).click();
+  await expect(page.getByRole("region", { name: "英文原文", exact: true })).toContainText("The North Wind and the Sun were disputing");
+  await expect(page.getByRole("region", { name: "中文译文", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "查看中文译文", exact: true }).click();
+  await expect(page.getByRole("region", { name: "中文译文", exact: true })).toBeVisible();
+  const revealedBody = await page.evaluate(async url => (await fetch(url)).json(), `/api/v1/practice/training/sessions/${sessionID}`);
+  expect(revealedBody.data.revealed_layers).toEqual(["english", "chinese"]);
+  expect(revealedBody.data.receipts).toEqual(completedBody.data.receipts);
   const fresh = await context.browser()!.newContext();
   const foreign = await fresh.request.get(new URL(`/api/v1/practice/training/sessions/${sessionID}`, page.url()).href);
-  expect(foreign.status()).toBe(404);await fresh.close();
+  expect(foreign.status()).toBe(404);
+  const foreignReveal = await fresh.request.post(new URL(`/api/v1/practice/training/sessions/${sessionID}/reveals`, page.url()).href, { headers: { "Idempotency-Key": "foreign-reveal-isolation-0001" }, data: { unit_version_id: completedBody.data.unit.unit_version_id, layer: "english" } });
+  expect(foreignReveal.status()).toBe(404);await fresh.close();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await page.screenshot({ path: testInfo.outputPath("training-stack-360.png") });
   await page.reload();
   await expect(page.getByRole("heading", { name: "本组训练已完成" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "英文原文", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "中文译文", exact: true })).toBeVisible();
+  // A missing public MP3 is an independent media failure. Saved answers and
+  // authorized text still restore through Core, and retry reloads actual media.
+  await page.route("**/practice-media/*.mp3", route => route.fulfill({ status: 404, body: "" }));
+  await page.reload();
+  await expect(page.getByRole("alert").filter({ hasText: "音频暂时无法播放" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "中文译文", exact: true })).toBeVisible();
+  await page.unroute("**/practice-media/*.mp3");
+  await page.getByRole("region", { name: "听力音频", exact: true }).getByRole("button", { name: "重试", exact: true }).click();
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).readyState)).toBeGreaterThanOrEqual(2);
+  const mediaRecovered = await page.evaluate(async url => (await fetch(url)).json(), `/api/v1/practice/training/sessions/${sessionID}`);
+  expect(mediaRecovered.data.receipts).toEqual(completedBody.data.receipts);
+  await page.getByRole("link", { name: "查看待复习训练", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "待复习训练", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "打开完整复盘", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/practice/training/${sessionID}$`));
+  await expect(page.getByRole("region", { name: "中文译文", exact: true })).toBeVisible();
+  await expect(page.getByText("独立答对 3 题 · 提示后答对 0 题 · 需要复习 1 题", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: testInfo.outputPath("training-stack-wide.png") });
+  await page.getByRole("button", { name: "循环第 4 句", exact: true }).click();
+  await audio.evaluate(node => { (window as unknown as { previousTrainingAudio: HTMLAudioElement }).previousTrainingAudio = node as HTMLAudioElement; });
+  await page.getByRole("link", { name: "返回听力目录", exact: true }).click();
+  await page.getByRole("button", { name: "开始听力训练", exact: true }).click();
+  await expect(page).toHaveURL(/\/practice\/training\/[a-f0-9-]{36}$/);
+  expect(page.url().split("/").at(-1)).not.toBe(sessionID);
+  await expect.poll(() => page.evaluate(() => {
+    const prior = (window as unknown as { previousTrainingAudio?: HTMLAudioElement }).previousTrainingAudio;
+    return !prior || prior.paused && !prior.getAttribute("src");
+  })).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "已保存 0/4 题" })).toBeVisible();
   await testInfo.attach("training-network", { body: JSON.stringify(trainingResponses, null, 2), contentType: "application/json" });
 });

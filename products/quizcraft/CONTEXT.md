@@ -80,8 +80,17 @@ Core-owned recovery. Training sessions are created atomically with a purpose and
 unit binding. Ordinary projections use `quizcraft_ordinary_attempts`; canonical
 training attempts retain factual correctness and independent review outcomes.
 Guest-to-account writes retain prior facts in the learning projection; reads never
-claim ownership. Shared review requires every exact first answer. Hint/reveal
-commands remain closed for the following listening/cloze tickets. The publication
+claim ownership. Shared review requires every exact first answer. Hint commands
+remain closed for the following cloze ticket. The publication
 package and the post-write old-binary recovery boundary are documented under
 `go-service/content/english-training/`. No production content is automatically
 loaded; new human listening acceptance and production publication remain separate.
+
+HC-643 implements listening English/Chinese disclosures on that same immutable
+session ledger. Reveals serialize with first answers and account claims, verify
+the current effective owner before every replay, and require all pinned first
+answers. English precedes Chinese; recovery returns only committed layer names,
+and owner review restores their text from the pinned version. Post-submit replay
+and text never change first-answer correctness or independent outcomes. The Core
+review-items index restores the complete pinned context; a fresh independent
+success clears current review without rewriting previous sessions.

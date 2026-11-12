@@ -135,3 +135,14 @@ membership/counts, while the complete review validates pinned session references
 and sentence evidence. Only the Core-issued anonymous cookie can cross this
 boundary; reads never reissue it. Hint and language reveal routes remain closed
 until their dependent implementation tickets.
+
+HC-643 enables only the frozen language-reveal command. Because its disclosure
+shape contains no session/version identity, Gateway verifies the successful
+command against a fresh owner-complete pinned session and review, using the
+existing independent read credential and the same verified actor/Core cookie.
+The returned disclosure ID, timestamp, requested language, text and stable
+sentence membership must match that committed review. Both existing command
+and private-read gates must be enabled before a reveal write is attempted. A
+verification failure releases no text; clients recover Core facts and retry the
+same command key. Cloze hints remain closed for HC-644. No new credentials,
+permissions, flags, routes or browser-owned completion authority are introduced.

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { Button } from "@/components/ui/button";
 import { PortalUnauthorizedError } from "@/lib/api/client";
@@ -70,6 +71,7 @@ export default function TrainingCatalog() {
         <p className="font-mono text-xs tracking-[0.2em] text-accent-text">ENGLISH / LISTENING</p>
         <h1 className="mt-3 font-display text-3xl font-bold md:text-5xl">英语听力训练</h1>
         <p className="mt-4 text-sm leading-7 text-ink/70">通用英语练习：听完整段音频，完成一组理解题，再核对答案与依据。训练结果单独记录。</p>
+        <Button asChild variant="outline" className="mt-5"><Link href="/practice/training/review">待复习训练</Link></Button>
         {error && <ErrorBanner message={error} className="mt-6" onRetry={starting ? undefined : retryUnit ? () => void start(retryUnit) : () => void load()} />}
         {loading ? <div className="mt-8"><LoadingBlock label="加载听力材料" /></div> : units.length === 0 && !error ? <div className="mt-8"><EmptyBlock label="暂时没有可练习的听力材料。" action={{ label: "返回题库", href: "/practice" }} /></div> : (
           <div className="mt-8 divide-y divide-line border-y border-line">

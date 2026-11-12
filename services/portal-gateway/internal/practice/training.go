@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -105,8 +106,8 @@ func (c *CommandClient) TrainingCommand(ctx context.Context, suffix, actor, requ
 			requestSchema = "TrainingHintRequest"
 			responseSchema = "TrainingHintDisclosureEnvelope"
 		case "reveals":
-			requestSchema = "TrainingRevealRequest"
-			responseSchema = "TrainingLayerDisclosureEnvelope"
+			// Reveals must pass the pinned owner read in TrainingReveal.
+			return CommandResult{}, ErrPracticeCommandBadRequest
 		default:
 			return CommandResult{}, ErrPracticeCommandBadRequest
 		}
@@ -141,6 +142,67 @@ func (c *CommandClient) TrainingCommand(ctx context.Context, suffix, actor, requ
 		}
 	}
 	return result, nil
+}
+
+// TrainingReveal verifies the committed disclosure against the complete pinned
+// owner review. Its response has no session/version identity, so schema checking
+// alone cannot establish that the text belongs to this actor's requested unit.
+// Both existing command and private-read gates must be on before this is called.
+func (c *CommandClient) TrainingReveal(ctx context.Context, reader *Client, suffix, actor, requestID, key string, raw []byte, cookie *http.Cookie) (CommandResult, error) {
+	if c == nil || reader == nil {
+		return CommandResult{}, ErrPracticeCommandUnavailable
+	}
+	parts := strings.Split(strings.TrimPrefix(suffix, "/sessions/"), "/")
+	if !strings.HasPrefix(suffix, "/sessions/") || len(parts) != 2 || !ValidUUID(parts[0]) || parts[1] != "reveals" || !ValidIdempotencyKey(key) || trainingcontract.Validate("TrainingRevealRequest", raw) != nil {
+		return CommandResult{}, ErrPracticeCommandBadRequest
+	}
+	result, err := trainingRequest(ctx, c.httpClient, c.signer, c.baseURL, http.MethodPost, suffix, actor, requestID, key, raw, cookie, http.StatusOK, "TrainingLayerDisclosureEnvelope")
+	if err != nil {
+		return CommandResult{}, err
+	}
+	verificationCookie := cookie
+	if result.AnonymousCookie != nil {
+		verificationCookie = result.AnonymousCookie
+	}
+	review, err := reader.TrainingRead(ctx, "/sessions/"+parts[0]+"/review", actor, requestID, verificationCookie)
+	if err != nil {
+		// The command may already be committed. No unverified text crosses the
+		// boundary; recovery/retry uses the same owner and idempotency key.
+		return CommandResult{}, ErrPracticeCommandInvalid
+	}
+	var input trainingcontract.TrainingRevealRequest
+	var output trainingcontract.TrainingLayerDisclosureEnvelope
+	var pinned trainingcontract.TrainingReviewEnvelope
+	if json.Unmarshal(raw, &input) != nil || json.Unmarshal(result.Raw, &output) != nil || json.Unmarshal(review.Raw, &pinned) != nil {
+		return CommandResult{}, ErrPracticeCommandInvalid
+	}
+	reviewRaw, _ := pinned.Data.MarshalJSON()
+	var reviewContext struct {
+		UnitVersionID string                                     `json:"unit_version_id"`
+		Layers        []trainingcontract.TrainingLayerDisclosure `json:"layers"`
+	}
+	contentRaw, _ := output.Data.Content.MarshalJSON()
+	var content struct {
+		Layer string `json:"layer"`
+	}
+	if json.Unmarshal(reviewRaw, &reviewContext) != nil || json.Unmarshal(contentRaw, &content) != nil || reviewContext.UnitVersionID != input.UnitVersionId.String() || content.Layer != string(input.Layer) {
+		return CommandResult{}, ErrPracticeCommandInvalid
+	}
+	var returnedContent any
+	if json.Unmarshal(contentRaw, &returnedContent) != nil {
+		return CommandResult{}, ErrPracticeCommandInvalid
+	}
+	for _, layer := range reviewContext.Layers {
+		if layer.DisclosureId != output.Data.DisclosureId || !layer.DisclosedAt.Equal(output.Data.DisclosedAt) {
+			continue
+		}
+		pinnedRaw, _ := layer.Content.MarshalJSON()
+		var pinnedContent any
+		if json.Unmarshal(pinnedRaw, &pinnedContent) == nil && reflect.DeepEqual(returnedContent, pinnedContent) {
+			return result, nil
+		}
+	}
+	return CommandResult{}, ErrPracticeCommandInvalid
 }
 
 func trainingRequest(ctx context.Context, client *http.Client, signer *serviceauth.Signer, base, method, suffix, actor, requestID, key string, raw []byte, cookie *http.Cookie, status int, schema string) (CommandResult, error) {

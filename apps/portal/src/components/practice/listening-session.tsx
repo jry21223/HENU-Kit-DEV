@@ -5,10 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { Button } from "@/components/ui/button";
 import { PortalUnauthorizedError } from "@/lib/api/client";
-import { fetchTrainingReview, fetchTrainingSession, submitTrainingAnswer } from "@/lib/api/training";
+import { fetchTrainingReview, fetchTrainingSession, revealTrainingLayer, submitTrainingAnswer } from "@/lib/api/training";
 import type { TrainingAnswerSubmission, TrainingListeningReview, TrainingSession } from "@/lib/api/generated/training";
 import { createIdempotencyKey } from "@/lib/practice/session-handoff";
 import TrainingAttributionList from "./training-attribution";
+import ListeningAudio, { type EvidenceSelection, type ListeningAudioHandle } from "./listening-audio";
 import { usePageEnter } from "./transition/use-page-enter";
 
 type Draft = { input: TrainingAnswerSubmission; key: string; locked: boolean };
@@ -47,12 +48,15 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<TrainingListeningReview | null>(null);
   const [reviewError, setReviewError] = useState(false);
-  const [audioError, setAudioError] = useState(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [evidence, setEvidence] = useState<EvidenceSelection | null>(null);
+  const [revealing, setRevealing] = useState<"english" | "chinese" | null>(null);
+  const [revealError, setRevealError] = useState<string | null>(null);
+  const revealKeys = useRef<Partial<Record<"english" | "chinese", string>>>({});
+  const revealBusy = useRef(false);
+  const audioRef = useRef<ListeningAudioHandle>(null);
   const resultRef = useRef<HTMLElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
   const submittedHere = useRef(false);
-  const completionFocused = useRef(false);
   const busy = useRef(false);
   const alive = useRef(true);
 
@@ -76,11 +80,6 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
     return () => { alive.current = false; window.clearTimeout(timer); controller.abort(); };
   }, [load]);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    return () => { audio?.pause(); };
-  }, [session?.unit.unit_version_id]);
-
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     setReviewError(false);
     try {
@@ -100,19 +99,56 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
   useEffect(() => {
     if (!submittedHere.current) return;
     if (session?.phase === "completed") {
-      // Review inserts explanations above the summary. Keep it in view when
-      // that response arrives, unless the learner has already moved focus.
-      if (!completionFocused.current || document.activeElement === resultRef.current) {
-        resultRef.current?.focus({ preventScroll: true });
-        resultRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
-        completionFocused.current = true;
-      }
-      if (review || reviewError) submittedHere.current = false;
+      resultRef.current?.focus({ preventScroll: true });
+      resultRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+      submittedHere.current = false;
     } else if (error) {
       retryRef.current?.focus({ preventScroll: true });
       retryRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
     }
-  }, [session?.phase, error, review, reviewError]);
+  }, [session?.phase, error]);
+
+  async function reveal(layer: "english" | "chinese") {
+    if (!session || session.phase !== "completed" || revealBusy.current) return;
+    revealBusy.current = true;
+    setRevealing(layer);
+    setRevealError(null);
+    const key = revealKeys.current[layer] ??= createIdempotencyKey("training-reveal");
+    try {
+      // Recover first: a previous response may have been lost after committing.
+      const recovered = (await fetchTrainingSession(sessionID)).data;
+      if (!alive.current) return;
+      setSession(recovered);
+      if (!recovered.revealed_layers.includes(layer)) {
+        const disclosure = (await revealTrainingLayer(sessionID, { unit_version_id: recovered.unit.unit_version_id, layer }, key)).data;
+        if (!alive.current) return;
+        if (disclosure.content.kind !== "listening" || disclosure.content.layer !== layer) throw new Error("Unexpected training layer");
+      }
+      const [confirmed, fullReview] = await Promise.all([fetchTrainingSession(sessionID), fetchTrainingReview(sessionID)]);
+      if (!alive.current) return;
+      if (fullReview.data.kind !== "listening" || fullReview.data.session_id !== sessionID) throw new Error("Unexpected training review");
+      setSession(confirmed.data);
+      setReview(fullReview.data);
+      setReviewError(false);
+    } catch (cause) {
+      if (!alive.current) return;
+      let confirmed = false;
+      try {
+        const recovered = (await fetchTrainingSession(sessionID)).data;
+        if (!alive.current) return;
+        setSession(recovered);
+        if (recovered.revealed_layers.includes(layer)) {
+          const fullReview = (await fetchTrainingReview(sessionID)).data;
+          if (!alive.current) return;
+          if (fullReview.kind === "listening" && fullReview.session_id === sessionID) { setReview(fullReview); confirmed = true; }
+        }
+      } catch { /* Keep the last confirmed content; retry reads Core again. */ }
+      if (!confirmed && alive.current) setRevealError(cause instanceof PortalUnauthorizedError ? "登录状态已失效，请重新登录后继续查看文字。" : "文字暂时无法读取，请重试。");
+    } finally {
+      revealBusy.current = false;
+      if (alive.current) setRevealing(null);
+    }
+  }
 
   function choose(questionID: string, answer: number) {
     if (!session || saving || drafts[questionID]?.locked) return;
@@ -129,7 +165,6 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
     if (session.unit.questions.some(question => !saved.has(question.question_id) && !drafts[question.question_id])) return;
     busy.current = true;
     submittedHere.current = true;
-    completionFocused.current = false;
     setSaving(true);
     setError(null);
     const frozen = Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, { ...draft, locked: true }]));
@@ -181,21 +216,25 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
         <p className="font-mono text-xs tracking-[0.2em] text-accent-text">LISTENING</p>
         <h1 className="mt-3 break-words font-display text-3xl font-bold md:text-4xl">{session.unit.title}</h1>
         <p className="mt-4 text-sm leading-7 text-ink/70">{session.recovery_scope === "account" ? "已保存的答案记录在你的账号中。" : "同一浏览器保留站点数据时，可恢复已保存的答案。"} 提交后首次答案不可更改。</p>
-        <section aria-label="听力音频" className="mt-6 border-y border-line py-5">
-          <audio ref={audioRef} controls preload="metadata" src={session.unit.media.url} className="w-full" aria-label="听力音频播放器" onError={() => setAudioError(true)} onCanPlay={() => setAudioError(false)} />
-          {audioError && <ErrorBanner className="mt-4" message="音频暂时无法播放，请检查网络后重试。" onRetry={() => { setAudioError(false); audioRef.current?.load(); }} />}
-        </section>
+        <ListeningAudio key={sessionID} ref={audioRef} media={session.unit.media} onSelection={setEvidence} />
         <p role="status" className="mt-5 font-mono text-sm text-ink/70">{complete ? "已完成" : "已保存"} {session.saved_count}/{session.total_count} 题{saving ? " · 正在保存…" : ""}</p>
+        {complete && <section ref={resultRef} tabIndex={-1} aria-label="训练结果" className="mt-8 scroll-mt-32 border-y border-line py-6 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
+          <h2 className="font-display text-2xl font-bold">本组训练已完成</h2>
+          <p className="mt-3 text-sm leading-7">独立答对 {session.receipts.filter(item => item.outcome === "independent_correct").length} 题 · 提示后答对 {session.receipts.filter(item => item.outcome === "assisted_completion").length} 题 · 需要复习 {session.receipts.filter(item => item.review_required).length} 题</p>
+          <p className="mt-2 text-xs leading-6 text-ink/70">训练结果不计入普通刷题统计与排行榜。</p>
+          {reviewError ? <ErrorBanner className="mt-4" message="答案已保存，解析暂时无法读取，请重试。" onRetry={() => void loadReview()} /> : !review ? <div className="mt-4"><LoadingBlock label="加载答案解析" /></div> : null}
+          <div className="mt-5 flex flex-wrap gap-3"><Button asChild variant="outline"><Link href="/practice/training/review">查看待复习训练</Link></Button><Button asChild variant="ghost"><Link href="/practice/training">返回听力目录</Link></Button></div>
+        </section>}
         <form className="mt-6 space-y-8" onSubmit={event => { event.preventDefault(); void saveUnit(); }}>
           {session.unit.questions.map((question, index) => {
             const receipt = receipts.get(question.question_id);
             const selected = receipt?.answer ?? drafts[question.question_id]?.input.answer;
             const detail = complete ? review?.questions.find(item => item.question_id === question.question_id && item.question_version_id === question.question_version_id) : undefined;
-            return <fieldset key={question.question_id} disabled={!!receipt || saving || drafts[question.question_id]?.locked} className="min-w-0 border-t border-line pt-5">
+            return <fieldset key={question.question_id} className="min-w-0 border-t border-line pt-5">
               <legend className="max-w-full pr-3 text-base font-semibold leading-7"><span className="mr-2 font-mono text-sm text-accent-text">{String(index + 1).padStart(2, "0")}</span>{question.content}</legend>
               <div className="mt-4 space-y-2">
                 {question.options.map((option, optionIndex) => <label key={optionIndex} className={`flex min-h-12 cursor-pointer items-start gap-3 border px-4 py-3 text-sm leading-6 transition-colors motion-reduce:transition-none ${selected === optionIndex ? "border-ink bg-ink/5" : "border-ink/25 hover:border-ink/60"}`}>
-                  <input type="radio" name={question.question_id} value={optionIndex} checked={selected === optionIndex} onChange={() => choose(question.question_id, optionIndex)} className="mt-1 size-4 shrink-0 accent-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring" />
+                  <input type="radio" disabled={!!receipt || saving || drafts[question.question_id]?.locked} name={question.question_id} value={optionIndex} checked={selected === optionIndex} onChange={() => choose(question.question_id, optionIndex)} className="mt-1 size-4 shrink-0 accent-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring" />
                   <span className="min-w-0 break-words"><span className="mr-2 font-mono">{String.fromCharCode(65 + optionIndex)}.</span>{option}</span>
                 </label>)}
               </div>
@@ -204,19 +243,30 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
                 <p className="font-semibold">参考答案：{String.fromCharCode(65 + detail.expected_answer)}. {question.options[detail.expected_answer]}</p>
                 <p className="mt-2 whitespace-pre-wrap break-words">{detail.analysis}</p>
                 <p className="mt-2 text-ink/70">本题考点：{({ vocabulary: "词义", collocation: "搭配", logic: "逻辑", grammar: "语法", detail: "细节", inference: "推断" })[detail.error_category]}</p>
-                {detail.evidence.kind === "listening" && <p className="mt-2 font-mono text-xs text-ink/70">音频依据：{detail.evidence.segment_ids.map(id => review?.segments.find(segment => segment.segment_id === id)).filter(segment => !!segment).map(segment => `${timeLabel(segment.start_ms)}–${timeLabel(segment.end_ms)}`).join("、")}</p>}
+                {detail.evidence.kind === "listening" && <div className="mt-3 space-y-3" aria-label={`第 ${index + 1} 题音频依据`}>{detail.evidence.segment_ids.map(id => review?.segments.find(segment => segment.segment_id === id)).filter(segment => !!segment).map(segment => {
+                  const number = (review?.segments.findIndex(item => item.segment_id === segment.segment_id) ?? 0) + 1;
+                  return <div key={segment.segment_id}>
+                    <p className="font-mono text-xs text-ink/70">第 {number} 句 · {timeLabel(segment.start_ms)}–{timeLabel(segment.end_ms)}</p>
+                    <div className="mt-2 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => audioRef.current?.playSentence(segment, false)}>播放第 {number} 句</Button><Button type="button" size="sm" variant="outline" aria-pressed={evidence?.segment.segment_id === segment.segment_id && evidence.loop} onClick={() => audioRef.current?.playSentence(segment, true)}>循环第 {number} 句</Button></div>
+                  </div>;
+                })}</div>}
               </div>}
             </fieldset>;
           })}
           {error && !complete && <ErrorBanner message={error} />}
           {!complete && <Button ref={retryRef} type="submit" variant="accent" disabled={!ready || saving}>{saving ? "正在保存…" : error || session.saved_count > 0 || Object.values(drafts).some(draft => draft.locked) ? "继续保存答案" : "提交整组答案"}</Button>}
         </form>
-        {complete && <section ref={resultRef} tabIndex={-1} aria-label="训练结果" className="mt-8 scroll-mt-32 border-y border-line py-6 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
-          <h2 className="font-display text-2xl font-bold">本组训练已完成</h2>
-          <p className="mt-3 text-sm leading-7">独立答对 {session.receipts.filter(item => item.outcome === "independent_correct").length} 题 · 提示后答对 {session.receipts.filter(item => item.outcome === "assisted_completion").length} 题 · 需要复习 {session.receipts.filter(item => item.review_required).length} 题</p>
-          <p className="mt-2 text-xs leading-6 text-ink/70">训练结果不计入普通刷题统计与排行榜。</p>
-          {reviewError ? <ErrorBanner className="mt-4" message="答案已保存，解析暂时无法读取，请重试。" onRetry={() => void loadReview()} /> : !review ? <div className="mt-4"><LoadingBlock label="加载答案解析" /></div> : null}
-          <Button asChild variant="outline" className="mt-5"><Link href="/practice/training">返回听力目录</Link></Button>
+
+        {complete && review && <section aria-label="复盘文字" className="mt-8 border-t border-line pt-6">
+          <h2 className="font-display text-2xl font-bold">原文与译文</h2>
+          <p className="mt-3 text-sm leading-7 text-ink/70">先复听，再按需查看文字。复盘不改变本次首次作答结果。</p>
+          {revealError && <ErrorBanner className="mt-4" message={revealError} />}
+          <Button type="button" variant="outline" className="mt-5" aria-disabled={revealing !== null || review.layers.some(item => item.content.layer === "chinese")} onClick={() => { if (!revealing && !review.layers.some(item => item.content.layer === "chinese")) void reveal(review.layers.some(item => item.content.layer === "english") ? "chinese" : "english"); }}>{revealing ? "正在读取文字…" : review.layers.some(item => item.content.layer === "chinese") ? "文字已全部展开" : review.layers.some(item => item.content.layer === "english") ? "查看中文译文" : "查看英文原文"}</Button>
+          {review.layers.filter(item => item.content.kind === "listening").map(disclosure => <section key={disclosure.disclosure_id} aria-label={disclosure.content.layer === "english" ? "英文原文" : "中文译文"} className="mt-5">
+            <h3 className="font-semibold">{disclosure.content.layer === "english" ? "英文原文" : "中文译文"}</h3>
+            {disclosure.content.kind === "listening" && <ol className="mt-3 space-y-4 text-sm leading-7">{disclosure.content.segments.map((segment, index) => <li key={segment.segment_id} className="flex gap-3"><span aria-hidden="true" className="font-mono text-xs text-ink/60">{String(index + 1).padStart(2, "0")}</span><p className="min-w-0 break-words" lang={disclosure.content.layer === "english" ? "en" : "zh-CN"}>{segment.text}</p></li>)}</ol>}
+          </section>)}
+
         </section>}
         <TrainingAttributionList records={session.unit.attributions} />
       </div>
