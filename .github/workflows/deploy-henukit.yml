@@ -115,6 +115,8 @@ jobs:
             scripts/ops/tests/getwork-node-rollback.test.mjs \
             scripts/ops/tests/getwork-wsl-node-contract.test.mjs
 
+          python3 -m unittest discover -s scripts/ops/tests -p test_preserve_existing_release.py
+
           # Runtime packaging creates a temporary Git checkout and validates
           # it is clean. Keep it isolated from cross-file fixtures that also
           # create and mutate temporary repositories.
@@ -132,6 +134,10 @@ jobs:
           sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v node)" --test \
             --test-name-pattern='^a source config belonging to another owner is refused$' \
             scripts/ops/tests/watch-henukit-actions.test.mjs
+      - name: Require Linux preservation foreign-owner rejection
+        run: |
+          sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 python3 -m unittest discover \
+            -s scripts/ops/tests -p test_preserve_existing_release.py -k foreign_owner
       - name: Reject Account mock and fallback sources
         run: node scripts/ops/check-account-production-boundary.mjs
 

@@ -96,11 +96,11 @@ test("current successful main build invokes the existing full release entry once
   const s = fixture();
   const r = run(s);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(readFileSync(s.log, "utf8"), `${sha} --execute\n`);
+  assert.equal(readFileSync(s.log, "utf8"), `${sha} --preserve-existing --execute\n`);
   assert.equal(existsSync(join(s.state, `${sha}.attempted.json`)), true);
   assert.equal(existsSync(join(s.state, `${sha}.activated.json`)), true);
   assert.equal(run(s).status, 0);
-  assert.equal(readFileSync(s.log, "utf8"), `${sha} --execute\n`);
+  assert.equal(readFileSync(s.log, "utf8"), `${sha} --preserve-existing --execute\n`);
 });
 
 test("an existing activation marker cannot hide a divergent mandatory alias", () => {
@@ -150,7 +150,7 @@ test("the actual activator receives only the policy source despite inherited ove
   const s = fixture({ HENUKIT_REPO: "other/repo", HENUKIT_BRANCH: "unreviewed", HENUKIT_WORKFLOW: "other.yml" });
   const r = run(s);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(readFileSync(s.log, "utf8"), `${sha} --execute\n`);
+  assert.equal(readFileSync(s.log, "utf8"), `${sha} --preserve-existing --execute\n`);
 });
 
 async function waitUntil(check) {
@@ -236,7 +236,7 @@ test("failed activation retains one attempt and never automatically retries that
   assert.equal(existsSync(join(s.state, `${sha}.activated.json`)), false);
   s.env.TEST_ACTIVATE_FAILS = "0";
   assert.equal(run(s).status, 0);
-  assert.equal(readFileSync(s.log, "utf8"), `${sha} --execute\n`);
+  assert.equal(readFileSync(s.log, "utf8"), `${sha} --preserve-existing --execute\n`);
 });
 
 test("an unresolved scoped marker or pending rollback blocks scheduling", () => {
