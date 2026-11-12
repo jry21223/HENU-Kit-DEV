@@ -333,7 +333,7 @@ func (s *Service) importJSON(ctx context.Context, bankKey string, source []byte,
 	}
 	report.Accepted = true
 	if document.Training != nil {
-		if err = persistListeningVersion(ctx, tx, report, *document.Training, normalized); err != nil {
+		if err = persistTrainingVersion(ctx, tx, report, *document.Training, normalized); err != nil {
 			return report, err
 		}
 	}

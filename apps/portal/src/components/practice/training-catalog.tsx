@@ -29,9 +29,9 @@ export default function TrainingCatalog() {
     try {
       if (!quizCraftCatalogEnabled()) { setUnits([]); return; }
       const response = await fetchTrainingCatalog(signal);
-      if (!signal?.aborted) setUnits(response.data.units.filter(unit => unit.kind === "listening"));
+      if (!signal?.aborted) setUnits(response.data.units);
     } catch {
-      if (!signal?.aborted) setError("听力材料暂时加载不出来，请稍后重试。");
+      if (!signal?.aborted) setError("训练材料暂时加载不出来，请稍后重试。");
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -68,17 +68,17 @@ export default function TrainingCatalog() {
   return (
     <main className="mx-auto max-w-site px-5 py-8 md:px-8 md:py-12">
       <div className="max-w-3xl">
-        <p className="font-mono text-xs tracking-[0.2em] text-accent-text">ENGLISH / LISTENING</p>
-        <h1 className="mt-3 font-display text-3xl font-bold md:text-5xl">英语听力训练</h1>
-        <p className="mt-4 text-sm leading-7 text-ink/70">通用英语练习：听完整段音频，完成一组理解题，再核对答案与依据。训练结果单独记录。</p>
+        <p className="font-mono text-xs tracking-[0.2em] text-accent-text">ENGLISH / TRAINING</p>
+        <h1 className="mt-3 font-display text-3xl font-bold md:text-5xl">英语听力与完形训练</h1>
+        <p className="mt-4 text-sm leading-7 text-ink/70">通用英语练习：听力核对音频依据，完形结合全文语境作答。完成后查看解析与译文，训练结果单独记录。</p>
         <Button asChild variant="outline" className="mt-5"><Link href="/practice/training/review">待复习训练</Link></Button>
         {error && <ErrorBanner message={error} className="mt-6" onRetry={starting ? undefined : retryUnit ? () => void start(retryUnit) : () => void load()} />}
-        {loading ? <div className="mt-8"><LoadingBlock label="加载听力材料" /></div> : units.length === 0 && !error ? <div className="mt-8"><EmptyBlock label="暂时没有可练习的听力材料。" action={{ label: "返回题库", href: "/practice" }} /></div> : (
+        {loading ? <div className="mt-8"><LoadingBlock label="加载训练材料" /></div> : units.length === 0 && !error ? <div className="mt-8"><EmptyBlock label="暂时没有可练习的训练材料。" action={{ label: "返回题库", href: "/practice" }} /></div> : (
           <div className="mt-8 divide-y divide-line border-y border-line">
             {units.map(unit => <article key={unit.unit_version_id} className="py-6">
-              <p className="font-mono text-xs text-ink/60">听力 · {unit.question_count} 题</p>
+              <p className="font-mono text-xs text-ink/60">{unit.kind === "listening" ? "听力" : "完形"} · {unit.question_count} 题</p>
               <h2 className="mt-2 font-display text-2xl font-bold">{unit.title}</h2>
-              <Button className="mt-5" variant="accent" disabled={starting !== null} onClick={() => void start(unit)}>{starting === unit.unit_version_id ? "正在开始…" : "开始听力训练"}</Button>
+              <Button className="mt-5" variant="accent" disabled={starting !== null} onClick={() => void start(unit)}>{starting === unit.unit_version_id ? "正在开始…" : unit.kind === "listening" ? "开始听力训练" : "开始完形训练"}</Button>
               <TrainingAttributionList records={unit.attributions} />
             </article>)}
           </div>

@@ -87,7 +87,7 @@ the homepage module 04 is labelled 即将开放, and `/campus/deals` and
 form, or draft state. A failed `/campus` read is requested once and shown as an
 error; it is never retried by a second identical request.
 
-## English listening training
+## English listening and cloze training
 
 Listening training uses the existing Practice shell and native audio controls.
 Core owns first answers, disclosed language layers and review state; Portal keeps
@@ -127,3 +127,13 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 - **Material display title**: A readable material name shown alongside its course and material type to help readers identify it.
 - **Original material title**: The complete title supplied by the material owner. It is distinct from the file name; a title alone does not establish the file name.
 - **Deterministic SSR**: Fixed mock data and picsum seed URLs ensure server/client output match.
+
+Cloze shares the existing training session save/recovery/reveal controller. The
+full blanked passage retains stable part/blank IDs, contained scrolling and native
+radio keyboard behavior. Ordered hints are a unit-wide list (the frozen hint
+descriptor has no question binding). Before showing a hint, the browser reads Core
+and sends only a missing command with its original idempotency identity; Core
+marks all then-unsubmitted questions assisted. Complete review exposes contextual
+part evidence and authored categories, with English then Chinese as persisted
+layers. Draft selections and command retry identity alone may use sessionStorage;
+saved attempts, hints, outcomes and review items always come from Core.

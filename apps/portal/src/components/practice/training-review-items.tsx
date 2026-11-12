@@ -45,16 +45,16 @@ export default function TrainingReviewItems() {
   return <main className="mx-auto max-w-site px-5 py-8 md:px-8 md:py-12"><div className="max-w-3xl">
     <p className="font-mono text-xs tracking-[0.2em] text-accent-text">ENGLISH / REVIEW</p>
     <h1 className="mt-3 font-display text-3xl font-bold md:text-4xl">待复习训练</h1>
-    <p className="mt-4 text-sm leading-7 text-ink/70">回到整组材料，核对音频依据与练习点。新的独立作答会更新待复习记录，首次答案仍保留。</p>
+    <p className="mt-4 text-sm leading-7 text-ink/70">回到整组材料，核对音频或上下文依据与练习点。新的独立作答会更新待复习记录，首次答案仍保留。</p>
     {error && <ErrorBanner className="mt-6" message={error} onRetry={() => void load()} />}
     {items.length > 0 && <div className="mt-8 divide-y divide-line border-y border-line">{items.map(item => <article key={item.unit_version_id} className="py-6">
       <p className="font-mono text-xs text-ink/60">{item.kind === "listening" ? "听力" : "完形"} · {item.review_required_count} 题需要独立复习</p>
       <h2 className="mt-2 break-words font-display text-2xl font-bold">{item.title}</h2>
       <Button asChild variant="outline" className="mt-4"><Link href={`/practice/training/${item.session_id}`}>{item.phase === "completed" ? "打开完整复盘" : "继续未完成训练"}</Link></Button>
     </article>)}</div>}
-    {loading ? <div className="mt-6"><LoadingBlock label="读取复习记录" /></div> : !error && items.length === 0 ? <div className="mt-8"><EmptyBlock label="目前没有需要独立复习的训练。" action={{ label: "选择听力材料", href: "/practice/training" }} /></div> : null}
+    {loading ? <div className="mt-6"><LoadingBlock label="读取复习记录" /></div> : !error && items.length === 0 ? <div className="mt-8"><EmptyBlock label="目前没有需要独立复习的训练。" action={{ label: "选择训练材料", href: "/practice/training" }} /></div> : null}
     {cursor && !error && <Button type="button" variant="outline" className="mt-5" disabled={loading} onClick={() => void load(cursor)}>继续读取复习记录</Button>}
     <p className="mt-6 text-xs leading-6 text-ink/70">复习记录跟随当前账号，或当前浏览器保留的匿名身份。重新练习请从目录选择当前发布的材料。</p>
-    <Button asChild variant="ghost" className="mt-3"><Link href="/practice/training">返回听力目录</Link></Button>
+    <Button asChild variant="ghost" className="mt-3"><Link href="/practice/training">返回训练目录</Link></Button>
   </div></main>;
 }

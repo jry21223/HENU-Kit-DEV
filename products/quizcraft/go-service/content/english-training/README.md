@@ -16,8 +16,16 @@ q3 is logic and q4 is inference, retaining the frozen bounded category vocabular
 The checked immutable MP3 in `../../media/` is 584180 bytes, SHA256
 `92aa98d9bf83c7f1532dcd2ae2169190b649b5214c13481405ce68d14a630336`.
 Its gapless MPEG timing is 36.426848 seconds (rounded authoring duration: 36427ms).
-Sentence timestamps retain the human-edited Commons SRT boundaries. No evenly
-spaced or ASR-invented timing is used. English/Chinese text and keys remain in this
+Source sentence timings retain the human-edited Commons SRT evidence separately.
+Published replay ranges add up to 150ms before and 100ms after each sentence,
+clamped to media duration and neighboring gaps: 0–6898, 7417–14105,
+14619–25929, 26350–31586, and 31588–36318ms. These are derived playback margins,
+not new human timing or uniformly spaced timestamps. Independent offline ASR
+matched all 113 normalized source words. Its checked word intervals are
+0–6360, 7600–13980, 15060–25260, 26440–31180, and 32140–35900ms;
+all fit inside the published replay ranges. In particular, the original s4
+caption start 26500ms did not contain its checked first-word start 26440ms.
+The new human ear review is still pending. English/Chinese text and keys remain in this
 owner-only payload and database, never in a public Portal bundle.
 
 The source editorial history, source-text semantic review, offline ASR comparison,
@@ -57,3 +65,29 @@ Use the versioned migrator, verify its receipt/checksum, and check
 purpose default before activation. Before any authored training content exists, down/reapply
 is tested with ordinary content retained. Once a training unit is imported, down fails closed
 and the forward-recovery rule above applies.
+
+## Original cloze publication package
+
+`campus-repair.import.json` is the complete first-party cloze publication payload,
+following the same explicit Workshop import → validate → publish lifecycle. It is
+not seeded at startup or bundled with Portal. Production publication is pending.
+The 222-word, four-paragraph passage has 35 stable parts and ten one-to-one
+blank/question bindings. All ten questions use the existing single-choice grader.
+Each hint has two authored levels; a hint affects every still-unsubmitted question
+in the session. Categories describe the author's explanation of the question,
+not a precise diagnosis of the learner.
+
+Source: original HENU Kit project practice, written with AI assistance; no external
+PDF, audio, examination or official CET provenance is claimed. Text and Chinese
+translation use `LicenseRef-HENU-Kit-Service-Terms`, with the first-party terms at
+<https://henukit.cn/terms>. Attribution and modifications are component-specific in
+the payload. Editorial review checked the keys, distractors, full filled passage,
+contextual evidence, hints and translation. The final Chinese closing sentence
+preserves the same stable part IDs while reading “恰恰相反，求助可能是她开始学习独立解决问题的第一步。”
+
+The authoring research source has SHA256
+`58451db69c8566f538021b9cd8dfde4e34b5d8392eaf982e10758f10b2a68eeb`.
+The final publication payload SHA256 is
+`d166c1e0a7966424adb99b36cd90f71552272c2e37f97e2f1ffdef86493b025e`.
+Every semantic edit creates a new bank/unit version; previously created sessions
+continue to read their pinned passage, hints, question versions and evidence.

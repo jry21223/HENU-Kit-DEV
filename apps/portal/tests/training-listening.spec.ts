@@ -35,7 +35,7 @@ test("Practice discovers listening, starts a whole unit, and plays actual MP3 au
   page.on("response", response => { if (response.url().endsWith(mediaURL)) mediaStatuses.push(response.status()); });
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/practice");
-  await page.getByRole("link", { name: "英语听力训练" }).click();
+  await page.getByRole("link", { name: "英语听力与完形训练" }).click();
   await page.getByRole("button", { name: "开始听力训练" }).click();
   await expect(page).toHaveURL(new RegExp(`/practice/training/${sessionID}$`));
   await expect(page.getByRole("heading", { name: unit.title })).toBeVisible();
@@ -119,7 +119,7 @@ test("partial save recovers after refresh, retries only missing answers, and unl
   await expect(page.getByRole("region", { name: "训练结果" })).toBeFocused();
   await expect(page.getByRole("region", { name: "训练结果" })).toBeInViewport({ ratio: 1 });
   await expect(page.getByText("来自已完成训练的解析。", { exact: true })).toHaveCount(4);
-  await expect(page.getByText("独立答对 3 题 · 提示后答对 0 题 · 需要复习 1 题", { exact: true })).toBeVisible();
+  await expect(page.getByText("独立答对 3 题 · 提示后答对 0 题 · 答错 1 题", { exact: true })).toBeVisible();
   expect(bodies).toHaveLength(5);
   expect(bodies[2]).toEqual(bodies[1]);
   expect(bodies.filter(item => (item.body as { question_id: string }).question_id === questions[0].question_id)).toHaveLength(1);

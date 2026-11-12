@@ -103,8 +103,8 @@ func (c *CommandClient) TrainingCommand(ctx context.Context, suffix, actor, requ
 			requestSchema = "TrainingAnswerSubmission"
 			responseSchema = "TrainingAnswerReceiptEnvelope"
 		case "hints":
-			requestSchema = "TrainingHintRequest"
-			responseSchema = "TrainingHintDisclosureEnvelope"
+			// Hints require a pinned owner read in TrainingHint.
+			return CommandResult{}, ErrPracticeCommandBadRequest
 		case "reveals":
 			// Reveals must pass the pinned owner read in TrainingReveal.
 			return CommandResult{}, ErrPracticeCommandBadRequest
@@ -199,6 +199,46 @@ func (c *CommandClient) TrainingReveal(ctx context.Context, reader *Client, suff
 		pinnedRaw, _ := layer.Content.MarshalJSON()
 		var pinnedContent any
 		if json.Unmarshal(pinnedRaw, &pinnedContent) == nil && reflect.DeepEqual(returnedContent, pinnedContent) {
+			return result, nil
+		}
+	}
+	return CommandResult{}, ErrPracticeCommandInvalid
+}
+
+// TrainingHint returns text only after the same owner's pinned recovery confirms
+// the exact committed disclosure. The response shape alone has no session ID.
+func (c *CommandClient) TrainingHint(ctx context.Context, reader *Client, suffix, actor, requestID, key string, raw []byte, cookie *http.Cookie) (CommandResult, error) {
+	if c == nil || reader == nil {
+		return CommandResult{}, ErrPracticeCommandUnavailable
+	}
+	parts := strings.Split(strings.TrimPrefix(suffix, "/sessions/"), "/")
+	if !strings.HasPrefix(suffix, "/sessions/") || len(parts) != 2 || !ValidUUID(parts[0]) || parts[1] != "hints" || !ValidIdempotencyKey(key) || trainingcontract.Validate("TrainingHintRequest", raw) != nil {
+		return CommandResult{}, ErrPracticeCommandBadRequest
+	}
+	result, err := trainingRequest(ctx, c.httpClient, c.signer, c.baseURL, http.MethodPost, suffix, actor, requestID, key, raw, cookie, http.StatusOK, "TrainingHintDisclosureEnvelope")
+	if err != nil {
+		return CommandResult{}, err
+	}
+	verificationCookie := cookie
+	if result.AnonymousCookie != nil {
+		verificationCookie = result.AnonymousCookie
+	}
+	recovered, err := reader.TrainingRead(ctx, "/sessions/"+parts[0], actor, requestID, verificationCookie)
+	if err != nil {
+		return CommandResult{}, ErrPracticeCommandInvalid
+	}
+	var input trainingcontract.TrainingHintRequest
+	var output trainingcontract.TrainingHintDisclosureEnvelope
+	var snapshot trainingcontract.TrainingSessionEnvelope
+	if json.Unmarshal(raw, &input) != nil || json.Unmarshal(result.Raw, &output) != nil || json.Unmarshal(recovered.Raw, &snapshot) != nil {
+		return CommandResult{}, ErrPracticeCommandInvalid
+	}
+	unit, err := snapshot.Data.Unit.AsTrainingClozeUnit()
+	if err != nil || unit.Kind != "cloze" || unit.UnitVersionId != input.UnitVersionId || output.Data.HintId != input.HintId || output.Data.Level != input.Level {
+		return CommandResult{}, ErrPracticeCommandInvalid
+	}
+	for _, hint := range snapshot.Data.HintDisclosures {
+		if hint.DisclosureId == output.Data.DisclosureId && hint.HintId == output.Data.HintId && hint.Level == output.Data.Level && hint.Text == output.Data.Text && hint.DisclosedAt.Equal(output.Data.DisclosedAt) && reflect.DeepEqual(hint.AffectedQuestionIds, output.Data.AffectedQuestionIds) {
 			return result, nil
 		}
 	}
@@ -338,6 +378,9 @@ func validateTrainingProjection(schema string, raw []byte, suffix string) error 
 			}
 			qs = unit.Questions
 			version = unit.UnitVersionId.String()
+			if err := validateClozeSnapshot(s, unit); err != nil {
+				return err
+			}
 		}
 		if s.TotalCount != len(qs) || s.SavedCount != len(s.Receipts) || !trainingPhase(string(s.Phase), s.SavedCount, s.TotalCount) || s.Phase != "completed" && len(s.RevealedLayers) != 0 {
 			return errors.New("invalid training counts")
@@ -555,6 +598,9 @@ func validatePinnedTrainingReview(snapshot trainingcontract.TrainingSession, raw
 		}
 		questions, reviews, layers = unit.Questions, review.Questions, review.Layers
 		version, reviewVersion = unit.UnitVersionId.String(), review.UnitVersionId.String()
+		if err := validatePinnedClozeReview(unit, review); err != nil {
+			return err
+		}
 	}
 	if version != reviewVersion || len(questions) != len(reviews) || len(layers) != len(snapshot.RevealedLayers) {
 		return errors.New("review does not match pinned unit")

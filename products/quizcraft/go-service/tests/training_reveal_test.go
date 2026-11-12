@@ -27,6 +27,11 @@ func publishedListening(t *testing.T) (*httptest.Server, tc.TrainingCatalogItem)
 
 func publishedListeningDatabase(t *testing.T) (*httptest.Server, tc.TrainingCatalogItem, *pgxpool.Pool) {
 	t.Helper()
+	return publishedTrainingDatabase(t, "north-wind.import.json")
+}
+
+func publishedTrainingDatabase(t *testing.T, filename string) (*httptest.Server, tc.TrainingCatalogItem, *pgxpool.Pool) {
+	t.Helper()
 	pool := isolatedQuizcraftV2Database(t)
 	handler, err := quizcraft.NewPracticeHTTP(quizcraft.PracticeHTTPConfig{Database: pool, AuthHMACSecret: []byte(practiceAuthSecret), AllowTestWorkshopClaims: true, CatalogClientID: portalCatalogClientID, CatalogKeys: map[string]string{portalCatalogKeyID: portalCatalogSecret}, PortalCommandsEnabled: true, PortalCommandClientID: portalCommandClientID, PortalCommandKeys: map[string]string{portalCommandKeyID: portalCommandSecret}})
 	if err != nil {
@@ -41,7 +46,7 @@ func publishedListeningDatabase(t *testing.T) (*httptest.Server, tc.TrainingCata
 		t.Fatalf("bank %d %s", status, body)
 	}
 	bank := operationResourceID(t, body)
-	raw, err := os.ReadFile("../content/english-training/north-wind.import.json")
+	raw, err := os.ReadFile("../content/english-training/" + filename)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,9 +297,9 @@ func TestListeningRevealSerializesWithLastAnswerAndFreshIndependentPracticeClear
 	}
 }
 
-func TestListeningRevealRetainsWriteGates(t *testing.T) {
+func TestTrainingDisclosuresRetainWriteGates(t *testing.T) {
 	pool := isolatedQuizcraftV2Database(t)
-	path := trainingTestPrefix + "/sessions/" + uuid.NewString() + "/reveals"
+	path := trainingTestPrefix + "/sessions/" + uuid.NewString()
 	raw := mustJSON(tc.TrainingRevealRequest{UnitVersionId: uuid.New(), Layer: "english"})
 	for _, gate := range []struct {
 		name             string
@@ -307,9 +312,11 @@ func TestListeningRevealRetainsWriteGates(t *testing.T) {
 			}
 			server := httptest.NewServer(handler)
 			defer server.Close()
-			status, body, _ := sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, "POST", server.URL, path, raw, "", "disabled-reveal-"+uuid.NewString()))
-			if status != 503 || !bytes.Contains(body, []byte("TRAINING_DISABLED")) {
-				t.Fatalf("gate %d %s", status, body)
+			for _, action := range []string{"reveals", "hints"} {
+				status, body, _ := sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, "POST", server.URL, path+"/"+action, raw, "", "disabled-disclosure-"+uuid.NewString()))
+				if status != 503 || !bytes.Contains(body, []byte("TRAINING_DISABLED")) {
+					t.Fatalf("gate %d %s", status, body)
+				}
 			}
 		})
 	}
@@ -395,5 +402,44 @@ func TestListeningDisclosureTimeFollowsSessionSerialization(t *testing.T) {
 	decodeJSON(t, response.body, &disclosure)
 	if response.status != 200 || disclosure.Data.DisclosedAt.Before(releasedAt) {
 		t.Fatalf("disclosure predates session authorization: released=%s status=%d body=%s", releasedAt, response.status, response.body)
+	}
+}
+
+func TestListeningPublishedEvidenceIncludesIndependentlyVerifiedWordBoundaries(t *testing.T) {
+	server, unit := publishedListening(t)
+	actor := uuid.NewString()
+	s, b, _ := sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, "POST", server.URL, trainingTestPrefix+"/sessions", mustJSON(tc.TrainingCreateSession{UnitId: unit.UnitId, UnitVersionId: unit.UnitVersionId}), actor, "boundary-create-"+uuid.NewString()))
+	var session tc.TrainingSessionEnvelope
+	decodeJSON(t, b, &session)
+	if s != 201 {
+		t.Fatalf("create %d %s", s, b)
+	}
+	u := mustListeningUnit(t, session.Data)
+	path := trainingTestPrefix + "/sessions/" + session.Data.SessionId.String()
+	for i, q := range u.Questions {
+		s, b, _ = sendPortalPracticeCommand(t, newPortalPracticeCommandRequest(t, "POST", server.URL, path+"/answers", mustJSON(tc.TrainingAnswerSubmission{UnitVersionId: unit.UnitVersionId, QuestionId: q.QuestionId, QuestionVersionId: q.QuestionVersionId, Answer: []int{1, 2, 0, 3}[i]}), actor, "boundary-answer-"+uuid.NewString()))
+		if s != 200 {
+			t.Fatalf("answer %d %s", s, b)
+		}
+	}
+	s, b = sendCatalogRequest(t, trainingAccountRead(t, server.URL, path+"/review", actor))
+	var review apiEnvelope[tc.TrainingListeningReview]
+	decodeJSON(t, b, &review)
+	if s != 200 {
+		t.Fatalf("review %d %s", s, b)
+	}
+	// Independent offline ASR word intervals, normalized against all 113 source
+	// words (no differences). These are containment evidence, not human ear review.
+	words := map[string][2]int{"s1": {0, 6360}, "s2": {7600, 13980}, "s3": {15060, 25260}, "s4": {26440, 31180}, "s5": {32140, 35900}}
+	if len(review.Data.Segments) != len(words) {
+		t.Fatalf("missing sentence boundaries %+v", review.Data.Segments)
+	}
+	end := 0
+	for _, segment := range review.Data.Segments {
+		interval, ok := words[segment.SegmentId]
+		if !ok || segment.StartMs > interval[0] || segment.EndMs < interval[1] || segment.StartMs < end || segment.EndMs > u.Media.DurationMs {
+			t.Fatalf("published replay omits verified words or overlaps: segment=%+v wordRange=%v", segment, interval)
+		}
+		end = segment.EndMs
 	}
 }

@@ -32,29 +32,31 @@ func TestTrainingBrowserCoreHarness(t *testing.T) {
 	server.Listener = listener
 	server.Start()
 	defer server.Close()
-	actor := uuid.NewString()
-	auth := "quizcraft_session=" + workshopToken(t, actor, []string{"quizcraft.workshop.write", "quizcraft.workshop.publish"}, []map[string]string{{"kind": "product", "product_code": "quizcraft"}})
-	status, body := requestJSON(t, "POST", server.URL+"/api/v1/workshop/banks", map[string]string{"Cookie": auth, "Idempotency-Key": "browser-training-bank-" + actor}, map[string]any{"bank_key": "browser-listening-" + actor, "name": "English listening"})
-	if status != 201 {
-		t.Fatalf("create bank %d %s", status, body)
-	}
-	bank := operationResourceID(t, body)
-	raw, err := os.ReadFile("../content/english-training/north-wind.import.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var input map[string]any
-	_ = json.Unmarshal(raw, &input)
-	status, body = requestJSON(t, "POST", server.URL+"/api/v1/workshop/banks/"+bank+"/imports", map[string]string{"Cookie": auth, "Idempotency-Key": "browser-training-import-" + actor}, input)
-	if status != 201 {
-		t.Fatalf("import %d %s", status, body)
-	}
-	var report apiEnvelope[quizcraft.ImportReport]
-	decodeJSON(t, body, &report)
-	for i, action := range []string{"validate", "publish"} {
-		status, body = requestJSON(t, "POST", server.URL+"/api/v1/workshop/banks/"+bank+"/versions/"+report.Data.BankVersionID+"/"+action, map[string]string{"Cookie": auth, "Idempotency-Key": "browser-training-" + action + actor}, map[string]any{"expected_version": 2 + i, "note": "Isolated browser acceptance only; pending human ear review"})
-		if status != 200 {
-			t.Fatalf("%s %d %s", action, status, body)
+	for _, filename := range []string{"north-wind.import.json", "campus-repair.import.json"} {
+		actor := uuid.NewString()
+		auth := "quizcraft_session=" + workshopToken(t, actor, []string{"quizcraft.workshop.write", "quizcraft.workshop.publish"}, []map[string]string{{"kind": "product", "product_code": "quizcraft"}})
+		status, body := requestJSON(t, "POST", server.URL+"/api/v1/workshop/banks", map[string]string{"Cookie": auth, "Idempotency-Key": "browser-training-bank-" + actor}, map[string]any{"bank_key": "browser-listening-" + actor, "name": "English listening"})
+		if status != 201 {
+			t.Fatalf("create bank %d %s", status, body)
+		}
+		bank := operationResourceID(t, body)
+		raw, err := os.ReadFile("../content/english-training/" + filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var input map[string]any
+		_ = json.Unmarshal(raw, &input)
+		status, body = requestJSON(t, "POST", server.URL+"/api/v1/workshop/banks/"+bank+"/imports", map[string]string{"Cookie": auth, "Idempotency-Key": "browser-training-import-" + actor}, input)
+		if status != 201 {
+			t.Fatalf("import %d %s", status, body)
+		}
+		var report apiEnvelope[quizcraft.ImportReport]
+		decodeJSON(t, body, &report)
+		for i, action := range []string{"validate", "publish"} {
+			status, body = requestJSON(t, "POST", server.URL+"/api/v1/workshop/banks/"+bank+"/versions/"+report.Data.BankVersionID+"/"+action, map[string]string{"Cookie": auth, "Idempotency-Key": "browser-training-" + action + actor}, map[string]any{"expected_version": 2 + i, "note": "Isolated browser acceptance only; listening human ear review pending"})
+			if status != 200 {
+				t.Fatalf("%s %d %s", action, status, body)
+			}
 		}
 	}
 	if err = os.WriteFile(filepath.Join(directory, "core-ready"), []byte(server.URL), 0600); err != nil {

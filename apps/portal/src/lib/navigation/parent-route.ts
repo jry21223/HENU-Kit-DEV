@@ -42,7 +42,7 @@ const RULES: Array<{ matches: (pathname: string) => boolean; parent: ParentRoute
     matches: (pathname) => pathname.startsWith("/practice/favorites/"),
     parent: { href: "/practice/favorites", label: LEVEL_LABELS.practiceFavorites },
   },
-  { matches: (pathname) => pathname.startsWith("/practice/training/"), parent: { href: "/practice/training", label: "英语听力训练" } },
+  { matches: (pathname) => pathname.startsWith("/practice/training/"), parent: { href: "/practice/training", label: "英语听力与完形训练" } },
   { matches: (pathname) => pathname.startsWith("/practice/"), parent: { href: "/practice", label: LEVEL_LABELS.practiceBank } },
   { matches: (pathname) => pathname === "/practice", parent: PLATFORM_HOME },
   { matches: (pathname) => pathname.startsWith("/library/"), parent: { href: "/library", label: LEVEL_LABELS.library } },

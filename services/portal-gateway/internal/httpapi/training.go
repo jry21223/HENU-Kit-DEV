@@ -40,9 +40,9 @@ func (h *Handler) training(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Cloze hints belong to the following ticket. Reveal verification requires
-	// the existing private-read gate before any write can reach Core.
-	if strings.HasSuffix(suffix, "/hints") || strings.HasSuffix(suffix, "/reveals") && h.quizCraft == nil {
+	// Disclosure verification requires the existing private-read gate before
+	// any hint or language write can reach Core.
+	if (strings.HasSuffix(suffix, "/hints") || strings.HasSuffix(suffix, "/reveals")) && h.quizCraft == nil {
 		h.trainingError(w, r, 503, "TRAINING_DISABLED", "训练暂时不可用，请稍后重试")
 		return
 	}
@@ -98,6 +98,8 @@ func (h *Handler) training(w http.ResponseWriter, r *http.Request) {
 		}
 		if strings.HasSuffix(suffix, "/reveals") {
 			result, err = h.practiceCommands.TrainingReveal(r.Context(), h.quizCraft, suffix, actor, requestIDOf(w, r), key, raw, cookie)
+		} else if strings.HasSuffix(suffix, "/hints") {
+			result, err = h.practiceCommands.TrainingHint(r.Context(), h.quizCraft, suffix, actor, requestIDOf(w, r), key, raw, cookie)
 		} else {
 			result, err = h.practiceCommands.TrainingCommand(r.Context(), suffix, actor, requestIDOf(w, r), key, raw, cookie)
 		}

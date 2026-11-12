@@ -135,7 +135,7 @@ export default function PracticeBankPage() {
       {quizCraftCatalogIsEnabled && (
         <div className="mx-auto max-w-site px-5 pb-6 md:px-8">
           <Link href="/practice/training" className="inline-flex min-h-11 items-center border border-ink px-4 font-mono text-sm transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring">
-            英语听力训练
+            英语听力与完形训练
           </Link>
         </div>
       )}

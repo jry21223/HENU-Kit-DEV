@@ -94,3 +94,13 @@ and owner review restores their text from the pinned version. Post-submit replay
 and text never change first-answer correctness or independent outcomes. The Core
 review-items index restores the complete pinned context; a fresh independent
 success clears current review without rewriting previous sessions.
+
+HC-644 adds original cloze publication through the same Workshop lifecycle.
+Stable blanks bind one-to-one to exact questions and passage parts; publication
+rejects duplicate/missing bindings, unknown evidence, bad layers and unlicensed
+components atomically. Pre-answer hints commit under the same session lock as
+first answers and persist all then-unsubmitted question IDs. Assistance comes
+from those facts, while answer/disclosure timestamps use the serialized wall
+clock rather than transaction start time. Shared live/rebuild/reconcile learning
+projections retain assisted correct as review-required; fresh independent success
+clears it. Both closed content kinds recover only their pinned version.

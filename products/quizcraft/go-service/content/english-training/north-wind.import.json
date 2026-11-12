@@ -83,7 +83,7 @@
         "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
         "source_url": "https://commons.wikimedia.org/wiki/TimedText:Recording_of_speaker_of_British_English_(Received_Pronunciation).ogg.en.srt",
         "attribution": "Wikimedia Commons TimedText contributors",
-        "modifications": "Adjacent captions grouped into complete sentences.",
+        "modifications": "Adjacent captions grouped into complete sentences. Replay adds up to 150 ms before and 100 ms after each sentence, clamped to adjacent gaps and media duration; source caption timings are retained separately. Derived margins, not new human timing.",
         "original": false
       },
       {
@@ -105,27 +105,27 @@
       {
         "segment_id": "s1",
         "start_ms": 0,
-        "end_ms": 6798
+        "end_ms": 6898
       },
       {
         "segment_id": "s2",
-        "start_ms": 7567,
-        "end_ms": 14005
+        "start_ms": 7417,
+        "end_ms": 14105
       },
       {
         "segment_id": "s3",
-        "start_ms": 14769,
-        "end_ms": 25829
+        "start_ms": 14619,
+        "end_ms": 25929
       },
       {
         "segment_id": "s4",
-        "start_ms": 26500,
-        "end_ms": 31486
+        "start_ms": 26350,
+        "end_ms": 31586
       },
       {
         "segment_id": "s5",
-        "start_ms": 31690,
-        "end_ms": 36218
+        "start_ms": 31588,
+        "end_ms": 36318
       }
     ],
     "question_reviews": [

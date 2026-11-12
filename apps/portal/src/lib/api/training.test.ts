@@ -3,6 +3,15 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 beforeEach(() => { vi.resetModules(); vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1"); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
+it("requests one persisted cloze hint level with its original retry identity", async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ request_id: "hint", data: {} }), { status: 200 })));
+  vi.stubGlobal("fetch", fetch);
+  const { discloseTrainingHint } = await import("./training");
+  const input = { unit_version_id: "77777777-7777-4777-8777-777777777777", hint_id: "hint-replacement", level: 1 };
+  await discloseTrainingHint("22222222-2222-4222-8222-222222222222", input, "training-hint-retry-0001");
+  expect(fetch).toHaveBeenLastCalledWith("/api/v1/practice/training/sessions/22222222-2222-4222-8222-222222222222/hints", expect.objectContaining({ method: "POST", body: JSON.stringify(input), cache: "no-store", credentials: "same-origin", headers: expect.objectContaining({ "Idempotency-Key": "training-hint-retry-0001" }) }));
+});
+
 it("uses the exact training command and preserves the answer and retry key", async () => {
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ request_id: "r1", data: { saved_count: 1 } }), { status: 200 }));
   vi.stubGlobal("fetch", fetch);

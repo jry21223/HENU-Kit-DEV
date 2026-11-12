@@ -121,11 +121,18 @@ func guardTrainingImport(ctx context.Context, tx pgx.Tx, bankID uuid.UUID, autho
 	return nil
 }
 
-func persistListeningVersion(ctx context.Context, tx pgx.Tx, report ImportReport, authoring tc.TrainingAuthoring, questions []normalizedQuestion) error {
+func persistTrainingVersion(ctx context.Context, tx pgx.Tx, report ImportReport, authoring tc.TrainingAuthoring, questions []normalizedQuestion) error {
 	raw, _ := json.Marshal(authoring)
 	invalid := func(message string) error { return workshopHTTPError{422, "invalid_training", message} }
 	if err := tc.Validate("TrainingAuthoring", raw); err != nil {
 		return invalid("Training source violates its closed contract")
+	}
+	var kind struct {
+		Kind string `json:"kind"`
+	}
+	_ = json.Unmarshal(raw, &kind)
+	if kind.Kind == "cloze" {
+		return persistClozeVersion(ctx, tx, report, authoring, questions)
 	}
 	source, err := authoring.AsTrainingListeningAuthoring()
 	if err != nil || source.Kind != "listening" {
@@ -221,33 +228,15 @@ func persistListeningVersion(ctx context.Context, tx pgx.Tx, report ImportReport
 		version.Unit.Questions = append(version.Unit.Questions, tc.TrainingQuestion{QuestionId: q.QuestionID, QuestionVersionId: q.VersionID, Content: q.Content, Options: texts})
 		version.ReviewQuestions = append(version.ReviewQuestions, tc.TrainingQuestionReview{QuestionId: q.QuestionID, QuestionVersionId: q.VersionID, ExpectedAnswer: int(key), Analysis: q.Analysis, ErrorCategory: tc.TrainingQuestionReviewErrorCategory(r.ErrorCategory), Evidence: r.Evidence})
 	}
-	// Fingerprint the whole resolved object, omitting only the two derived fields.
 	encoded, _ := json.Marshal(version)
-	var canonical map[string]any
-	_ = json.Unmarshal(encoded, &canonical)
-	unit := canonical["unit"].(map[string]any)
-	delete(unit, "unit_version_id")
-	delete(unit, "content_sha256")
-	encoded, _ = json.Marshal(canonical)
-	fingerprint := hash(encoded)
+	fingerprint := trainingDocumentFingerprint(encoded)
 	version.Unit.UnitVersionId = stableID(unitID, "version:"+fingerprint)
 	version.Unit.ContentSha256 = fingerprint
 	encoded, _ = json.Marshal(version)
 	if err := tc.Validate("TrainingListeningVersion", encoded); err != nil {
 		return invalid(fmt.Sprintf("Resolved training is invalid: %v", err))
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO quizcraft_training_units(id,bank_id,source_unit_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, unitID, bankID, source.SourceUnitId); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO quizcraft_training_unit_versions(id,unit_id,bank_id,bank_version_id,content_sha256,document) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, version.Unit.UnitVersionId, unitID, bankID, bankVersion, fingerprint, encoded); err != nil {
-		return err
-	}
-	for i, q := range version.Unit.Questions {
-		if _, err := tx.Exec(ctx, `INSERT INTO quizcraft_training_members(unit_version_id,bank_id,bank_version_id,question_id,question_version_id,position) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, version.Unit.UnitVersionId, bankID, bankVersion, q.QuestionId, q.QuestionVersionId, i+1); err != nil {
-			return err
-		}
-	}
-	return nil
+	return persistTrainingDocument(ctx, tx, source.SourceUnitId, encoded)
 }
 
 func validateTrainingBinding(ctx context.Context, tx pgx.Tx, bank, version uuid.UUID) error {
@@ -262,13 +251,14 @@ func validateTrainingBinding(ctx context.Context, tx pgx.Tx, bank, version uuid.
 	if err := tx.QueryRow(ctx, `SELECT document FROM quizcraft_training_unit_versions WHERE bank_id=$1 AND bank_version_id=$2`, bank, version).Scan(&raw); err != nil {
 		return workshopHTTPError{409, "training_binding_required", "This bank version has no exact training binding"}
 	}
-	var document tc.TrainingListeningVersion
-	if tc.Validate("TrainingListeningVersion", raw) != nil || json.Unmarshal(raw, &document) != nil {
+	document, err := decodeTrainingVersion(raw)
+	if err != nil {
 		return workshopHTTPError{409, "invalid_training", "Training content failed validation"}
 	}
-	_, err := listeningAsset(tc.TrainingAuthoredMedia{Sha256: document.Unit.Media.Sha256, DurationMs: document.Unit.Media.DurationMs, ContentType: "audio/mpeg"})
-	if err != nil {
-		return workshopHTTPError{409, "invalid_training", err.Error()}
+	if document.Cloze == nil {
+		if _, err := listeningAsset(tc.TrainingAuthoredMedia{Sha256: document.Listening.Unit.Media.Sha256, DurationMs: document.Listening.Unit.Media.DurationMs, ContentType: "audio/mpeg"}); err != nil {
+			return workshopHTTPError{409, "invalid_training", err.Error()}
+		}
 	}
 	var members int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM quizcraft_training_members WHERE unit_version_id=$1`, document.Unit.UnitVersionId).Scan(&members); err != nil {

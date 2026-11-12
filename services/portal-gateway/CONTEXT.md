@@ -144,5 +144,16 @@ The returned disclosure ID, timestamp, requested language, text and stable
 sentence membership must match that committed review. Both existing command
 and private-read gates must be enabled before a reveal write is attempted. A
 verification failure releases no text; clients recover Core facts and retry the
-same command key. Cloze hints remain closed for HC-644. No new credentials,
+same command key. No new credentials,
 permissions, flags, routes or browser-owned completion authority are introduced.
+
+
+HC-644 enables the frozen cloze hint command with both the existing command and
+private-read gates. Before returning hint text, Gateway reads the current owner's
+pinned session and verifies the requested hint/level plus the exact committed
+disclosure ID, time, text and affected question IDs. A failed verification releases
+no hint text. Safe cloze recovery checks one-to-one stable blanks, passage parts,
+hint levels and assistance against persisted disclosures. Complete cloze review
+checks evidence against pinned parts and requires every English/Chinese layer to
+cover those exact parts in order; filled English must match the pinned context and
+answer keys. Gateway adds no content, learning facts, credentials or grants.
