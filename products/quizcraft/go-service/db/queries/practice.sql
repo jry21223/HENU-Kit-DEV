@@ -11,6 +11,7 @@ FROM quizcraft_banks b
 JOIN quizcraft_bank_versions bv ON bv.id=b.active_version_id AND bv.bank_id=b.id AND bv.sealed_at IS NOT NULL
 LEFT JOIN quizcraft_bank_version_questions m ON m.bank_version_id=bv.id
 LEFT JOIN quizcraft_question_versions qv ON qv.id=m.question_version_id
+WHERE NOT EXISTS(SELECT 1 FROM quizcraft_training_units t WHERE t.bank_id=b.id)
 GROUP BY b.id,b.active_version_id,b.bank_key,b.name,bv.content_sha256
 ORDER BY b.name,b.id;
 
@@ -18,7 +19,8 @@ ORDER BY b.name,b.id;
 SELECT true AS published
 FROM quizcraft_banks b
 JOIN quizcraft_bank_versions bv ON bv.id=$2 AND bv.bank_id=b.id
-WHERE b.id=$1 AND b.active_version_id=$2 AND bv.sealed_at IS NOT NULL;
+WHERE b.id=$1 AND b.active_version_id=$2 AND bv.sealed_at IS NOT NULL
+ AND NOT EXISTS(SELECT 1 FROM quizcraft_training_units t WHERE t.bank_id=b.id);
 
 -- name: CreatePracticeSession :exec
 INSERT INTO quizcraft_practice_sessions(id,bank_id,bank_version_id,user_id,actor_key,mode,chapter_id)
@@ -113,29 +115,7 @@ WHERE user_id=$1
 ORDER BY updated_at DESC;
 
 -- name: GetLearningStateReconciliation :one
-WITH aggregates AS (
-  SELECT user_id,bank_id,question_id,
-         count(*)::bigint AS attempt_count,
-         count(*) FILTER (WHERE correct)::bigint AS correct_count,
-         max(submitted_at) AS updated_at
-  FROM quizcraft_practice_attempts
-  WHERE user_id IS NOT NULL
-  GROUP BY user_id,bank_id,question_id
-),
-latest AS (
-  SELECT DISTINCT ON (user_id,bank_id,question_id)
-         user_id,bank_id,question_id,id AS latest_attempt_id,question_version_id,(NOT correct) AS wrong
-  FROM quizcraft_practice_attempts
-  WHERE user_id IS NOT NULL
-  ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
-),
-expected AS (
-  SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,latest.latest_attempt_id,
-         latest.question_version_id,latest.wrong,aggregates.attempt_count,
-         aggregates.correct_count,aggregates.updated_at
-  FROM aggregates
-  JOIN latest USING (user_id,bank_id,question_id)
-),
+WITH expected AS (SELECT * FROM quizcraft_expected_learning_state),
 compared AS (
   SELECT expected.user_id AS expected_user_id,
          actual.user_id AS actual_user_id,
@@ -166,37 +146,19 @@ FROM compared;
 DELETE FROM quizcraft_learning_state;
 
 -- name: RebuildLearningStateFromAttempts :exec
-WITH aggregates AS (
-  SELECT user_id,bank_id,question_id,
-         count(*)::bigint AS attempt_count,
-         count(*) FILTER (WHERE correct)::bigint AS correct_count,
-         max(submitted_at) AS updated_at
-  FROM quizcraft_practice_attempts
-  WHERE user_id IS NOT NULL
-  GROUP BY user_id,bank_id,question_id
-),
-latest AS (
-  SELECT DISTINCT ON (user_id,bank_id,question_id)
-         user_id,bank_id,question_id,id AS latest_attempt_id,question_version_id,(NOT correct) AS wrong
-  FROM quizcraft_practice_attempts
-  WHERE user_id IS NOT NULL
-  ORDER BY user_id,bank_id,question_id,submitted_at DESC,id DESC
-)
 INSERT INTO quizcraft_learning_state(user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,latest_attempt_id,updated_at)
-SELECT aggregates.user_id,aggregates.bank_id,aggregates.question_id,latest.question_version_id,
-       latest.wrong,aggregates.attempt_count,aggregates.correct_count,latest.latest_attempt_id,aggregates.updated_at
-FROM aggregates
-JOIN latest USING (user_id,bank_id,question_id);
+SELECT user_id,bank_id,question_id,question_version_id,wrong,attempt_count,correct_count,latest_attempt_id,updated_at
+FROM quizcraft_expected_learning_state;
 
 -- name: GetPersonalPracticeTotals :one
 SELECT count(*)::bigint AS total_answers,
        count(*) FILTER (WHERE correct)::bigint AS correct_answers
-FROM quizcraft_practice_attempts
+FROM quizcraft_ordinary_attempts
 WHERE user_id=$1;
 
 -- name: ListPersonalPracticeDays :many
 SELECT DISTINCT ((submitted_at AT TIME ZONE 'Asia/Shanghai')::date)::text AS activity_day
-FROM quizcraft_practice_attempts
+FROM quizcraft_ordinary_attempts
 WHERE user_id=$1
 ORDER BY activity_day DESC;
 
@@ -206,6 +168,7 @@ WITH active_questions AS (
   FROM quizcraft_banks b
   JOIN quizcraft_bank_versions bv ON bv.id=b.active_version_id AND bv.bank_id=b.id AND bv.sealed_at IS NOT NULL
   JOIN quizcraft_bank_version_questions m ON m.bank_id=b.id AND m.bank_version_id=bv.id
+ WHERE NOT EXISTS(SELECT 1 FROM quizcraft_training_units t WHERE t.bank_id=b.id)
 ),
 bank_totals AS (
   SELECT bank_id,name AS label,count(*)::bigint AS total_questions
@@ -216,7 +179,7 @@ personal_activity AS (
   SELECT active.bank_id,
          count(DISTINCT active.question_id) FILTER (WHERE attempt.correct)::bigint AS correct_questions
   FROM active_questions active
-  JOIN quizcraft_practice_attempts attempt
+  JOIN quizcraft_ordinary_attempts attempt
     ON attempt.bank_id=active.bank_id AND attempt.question_id=active.question_id
   WHERE attempt.user_id=$1
   GROUP BY active.bank_id
@@ -316,7 +279,7 @@ WITH totals AS (
   SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
          a.user_id,
          count(*)::bigint AS correct_answer_count
-  FROM quizcraft_practice_attempts a
+  FROM quizcraft_ordinary_attempts a
   LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
   WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.submitted_at >= $1
   GROUP BY identity_key,a.user_id
@@ -333,7 +296,7 @@ WITH totals AS (
   SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
          a.user_id,
          count(*)::bigint AS correct_answer_count
-  FROM quizcraft_practice_attempts a
+  FROM quizcraft_ordinary_attempts a
   LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
   WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2
   GROUP BY identity_key,a.user_id
@@ -350,7 +313,7 @@ WITH totals AS (
   SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
          a.user_id,
          count(*)::bigint AS correct_answer_count
-  FROM quizcraft_practice_attempts a
+  FROM quizcraft_ordinary_attempts a
   LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
   WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
   GROUP BY identity_key,a.user_id
@@ -363,7 +326,7 @@ WITH totals AS (
   SELECT COALESCE(a.user_id::text,s.actor_key) AS identity_key,
          a.user_id,
          count(*)::bigint AS correct_answer_count
-  FROM quizcraft_practice_attempts a
+  FROM quizcraft_ordinary_attempts a
   LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
   WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.bank_id=$1 AND a.submitted_at >= $2 AND a.submitted_at < $3
   GROUP BY identity_key,a.user_id
@@ -378,7 +341,7 @@ ON CONFLICT(period_start,period_end,scope,bank_id) DO NOTHING;
 
 -- name: ListScoredBankIDsWindow :many
 SELECT DISTINCT a.bank_id
-FROM quizcraft_practice_attempts a
+FROM quizcraft_ordinary_attempts a
 LEFT JOIN quizcraft_practice_sessions s ON s.id=a.session_id
 WHERE a.correct AND COALESCE(a.user_id::text,s.actor_key) IS NOT NULL AND a.submitted_at >= $1 AND a.submitted_at < $2
 ORDER BY a.bank_id;

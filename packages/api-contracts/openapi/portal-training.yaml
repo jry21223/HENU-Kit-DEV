@@ -1,0 +1,516 @@
+openapi: "3.1.0"
+info:
+  title: "Portal Training API"
+  version: "0.1.0"
+  description: "Frozen additive training contract (HC-641 / ADR-0060); declarations and generated clients only, not implemented endpoints. Ordinary Practice envelopes, routes and gates are unchanged. Browser routes use same-origin HttpOnly Portal/anonymous cookies; never accept browser actor or service-auth headers. Invalid Portal login returns 401. No generic proxy, query filters, arbitrary IDs in bodies, or legacy fallback. All routes except review-items reject query parameters; review-items accepts only one cursor and page_size, in that canonical order. All JSON objects reject unknown fields. Responses are private, no-store; Content-Type application/json. See docs/development/english-training-contract.md for gates, recovery, cross-field invariants and errors."
+  license:
+    name: "Private"
+    identifier: "LicenseRef-Private"
+servers:
+  -
+    url: "/"
+tags:
+  -
+    name: "Training"
+    description: "General English listening and cloze training."
+paths:
+  /api/v1/practice/training/catalog:
+    get:
+      operationId: "listTrainingCatalog"
+      summary: "Public safe catalog"
+      description: "Public safe catalog; no session identity, hints, keys or private material."
+      tags: ["Training"]
+      security: []
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingCatalogEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/practice/training/review-items:
+    get:
+      operationId: "listTrainingReviewItems"
+      summary: "Actor-owned review index"
+      description: "Actor-owned review index; recover the returned pinned session for complete unit context. Current Core learning state decides review membership."
+      tags: ["Training"]
+      security: []
+      parameters:
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 512
+            pattern: "^[A-Za-z0-9_-]+$"
+        -
+          name: "page_size"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingReviewItemsEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/practice/training/sessions:
+    post:
+      operationId: "createTrainingSession"
+      summary: "Pin exactly the selected currently published immutable unit version. Never substitute a newer version."
+      description: "Pin exactly the selected currently published immutable unit version. Never substitute a newer version."
+      tags: ["Training"]
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingCreateSession"
+      responses:
+        201:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/practice/training/sessions/{session_id}:
+    get:
+      operationId: "getTrainingSession"
+      summary: "Owner-bound recovery of safe pinned content, saved first answers, hints and disclosed layer names. Does not return shared review."
+      description: "Owner-bound recovery of safe pinned content, saved first answers, hints and disclosed layer names. Does not return shared review."
+      tags: ["Training"]
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/practice/training/sessions/{session_id}/answers:
+    post:
+      operationId: "submitTrainingAnswer"
+      summary: "One immutable first answer per pinned question"
+      description: "One immutable first answer per pinned question; stable per-question idempotency key. Never releases shared review."
+      tags: ["Training"]
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingAnswerSubmission"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingAnswerReceiptEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/practice/training/sessions/{session_id}/hints:
+    post:
+      operationId: "discloseTrainingHint"
+      summary: "Cloze only"
+      description: "Cloze only; persist a sequential authored hint layer before disclosure and mark all still-unanswered questions assisted under the same session lock."
+      tags: ["Training"]
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingHintRequest"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingHintDisclosureEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/practice/training/sessions/{session_id}/review:
+    get:
+      operationId: "getTrainingReview"
+      summary: "Owner-bound"
+      description: "Owner-bound; UNIT_INCOMPLETE until all exact pinned questions have first answers. Contains keys, analysis and evidence plus only already disclosed text layers."
+      tags: ["Training"]
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingReviewEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/practice/training/sessions/{session_id}/reveals:
+    post:
+      operationId: "revealTrainingLayer"
+      summary: "Owner-bound complete-session reveal"
+      description: "Owner-bound complete-session reveal; persist English before Chinese. Recovery/review replays only committed layers."
+      tags: ["Training"]
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingRevealRequest"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingLayerDisclosureEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+        502:
+          $ref: "#/components/responses/BadGateway"
+components:
+  parameters:
+    IdempotencyKey:
+      name: "Idempotency-Key"
+      in: "header"
+      required: true
+      schema:
+        type: "string"
+        minLength: 16
+        maxLength: 160
+    SessionID:
+      name: "session_id"
+      in: "path"
+      required: true
+      schema:
+        type: "string"
+        format: "uuid"
+  responses:
+    BadRequest:
+      description: "Invalid closed request, option index, or pinned member/version."
+      content:
+        application/json:
+          schema:
+            $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"
+    Unauthorized:
+      description: "Missing/invalid service signature or invalid Portal session; never downgraded to guest."
+      content:
+        application/json:
+          schema:
+            $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"
+    Forbidden:
+      description: "Service permission or product scope is invalid."
+      content:
+        application/json:
+          schema:
+            $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"
+    NotFound:
+      description: "Gate disabled, missing resource, or resource belongs to another actor; no existence leak."
+      content:
+        application/json:
+          schema:
+            $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"
+    Conflict:
+      description: "Incomplete unit, locked layer, unavailable version, immutable answer, idempotency conflict, or nonce replay. error.code distinguishes the cause."
+      content:
+        application/json:
+          schema:
+            $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"
+    ServiceUnavailable:
+      description: "Write/command/read gate closed, stop-write in force, or required owner/dependency unavailable."
+      content:
+        application/json:
+          schema:
+            $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"
+    BadGateway:
+      description: "Owner response invalid, owner authentication rejected, or owner network failure."
+      content:
+        application/json:
+          schema:
+            $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"
+  schemas:
+    TrainingStableID:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingStableID"
+    TrainingSHA256:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingSHA256"
+    TrainingKind:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingKind"
+    TrainingPhase:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingPhase"
+    TrainingOutcome:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingOutcome"
+    TrainingAttribution:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingAttribution"
+    TrainingCatalogItem:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingCatalogItem"
+    TrainingReviewItem:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingReviewItem"
+    TrainingReviewItems:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingReviewItems"
+    TrainingCatalog:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingCatalog"
+    TrainingQuestion:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingQuestion"
+    TrainingMedia:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingMedia"
+    TrainingHintDescriptor:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingHintDescriptor"
+    TrainingListeningUnit:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingListeningUnit"
+    TrainingTextPart:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingTextPart"
+    TrainingBlankPart:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingBlankPart"
+    TrainingPassagePart:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingPassagePart"
+    TrainingBlank:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingBlank"
+    TrainingClozeUnit:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingClozeUnit"
+    TrainingUnit:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingUnit"
+    TrainingCreateSession:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingCreateSession"
+    TrainingAnswerSubmission:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingAnswerSubmission"
+    TrainingAnswerReceipt:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingAnswerReceipt"
+    TrainingHintRequest:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingHintRequest"
+    TrainingHintDisclosure:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingHintDisclosure"
+    TrainingSession:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingSession"
+    TrainingSentenceSegment:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingSentenceSegment"
+    TrainingListeningEvidence:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingListeningEvidence"
+    TrainingClozeEvidence:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingClozeEvidence"
+    TrainingEvidence:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingEvidence"
+    TrainingQuestionReview:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingQuestionReview"
+    TrainingSegmentText:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingSegmentText"
+    TrainingPartText:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingPartText"
+    TrainingListeningLayer:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingListeningLayer"
+    TrainingClozeLayer:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingClozeLayer"
+    TrainingRevealedContent:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingRevealedContent"
+    TrainingRevealRequest:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingRevealRequest"
+    TrainingLayerDisclosure:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingLayerDisclosure"
+    TrainingListeningReview:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingListeningReview"
+    TrainingClozeReview:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingClozeReview"
+    TrainingReview:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingReview"
+    TrainingCatalogEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingCatalogEnvelope"
+    TrainingReviewItemsEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingReviewItemsEnvelope"
+    TrainingSessionEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingSessionEnvelope"
+    TrainingAnswerReceiptEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingAnswerReceiptEnvelope"
+    TrainingHintDisclosureEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingHintDisclosureEnvelope"
+    TrainingReviewEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingReviewEnvelope"
+    TrainingLayerDisclosureEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingLayerDisclosureEnvelope"
+    TrainingError:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingError"
+    TrainingErrorEnvelope:
+      $ref: "./quizcraft-training.yaml#/components/schemas/TrainingErrorEnvelope"

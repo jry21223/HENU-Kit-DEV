@@ -8,6 +8,10 @@ on:
       - packages/api-contracts/openapi/portal-gateway.yaml
       - packages/api-contracts/openapi/account-portfolio.yaml
       - packages/api-contracts/openapi/quizcraft.yaml
+      - packages/api-contracts/openapi/quizcraft-training.yaml
+      - packages/api-contracts/openapi/portal-training.yaml
+      - scripts/generate-training-contract.sh
+      - apps/portal/src/lib/api/generated/training/**
       - .github/workflows/portal-gateway.yml
   push:
     branches: [main]
@@ -17,6 +21,10 @@ on:
       - packages/api-contracts/openapi/portal-gateway.yaml
       - packages/api-contracts/openapi/account-portfolio.yaml
       - packages/api-contracts/openapi/quizcraft.yaml
+      - packages/api-contracts/openapi/quizcraft-training.yaml
+      - packages/api-contracts/openapi/portal-training.yaml
+      - scripts/generate-training-contract.sh
+      - apps/portal/src/lib/api/generated/training/**
       - .github/workflows/portal-gateway.yml
 
 permissions:
@@ -44,12 +52,18 @@ jobs:
           set -euo pipefail
           go run ./cmd/contractgen
           go run ./cmd/quizcraftcontractgen
+          bash ../../scripts/generate-training-contract.sh
           git diff --exit-code -- \
             internal/contract/portal_session.generated.go \
             internal/practice/contract_generated.go \
             ../../apps/portal/src/lib/api/portal-session.generated.ts
+          git diff --exit-code -- internal/trainingcontract \
+            ../../products/quizcraft/go-service/internal/trainingcontract \
+            ../../apps/portal/src/lib/api/generated/training
           npx --yes --package=@redocly/cli@2.39.0 \
             redocly lint ../../packages/api-contracts/openapi/portal-gateway.yaml
+          npx --yes --package=@redocly/cli@2.39.0 \
+            redocly lint ../../packages/api-contracts/openapi/quizcraft-training.yaml ../../packages/api-contracts/openapi/portal-training.yaml
 
       - name: Vet and test
         working-directory: services/portal-gateway

@@ -1,0 +1,53 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+beforeEach(() => { vi.resetModules(); vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1"); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+it("requests one persisted cloze hint level with its original retry identity", async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ request_id: "hint", data: {} }), { status: 200 })));
+  vi.stubGlobal("fetch", fetch);
+  const { discloseTrainingHint } = await import("./training");
+  const input = { unit_version_id: "77777777-7777-4777-8777-777777777777", hint_id: "hint-replacement", level: 1 };
+  await discloseTrainingHint("22222222-2222-4222-8222-222222222222", input, "training-hint-retry-0001");
+  expect(fetch).toHaveBeenLastCalledWith("/api/v1/practice/training/sessions/22222222-2222-4222-8222-222222222222/hints", expect.objectContaining({ method: "POST", body: JSON.stringify(input), cache: "no-store", credentials: "same-origin", headers: expect.objectContaining({ "Idempotency-Key": "training-hint-retry-0001" }) }));
+});
+
+it("uses the exact training command and preserves the answer and retry key", async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ request_id: "r1", data: { saved_count: 1 } }), { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+  const { submitTrainingAnswer } = await import("./training");
+  const answer = { unit_version_id: "77777777-7777-4777-8777-777777777777", question_id: "55555555-5555-4555-8555-555555555555", question_version_id: "66666666-6666-4666-8666-666666666666", answer: 0 };
+  await submitTrainingAnswer("22222222-2222-4222-8222-222222222222", answer, "training-answer-retry-0001");
+  expect(fetch).toHaveBeenCalledWith("/api/v1/practice/training/sessions/22222222-2222-4222-8222-222222222222/answers", expect.objectContaining({ method: "POST", credentials: "same-origin", cache: "no-store", body: JSON.stringify(answer), headers: expect.objectContaining({ "Idempotency-Key": "training-answer-retry-0001" }) }));
+});
+
+it("fails visibly on owner errors and never replaces recovery with local progress", async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ request_id: "r-failed", error: { code: "TRAINING_DISABLED", message: "disabled" } }), { status: 503 }));
+  vi.stubGlobal("fetch", fetch);
+  const { fetchTrainingSession } = await import("./training");
+  const { PortalHttpError } = await import("./client");
+  await expect(fetchTrainingSession("22222222-2222-4222-8222-222222222222")).rejects.toBeInstanceOf(PortalHttpError);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledWith("/api/v1/practice/training/sessions/22222222-2222-4222-8222-222222222222", expect.objectContaining({ credentials: "same-origin", cache: "no-store" }));
+});
+
+it("rejects invalid route IDs and keys before sending commands", async () => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  const { createTrainingSession, fetchTrainingSession } = await import("./training");
+  const { PortalApiError } = await import("./client");
+  expect(() => fetchTrainingSession("../other-owner")).toThrow(PortalApiError);
+  expect(() => createTrainingSession({ unit_id: "u", unit_version_id: "v" }, "short")).toThrow(PortalApiError);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("reveals only the requested owner layer and reads the actor-bound review index", async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ request_id: "r1", data: {} }), { status: 200 })));
+  vi.stubGlobal("fetch", fetch);
+  const { revealTrainingLayer, fetchTrainingReviewItems } = await import("./training");
+  const input = { unit_version_id: "77777777-7777-4777-8777-777777777777", layer: "english" as const };
+  await revealTrainingLayer("22222222-2222-4222-8222-222222222222", input, "training-reveal-retry-0001");
+  expect(fetch).toHaveBeenLastCalledWith("/api/v1/practice/training/sessions/22222222-2222-4222-8222-222222222222/reveals", expect.objectContaining({ method: "POST", body: JSON.stringify(input), cache: "no-store", credentials: "same-origin", headers: expect.objectContaining({ "Idempotency-Key": "training-reveal-retry-0001" }) }));
+  await fetchTrainingReviewItems("opaque_cursor-2");
+  expect(fetch).toHaveBeenLastCalledWith("/api/v1/practice/training/review-items?cursor=opaque_cursor-2", expect.objectContaining({ cache: "no-store", credentials: "same-origin" }));
+  expect(() => fetchTrainingReviewItems("../foreign")).toThrow();
+});

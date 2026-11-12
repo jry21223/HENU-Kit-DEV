@@ -115,6 +115,9 @@ jobs:
             scripts/ops/tests/getwork-node-rollback.test.mjs \
             scripts/ops/tests/getwork-wsl-node-contract.test.mjs
 
+          python3 -m unittest discover -s scripts/ops/tests -p test_preserve_existing_release.py
+          python3 -m unittest discover -s scripts/ops/tests -p test_quizcraft_release.py
+
           # Runtime packaging creates a temporary Git checkout and validates
           # it is clean. Keep it isolated from cross-file fixtures that also
           # create and mutate temporary repositories.
@@ -132,6 +135,10 @@ jobs:
           sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 "$(command -v node)" --test \
             --test-name-pattern='^a source config belonging to another owner is refused$' \
             scripts/ops/tests/watch-henukit-actions.test.mjs
+      - name: Require Linux preservation foreign-owner rejection
+        run: |
+          sudo HENUKIT_REQUIRE_FOREIGN_OWNER=1 python3 -m unittest discover \
+            -s scripts/ops/tests -p test_preserve_existing_release.py -k foreign_owner
       - name: Reject Account mock and fallback sources
         run: node scripts/ops/check-account-production-boundary.mjs
 
@@ -230,6 +237,8 @@ jobs:
         run: pnpm --filter @henukit/portal test:e2e:quizcraft-catalog
       - name: Verify Practice session, swipe, and transition behavior
         run: pnpm --filter @henukit/portal test:e2e:practice
+      - name: Verify listening training and media recovery behavior
+        run: pnpm --filter @henukit/portal test:e2e:training
       - name: Verify QQ binding authorization
         run: pnpm --filter @henukit/portal test:e2e:qq-binding
 
@@ -249,7 +258,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: 1.25.x
+          go-version-file: services/platform-core/go.mod
           cache-dependency-path: |
             services/platform-core/go.sum
             services/portal-gateway/go.sum

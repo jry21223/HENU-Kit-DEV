@@ -1,0 +1,229 @@
+{
+  "expected_version": 1,
+  "source_sha256": "92aa98d9bf83c7f1532dcd2ae2169190b649b5214c13481405ce68d14a630336",
+  "questions": [
+    {
+      "source_question_id": "q1",
+      "type": "single",
+      "chapter_id": "north-wind",
+      "chapter": "Listening",
+      "content": "What was the traveler wearing?",
+      "options": [
+        "A light cotton shirt.",
+        "A warm cloak.",
+        "A pair of new boots.",
+        "A wide sun hat."
+      ],
+      "answer": 1,
+      "analysis": "第一句直接说明旅人裹着一件暖和的斗篷。"
+    },
+    {
+      "source_question_id": "q2",
+      "type": "single",
+      "chapter_id": "north-wind",
+      "chapter": "Listening",
+      "content": "What would decide who was stronger?",
+      "options": [
+        "Who could follow the traveler farther.",
+        "Who could shout louder than the traveler.",
+        "Who could make the traveler take off his cloak first.",
+        "Who could find the traveler's home first."
+      ],
+      "answer": 2,
+      "analysis": "他们约定，先让旅人脱下斗篷的一方胜出；并非比较追赶距离或声音大小。"
+    },
+    {
+      "source_question_id": "q3",
+      "type": "single",
+      "chapter_id": "north-wind",
+      "chapter": "Listening",
+      "content": "What did the traveler do as the North Wind blew harder?",
+      "options": [
+        "He wrapped his cloak more tightly around himself.",
+        "He immediately took off his cloak.",
+        "He asked the Sun to stop shining.",
+        "He gave his cloak to another traveler."
+      ],
+      "answer": 0,
+      "analysis": "北风吹得越大，旅人把斗篷裹得越紧，所以北风的办法没有奏效。"
+    },
+    {
+      "source_question_id": "q4",
+      "type": "single",
+      "chapter_id": "north-wind",
+      "chapter": "Listening",
+      "content": "Why did the North Wind have to admit that the Sun was stronger?",
+      "options": [
+        "The Sun blew the cloak away.",
+        "The traveler told the Wind to leave.",
+        "The Wind could not find the traveler.",
+        "The Sun's warmth made the traveler take off his cloak."
+      ],
+      "answer": 3,
+      "analysis": "太阳照暖后，旅人脱下斗篷，满足了双方先前约定的获胜条件，北风因此认输。"
+    }
+  ],
+  "training": {
+    "source_unit_id": "licensed-north-wind-001",
+    "kind": "listening",
+    "title": "The North Wind and the Sun",
+    "attributions": [
+      {
+        "component": "audio",
+        "license_id": "CC-BY-SA-3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Recording_of_speaker_of_British_English_(Received_Pronunciation).ogg",
+        "attribution": "P. Roach / International Phonetic Association (2003)",
+        "modifications": "MP3 conversion; no cuts.",
+        "original": false
+      },
+      {
+        "component": "text",
+        "license_id": "CC-BY-SA-4.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/TimedText:Recording_of_speaker_of_British_English_(Received_Pronunciation).ogg.en.srt",
+        "attribution": "Wikimedia Commons TimedText contributors",
+        "modifications": "Adjacent captions grouped into complete sentences. Replay adds up to 150 ms before and 100 ms after each sentence, clamped to adjacent gaps and media duration; source caption timings are retained separately. Derived margins, not new human timing.",
+        "original": false
+      },
+      {
+        "component": "translation",
+        "license_id": "CC-BY-SA-4.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/TimedText:Recording_of_speaker_of_British_English_(Received_Pronunciation).ogg.en.srt",
+        "attribution": "HENU Kit Chinese adaptation of Wikimedia Commons captions",
+        "modifications": "Chinese translation.",
+        "original": false
+      }
+    ],
+    "media": {
+      "sha256": "92aa98d9bf83c7f1532dcd2ae2169190b649b5214c13481405ce68d14a630336",
+      "content_type": "audio/mpeg",
+      "duration_ms": 36427
+    },
+    "segments": [
+      {
+        "segment_id": "s1",
+        "start_ms": 0,
+        "end_ms": 6898
+      },
+      {
+        "segment_id": "s2",
+        "start_ms": 7417,
+        "end_ms": 14105
+      },
+      {
+        "segment_id": "s3",
+        "start_ms": 14619,
+        "end_ms": 25929
+      },
+      {
+        "segment_id": "s4",
+        "start_ms": 26350,
+        "end_ms": 31586
+      },
+      {
+        "segment_id": "s5",
+        "start_ms": 31588,
+        "end_ms": 36318
+      }
+    ],
+    "question_reviews": [
+      {
+        "source_question_id": "q1",
+        "error_category": "detail",
+        "evidence": {
+          "kind": "listening",
+          "segment_ids": [
+            "s1"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q2",
+        "error_category": "detail",
+        "evidence": {
+          "kind": "listening",
+          "segment_ids": [
+            "s2"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q3",
+        "error_category": "logic",
+        "evidence": {
+          "kind": "listening",
+          "segment_ids": [
+            "s3"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q4",
+        "error_category": "inference",
+        "evidence": {
+          "kind": "listening",
+          "segment_ids": [
+            "s4",
+            "s5"
+          ]
+        }
+      }
+    ],
+    "layers": [
+      {
+        "kind": "listening",
+        "layer": "english",
+        "segments": [
+          {
+            "segment_id": "s1",
+            "text": "The North Wind and the Sun were disputing which was the stronger, when a traveler came along wrapped in a warm cloak."
+          },
+          {
+            "segment_id": "s2",
+            "text": "They agreed that the one who first succeeded in making the traveler take his cloak off should be considered stronger than the other."
+          },
+          {
+            "segment_id": "s3",
+            "text": "Then the North Wind blew as hard as he could, but the more he blew the more closely did the traveler fold his cloak around him; and at last the North Wind gave up the attempt."
+          },
+          {
+            "segment_id": "s4",
+            "text": "Then the Sun shone out warmly, and immediately the traveler took off his cloak."
+          },
+          {
+            "segment_id": "s5",
+            "text": "And so the North Wind was obliged to confess that the Sun was the stronger of the two."
+          }
+        ]
+      },
+      {
+        "kind": "listening",
+        "layer": "chinese",
+        "segments": [
+          {
+            "segment_id": "s1",
+            "text": "北风和太阳正在争论谁更强，一位裹着暖和斗篷的旅人恰好走来。"
+          },
+          {
+            "segment_id": "s2",
+            "text": "他们约定，谁先让旅人脱下斗篷，谁就算比对方更强。"
+          },
+          {
+            "segment_id": "s3",
+            "text": "于是北风使劲地吹，但风越大，旅人就把斗篷裹得越紧；最后北风放弃了尝试。"
+          },
+          {
+            "segment_id": "s4",
+            "text": "接着，太阳温暖地照耀着，旅人立刻脱下了斗篷。"
+          },
+          {
+            "segment_id": "s5",
+            "text": "因此，北风不得不承认，太阳是两者中更强的那个。"
+          }
+        ]
+      }
+    ]
+  }
+}

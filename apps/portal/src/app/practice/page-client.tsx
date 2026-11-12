@@ -132,6 +132,14 @@ export default function PracticeBankPage() {
         searchRef={searchRef}
       />
 
+      {quizCraftCatalogIsEnabled && (
+        <div className="mx-auto max-w-site px-5 pb-6 md:px-8">
+          <Link href="/practice/training" className="inline-flex min-h-11 items-center border border-ink px-4 font-mono text-sm transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring">
+            英语听力与完形训练
+          </Link>
+        </div>
+      )}
+
       <div data-block className="border-t border-line">
         <div className="mx-auto flex max-w-site items-center justify-between px-5 py-3 md:px-8">
           <p className="font-mono text-xs tracking-[0.3em] text-ink/60">

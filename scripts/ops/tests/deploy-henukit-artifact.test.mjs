@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,6 +77,10 @@ if [[ "$*" == *"up -d --remove-orphans"* ]]; then printf '%s|%s\\n' "$PORTAL_VER
   writeFileSync(now, "2026-08-13T01:03:04Z\n");
   execFileSync(scriptPath, [runtime, environment], { env });
   assert.equal(readFileSync(log, "utf8"), `${releaseSha}|2026-08-13T01:02:03Z\n${releaseSha}|2026-08-13T01:03:04Z\n`);
+  mkdirSync(join(runtime,"migrations","quizcraft"));
+  const direct=spawnSync(scriptPath,[runtime,environment],{env,encoding:"utf8"});
+  assert.notEqual(direct.status,0);
+  assert.match(direct.stderr,/original full release maintenance owner/);
   assert.equal(
     readFileSync(materialsLog, "utf8"),
     `--release-sha ${releaseSha}\n--release-sha ${releaseSha}\n`,

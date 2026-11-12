@@ -682,3 +682,34 @@ test("full approval entry refuses an active scoped release before external or en
   assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
   assert.doesNotMatch(readFileSync(setup.log, "utf8"), /watcher|ssh|gateway/);
 });
+
+test("preservation rejects an unavailable existing authority before credential helpers", () => {
+  const setup = fixture();
+  const before = lstatSync(setup.env.HENUKIT_ENV_FILE);
+  const contents = readFileSync(setup.env.HENUKIT_ENV_FILE);
+  const result = spawnSync(command, [releaseSha, "--preserve-existing", "--execute"], {
+    encoding: "utf8", env: setup.env,
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /preserv|existing/i);
+  assert.deepEqual(readFileSync(setup.env.HENUKIT_ENV_FILE), contents);
+  assert.equal(lstatSync(setup.env.HENUKIT_ENV_FILE).ino, before.ino);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /ssh |watcher /);
+  assert.equal(existsSync(join(setup.state, "approvals", releaseSha)), false);
+});
+
+test("prepared preservation cannot downgrade through the original activator after receipt loss", () => {
+  const setup = fixture();
+  const backup = join(setup.state, "preserved-baseline.dump");
+  writeFileSync(backup, "verified backup", { mode: 0o600 });
+  writeFileSync(`${backup}.meta`, `release_sha=${releaseSha}\npreservation_mode=preserve-existing:${"d".repeat(64)}\n`, { mode: 0o600 });
+  writeFileSync(join(setup.state, "prepared", releaseSha), `${backup}\n`, { mode: 0o600 });
+  const before = lstatSync(setup.env.HENUKIT_ENV_FILE).ino;
+  const result = spawnSync(command, [releaseSha, "--execute"], {
+    encoding: "utf8", env: { ...setup.env, HENUKIT_BACKUP_ROOT: setup.state },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /preserv/);
+  assert.equal(lstatSync(setup.env.HENUKIT_ENV_FILE).ino, before);
+  assert.doesNotMatch(readFileSync(setup.log, "utf8"), /ssh |watcher /);
+});

@@ -114,3 +114,46 @@ Their read gate, private headers, owner service authentication and honest failur
 behavior remain mandatory. Feedback-status and generic permission checks remain
 unchanged. This uses the existing Portal Session lifetime and does not claim
 live Core Session introspection or an additional revocation guarantee.
+
+ADR-0060 freezes a separate additive English training façade in
+`portal-training.yaml` and `quizcraft-training.yaml`. Public training catalog
+reads stay anonymous. Only the exact training session, review and review-items
+GETs add signed guest-capable reads using the existing independent read
+credential, optional signed Portal actor, and Core-issued anonymous cookie.
+They never create/claim learning state. Training create/answer/hint/reveal use the
+existing gated command credential. Gateway owns no training content, assistance,
+first answers, review state or persistence; ordinary envelopes remain unchanged.
+HC-641 declares these boundaries and generated clients only, with no route,
+credential, flag or permission mutation. See
+[the frozen protocol](../../docs/development/english-training-contract.md).
+
+HC-642 implements the catalog, session create/recovery, immutable answer receipt,
+complete-unit review and review-items facade on those exact training routes.
+The existing catalog, V2 read and command flags still gate their own clients.
+Pending/partial session projections reject private fields and inconsistent
+membership/counts, while the complete review validates pinned session references
+and sentence evidence. Only the Core-issued anonymous cookie can cross this
+boundary; reads never reissue it. Hint and language reveal routes remain closed
+until their dependent implementation tickets.
+
+HC-643 enables only the frozen language-reveal command. Because its disclosure
+shape contains no session/version identity, Gateway verifies the successful
+command against a fresh owner-complete pinned session and review, using the
+existing independent read credential and the same verified actor/Core cookie.
+The returned disclosure ID, timestamp, requested language, text and stable
+sentence membership must match that committed review. Both existing command
+and private-read gates must be enabled before a reveal write is attempted. A
+verification failure releases no text; clients recover Core facts and retry the
+same command key. No new credentials,
+permissions, flags, routes or browser-owned completion authority are introduced.
+
+
+HC-644 enables the frozen cloze hint command with both the existing command and
+private-read gates. Before returning hint text, Gateway reads the current owner's
+pinned session and verifies the requested hint/level plus the exact committed
+disclosure ID, time, text and affected question IDs. A failed verification releases
+no hint text. Safe cloze recovery checks one-to-one stable blanks, passage parts,
+hint levels and assistance against persisted disclosures. Complete cloze review
+checks evidence against pinned parts and requires every English/Chinese layer to
+cover those exact parts in order; filled English must match the pinned context and
+answer keys. Gateway adds no content, learning facts, credentials or grants.

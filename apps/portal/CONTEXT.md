@@ -87,6 +87,17 @@ the homepage module 04 is labelled 即将开放, and `/campus/deals` and
 form, or draft state. A failed `/campus` read is requested once and shown as an
 error; it is never retried by a second identical request.
 
+## English listening and cloze training
+
+Listening training uses the existing Practice shell and native audio controls.
+Core owns first answers, disclosed language layers and review state; Portal keeps
+only transient choices and retry identities. Completed pinned review provides
+stable sentence evidence for playback and looping. English then Chinese text is
+shown only after Core persists the requested disclosure. The review list reads
+Core's actor-owned index and restores the complete pinned session; starting again
+selects a published catalog unit and creates a new session. Session changes dispose
+old audio and timers even when the media version is unchanged.
+
 ## Design language
 
 "Industrial Minimal" — warm paper white (#F2F0EA), deep ink text (#161513), safety orange accent (#FF4D00). The colours come from `packages/design-tokens`: Portal's Tailwind colour theme (`src/app/theme.css`) is generated from its `tokens.json` with literal values, so opacity modifiers keep a precomputed fallback where `color-mix()` is unsupported. The safety orange is for fills and text on ink (on paper it is 2.92:1, below even the 3:1 large-text minimum); orange text of any size on light surfaces uses the darker text-safe accent (`--hk-accent-text`, #BB3800), and text on an orange fill is ink. Grey text is at least ink/60 (ink/65 over a 5% tint) and paper text on ink at least paper/50; lighter greys are reserved for `aria-hidden` decoration and disabled controls. Typography: Space Grotesk (display), IBM Plex Mono (labels), system Chinese fonts (body). Text is at least 12px (10px only for `aria-hidden` decorative Latin labels); wide tracking goes on Latin and mono text only, Chinese stays `tracking-normal`, and a mixed label tracks only its Latin span. Visual elements: 1px structural lines, crosshair alignment marks, mono numbering, engineering blueprint grid backgrounds.
@@ -116,3 +127,13 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4. GSAP 3.15 with ScrollTrigg
 - **Material display title**: A readable material name shown alongside its course and material type to help readers identify it.
 - **Original material title**: The complete title supplied by the material owner. It is distinct from the file name; a title alone does not establish the file name.
 - **Deterministic SSR**: Fixed mock data and picsum seed URLs ensure server/client output match.
+
+Cloze shares the existing training session save/recovery/reveal controller. The
+full blanked passage retains stable part/blank IDs, contained scrolling and native
+radio keyboard behavior. Ordered hints are a unit-wide list (the frozen hint
+descriptor has no question binding). Before showing a hint, the browser reads Core
+and sends only a missing command with its original idempotency identity; Core
+marks all then-unsubmitted questions assisted. Complete review exposes contextual
+part evidence and authored categories, with English then Chinese as persisted
+layers. Draft selections and command retry identity alone may use sessionStorage;
+saved attempts, hints, outcomes and review items always come from Core.

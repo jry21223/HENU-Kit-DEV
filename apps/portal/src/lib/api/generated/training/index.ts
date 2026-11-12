@@ -1,0 +1,62 @@
+/* generated using openapi-typescript-codegen -- do not edit */
+/* istanbul ignore file */
+/* tslint:disable */
+export { ApiError } from './core/ApiError';
+export { CancelablePromise, CancelError } from './core/CancelablePromise';
+export { OpenAPI } from './core/OpenAPI';
+export type { OpenAPIConfig } from './core/OpenAPI';
+
+export type { IdempotencyKey } from './models/IdempotencyKey';
+export type { SessionID } from './models/SessionID';
+export type { TrainingAnswerReceipt } from './models/TrainingAnswerReceipt';
+export type { TrainingAnswerReceiptEnvelope } from './models/TrainingAnswerReceiptEnvelope';
+export type { TrainingAnswerSubmission } from './models/TrainingAnswerSubmission';
+export type { TrainingAttribution } from './models/TrainingAttribution';
+export type { TrainingBlank } from './models/TrainingBlank';
+export type { TrainingBlankPart } from './models/TrainingBlankPart';
+export type { TrainingCatalog } from './models/TrainingCatalog';
+export type { TrainingCatalogEnvelope } from './models/TrainingCatalogEnvelope';
+export type { TrainingCatalogItem } from './models/TrainingCatalogItem';
+export type { TrainingClozeEvidence } from './models/TrainingClozeEvidence';
+export type { TrainingClozeLayer } from './models/TrainingClozeLayer';
+export type { TrainingClozeReview } from './models/TrainingClozeReview';
+export type { TrainingClozeUnit } from './models/TrainingClozeUnit';
+export type { TrainingCreateSession } from './models/TrainingCreateSession';
+export type { TrainingError } from './models/TrainingError';
+export type { TrainingErrorEnvelope } from './models/TrainingErrorEnvelope';
+export type { TrainingEvidence } from './models/TrainingEvidence';
+export type { TrainingHintDescriptor } from './models/TrainingHintDescriptor';
+export type { TrainingHintDisclosure } from './models/TrainingHintDisclosure';
+export type { TrainingHintDisclosureEnvelope } from './models/TrainingHintDisclosureEnvelope';
+export type { TrainingHintRequest } from './models/TrainingHintRequest';
+export type { TrainingKind } from './models/TrainingKind';
+export type { TrainingLayerDisclosure } from './models/TrainingLayerDisclosure';
+export type { TrainingLayerDisclosureEnvelope } from './models/TrainingLayerDisclosureEnvelope';
+export type { TrainingListeningEvidence } from './models/TrainingListeningEvidence';
+export type { TrainingListeningLayer } from './models/TrainingListeningLayer';
+export type { TrainingListeningReview } from './models/TrainingListeningReview';
+export type { TrainingListeningUnit } from './models/TrainingListeningUnit';
+export type { TrainingMedia } from './models/TrainingMedia';
+export type { TrainingOutcome } from './models/TrainingOutcome';
+export type { TrainingPartText } from './models/TrainingPartText';
+export type { TrainingPassagePart } from './models/TrainingPassagePart';
+export type { TrainingPhase } from './models/TrainingPhase';
+export type { TrainingQuestion } from './models/TrainingQuestion';
+export type { TrainingQuestionReview } from './models/TrainingQuestionReview';
+export type { TrainingRevealedContent } from './models/TrainingRevealedContent';
+export type { TrainingRevealRequest } from './models/TrainingRevealRequest';
+export type { TrainingReview } from './models/TrainingReview';
+export type { TrainingReviewEnvelope } from './models/TrainingReviewEnvelope';
+export type { TrainingReviewItem } from './models/TrainingReviewItem';
+export type { TrainingReviewItems } from './models/TrainingReviewItems';
+export type { TrainingReviewItemsEnvelope } from './models/TrainingReviewItemsEnvelope';
+export type { TrainingSegmentText } from './models/TrainingSegmentText';
+export type { TrainingSentenceSegment } from './models/TrainingSentenceSegment';
+export type { TrainingSession } from './models/TrainingSession';
+export type { TrainingSessionEnvelope } from './models/TrainingSessionEnvelope';
+export type { TrainingSHA256 } from './models/TrainingSHA256';
+export type { TrainingStableID } from './models/TrainingStableID';
+export type { TrainingTextPart } from './models/TrainingTextPart';
+export type { TrainingUnit } from './models/TrainingUnit';
+
+export { TrainingService } from './services/TrainingService';

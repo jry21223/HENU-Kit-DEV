@@ -1,0 +1,898 @@
+{
+  "expected_version": 1,
+  "source_sha256": "58451db69c8566f538021b9cd8dfde4e34b5d8392eaf982e10758f10b2a68eeb",
+  "questions": [
+    {
+      "source_question_id": "q-replacement",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 1 空的最佳选项。",
+      "options": [
+        "because of",
+        "instead of",
+        "in case of",
+        "in spite of"
+      ],
+      "answer": 1,
+      "analysis": "朋友劝她把旧灯带去维修活动，以此替代把灯扔掉。instead of 表示“代替、而不是”，后接动名词 throwing。"
+    },
+    {
+      "source_question_id": "q-action-order",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 2 空的最佳选项。",
+      "options": [
+        "unless",
+        "although",
+        "before",
+        "since"
+      ],
+      "answer": 2,
+      "analysis": "先描述问题，团队才能判断是否可以安全检查，再动手使用工具。before 表示这一先后顺序。"
+    },
+    {
+      "source_question_id": "q-failure-cause",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 3 空的最佳选项。",
+      "options": [
+        "cause",
+        "reward",
+        "price",
+        "goal"
+      ],
+      "answer": 0,
+      "analysis": "电线松动造成台灯故障。the cause of ... 表示“……的原因”，与 failure 构成明确因果关系。"
+    },
+    {
+      "source_question_id": "q-saved-cost",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 4 空的最佳选项。",
+      "options": [
+        "seats",
+        "marks",
+        "faces",
+        "money"
+      ],
+      "answer": 3,
+      "analysis": "修好旧灯可以省去购买新灯的花费。下文继续说明传授技能这一额外价值，因此这里是 saving money。"
+    },
+    {
+      "source_question_id": "q-shared-skills",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 5 空的最佳选项。",
+      "options": [
+        "hidden",
+        "shared",
+        "forgotten",
+        "measured"
+      ],
+      "answer": 1,
+      "analysis": "每位访客与志愿者一起操作，技能就能被分享，而不只掌握在少数专家手中。shared 与 kept by a few experts 对照。"
+    },
+    {
+      "source_question_id": "q-available-parts",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 6 空的最佳选项。",
+      "options": [
+        "available",
+        "confident",
+        "patient",
+        "familiar"
+      ],
+      "answer": 0,
+      "analysis": "有些物品需要的零件当天下午无法取得。available 表示“可获得的”，适合修饰零件的供应情况。"
+    },
+    {
+      "source_question_id": "q-record-reference",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 7 空的最佳选项。",
+      "options": [
+        "tickets",
+        "secrets",
+        "records",
+        "invitations"
+      ],
+      "answer": 2,
+      "analysis": "these 回指上一句记录下来的待修物品。records 与 recorded 构成同根词衔接。"
+    },
+    {
+      "source_question_id": "q-self-confidence",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 8 空的最佳选项。",
+      "options": [
+        "pressure",
+        "difficulty",
+        "distance",
+        "confidence"
+      ],
+      "answer": 3,
+      "analysis": "亲自修好台灯后，她对自己的能力更有信心。confidence in one's ability 是自然搭配；文中也没有与其他能力形成距离比较。"
+    },
+    {
+      "source_question_id": "q-contrary-view",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 9 空的最佳选项。",
+      "options": [
+        "On the contrary",
+        "For example",
+        "As a result",
+        "In the meantime"
+      ],
+      "answer": 0,
+      "analysis": "上一句否定“求助意味着软弱”，下一句说明求助能促成学习，形成相反认识。On the contrary 表示“恰恰相反”。"
+    },
+    {
+      "source_question_id": "q-independent-solving",
+      "type": "single",
+      "chapter_id": "campus-repair",
+      "chapter": "原创完形填空 · 校园生活",
+      "content": "选择第 10 空的最佳选项。",
+      "options": [
+        "on purpose",
+        "by chance",
+        "on her own",
+        "in public"
+      ],
+      "answer": 2,
+      "analysis": "求助和共同动手是学习的第一步，最终目标是能独立解决问题。on her own 表示“靠她自己”。by chance 表示偶然，无法体现学习所得。"
+    }
+  ],
+  "training": {
+    "source_unit_id": "original-campus-repair-001",
+    "kind": "cloze",
+    "title": "A Repair Afternoon on Campus",
+    "attributions": [
+      {
+        "component": "text",
+        "original": true,
+        "source_url": "https://henukit.cn/",
+        "license_id": "LicenseRef-HENU-Kit-Service-Terms",
+        "license_url": "https://henukit.cn/terms",
+        "attribution": "HENU Kit 原创英语练习（Codex 辅助创作与 AI 语义核对），按 HENU Kit 现有服务条款供学习使用；非官方考试题。",
+        "modifications": "为 HENU Kit 编写完整文章、选项、解析和分层提示；按完整语境提供练习。"
+      },
+      {
+        "component": "translation",
+        "original": true,
+        "source_url": "https://henukit.cn/",
+        "license_id": "LicenseRef-HENU-Kit-Service-Terms",
+        "license_url": "https://henukit.cn/terms",
+        "attribution": "HENU Kit 原创练习中文译文（AI 辅助翻译与校对），按 HENU Kit 现有服务条款供学习使用。",
+        "modifications": "本次新写中文译文，并核对完整段落与原文含义。"
+      }
+    ],
+    "parts": [
+      {
+        "part_id": "part-announcement",
+        "kind": "text",
+        "text": "When a campus club announced a repair afternoon, Maya almost stayed at home. "
+      },
+      {
+        "part_id": "part-broken-lamp",
+        "kind": "text",
+        "text": "Her desk lamp had stopped working, and she had already planned to buy a new one. "
+      },
+      {
+        "part_id": "part-replacement-lead",
+        "kind": "text",
+        "text": "A friend persuaded her to bring the old lamp to the event "
+      },
+      {
+        "part_id": "part-replacement-blank",
+        "kind": "blank",
+        "blank_id": "blank-replacement"
+      },
+      {
+        "part_id": "part-replacement-tail",
+        "kind": "text",
+        "text": " throwing it away.\n\n"
+      },
+      {
+        "part_id": "part-action-order-lead",
+        "kind": "text",
+        "text": "At the entrance, volunteers asked visitors to describe each problem "
+      },
+      {
+        "part_id": "part-action-order-blank",
+        "kind": "blank",
+        "blank_id": "blank-action-order"
+      },
+      {
+        "part_id": "part-action-order-tail",
+        "kind": "text",
+        "text": " anyone picked up a tool. "
+      },
+      {
+        "part_id": "part-safety-check",
+        "kind": "text",
+        "text": "This helped the team decide which items were safe to examine. "
+      },
+      {
+        "part_id": "part-failure-cause-lead",
+        "kind": "text",
+        "text": "Maya learned that a loose wire was the "
+      },
+      {
+        "part_id": "part-failure-cause-blank",
+        "kind": "blank",
+        "blank_id": "blank-failure-cause"
+      },
+      {
+        "part_id": "part-failure-cause-tail",
+        "kind": "text",
+        "text": " of her lamp's failure. "
+      },
+      {
+        "part_id": "part-guided-repair",
+        "kind": "text",
+        "text": "Under a volunteer's guidance, she fixed it in twenty minutes.\n\n"
+      },
+      {
+        "part_id": "part-saved-cost-lead",
+        "kind": "text",
+        "text": "The event was about more than saving "
+      },
+      {
+        "part_id": "part-saved-cost-blank",
+        "kind": "blank",
+        "blank_id": "blank-saved-cost"
+      },
+      {
+        "part_id": "part-saved-cost-tail",
+        "kind": "text",
+        "text": ". "
+      },
+      {
+        "part_id": "part-shared-skills-lead",
+        "kind": "text",
+        "text": "Each visitor worked alongside a volunteer, so useful skills could be "
+      },
+      {
+        "part_id": "part-shared-skills-blank",
+        "kind": "blank",
+        "blank_id": "blank-shared-skills"
+      },
+      {
+        "part_id": "part-shared-skills-tail",
+        "kind": "text",
+        "text": " rather than kept by a few experts. "
+      },
+      {
+        "part_id": "part-no-guarantee",
+        "kind": "text",
+        "text": "Nobody promised that every object could be repaired. "
+      },
+      {
+        "part_id": "part-parts-shortage-lead",
+        "kind": "text",
+        "text": "Some were too badly damaged, while others needed parts that were not "
+      },
+      {
+        "part_id": "part-available-parts-blank",
+        "kind": "blank",
+        "blank_id": "blank-available-parts"
+      },
+      {
+        "part_id": "part-parts-shortage-tail",
+        "kind": "text",
+        "text": " that afternoon.\n\n"
+      },
+      {
+        "part_id": "part-closing-records",
+        "kind": "text",
+        "text": "By closing time, the group had repaired twelve items and recorded the ones that still needed attention. "
+      },
+      {
+        "part_id": "part-record-reference-lead",
+        "kind": "text",
+        "text": "The volunteers planned to use these "
+      },
+      {
+        "part_id": "part-record-reference-blank",
+        "kind": "blank",
+        "blank_id": "blank-record-reference"
+      },
+      {
+        "part_id": "part-record-reference-tail",
+        "kind": "text",
+        "text": " to prepare for the next event. "
+      },
+      {
+        "part_id": "part-self-confidence-lead",
+        "kind": "text",
+        "text": "Maya left with a working lamp and greater "
+      },
+      {
+        "part_id": "part-self-confidence-blank",
+        "kind": "blank",
+        "blank_id": "blank-self-confidence"
+      },
+      {
+        "part_id": "part-self-confidence-tail",
+        "kind": "text",
+        "text": " in her own ability. "
+      },
+      {
+        "part_id": "part-help-is-not-weakness",
+        "kind": "text",
+        "text": "She now understood that asking for help was not a sign of weakness. "
+      },
+      {
+        "part_id": "part-contrary-view-blank",
+        "kind": "blank",
+        "blank_id": "blank-contrary-view"
+      },
+      {
+        "part_id": "part-learning-to-solve",
+        "kind": "text",
+        "text": ", it could be the first step toward learning to solve a problem "
+      },
+      {
+        "part_id": "part-independent-solving-blank",
+        "kind": "blank",
+        "blank_id": "blank-independent-solving"
+      },
+      {
+        "part_id": "part-independent-solving-tail",
+        "kind": "text",
+        "text": "."
+      }
+    ],
+    "blanks": [
+      {
+        "blank_id": "blank-replacement",
+        "source_question_id": "q-replacement"
+      },
+      {
+        "blank_id": "blank-action-order",
+        "source_question_id": "q-action-order"
+      },
+      {
+        "blank_id": "blank-failure-cause",
+        "source_question_id": "q-failure-cause"
+      },
+      {
+        "blank_id": "blank-saved-cost",
+        "source_question_id": "q-saved-cost"
+      },
+      {
+        "blank_id": "blank-shared-skills",
+        "source_question_id": "q-shared-skills"
+      },
+      {
+        "blank_id": "blank-available-parts",
+        "source_question_id": "q-available-parts"
+      },
+      {
+        "blank_id": "blank-record-reference",
+        "source_question_id": "q-record-reference"
+      },
+      {
+        "blank_id": "blank-self-confidence",
+        "source_question_id": "q-self-confidence"
+      },
+      {
+        "blank_id": "blank-contrary-view",
+        "source_question_id": "q-contrary-view"
+      },
+      {
+        "blank_id": "blank-independent-solving",
+        "source_question_id": "q-independent-solving"
+      }
+    ],
+    "hints": [
+      {
+        "hint_id": "hint-replacement",
+        "levels": [
+          "观察空格后的 throwing，判断这里需要哪类连接短语。",
+          "前后是两种处理旧灯的方式，文意选择带去维修以替代丢弃。"
+        ]
+      },
+      {
+        "hint_id": "hint-action-order",
+        "levels": [
+          "结合下一句的安全检查目的，判断两个动作的先后。",
+          "志愿者先需要了解问题，再决定是否动手使用工具。"
+        ]
+      },
+      {
+        "hint_id": "hint-failure-cause",
+        "levels": [
+          "关注 loose wire 与 failure 的关系。",
+          "这里需要一个名词，表示故障为什么会发生。"
+        ]
+      },
+      {
+        "hint_id": "hint-saved-cost",
+        "levels": [
+          "回看第一段她原本的购买计划。",
+          "维修省下了购买新物品的开销，下文又补充了学习技能的价值。"
+        ]
+      },
+      {
+        "hint_id": "hint-shared-skills",
+        "levels": [
+          "观察 rather than 两侧的意义对照。",
+          "访客和志愿者共同操作，使技能不再只掌握在少数人手中。"
+        ]
+      },
+      {
+        "hint_id": "hint-available-parts",
+        "levels": [
+          "判断空格描述的是零件的哪种状态。",
+          "有些物品没有修好，是因为当天下午无法取得所需零件。"
+        ]
+      },
+      {
+        "hint_id": "hint-record-reference",
+        "levels": [
+          "找出 these 指向上一句的哪项信息。",
+          "上一句说团队记下了仍需处理的物品，这些信息能帮助筹备下次活动。"
+        ]
+      },
+      {
+        "hint_id": "hint-self-confidence",
+        "levels": [
+          "结合修好台灯的经历，判断她对自身能力的看法如何变化。",
+          "这里需要与 in her own ability 搭配的名词，表达对自身能力的积极判断。"
+        ]
+      },
+      {
+        "hint_id": "hint-contrary-view",
+        "levels": [
+          "前一句否定了一种看法，后一句提出相反的理解。",
+          "求助不是软弱；下一句说明它反而能帮助人开始学习解决问题。"
+        ]
+      },
+      {
+        "hint_id": "hint-independent-solving",
+        "levels": [
+          "联系 greater confidence in her own ability 和 learning 的目标。",
+          "她借助他人的指导学习，逐步获得独立处理问题的能力。"
+        ]
+      }
+    ],
+    "question_reviews": [
+      {
+        "source_question_id": "q-replacement",
+        "error_category": "collocation",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-replacement-lead",
+            "part-replacement-blank",
+            "part-replacement-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-action-order",
+        "error_category": "logic",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-action-order-lead",
+            "part-action-order-blank",
+            "part-action-order-tail",
+            "part-safety-check"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-failure-cause",
+        "error_category": "vocabulary",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-failure-cause-lead",
+            "part-failure-cause-blank",
+            "part-failure-cause-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-saved-cost",
+        "error_category": "inference",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-broken-lamp",
+            "part-saved-cost-lead",
+            "part-saved-cost-blank",
+            "part-saved-cost-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-shared-skills",
+        "error_category": "logic",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-shared-skills-lead",
+            "part-shared-skills-blank",
+            "part-shared-skills-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-available-parts",
+        "error_category": "vocabulary",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-parts-shortage-lead",
+            "part-available-parts-blank",
+            "part-parts-shortage-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-record-reference",
+        "error_category": "logic",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-closing-records",
+            "part-record-reference-lead",
+            "part-record-reference-blank",
+            "part-record-reference-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-self-confidence",
+        "error_category": "collocation",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-guided-repair",
+            "part-self-confidence-lead",
+            "part-self-confidence-blank",
+            "part-self-confidence-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-contrary-view",
+        "error_category": "logic",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-help-is-not-weakness",
+            "part-contrary-view-blank",
+            "part-learning-to-solve",
+            "part-independent-solving-blank",
+            "part-independent-solving-tail"
+          ]
+        }
+      },
+      {
+        "source_question_id": "q-independent-solving",
+        "error_category": "inference",
+        "evidence": {
+          "kind": "cloze",
+          "part_ids": [
+            "part-self-confidence-lead",
+            "part-self-confidence-blank",
+            "part-self-confidence-tail",
+            "part-contrary-view-blank",
+            "part-learning-to-solve",
+            "part-independent-solving-blank",
+            "part-independent-solving-tail"
+          ]
+        }
+      }
+    ],
+    "layers": [
+      {
+        "kind": "cloze",
+        "layer": "english",
+        "parts": [
+          {
+            "part_id": "part-announcement",
+            "text": "When a campus club announced a repair afternoon, Maya almost stayed at home. "
+          },
+          {
+            "part_id": "part-broken-lamp",
+            "text": "Her desk lamp had stopped working, and she had already planned to buy a new one. "
+          },
+          {
+            "part_id": "part-replacement-lead",
+            "text": "A friend persuaded her to bring the old lamp to the event "
+          },
+          {
+            "part_id": "part-replacement-blank",
+            "text": "instead of"
+          },
+          {
+            "part_id": "part-replacement-tail",
+            "text": " throwing it away.\n\n"
+          },
+          {
+            "part_id": "part-action-order-lead",
+            "text": "At the entrance, volunteers asked visitors to describe each problem "
+          },
+          {
+            "part_id": "part-action-order-blank",
+            "text": "before"
+          },
+          {
+            "part_id": "part-action-order-tail",
+            "text": " anyone picked up a tool. "
+          },
+          {
+            "part_id": "part-safety-check",
+            "text": "This helped the team decide which items were safe to examine. "
+          },
+          {
+            "part_id": "part-failure-cause-lead",
+            "text": "Maya learned that a loose wire was the "
+          },
+          {
+            "part_id": "part-failure-cause-blank",
+            "text": "cause"
+          },
+          {
+            "part_id": "part-failure-cause-tail",
+            "text": " of her lamp's failure. "
+          },
+          {
+            "part_id": "part-guided-repair",
+            "text": "Under a volunteer's guidance, she fixed it in twenty minutes.\n\n"
+          },
+          {
+            "part_id": "part-saved-cost-lead",
+            "text": "The event was about more than saving "
+          },
+          {
+            "part_id": "part-saved-cost-blank",
+            "text": "money"
+          },
+          {
+            "part_id": "part-saved-cost-tail",
+            "text": ". "
+          },
+          {
+            "part_id": "part-shared-skills-lead",
+            "text": "Each visitor worked alongside a volunteer, so useful skills could be "
+          },
+          {
+            "part_id": "part-shared-skills-blank",
+            "text": "shared"
+          },
+          {
+            "part_id": "part-shared-skills-tail",
+            "text": " rather than kept by a few experts. "
+          },
+          {
+            "part_id": "part-no-guarantee",
+            "text": "Nobody promised that every object could be repaired. "
+          },
+          {
+            "part_id": "part-parts-shortage-lead",
+            "text": "Some were too badly damaged, while others needed parts that were not "
+          },
+          {
+            "part_id": "part-available-parts-blank",
+            "text": "available"
+          },
+          {
+            "part_id": "part-parts-shortage-tail",
+            "text": " that afternoon.\n\n"
+          },
+          {
+            "part_id": "part-closing-records",
+            "text": "By closing time, the group had repaired twelve items and recorded the ones that still needed attention. "
+          },
+          {
+            "part_id": "part-record-reference-lead",
+            "text": "The volunteers planned to use these "
+          },
+          {
+            "part_id": "part-record-reference-blank",
+            "text": "records"
+          },
+          {
+            "part_id": "part-record-reference-tail",
+            "text": " to prepare for the next event. "
+          },
+          {
+            "part_id": "part-self-confidence-lead",
+            "text": "Maya left with a working lamp and greater "
+          },
+          {
+            "part_id": "part-self-confidence-blank",
+            "text": "confidence"
+          },
+          {
+            "part_id": "part-self-confidence-tail",
+            "text": " in her own ability. "
+          },
+          {
+            "part_id": "part-help-is-not-weakness",
+            "text": "She now understood that asking for help was not a sign of weakness. "
+          },
+          {
+            "part_id": "part-contrary-view-blank",
+            "text": "On the contrary"
+          },
+          {
+            "part_id": "part-learning-to-solve",
+            "text": ", it could be the first step toward learning to solve a problem "
+          },
+          {
+            "part_id": "part-independent-solving-blank",
+            "text": "on her own"
+          },
+          {
+            "part_id": "part-independent-solving-tail",
+            "text": "."
+          }
+        ]
+      },
+      {
+        "kind": "cloze",
+        "layer": "chinese",
+        "parts": [
+          {
+            "part_id": "part-announcement",
+            "text": "校园社团宣布要举办一次维修活动时，玛雅差点待在家里没去。"
+          },
+          {
+            "part_id": "part-broken-lamp",
+            "text": "她的台灯不亮了，她本来已经打算买一盏新的。"
+          },
+          {
+            "part_id": "part-replacement-lead",
+            "text": "一位朋友劝她把旧台灯带去活动，"
+          },
+          {
+            "part_id": "part-replacement-blank",
+            "text": "而不是"
+          },
+          {
+            "part_id": "part-replacement-tail",
+            "text": "把它扔掉。\n\n"
+          },
+          {
+            "part_id": "part-action-order-lead",
+            "text": "在入口处，志愿者要求来访者说明各自的问题；这一步要"
+          },
+          {
+            "part_id": "part-action-order-blank",
+            "text": "先于"
+          },
+          {
+            "part_id": "part-action-order-tail",
+            "text": "任何人拿起工具。"
+          },
+          {
+            "part_id": "part-safety-check",
+            "text": "这样，团队就能判断哪些物品可以安全检查。"
+          },
+          {
+            "part_id": "part-failure-cause-lead",
+            "text": "玛雅了解到，松动的电线正是她的台灯发生故障的"
+          },
+          {
+            "part_id": "part-failure-cause-blank",
+            "text": "原因"
+          },
+          {
+            "part_id": "part-failure-cause-tail",
+            "text": "。"
+          },
+          {
+            "part_id": "part-guided-repair",
+            "text": "在一位志愿者的指导下，她花了二十分钟就把台灯修好了。\n\n"
+          },
+          {
+            "part_id": "part-saved-cost-lead",
+            "text": "活动的意义不只是省"
+          },
+          {
+            "part_id": "part-saved-cost-blank",
+            "text": "钱"
+          },
+          {
+            "part_id": "part-saved-cost-tail",
+            "text": "。"
+          },
+          {
+            "part_id": "part-shared-skills-lead",
+            "text": "每位来访者都和一位志愿者一起动手，这样实用技能就能得到"
+          },
+          {
+            "part_id": "part-shared-skills-blank",
+            "text": "分享"
+          },
+          {
+            "part_id": "part-shared-skills-tail",
+            "text": "，而不是只掌握在少数专家手中。"
+          },
+          {
+            "part_id": "part-no-guarantee",
+            "text": "没有人保证每件物品都能修好。"
+          },
+          {
+            "part_id": "part-parts-shortage-lead",
+            "text": "有些物品损坏太严重，还有些需要一些当天下午无法"
+          },
+          {
+            "part_id": "part-available-parts-blank",
+            "text": "取得"
+          },
+          {
+            "part_id": "part-parts-shortage-tail",
+            "text": "的零件。\n\n"
+          },
+          {
+            "part_id": "part-closing-records",
+            "text": "到活动结束时，团队已经修好了十二件物品，并记下了那些仍需处理的物品。"
+          },
+          {
+            "part_id": "part-record-reference-lead",
+            "text": "志愿者计划利用这些"
+          },
+          {
+            "part_id": "part-record-reference-blank",
+            "text": "记录"
+          },
+          {
+            "part_id": "part-record-reference-tail",
+            "text": "来筹备下一次活动。"
+          },
+          {
+            "part_id": "part-self-confidence-lead",
+            "text": "玛雅带着修好的台灯离开时，对自己的能力也更有"
+          },
+          {
+            "part_id": "part-self-confidence-blank",
+            "text": "信心"
+          },
+          {
+            "part_id": "part-self-confidence-tail",
+            "text": "。"
+          },
+          {
+            "part_id": "part-help-is-not-weakness",
+            "text": "她现在明白了，求助并不意味着软弱。"
+          },
+          {
+            "part_id": "part-contrary-view-blank",
+            "text": "恰恰相反"
+          },
+          {
+            "part_id": "part-learning-to-solve",
+            "text": "，求助可能是她开始学习"
+          },
+          {
+            "part_id": "part-independent-solving-blank",
+            "text": "独立解决问题"
+          },
+          {
+            "part_id": "part-independent-solving-tail",
+            "text": "的第一步。"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -280,6 +280,10 @@ class StackTransitionCheckpoint(checkpoint.PortalMembershipCLI):
             SOURCE.with_name("deploy-henukit-practice-scoped.py"),
             self.runtime / "bin/deploy-henukit-practice-scoped.py",
         )
+        shutil.copy(
+            SOURCE.with_name("henukit-quizcraft-database.py"),
+            self.runtime / "bin/henukit-quizcraft-database.py",
+        )
         self.repack()
 
     def bootstrap_alias_contract(self):
