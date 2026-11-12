@@ -230,6 +230,8 @@ jobs:
         run: pnpm --filter @henukit/portal test:e2e:quizcraft-catalog
       - name: Verify Practice session, swipe, and transition behavior
         run: pnpm --filter @henukit/portal test:e2e:practice
+      - name: Verify listening training and media recovery behavior
+        run: pnpm --filter @henukit/portal test:e2e:training
       - name: Verify QQ binding authorization
         run: pnpm --filter @henukit/portal test:e2e:qq-binding
 
