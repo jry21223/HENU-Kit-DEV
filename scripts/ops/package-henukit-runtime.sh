@@ -155,11 +155,17 @@ docker run --rm --platform linux/amd64 \
     go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/materials-oss-release ./cmd/materials-oss-release
     cd /src/services/library
     go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/library-activate-public-release ./cmd/activate-public-release
+    cd /src/products/quizcraft/go-service
+    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /host-out/quizcraft-migrate ./cmd/migrate
+    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /host-out/quizcraft-release-state ./cmd/release-state
     cd /src/services/food
     go build -buildvcs=false -trimpath -ldflags="-s -w" -o /host-out/food-sanitize-post-image ./cmd/sanitize-post-image
   '
 chmod 0555 "$runtime/materials-runtime/bin"/*
-chmod 0555 "$runtime/bin/food-sanitize-post-image"
+chmod 0555 "$runtime/bin/food-sanitize-post-image" "$runtime/bin/quizcraft-migrate" "$runtime/bin/quizcraft-release-state"
+cp "$source_root/products/quizcraft/go-service/db/release/backup-000011.sql" "$runtime/release-gates/quizcraft-backup-000011.sql"
+cp "$source_root/products/quizcraft/go-service/db/release/backup-000012.sql" "$runtime/release-gates/quizcraft-backup-000012.sql"
+RELEASE_SHA="$release_sha" node -e 'process.stdout.write(JSON.stringify({format:"henukit-data-consumer-capabilities-v1",release_sha:process.env.RELEASE_SHA,consumers:{quizcraft:["english-training-data-v1"],"portal-gateway":["english-training-data-v1"],portal:["english-training-data-v1"]}})+"\n")' > "$runtime/release-gates/english-training-capabilities.json"
 
 for helper in \
   henukit-materials-control \
@@ -203,6 +209,9 @@ for helper in \
   deploy-henukit-account-membership.py \
   deploy-henukit-stack-transition.py \
   henukit-notice-url-transaction.py \
+  henukit-preserve-existing.py \
+  henukit-quizcraft-release.py \
+  henukit-quizcraft-database.py \
   deploy-henukit-artifact.sh \
   watch-henukit-actions.sh \
   auto-deploy-henukit-actions.sh \

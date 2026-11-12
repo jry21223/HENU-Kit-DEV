@@ -7,7 +7,7 @@ installs prebuilt artifacts; it does not compile repository source.
 ```text
 successful main workflow_run -> HMAC receiver -> bounded notification
     -> systemd USR1 -> root scheduler -> independent GitHub API verification
-    -> activate-henukit-release <exact SHA> --execute
+    -> activate-henukit-release <exact SHA> --preserve-existing --execute
     -> existing backup, approval, deployment, health and rollback gates
 ```
 
@@ -22,6 +22,11 @@ intent, not the provenance of individual archives. The existing artifact
 contract still verifies authenticated downloads, source SHA and checksums; its
 SHA-keyed cache can reuse previously verified artifacts from the same SHA.
 Do not report this scheduler audit as proof of an archive's exact run attempt.
+
+The updated scheduler explicitly selects the original owner's
+[preservation mode](henukit-preserve-existing-release.md). Existing automatic
+installations must drain and update all four programs in that procedure before
+any triggering merge; extraction of a new runtime does not update the old owner.
 
 ## Before installation
 

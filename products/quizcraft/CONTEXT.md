@@ -82,9 +82,13 @@ training attempts retain factual correctness and independent review outcomes.
 Guest-to-account writes retain prior facts in the learning projection; reads never
 claim ownership. Shared review requires every exact first answer. Hint commands
 remain closed for the following cloze ticket. The publication
-package and the post-write old-binary recovery boundary are documented under
+package and the authored-content old-binary compatibility boundary are documented under
 `go-service/content/english-training/`. No production content is automatically
 loaded; new human listening acceptance and production publication remain separate.
+
+**Training Consumer Compatibility Boundary**:
+任何已创作训练内容（含未发布草稿）、训练 Session 或 Attempt 存在后，发布回退目标必须具备经源码和制品绑定的训练数据消费者能力。Core 只读探针拥有这些事实；发布脚本不得复制业务判定或通过恢复旧备份丢弃接受的写入。
+_Avoid_: 有答题后才不兼容、备份即可回旧版
 
 HC-643 implements listening English/Chinese disclosures on that same immutable
 session ledger. Reveals serialize with first answers and account claims, verify

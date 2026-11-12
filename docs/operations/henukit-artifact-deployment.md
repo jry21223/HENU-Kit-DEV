@@ -9,6 +9,16 @@ The explicitly authorized, fixed Portal/Gateway/Food scope is documented in
 [Food author-edit scoped release](henukit-food-scoped-release.md). It records
 getWork acceptance as deferred and does not advance the full-stack version.
 
+For releases that must preserve all existing credential files and grants, use
+only the reviewed [preservation mode](henukit-preserve-existing-release.md).
+Its controller hold and installed-owner checkpoint must precede any merge that
+could trigger the still-mutating old automatic path.
+
+For native QuizCraft schema changes and training-aware rollback, use the same
+full owner with [Core schema gates](henukit-quizcraft-schema-release.md). Install
+its reviewed long-lived companion software before publication; the direct
+artifact helper now requires its real maintenance-window evidence.
+
 ## Release procedure
 
 1. Select one successful `Build HENU Kit release artifacts` run for the exact full SHA. Download every image archive, its `.sha256` file, and `henukit-runtime-<sha>.tar.gz` with its checksum.

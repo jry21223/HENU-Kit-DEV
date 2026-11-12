@@ -172,6 +172,9 @@ jobs:
           strings /tmp/quizcraft-server | grep -F "$GITHUB_SHA"
           go build -o /tmp/quizcraft-settleranking ./cmd/settleranking
           go build -o /tmp/quizcraft-reconcile ./cmd/reconcile
+          go build -o /tmp/quizcraft-release-state ./cmd/release-state
+          QUIZCRAFT_V2_DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft_v2' /tmp/quizcraft-release-state -h 2>&1 | tee /tmp/release-state-help.txt
+          ! grep -F 'DO_NOT_PRINT' /tmp/release-state-help.txt
           go build -o /tmp/quizcraft-migrate ./cmd/migrate
           go build -o /tmp/quizcraft-backuprestore ./cmd/backuprestore
           DATABASE_URL='postgres://quizcraft:DO_NOT_PRINT@localhost/quizcraft' /tmp/quizcraft-importbank -h 2>&1 | tee /tmp/importbank-help.txt

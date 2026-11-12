@@ -23,6 +23,7 @@ class PracticeCLI(unittest.TestCase):
     def setUp(self):
         food.ReleaseCLI.setUp(self)
         shutil.copy(food.SOURCE, self.runtime / "bin" / food.SOURCE.name)
+        shutil.copy(SOURCE.with_name("henukit-quizcraft-database.py"), self.runtime / "bin/henukit-quizcraft-database.py")
         if SOURCE.exists():
             shutil.copy(SOURCE, self.runtime / "bin" / SOURCE.name)
         state_file = self.root / "fake-state.json"
@@ -177,6 +178,14 @@ elif name=='docker':""")
     @property
     def record(self):
         return self.root / "var/lib/henukit-scoped-releases/practice-console" / food.NEW / "receipt.json"
+
+    def test_shared_database_module_is_bound_to_attested_runtime(self):
+        module = self.runtime / "bin/henukit-quizcraft-database.py"
+        module.write_bytes(module.read_bytes() + b"\n# altered installed module\n")
+        result = self.run_cli("--preflight")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("native database module", result.stderr)
+        self.assertFalse(any(tool in ("psql", "pg_dump", "pg_restore", "runuser", "nsenter") for tool, _ in self.calls()))
 
     def test_preflight_is_read_only_and_does_not_create_application_key(self):
         result = self.run_cli("--preflight")
