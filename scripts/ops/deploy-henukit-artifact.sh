@@ -47,6 +47,27 @@ export PORTAL_DEPLOYED_AT="1970-01-01T00:00:00Z"
 compose=(docker compose --env-file "$env_file" -f "$runtime_dir/docker-compose.henukit.release.yml")
 "${compose[@]}" config --quiet
 
+# Core migration is owned by the original watcher maintenance window. A direct
+# helper invocation cannot silently skip native PostgreSQL backup/schema gates.
+verify_quizcraft_maintenance() {
+if [[ -d "$runtime_dir/migrations/quizcraft" ]]; then
+  [[ -n "${HENUKIT_QUIZCRAFT_RELEASE_OWNER:-}" && -n "${HENUKIT_QUIZCRAFT_CANDIDATE_SHA:-}" &&
+     -n "${HENUKIT_QUIZCRAFT_PREVIOUS_SHA:-}" && -n "${HENUKIT_QUIZCRAFT_ARCHIVE:-}" &&
+     -n "${HENUKIT_QUIZCRAFT_RUNTIME:-}" && -n "${HENUKIT_QUIZCRAFT_STATE_ROOT:-}" &&
+     -n "${HENUKIT_QUIZCRAFT_BACKUP_ROOT:-}" && -n "${HENUKIT_QUIZCRAFT_ENV_FILE:-}" ]] || die "Core schema release requires the original full release maintenance owner"
+  guard_action="${HENUKIT_QUIZCRAFT_GUARD_ACTION:-guard}"
+  [[ "$guard_action" == guard || "$guard_action" == guard-rollback ]] || die "invalid Core maintenance action"
+  python3 -I "$HENUKIT_QUIZCRAFT_RELEASE_OWNER" "$guard_action" \
+    --sha "$HENUKIT_QUIZCRAFT_CANDIDATE_SHA" --previous-sha "$HENUKIT_QUIZCRAFT_PREVIOUS_SHA" \
+    --activation-target "$release_sha" --release-dir "$HENUKIT_QUIZCRAFT_RUNTIME" \
+    --archive "$HENUKIT_QUIZCRAFT_ARCHIVE" --state-root "$HENUKIT_QUIZCRAFT_STATE_ROOT" \
+    --backup-root "$HENUKIT_QUIZCRAFT_BACKUP_ROOT" --env-file "$HENUKIT_QUIZCRAFT_ENV_FILE" \
+    --rollback-env-file "$env_file"
+fi
+
+}
+verify_quizcraft_maintenance
+
 # init-henukit-dbs.sh runs only when a PostgreSQL volume is first created.
 # Releases against an existing volume must provision this independent database
 # explicitly before Account Portfolio starts its embedded schema migration.
@@ -134,6 +155,7 @@ portal_deployed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 [[ "$portal_deployed_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
   die "could not determine the Portal activation time"
 export PORTAL_DEPLOYED_AT="$portal_deployed_at"
+verify_quizcraft_maintenance
 echo "Activating HENU Kit release $release_sha"
 "${compose[@]}" up -d --remove-orphans
 

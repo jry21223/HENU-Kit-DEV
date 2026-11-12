@@ -1,0 +1,1824 @@
+openapi: "3.1.0"
+info:
+  title: "QuizCraft Training Owner API"
+  version: "0.1.0"
+  description: "Frozen additive training contract (HC-641 / ADR-0060); declarations and generated clients only, not implemented endpoints. Ordinary Practice envelopes, routes and gates are unchanged. Internal exact allowlist. Read requests reuse the existing read credential; commands reuse the distinct existing command credential. HMAC is METHOD\\nREQUEST_URI\\nTIMESTAMP\\nNONCE\\nSHA256(raw body), plus \\nACTOR_UUID only for an authenticated actor. Catalog always has no actor or cookie. Session and review GET may forward only quizcraft_anonymous; no cookie alone authenticates a request without service HMAC. Canonical RequestURI includes the exact path and query (review-items alone accepts cursor and page_size). Read permission=portal.practice.read, scope=product, product=quizcraft. No new credentials or permissions. All routes except review-items reject query parameters; review-items accepts only one cursor and page_size, in that canonical order. All JSON objects reject unknown fields. Responses are private, no-store; Content-Type application/json. See docs/development/english-training-contract.md for gates, recovery, cross-field invariants and errors."
+  license:
+    name: "Private"
+    identifier: "LicenseRef-Private"
+servers:
+  -
+    url: "http://quizcraft:8080"
+tags:
+  -
+    name: "TrainingOwner"
+    description: "General English listening and cloze training."
+paths:
+  /api/v1/portal/practice/training/catalog:
+    get:
+      operationId: "listTrainingCatalog"
+      summary: "Public safe catalog"
+      description: "Public safe catalog; no session identity, hints, keys or private material."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingReadBasic: []
+          trainingReadSignature: []
+          trainingReadPermission: []
+          trainingReadScope: []
+          trainingReadProduct: []
+      x-internal: true
+      parameters:
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingCatalogEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/v1/portal/practice/training/review-items:
+    get:
+      operationId: "listTrainingReviewItems"
+      summary: "Actor-owned review index"
+      description: "Actor-owned review index; recover the returned pinned session for complete unit context. Current Core learning state decides review membership."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingReadBasic: []
+          trainingReadSignature: []
+          trainingReadPermission: []
+          trainingReadScope: []
+          trainingReadProduct: []
+      x-internal: true
+      parameters:
+        -
+          name: "cursor"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 512
+            pattern: "^[A-Za-z0-9_-]+$"
+        -
+          name: "page_size"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 50
+            default: 20
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Actor-User-Id"
+          in: "header"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Verified Portal account UUID only, signed as canonical line 6. Absent for guests, whose identity is only the Core-issued cookie. Invalid Portal sessions are rejected, not guests."
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingReviewItemsEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/v1/portal/practice/training/sessions:
+    post:
+      operationId: "createTrainingSession"
+      summary: "Pin exactly the selected currently published immutable unit version. Never substitute a newer version."
+      description: "Pin exactly the selected currently published immutable unit version. Never substitute a newer version."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingCommandBasic: []
+          trainingCommandSignature: []
+      x-internal: true
+      parameters:
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Actor-User-Id"
+          in: "header"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Verified Portal account UUID only, signed as canonical line 6. Absent for guests, whose identity is only the Core-issued cookie. Invalid Portal sessions are rejected, not guests."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingCreateSession"
+      responses:
+        201:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/v1/portal/practice/training/sessions/{session_id}:
+    get:
+      operationId: "getTrainingSession"
+      summary: "Owner-bound recovery of safe pinned content, saved first answers, hints and disclosed layer names. Does not return shared review."
+      description: "Owner-bound recovery of safe pinned content, saved first answers, hints and disclosed layer names. Does not return shared review."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingReadBasic: []
+          trainingReadSignature: []
+          trainingReadPermission: []
+          trainingReadScope: []
+          trainingReadProduct: []
+      x-internal: true
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Actor-User-Id"
+          in: "header"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Verified Portal account UUID only, signed as canonical line 6. Absent for guests, whose identity is only the Core-issued cookie. Invalid Portal sessions are rejected, not guests."
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSessionEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/v1/portal/practice/training/sessions/{session_id}/answers:
+    post:
+      operationId: "submitTrainingAnswer"
+      summary: "One immutable first answer per pinned question"
+      description: "One immutable first answer per pinned question; stable per-question idempotency key. Never releases shared review."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingCommandBasic: []
+          trainingCommandSignature: []
+      x-internal: true
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Actor-User-Id"
+          in: "header"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Verified Portal account UUID only, signed as canonical line 6. Absent for guests, whose identity is only the Core-issued cookie. Invalid Portal sessions are rejected, not guests."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingAnswerSubmission"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingAnswerReceiptEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/v1/portal/practice/training/sessions/{session_id}/hints:
+    post:
+      operationId: "discloseTrainingHint"
+      summary: "Cloze only"
+      description: "Cloze only; persist a sequential authored hint layer before disclosure and mark all still-unanswered questions assisted under the same session lock."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingCommandBasic: []
+          trainingCommandSignature: []
+      x-internal: true
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Actor-User-Id"
+          in: "header"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Verified Portal account UUID only, signed as canonical line 6. Absent for guests, whose identity is only the Core-issued cookie. Invalid Portal sessions are rejected, not guests."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingHintRequest"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingHintDisclosureEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/v1/portal/practice/training/sessions/{session_id}/review:
+    get:
+      operationId: "getTrainingReview"
+      summary: "Owner-bound"
+      description: "Owner-bound; UNIT_INCOMPLETE until all exact pinned questions have first answers. Contains keys, analysis and evidence plus only already disclosed text layers."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingReadBasic: []
+          trainingReadSignature: []
+          trainingReadPermission: []
+          trainingReadScope: []
+          trainingReadProduct: []
+      x-internal: true
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Actor-User-Id"
+          in: "header"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Verified Portal account UUID only, signed as canonical line 6. Absent for guests, whose identity is only the Core-issued cookie. Invalid Portal sessions are rejected, not guests."
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingReviewEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+  /api/v1/portal/practice/training/sessions/{session_id}/reveals:
+    post:
+      operationId: "revealTrainingLayer"
+      summary: "Owner-bound complete-session reveal"
+      description: "Owner-bound complete-session reveal; persist English before Chinese. Recovery/review replays only committed layers."
+      tags: ["TrainingOwner"]
+      security:
+        -
+          trainingCommandBasic: []
+          trainingCommandSignature: []
+      x-internal: true
+      parameters:
+        -
+          $ref: "#/components/parameters/SessionID"
+        -
+          $ref: "#/components/parameters/IdempotencyKey"
+        -
+          name: "X-Key-Id"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Timestamp"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Nonce"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 160
+        -
+          name: "X-Actor-User-Id"
+          in: "header"
+          required: false
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Verified Portal account UUID only, signed as canonical line 6. Absent for guests, whose identity is only the Core-issued cookie. Invalid Portal sessions are rejected, not guests."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainingRevealRequest"
+      responses:
+        200:
+          description: "Owner-confirmed typed result."
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: "string"
+                enum: ["private, no-store"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingLayerDisclosureEnvelope"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        409:
+          $ref: "#/components/responses/Conflict"
+        503:
+          $ref: "#/components/responses/ServiceUnavailable"
+components:
+  parameters:
+    IdempotencyKey:
+      name: "Idempotency-Key"
+      in: "header"
+      required: true
+      schema:
+        type: "string"
+        minLength: 16
+        maxLength: 160
+    SessionID:
+      name: "session_id"
+      in: "path"
+      required: true
+      schema:
+        type: "string"
+        format: "uuid"
+  responses:
+    BadRequest:
+      description: "Invalid closed request, option index, or pinned member/version."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TrainingErrorEnvelope"
+    Unauthorized:
+      description: "Missing/invalid service signature or invalid Portal session; never downgraded to guest."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TrainingErrorEnvelope"
+    Forbidden:
+      description: "Service permission or product scope is invalid."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TrainingErrorEnvelope"
+    NotFound:
+      description: "Gate disabled, missing resource, or resource belongs to another actor; no existence leak."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TrainingErrorEnvelope"
+    Conflict:
+      description: "Incomplete unit, locked layer, unavailable version, immutable answer, idempotency conflict, or nonce replay. error.code distinguishes the cause."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TrainingErrorEnvelope"
+    ServiceUnavailable:
+      description: "Write/command/read gate closed, stop-write in force, or required owner/dependency unavailable."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TrainingErrorEnvelope"
+  schemas:
+    TrainingStableID:
+      type: "string"
+      minLength: 1
+      maxLength: 80
+      pattern: "^[a-z0-9][a-z0-9_-]*$"
+    TrainingSHA256:
+      type: "string"
+      pattern: "^[0-9a-f]{64}$"
+    TrainingKind:
+      type: "string"
+      enum: ["listening", "cloze"]
+    TrainingPhase:
+      type: "string"
+      enum: ["pending", "partial", "completed"]
+    TrainingOutcome:
+      type: "string"
+      enum: ["independent_correct", "assisted_completion", "review_required"]
+    TrainingAttribution:
+      type: "object"
+      additionalProperties: false
+      required: ["component", "original", "source_url", "license_id", "license_url", "attribution", "modifications"]
+      properties:
+        component:
+          type: "string"
+          enum: ["audio", "text", "translation"]
+        original:
+          type: "boolean"
+        source_url:
+          type: "string"
+          minLength: 1
+          maxLength: 2048
+          format: "uri"
+          pattern: "^https://"
+        license_id:
+          type: "string"
+          minLength: 1
+          maxLength: 80
+        license_url:
+          type: "string"
+          minLength: 1
+          maxLength: 2048
+          format: "uri"
+          pattern: "^https://"
+        attribution:
+          type: "string"
+          minLength: 1
+          maxLength: 2000
+        modifications:
+          type: "string"
+          minLength: 0
+          maxLength: 2000
+    TrainingCatalogItem:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_id", "unit_version_id", "bank_id", "bank_version_id", "kind", "title", "question_count", "content_sha256", "attributions"]
+      properties:
+        unit_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        bank_id:
+          type: "string"
+          format: "uuid"
+        bank_version_id:
+          type: "string"
+          format: "uuid"
+        kind:
+          $ref: "#/components/schemas/TrainingKind"
+        title:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        question_count:
+          type: "integer"
+          minimum: 1
+          maximum: 20
+        content_sha256:
+          $ref: "#/components/schemas/TrainingSHA256"
+        attributions:
+          type: "array"
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/TrainingAttribution"
+    TrainingReviewItem:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_id", "unit_version_id", "session_id", "title", "kind", "phase", "review_required_count", "last_attempt_at"]
+      properties:
+        unit_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        session_id:
+          type: "string"
+          format: "uuid"
+        title:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        kind:
+          $ref: "#/components/schemas/TrainingKind"
+        phase:
+          $ref: "#/components/schemas/TrainingPhase"
+        review_required_count:
+          type: "integer"
+          minimum: 1
+          maximum: 20
+        last_attempt_at:
+          type: "string"
+          format: "date-time"
+    TrainingReviewItems:
+      type: "object"
+      additionalProperties: false
+      required: ["items", "next_cursor"]
+      properties:
+        items:
+          type: "array"
+          minItems: 0
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/TrainingReviewItem"
+        next_cursor:
+          type: "string"
+          minLength: 0
+          maxLength: 512
+          pattern: "^[A-Za-z0-9_-]*$"
+      description: "Actor-owned current review index, grouped by immutable unit version. Empty next_cursor means final page. Each item links a pinned session, not a browser question bank; fresh independent success updates the Core learning-state projection and may remove it."
+    TrainingCatalog:
+      type: "object"
+      additionalProperties: false
+      required: ["units"]
+      properties:
+        units:
+          type: "array"
+          minItems: 0
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/TrainingCatalogItem"
+    TrainingQuestion:
+      type: "object"
+      additionalProperties: false
+      required: ["question_id", "question_version_id", "content", "options"]
+      properties:
+        question_id:
+          type: "string"
+          format: "uuid"
+        question_version_id:
+          type: "string"
+          format: "uuid"
+        content:
+          type: "string"
+          minLength: 1
+          maxLength: 3000
+        options:
+          type: "array"
+          minItems: 2
+          maxItems: 8
+          items:
+            type: "string"
+            minLength: 1
+            maxLength: 1000
+    TrainingMedia:
+      type: "object"
+      additionalProperties: false
+      required: ["asset_id", "sha256", "url", "content_type", "duration_ms"]
+      properties:
+        asset_id:
+          type: "string"
+          format: "uuid"
+        sha256:
+          $ref: "#/components/schemas/TrainingSHA256"
+        url:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+          pattern: "^/practice-media/[0-9a-f]{64}\\.mp3$"
+        content_type:
+          type: "string"
+          enum: ["audio/mpeg"]
+        duration_ms:
+          type: "integer"
+          minimum: 1
+          maximum: 1800000
+    TrainingHintDescriptor:
+      type: "object"
+      additionalProperties: false
+      required: ["hint_id", "level_count"]
+      properties:
+        hint_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        level_count:
+          type: "integer"
+          minimum: 1
+          maximum: 3
+    TrainingListeningUnit:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_id", "unit_version_id", "bank_id", "bank_version_id", "content_sha256", "title", "attributions", "questions", "kind", "media"]
+      properties:
+        unit_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        bank_id:
+          type: "string"
+          format: "uuid"
+        bank_version_id:
+          type: "string"
+          format: "uuid"
+        content_sha256:
+          $ref: "#/components/schemas/TrainingSHA256"
+        title:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        attributions:
+          type: "array"
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/TrainingAttribution"
+        questions:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingQuestion"
+        kind:
+          type: "string"
+          enum: ["listening"]
+        media:
+          $ref: "#/components/schemas/TrainingMedia"
+    TrainingTextPart:
+      type: "object"
+      additionalProperties: false
+      required: ["part_id", "kind", "text"]
+      properties:
+        part_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        kind:
+          type: "string"
+          enum: ["text"]
+        text:
+          type: "string"
+          minLength: 1
+          maxLength: 4000
+    TrainingBlankPart:
+      type: "object"
+      additionalProperties: false
+      required: ["part_id", "kind", "blank_id"]
+      properties:
+        part_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        kind:
+          type: "string"
+          enum: ["blank"]
+        blank_id:
+          $ref: "#/components/schemas/TrainingStableID"
+    TrainingPassagePart:
+      oneOf:
+        -
+          $ref: "#/components/schemas/TrainingTextPart"
+        -
+          $ref: "#/components/schemas/TrainingBlankPart"
+    TrainingBlank:
+      type: "object"
+      additionalProperties: false
+      required: ["blank_id", "question_id"]
+      properties:
+        blank_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        question_id:
+          type: "string"
+          format: "uuid"
+    TrainingClozeUnit:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_id", "unit_version_id", "bank_id", "bank_version_id", "content_sha256", "title", "attributions", "questions", "kind", "parts", "blanks", "hints"]
+      properties:
+        unit_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        bank_id:
+          type: "string"
+          format: "uuid"
+        bank_version_id:
+          type: "string"
+          format: "uuid"
+        content_sha256:
+          $ref: "#/components/schemas/TrainingSHA256"
+        title:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        attributions:
+          type: "array"
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/TrainingAttribution"
+        questions:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingQuestion"
+        kind:
+          type: "string"
+          enum: ["cloze"]
+        parts:
+          type: "array"
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/TrainingPassagePart"
+        blanks:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingBlank"
+        hints:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingHintDescriptor"
+    TrainingUnit:
+      oneOf:
+        -
+          $ref: "#/components/schemas/TrainingListeningUnit"
+        -
+          $ref: "#/components/schemas/TrainingClozeUnit"
+    TrainingCreateSession:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_id", "unit_version_id"]
+      properties:
+        unit_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+    TrainingAnswerSubmission:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_version_id", "question_id", "question_version_id", "answer"]
+      properties:
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        question_id:
+          type: "string"
+          format: "uuid"
+        question_version_id:
+          type: "string"
+          format: "uuid"
+        answer:
+          type: "integer"
+          minimum: 0
+          maximum: 7
+      description: "Zero-based single-choice option index. Core also checks index < pinned options length and exact pinned membership; no client correctness or assistance fields."
+    TrainingAnswerReceipt:
+      type: "object"
+      additionalProperties: false
+      required: ["session_id", "unit_version_id", "question_id", "question_version_id", "answer", "correct", "assisted", "outcome", "review_required", "submitted_at", "replayed", "saved_count", "total_count", "phase"]
+      properties:
+        session_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        question_id:
+          type: "string"
+          format: "uuid"
+        question_version_id:
+          type: "string"
+          format: "uuid"
+        answer:
+          type: "integer"
+          minimum: 0
+          maximum: 7
+        correct:
+          type: "boolean"
+        assisted:
+          type: "boolean"
+        outcome:
+          $ref: "#/components/schemas/TrainingOutcome"
+        review_required:
+          type: "boolean"
+        submitted_at:
+          type: "string"
+          format: "date-time"
+        replayed:
+          type: "boolean"
+        saved_count:
+          type: "integer"
+          minimum: 1
+          maximum: 20
+        total_count:
+          type: "integer"
+          minimum: 1
+          maximum: 20
+        phase:
+          $ref: "#/components/schemas/TrainingPhase"
+      description: "First-answer fact only. No expected answer, analysis, transcript, shared evidence, or reveal content, even when phase=completed. saved_count/phase are current at response time; all first-answer fields are immutable."
+    TrainingHintRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_version_id", "hint_id", "level"]
+      properties:
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        hint_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        level:
+          type: "integer"
+          minimum: 1
+          maximum: 3
+    TrainingHintDisclosure:
+      type: "object"
+      additionalProperties: false
+      required: ["disclosure_id", "hint_id", "level", "text", "affected_question_ids", "disclosed_at"]
+      properties:
+        disclosure_id:
+          type: "string"
+          format: "uuid"
+        hint_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        level:
+          type: "integer"
+          minimum: 1
+          maximum: 3
+        text:
+          type: "string"
+          minLength: 1
+          maxLength: 3000
+        affected_question_ids:
+          type: "array"
+          minItems: 0
+          maxItems: 20
+          items:
+            type: "string"
+            format: "uuid"
+        disclosed_at:
+          type: "string"
+          format: "date-time"
+      description: "Persisted before text is returned. All unanswered pinned questions under the session lock become assisted. Replay returns the same event; it cannot undo assistance."
+    TrainingSession:
+      type: "object"
+      additionalProperties: false
+      required: ["session_id", "unit", "phase", "saved_count", "total_count", "receipts", "hint_disclosures", "revealed_layers", "recovery_scope"]
+      properties:
+        session_id:
+          type: "string"
+          format: "uuid"
+        unit:
+          $ref: "#/components/schemas/TrainingUnit"
+        phase:
+          $ref: "#/components/schemas/TrainingPhase"
+        saved_count:
+          type: "integer"
+          minimum: 0
+          maximum: 20
+        total_count:
+          type: "integer"
+          minimum: 1
+          maximum: 20
+        receipts:
+          type: "array"
+          minItems: 0
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingAnswerReceipt"
+        hint_disclosures:
+          type: "array"
+          minItems: 0
+          maxItems: 60
+          items:
+            $ref: "#/components/schemas/TrainingHintDisclosure"
+        revealed_layers:
+          type: "array"
+          minItems: 0
+          maxItems: 2
+          items:
+            type: "string"
+            enum: ["english", "chinese"]
+        recovery_scope:
+          type: "string"
+          enum: ["browser", "account"]
+      description: "Recovery always returns only safe unit, receipts and already persisted cloze hints. Pending has 0 receipts, partial has 1..N-1, completed has N. Actual review/revealed text is read separately after Core proves completeness; never inferred from client flags."
+    TrainingSentenceSegment:
+      type: "object"
+      additionalProperties: false
+      required: ["segment_id", "start_ms", "end_ms"]
+      properties:
+        segment_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        start_ms:
+          type: "integer"
+          minimum: 0
+          maximum: 1799999
+        end_ms:
+          type: "integer"
+          minimum: 1
+          maximum: 1800000
+    TrainingListeningEvidence:
+      type: "object"
+      additionalProperties: false
+      required: ["kind", "segment_ids"]
+      properties:
+        kind:
+          type: "string"
+          enum: ["listening"]
+        segment_ids:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingStableID"
+    TrainingClozeEvidence:
+      type: "object"
+      additionalProperties: false
+      required: ["kind", "part_ids"]
+      properties:
+        kind:
+          type: "string"
+          enum: ["cloze"]
+        part_ids:
+          type: "array"
+          minItems: 1
+          maxItems: 40
+          items:
+            $ref: "#/components/schemas/TrainingStableID"
+    TrainingEvidence:
+      oneOf:
+        -
+          $ref: "#/components/schemas/TrainingListeningEvidence"
+        -
+          $ref: "#/components/schemas/TrainingClozeEvidence"
+    TrainingQuestionReview:
+      type: "object"
+      additionalProperties: false
+      required: ["question_id", "question_version_id", "expected_answer", "analysis", "error_category", "evidence"]
+      properties:
+        question_id:
+          type: "string"
+          format: "uuid"
+        question_version_id:
+          type: "string"
+          format: "uuid"
+        expected_answer:
+          type: "integer"
+          minimum: 0
+          maximum: 7
+        analysis:
+          type: "string"
+          minLength: 1
+          maxLength: 4000
+        error_category:
+          type: "string"
+          enum: ["vocabulary", "collocation", "logic", "grammar", "detail", "inference"]
+        evidence:
+          $ref: "#/components/schemas/TrainingEvidence"
+    TrainingSegmentText:
+      type: "object"
+      additionalProperties: false
+      required: ["segment_id", "text"]
+      properties:
+        segment_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        text:
+          type: "string"
+          minLength: 1
+          maxLength: 4000
+    TrainingPartText:
+      type: "object"
+      additionalProperties: false
+      required: ["part_id", "text"]
+      properties:
+        part_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        text:
+          type: "string"
+          minLength: 1
+          maxLength: 4000
+    TrainingListeningLayer:
+      type: "object"
+      additionalProperties: false
+      required: ["kind", "layer", "segments"]
+      properties:
+        kind:
+          type: "string"
+          enum: ["listening"]
+        layer:
+          type: "string"
+          enum: ["english", "chinese"]
+        segments:
+          type: "array"
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/TrainingSegmentText"
+    TrainingClozeLayer:
+      type: "object"
+      additionalProperties: false
+      required: ["kind", "layer", "parts"]
+      properties:
+        kind:
+          type: "string"
+          enum: ["cloze"]
+        layer:
+          type: "string"
+          enum: ["english", "chinese"]
+        parts:
+          type: "array"
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/TrainingPartText"
+    TrainingRevealedContent:
+      oneOf:
+        -
+          $ref: "#/components/schemas/TrainingListeningLayer"
+        -
+          $ref: "#/components/schemas/TrainingClozeLayer"
+    TrainingRevealRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["unit_version_id", "layer"]
+      properties:
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        layer:
+          type: "string"
+          enum: ["english", "chinese"]
+      description: "English must be disclosed before Chinese. A repeat is a replay; only an owner-verified completed session can persist a new layer."
+    TrainingLayerDisclosure:
+      type: "object"
+      additionalProperties: false
+      required: ["disclosure_id", "disclosed_at", "content"]
+      properties:
+        disclosure_id:
+          type: "string"
+          format: "uuid"
+        disclosed_at:
+          type: "string"
+          format: "date-time"
+        content:
+          $ref: "#/components/schemas/TrainingRevealedContent"
+    TrainingListeningReview:
+      type: "object"
+      additionalProperties: false
+      required: ["session_id", "unit_version_id", "kind", "questions", "segments", "layers"]
+      properties:
+        session_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        kind:
+          type: "string"
+          enum: ["listening"]
+        questions:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingQuestionReview"
+        segments:
+          type: "array"
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/TrainingSentenceSegment"
+        layers:
+          type: "array"
+          minItems: 0
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/TrainingLayerDisclosure"
+    TrainingClozeReview:
+      type: "object"
+      additionalProperties: false
+      required: ["session_id", "unit_version_id", "kind", "questions", "layers"]
+      properties:
+        session_id:
+          type: "string"
+          format: "uuid"
+        unit_version_id:
+          type: "string"
+          format: "uuid"
+        kind:
+          type: "string"
+          enum: ["cloze"]
+        questions:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingQuestionReview"
+        layers:
+          type: "array"
+          minItems: 0
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/TrainingLayerDisclosure"
+    TrainingReview:
+      oneOf:
+        -
+          $ref: "#/components/schemas/TrainingListeningReview"
+        -
+          $ref: "#/components/schemas/TrainingClozeReview"
+    TrainingAuthoredHint:
+      type: "object"
+      additionalProperties: false
+      required: ["hint_id", "levels"]
+      properties:
+        hint_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        levels:
+          type: "array"
+          minItems: 1
+          maxItems: 3
+          items:
+            type: "string"
+            minLength: 1
+            maxLength: 3000
+    TrainingListeningVersion:
+      type: "object"
+      additionalProperties: false
+      required: ["unit", "review_questions", "segments", "layers"]
+      properties:
+        unit:
+          $ref: "#/components/schemas/TrainingListeningUnit"
+        review_questions:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingQuestionReview"
+        segments:
+          type: "array"
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/TrainingSentenceSegment"
+        layers:
+          type: "array"
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/TrainingListeningLayer"
+    TrainingClozeVersion:
+      type: "object"
+      additionalProperties: false
+      required: ["unit", "review_questions", "hints", "layers"]
+      properties:
+        unit:
+          $ref: "#/components/schemas/TrainingClozeUnit"
+        review_questions:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingQuestionReview"
+        hints:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingAuthoredHint"
+        layers:
+          type: "array"
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/TrainingClozeLayer"
+    TrainingUnitVersion:
+      oneOf:
+        -
+          $ref: "#/components/schemas/TrainingListeningVersion"
+        -
+          $ref: "#/components/schemas/TrainingClozeVersion"
+      description: "Owner-only import/version representation, validated atomically by the existing explicit publication lifecycle. Not exposed on any learner route. See ADR-0060 for cross-reference and canonical-hash invariants."
+    TrainingAuthoredMedia:
+      type: "object"
+      additionalProperties: false
+      required: ["sha256", "content_type", "duration_ms"]
+      properties:
+        sha256:
+          $ref: "#/components/schemas/TrainingSHA256"
+        content_type:
+          type: "string"
+          enum: ["audio/mpeg"]
+        duration_ms:
+          type: "integer"
+          minimum: 1
+          maximum: 1800000
+    TrainingSourceReview:
+      type: "object"
+      additionalProperties: false
+      required: ["source_question_id", "error_category", "evidence"]
+      properties:
+        source_question_id:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        error_category:
+          type: "string"
+          enum: ["vocabulary", "collocation", "logic", "grammar", "detail", "inference"]
+        evidence:
+          $ref: "#/components/schemas/TrainingEvidence"
+    TrainingSourceBlank:
+      type: "object"
+      additionalProperties: false
+      required: ["blank_id", "source_question_id"]
+      properties:
+        blank_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        source_question_id:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+    TrainingListeningAuthoring:
+      type: "object"
+      additionalProperties: false
+      required: ["source_unit_id", "title", "attributions", "question_reviews", "kind", "media", "segments", "layers"]
+      properties:
+        source_unit_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        title:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        attributions:
+          type: "array"
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/TrainingAttribution"
+        question_reviews:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingSourceReview"
+        kind:
+          type: "string"
+          enum: ["listening"]
+        media:
+          $ref: "#/components/schemas/TrainingAuthoredMedia"
+        segments:
+          type: "array"
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/TrainingSentenceSegment"
+        layers:
+          type: "array"
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/TrainingListeningLayer"
+    TrainingClozeAuthoring:
+      type: "object"
+      additionalProperties: false
+      required: ["source_unit_id", "title", "attributions", "question_reviews", "kind", "parts", "blanks", "hints", "layers"]
+      properties:
+        source_unit_id:
+          $ref: "#/components/schemas/TrainingStableID"
+        title:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        attributions:
+          type: "array"
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/TrainingAttribution"
+        question_reviews:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingSourceReview"
+        kind:
+          type: "string"
+          enum: ["cloze"]
+        parts:
+          type: "array"
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/TrainingPassagePart"
+        blanks:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingSourceBlank"
+        hints:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingAuthoredHint"
+        layers:
+          type: "array"
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/TrainingClozeLayer"
+    TrainingAuthoring:
+      oneOf:
+        -
+          $ref: "#/components/schemas/TrainingListeningAuthoring"
+        -
+          $ref: "#/components/schemas/TrainingClozeAuthoring"
+      description: "Closed optional training input on the existing Workshop bank import only. Uses source IDs; owner resolves generated UUIDs within the import transaction. All fields participate in bank semantic hashing before unit-version binding."
+    TrainingImportedQuestion:
+      type: "object"
+      additionalProperties: false
+      required: ["source_question_id", "type", "chapter_id", "chapter", "content", "options", "answer", "analysis"]
+      properties:
+        source_question_id:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        type:
+          type: "string"
+          enum: ["single"]
+        chapter_id:
+          type: "string"
+          minLength: 1
+          maxLength: 160
+        chapter:
+          type: "string"
+          minLength: 1
+          maxLength: 240
+        content:
+          type: "string"
+          minLength: 1
+          maxLength: 3000
+        options:
+          type: "array"
+          minItems: 2
+          maxItems: 8
+          items:
+            type: "string"
+            minLength: 1
+            maxLength: 1000
+        answer:
+          type: "integer"
+          minimum: 0
+          maximum: 7
+        analysis:
+          type: "string"
+          minLength: 1
+          maxLength: 4000
+    TrainingBankImportRequest:
+      type: "object"
+      additionalProperties: false
+      required: ["expected_version", "source_sha256", "questions", "training"]
+      properties:
+        expected_version:
+          type: "integer"
+          minimum: 0
+          maximum: 9007199254740991
+        source_sha256:
+          $ref: "#/components/schemas/TrainingSHA256"
+        questions:
+          type: "array"
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TrainingImportedQuestion"
+        training:
+          $ref: "#/components/schemas/TrainingAuthoring"
+    TrainingCatalogEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "data"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        data:
+          $ref: "#/components/schemas/TrainingCatalog"
+    TrainingReviewItemsEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "data"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        data:
+          $ref: "#/components/schemas/TrainingReviewItems"
+    TrainingSessionEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "data"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        data:
+          $ref: "#/components/schemas/TrainingSession"
+    TrainingAnswerReceiptEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "data"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        data:
+          $ref: "#/components/schemas/TrainingAnswerReceipt"
+    TrainingHintDisclosureEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "data"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        data:
+          $ref: "#/components/schemas/TrainingHintDisclosure"
+    TrainingReviewEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "data"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        data:
+          $ref: "#/components/schemas/TrainingReview"
+    TrainingLayerDisclosureEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "data"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        data:
+          $ref: "#/components/schemas/TrainingLayerDisclosure"
+    TrainingError:
+      type: "object"
+      additionalProperties: false
+      required: ["code", "message"]
+      properties:
+        code:
+          type: "string"
+          enum: ["TRAINING_DISABLED", "INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "VERSION_UNAVAILABLE", "UNIT_INCOMPLETE", "LAYER_LOCKED", "IDEMPOTENCY_CONFLICT", "FIRST_ANSWER_IMMUTABLE", "SERVICE_REPLAY", "DEPENDENCY_UNAVAILABLE"]
+        message:
+          type: "string"
+          minLength: 1
+          maxLength: 500
+    TrainingErrorEnvelope:
+      type: "object"
+      additionalProperties: false
+      required: ["request_id", "error"]
+      properties:
+        request_id:
+          type: "string"
+          minLength: 1
+          maxLength: 120
+          pattern: "^req_[A-Za-z0-9_-]+$"
+        error:
+          $ref: "#/components/schemas/TrainingError"
+  securitySchemes:
+    trainingReadBasic:
+      type: "http"
+      scheme: "basic"
+      description: "Existing independent QuizCraft catalog/read credential; no credential provisioning is part of HC-641."
+    trainingReadSignature:
+      type: "apiKey"
+      in: "header"
+      name: "X-Signature"
+      description: "Exact raw-body HMAC with optional signed actor; timestamp, key id and nonce are also mandatory."
+    trainingReadPermission:
+      type: "apiKey"
+      in: "header"
+      name: "X-Permission-Code"
+      description: "Exactly portal.practice.read, a service claim, not a learner role grant."
+    trainingReadScope:
+      type: "apiKey"
+      in: "header"
+      name: "X-Scope-Kind"
+      description: "Exactly product."
+    trainingReadProduct:
+      type: "apiKey"
+      in: "header"
+      name: "X-Product-Code"
+      description: "Exactly quizcraft."
+    trainingCommandBasic:
+      type: "http"
+      scheme: "basic"
+      description: "Existing command credential, independent of reads."
+    trainingCommandSignature:
+      type: "apiKey"
+      in: "header"
+      name: "X-Signature"
+      description: "Exact raw-body HMAC, nonce and optional signed account UUID."

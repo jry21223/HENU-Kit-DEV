@@ -40,6 +40,8 @@ function createCleanSourceCheckout() {
     "scripts/ops/deploy-henukit-stack-transition.py",
     "scripts/ops/henukit-notice-url-transaction.py",
     "scripts/ops/henukit-preserve-existing.py",
+    "scripts/ops/henukit-quizcraft-release.py",
+    "scripts/ops/henukit-quizcraft-database.py",
   ].filter((path) => existsSync(join(repoRoot, path)) && !existsSync(join(checkout, path)));
   for (const helper of newHelpers) {
     copyFileSync(join(repoRoot, helper), join(checkout, helper));
@@ -118,7 +120,7 @@ test("the no-interpolate production contract removes every profiled crawler serv
 test("runtime binaries omit VCS metadata so unchanged materials remain rollback-compatible", () => {
   const source = readFileSync(packagerSource, "utf8");
   const buildLines = source.split("\n").filter((line) => line.trim().startsWith("go build "));
-  assert.equal(buildLines.length, 5);
+  assert.equal(buildLines.length, 7);
   for (const line of buildLines) {
     assert.match(line, /go build -buildvcs=false -trimpath /);
   }
@@ -210,7 +212,7 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   const docker = join(binDirectory, "docker");
   writeFileSync(
     docker,
-    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then if [[ \" $* \" == *\" -f - \"* ]]; then cat >/dev/null; fi; printf '{\"services\":{\"portal\":{\"image\":\"henukit-portal:test\"}}}\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nhost_output=\nsource_root=\nwhile [[ $# -gt 0 ]]; do\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/host-out\" ]]; then host_output=\"${2%:/host-out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/src:ro\" ]]; then source_root=\"${2%:/src:ro}\"; fi\n  shift\ndone\n[[ -n \"$output\" && -n \"$host_output\" && -n \"$source_root\" ]]\nif [[ -e \"$source_root/services/deploy-webhook/injected.go\" ]]; then printf 'ignored source injection reached Docker\\n' >&2; exit 91; fi\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\nprintf '#!/bin/sh\\nexit 0\\n' > \"$host_output/food-sanitize-post-image\"\nchmod 0755 \"$host_output/food-sanitize-post-image\"\n",
+    "#!/usr/bin/env bash\nset -Eeuo pipefail\nif [[ \"$1\" == \"compose\" ]]; then if [[ \" $* \" == *\" -f - \"* ]]; then cat >/dev/null; fi; printf '{\"services\":{\"portal\":{\"image\":\"henukit-portal:test\"}}}\\n'; exit 0; fi\n[[ \"$1\" == \"run\" ]]\noutput=\nhost_output=\nsource_root=\nwhile [[ $# -gt 0 ]]; do\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/out\" ]]; then output=\"${2%:/out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/host-out\" ]]; then host_output=\"${2%:/host-out}\"; fi\n  if [[ \"$1\" == \"--volume\" && \"$2\" == *\":/src:ro\" ]]; then source_root=\"${2%:/src:ro}\"; fi\n  shift\ndone\n[[ -n \"$output\" && -n \"$host_output\" && -n \"$source_root\" ]]\nif [[ -e \"$source_root/services/deploy-webhook/injected.go\" ]]; then printf 'ignored source injection reached Docker\\n' >&2; exit 91; fi\nfor name in henukit-deploy-webhook materials-oss-canary materials-oss-release library-activate-public-release; do printf '#!/bin/sh\\nexit 0\\n' > \"$output/$name\"; chmod 0755 \"$output/$name\"; done\nfor name in food-sanitize-post-image quizcraft-migrate quizcraft-release-state; do printf '#!/bin/sh\\nexit 0\\n' > \"$host_output/$name\"; chmod 0755 \"$host_output/$name\"; done\n",
     { mode: 0o755 },
   );
   chmodSync(docker, 0o755);
@@ -237,6 +239,13 @@ test("the shared runtime packager produces the same fixed-SHA operator payload f
   assert.equal(existsSync(`${runtimeArchive}.sha256`), true);
   const files = execFileSync("tar", ["-tzf", runtimeArchive], { encoding: "utf8" });
   for (const file of [
+    "./bin/henukit-quizcraft-release.py",
+    "./bin/henukit-quizcraft-database.py",
+    "./bin/quizcraft-migrate",
+    "./bin/quizcraft-release-state",
+    "./release-gates/english-training-capabilities.json",
+    "./release-gates/quizcraft-backup-000011.sql",
+    "./release-gates/quizcraft-backup-000012.sql",
     "./RELEASE_SHA",
     "./bin/deploy-henukit-artifact.sh",
     "./bin/henukit-preserve-existing.py",

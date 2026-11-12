@@ -114,3 +114,24 @@ Their read gate, private headers, owner service authentication and honest failur
 behavior remain mandatory. Feedback-status and generic permission checks remain
 unchanged. This uses the existing Portal Session lifetime and does not claim
 live Core Session introspection or an additional revocation guarantee.
+
+ADR-0060 freezes a separate additive English training façade in
+`portal-training.yaml` and `quizcraft-training.yaml`. Public training catalog
+reads stay anonymous. Only the exact training session, review and review-items
+GETs add signed guest-capable reads using the existing independent read
+credential, optional signed Portal actor, and Core-issued anonymous cookie.
+They never create/claim learning state. Training create/answer/hint/reveal use the
+existing gated command credential. Gateway owns no training content, assistance,
+first answers, review state or persistence; ordinary envelopes remain unchanged.
+HC-641 declares these boundaries and generated clients only, with no route,
+credential, flag or permission mutation. See
+[the frozen protocol](../../docs/development/english-training-contract.md).
+
+HC-642 implements the catalog, session create/recovery, immutable answer receipt,
+complete-unit review and review-items facade on those exact training routes.
+The existing catalog, V2 read and command flags still gate their own clients.
+Pending/partial session projections reject private fields and inconsistent
+membership/counts, while the complete review validates pinned session references
+and sentence evidence. Only the Core-issued anonymous cookie can cross this
+boundary; reads never reissue it. Hint and language reveal routes remain closed
+until their dependent implementation tickets.

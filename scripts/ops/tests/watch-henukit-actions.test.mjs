@@ -342,7 +342,7 @@ if [[ "$format" == "%u" ]]; then
     id -u
   elif [[ "$path" == "$FAKE_MATERIALS_ROOT"/* ]]; then
     printf '0'
-  elif [[ "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_ROLLBACK_ENV_FILE" || "$path" == "$FAKE_RELEASE_ROOT"/* || "$path" == "$FAKE_BACKUP_ROOT"/* || "$path" == "$FAKE_STATE_ROOT/approvals/"* || "$path" == "$FAKE_STATE_ROOT/prepared/"* || "$path" == "$FAKE_STATE_ROOT/last-activated-sha" || "$path" == "$FAKE_STATE_ROOT/practice-smoke-"* ]]; then
+  elif [[ "$path" == "$FAKE_QUIZCRAFT_OWNER" || "$path" == "$FAKE_TRUSTED_INVENTORY" || "$path" == "$FAKE_TRUSTED_VERIFIER" || "$path" == "$FAKE_TRUSTED_SIGNERS" || "$path" == "$FAKE_CURRENT_LINK" || "$path" == "$FAKE_ROLLBACK_ENV_FILE" || "$path" == "$FAKE_RELEASE_ROOT"/* || "$path" == "$FAKE_BACKUP_ROOT"/* || "$path" == "$FAKE_STATE_ROOT/approvals/"* || "$path" == "$FAKE_STATE_ROOT/prepared/"* || "$path" == "$FAKE_STATE_ROOT/quizcraft-releases/"* || "$path" == "$FAKE_STATE_ROOT/last-activated-sha" || "$path" == "$FAKE_STATE_ROOT/practice-smoke-"* ]]; then
     printf '0'
   else
     id -u
@@ -794,6 +794,21 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
 `,
   );
 
+  // The watcher fixture models the companion as an external OS boundary.
+  // Its real receipt/provenance and failure behavior run in the Python suite.
+  const coreReceipt = join(state,"quizcraft-releases",releaseSha,"identity.json");
+  mkdirSync(dirname(coreReceipt),{recursive:true});
+  writeFileSync(coreReceipt,JSON.stringify({archive_path:join(staging,releaseSha,`henukit-runtime-${releaseSha}.tar.gz`)}),{mode:0o400});
+  const quizcraftOwner = join(bin, "quizcraft-release-owner.py");
+  writeFileSync(quizcraftOwner, `import os,sys,json,pathlib
+with open(os.environ['FAKE_CALL_LOG'],'a') as stream:stream.write('quizcraft-gate '+sys.argv[1]+'\\n')
+if os.environ.get('FAKE_FAIL_QUIZCRAFT_GATE')==sys.argv[1]:raise SystemExit(1)
+if sys.argv[1]=='begin':
+ path=pathlib.Path(os.environ['FAKE_STATE_ROOT'])/'quizcraft-releases'/os.environ['FAKE_RELEASE_SHA']/'identity.json'
+ path.chmod(0o600);path.write_text(json.dumps({'archive_path':sys.argv[sys.argv.index('--archive')+1]}));path.chmod(0o400)
+print('{}')
+`, { mode: 0o555 });
+
   writeTree(join(materialsRoot, "runtime-backups", releaseSha), materialsRuntimeBackup);
   writeTree(materialsRuntimePrefix, materialsRuntimeInstalled);
 
@@ -810,6 +825,8 @@ printf 'sleep %s\n' "$*" >> "$FAKE_CALL_LOG"
     env: {
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
+      HENUKIT_QUIZCRAFT_RELEASE_OWNER: quizcraftOwner,
+      FAKE_QUIZCRAFT_OWNER: quizcraftOwner,
       FAKE_ACTIVE_FILE: active,
       FAKE_ACTIVATION_FREE_KIB: String(activationFreeKiB),
       FAKE_ACCOUNT_PORTFOLIO_SCHEMA_PRESENT: accountPortfolioSchemaPresent ? "t" : "f",
@@ -902,6 +919,7 @@ function aliasReplaceFault(setup, destination, action) {
   const wrapper = join(setup.root, "bin", "python3");
   writeExecutable(wrapper, `#!${python}
 import os, signal, stat, sys
+if sys.argv[1:3] != ['-I', '-']: os.execv(${JSON.stringify(python)}, [${JSON.stringify(python)}, *sys.argv[1:]])
 assert sys.argv[1:3] == ['-I', '-']
 source = sys.stdin.read()
 sys.argv = ['-', *sys.argv[3:]]
@@ -958,6 +976,7 @@ function contractDurabilityFault(setup) {
   const contract = join(setup.state, "rollback-contracts", "pending", releaseSha);
   writeExecutable(wrapper, `#!${python}
 import os, stat, sys
+if sys.argv[1:3] != ['-I', '-']: os.execv(${JSON.stringify(python)}, [${JSON.stringify(python)}, *sys.argv[1:]])
 assert sys.argv[1:3] == ['-I', '-']
 source = sys.stdin.read()
 sys.argv = ['-', *sys.argv[3:]]
@@ -3150,4 +3169,32 @@ test("a restarted preserved activation rejects a replaced same-byte receipt", ()
   assert.notEqual(resumed.status, 0);
   assert.match(resumed.stderr, /preservation/);
   assert.doesNotMatch(readFileSync(setup.log, "utf8"), /grant-account-operator-role/);
+});
+
+
+test("Core freeze/schema failure invokes the same compatible rollback owner before aliases advance", () => {
+  const setup=fixture();
+  const result=spawnSync(script,["--once"],{encoding:"utf8",env:{...setup.env,FAKE_FAIL_QUIZCRAFT_GATE:"migrate"}});
+  assert.notEqual(result.status,0);
+  const calls=readFileSync(setup.log,"utf8");
+  assert.match(calls,/quizcraft-gate begin[\s\S]*quizcraft-gate migrate[\s\S]*quizcraft-gate rollback/);
+  assert.doesNotMatch(calls,/^deploy /m);
+  assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK),join(setup.env.HENUKIT_RELEASE_ROOT,"b".repeat(40)));
+});
+
+test("Core backup rejection prevents exact approval consumption and image loading", () => {
+  const setup=fixture({approved:false});
+  const result=spawnSync(script,["--once"],{encoding:"utf8",env:{...setup.env,FAKE_FAIL_QUIZCRAFT_GATE:"prepare"}});
+  assert.notEqual(result.status,0);
+  assert.doesNotMatch(readFileSync(setup.log,"utf8"),/docker load|^deploy /m);
+});
+
+test("incompatible Core rollback cannot replace images or advance aliases", () => {
+  const setup=fixture({failTargetHealth:true});
+  const result=spawnSync(script,["--once"],{encoding:"utf8",env:{...setup.env,FAKE_FAIL_QUIZCRAFT_GATE:"rollback"}});
+  assert.notEqual(result.status,0);
+  const calls=readFileSync(setup.log,"utf8");
+  assert.match(calls,/quizcraft-gate rollback/);
+  assert.doesNotMatch(calls,/docker compose .* up -d --remove-orphans/);
+  assert.equal(realpathSync(setup.env.HENUKIT_CURRENT_LINK),join(setup.env.HENUKIT_RELEASE_ROOT,"b".repeat(40)));
 });

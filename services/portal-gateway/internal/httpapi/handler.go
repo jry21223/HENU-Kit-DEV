@@ -233,6 +233,16 @@ func (h *Handler) Router() chi.Router {
 	// rankings) answer an honest 404 and actor-bound reads (stats, favorites,
 	// feedback status) answer an honest 503, never a legacy portal-api or mock
 	// fallback.
+	r.HandleFunc("/api/v1/practice/training", h.trainingNotFound)
+	r.HandleFunc("/api/v1/practice/training/*", h.trainingNotFound)
+	r.Get("/api/v1/practice/training/catalog", h.training)
+	r.Get("/api/v1/practice/training/review-items", h.training)
+	r.Post("/api/v1/practice/training/sessions", h.training)
+	r.Get("/api/v1/practice/training/sessions/{session_id}", h.training)
+	r.Post("/api/v1/practice/training/sessions/{session_id}/answers", h.training)
+	r.Post("/api/v1/practice/training/sessions/{session_id}/hints", h.training)
+	r.Get("/api/v1/practice/training/sessions/{session_id}/review", h.training)
+	r.Post("/api/v1/practice/training/sessions/{session_id}/reveals", h.training)
 	r.Get("/api/v1/practice/catalog", h.getQuizCraftCatalog)
 	r.Get(practice.OverallRankingPath, h.getQuizCraftOverallRanking)
 	r.Get(practice.BankRankingPath, h.getQuizCraftBankRanking)

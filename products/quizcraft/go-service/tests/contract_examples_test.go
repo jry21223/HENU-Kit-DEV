@@ -9,6 +9,7 @@ import (
 
 func TestQuizCraftImportContractExamples(t *testing.T) {
 	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
 	document, err := loader.LoadFromFile("../../../../packages/api-contracts/openapi/quizcraft.yaml")
 	if err != nil {
 		t.Fatal(err)

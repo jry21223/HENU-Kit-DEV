@@ -11,6 +11,8 @@ packages/api-contracts/
 │   ├── notice.yaml
 │   ├── platform-core.yaml
 │   ├── quizcraft.yaml
+│   ├── quizcraft-training.yaml
+│   ├── portal-training.yaml
 │   └── portal-summary.yaml
 └── events/
     └── event-envelope.schema.json
@@ -51,3 +53,13 @@ packages/api-contracts/
 安全关键契约变更必须由非作者评审。
 
 Console 题库管理的独立、默认关闭契约见 `openapi/quizcraft-console-management.yaml`；它复用现行题库版本 schema，不恢复独立产品登录。
+
+English training is frozen separately in `openapi/quizcraft-training.yaml`
+(owner-only signed routes and closed shared payload schemas) and
+`openapi/portal-training.yaml` (exact browser façade). These declarations preserve
+ordinary Practice envelopes and do not imply implemented endpoints. The precise
+cross-field, actor, disclosure and gate rules are in
+[`english-training-contract.md`](../../docs/development/english-training-contract.md).
+Run `bash scripts/generate-training-contract.sh` for Core Go types, Gateway owner
+Go client and Portal browser TypeScript client; CI verifies generation drift and
+both OpenAPI documents. Generated files must not be edited manually.

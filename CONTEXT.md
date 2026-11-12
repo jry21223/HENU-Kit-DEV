@@ -139,3 +139,10 @@ _Avoid_: 旧版运营、新 Console 的兼容菜单
 **Study Legacy API**:
 迁移期继续承载旧学习平台接口和数据模型的现有 `services/api`；不得继续接收 HENUKit Console 或新 Platform Core 的实现。
 _Avoid_: Platform Core、新 Console API
+
+
+**English Training Session**:
+Practice Core 固定完整听力或完形单元版本的学习会话；首答、提示披露和复习状态由 Core 所有。整个训练会话排除普通 Scored Attempt 的考试统计、难度、掌握度、排行和结算；独立正确与辅助完成分别呈现。
+_Avoid_: 普通考试模式、前端辅助标记、当前页面结果即持久复习
+
+所有权和不可变单元/稳定片段语言见 [QuizCraft Context](./products/quizcraft/CONTEXT.md) 与 [ADR-0060](./docs/adr/0060-core-owned-english-training.md)。HC-641 仅冻结协议，未实现运行能力。

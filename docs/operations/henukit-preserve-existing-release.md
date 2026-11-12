@@ -162,3 +162,8 @@ including successful activation, failed preparation, rollback, file replacement,
 missing grants and effective configuration drift. Linux CI remains necessary for
 privileged/foreign-owner and actual filesystem permission cases unavailable on
 macOS. No production acceptance is claimed by these local fixtures.
+
+Native QuizCraft schema releases additionally require the same-owner
+[Core backup and compatible-recovery gates](henukit-quizcraft-schema-release.md).
+The original environment file and preservation receipt remain their authority;
+no new credential or runtime enablement is permitted.

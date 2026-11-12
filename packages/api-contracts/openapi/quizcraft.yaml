@@ -1058,6 +1058,18 @@ components:
         expected_version: { type: integer, minimum: 0, description: Workshop clients send the observed lifecycle version. Omission is retained for older import clients and serializes against the current version while still creating only an unpublished draft. }
         source_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
         questions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ImportedQuestionInput' } }
+        training: { $ref: './quizcraft-training.yaml#/components/schemas/TrainingAuthoring' }
+      oneOf:
+        - $ref: '#/components/schemas/OrdinaryBankImportRequest'
+        - $ref: './quizcraft-training.yaml#/components/schemas/TrainingBankImportRequest'
+    OrdinaryBankImportRequest:
+      type: object
+      not: { required: [training] }
+      required: [source_sha256, questions]
+      properties:
+        expected_version: { type: integer, minimum: 0, description: Workshop clients send the observed lifecycle version. Omission is retained for older import clients and serializes against the current version while still creating only an unpublished draft. }
+        source_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        questions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ImportedQuestionInput' } }
     ImportedQuestionReport:
       allOf:
         - $ref: '#/components/schemas/QuestionReference'
@@ -1139,6 +1151,7 @@ components:
         state: { type: string, enum: [draft, validated] }
         content_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
         questions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/WorkshopQuestionDetail' } }
+        training: { $ref: './quizcraft-training.yaml#/components/schemas/TrainingUnitVersion', description: Owner-only resolved authored training binding for operator review; absent for ordinary versions. Never forwarded to learner routes. }
     WorkshopQuestionDetail:
       allOf:
         - $ref: '#/components/schemas/ImportedQuestionInput'

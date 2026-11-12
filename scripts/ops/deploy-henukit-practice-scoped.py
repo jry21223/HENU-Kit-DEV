@@ -40,6 +40,18 @@ engine = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(engine)
 require = engine.require
 
+DB_BASE = Path(__file__).with_name("henukit-quizcraft-database.py")
+for entry in (DB_BASE, *DB_BASE.absolute().parents):
+    if entry == import_boundary:
+        break
+    info = entry.lstat()
+    if entry.is_symlink() or info.st_uid != require_owner or info.st_mode & 0o022:
+        raise SystemExit("scoped-practice-release: untrusted database authority path")
+db_spec = importlib.util.spec_from_file_location("henukit_quizcraft_database", DB_BASE)
+db_module = importlib.util.module_from_spec(db_spec)
+db_source = DB_BASE.read_bytes()
+exec(compile(db_source, str(DB_BASE), "exec"), db_module.__dict__)
+
 SERVICES = ("portal", "portal-gateway", "food", "console-gateway", "quizcraft")
 CLIENT = "console-gateway-quizcraft-management"
 KEY_ID = "quizcraft-console-management-v1"
@@ -67,7 +79,8 @@ def canonical(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-class Release(engine.Release):
+class Release(db_module.QuizcraftDatabase, engine.Release):
+    require = staticmethod(engine.require)
     services = SERVICES
     helper_file = Path(__file__)
     state_scope = "practice-console"
@@ -77,13 +90,8 @@ class Release(engine.Release):
     def __init__(self, options):
         super().__init__(options)
         self.application = None
-        for name in ("psql", "pg_dump", "pg_restore", "createdb", "dropdb", "runuser"):
-            path = self.prefix / "bin" / name if self.testing else Path("/usr/sbin/runuser") if name == "runuser" else Path("/usr/lib/postgresql/16/bin") / name
-            self.trusted(path)
-            self.tools[name] = str(path)
-        namespace_tool = self.prefix / "bin/nsenter" if self.testing else Path("/usr/bin/nsenter")
-        self.trusted(namespace_tool)
-        self.tools["nsenter"] = str(namespace_tool)
+        self.verify_database_module_source()
+        self.init_quizcraft_tools()
         # Caller-supplied bridge/PG values are never authority for either side.
         self.env = {k: v for k, v in self.env.items() if not k.startswith(("PG", "QUIZCRAFT_CONSOLE_"))}
 
@@ -123,142 +131,22 @@ class Release(engine.Release):
                     return False
         return baseline == actual
 
-    def pg_environment(self, url=None):
-        env = {k: v for k, v in self.env.items() if not k.startswith("PG")}
-        env["PGCONNECT_TIMEOUT"] = "10"
-        if url:
-            target = urlsplit(url)
-            env.update(PGHOST=target.hostname, PGPORT=str(target.port or 5432),
-                       PGDATABASE=unquote(target.path.removeprefix("/")),
-                       PGUSER=unquote(target.username or ""), PGPASSWORD=unquote(target.password or ""))
-            # The route gate permits only sslmode=disable (or no query).
-            # Keep it in libpq's environment without a secret-bearing argv.
-            for key, value in parse_qsl(target.query):
-                require(key == "sslmode" and value == "disable", "unreviewed PostgreSQL query option")
-                env["PGSSLMODE"] = value
-        return env
+    def verify_database_module_source(self):
+        # This local exact-source check also precedes idempotent/offline receipt
+        # recovery. Fresh preflight additionally verifies the original attestation.
+        with self.safe_tar(self.archive("henukit-runtime-" + self.o.sha + ".tar.gz")) as archive:
+            source = archive.extractfile("./bin/henukit-quizcraft-database.py").read()
+            require(source == db_source and hashlib.sha256(source).hexdigest() == engine.digest(DB_BASE),
+                    "executed native database module differs from attested runtime")
 
-    def psql(self, query, *, url=None, database=None, namespace=None):
-        args = ["--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1", "--tuples-only", "--no-align"]
-        if database:
-            output = self.run("runuser", "-u", "postgres", "--", self.tools["psql"], "--dbname", database, *args, "--command", query, env=self.pg_environment())
-        elif namespace is None:
-            output = self.run("psql", *args, "--command", query, env=self.pg_environment(url))
-        else:
-            # Pin the already-open network namespace across exec. No mount,
-            # user or PID namespace is entered; the trusted host PG16 tool and
-            # exact owner credentials remain the same.
-            result = subprocess.run(
-                [self.tools["nsenter"], "--net=/proc/self/fd/" + str(namespace), "--",
-                 self.tools["psql"], *args, "--command", query],
-                env=self.pg_environment(url), pass_fds=(namespace,),
-                capture_output=True, timeout=60,
-            )
-            require(result.returncode == 0, "QuizCraft container-network psql command failed (" + str(result.returncode) + ")")
-            output = result.stdout
-        return json.loads(output)
-
-    @staticmethod
-    def namespace_container_identity(item):
-        state = item.get("State", {})
-        pid = state.get("Pid")
-        require(re.fullmatch(r"[0-9a-f]{64}", item.get("Id", ""))
-                and item.get("Name") == "/henukit-quizcraft-1"
-                and state.get("Running") is True and not state.get("Paused", False)
-                and not state.get("Restarting", False)
-                and type(pid) is int and pid > 1 and state.get("StartedAt"),
-                "QuizCraft container is not a stable running namespace owner")
-        return {"id": item["Id"], "pid": pid, "started": state["StartedAt"],
-                "restarts": item["RestartCount"], "hosts": item["HostsPath"],
-                "network": item["NetworkSettings"],
-                "extra_hosts": item["HostConfig"].get("ExtraHosts"),
-                "database_url": Release.container_environment(item).get("DATABASE_URL")}
-
-    @contextlib.contextmanager
-    def owner_network_namespace(self, item):
-        expected = self.namespace_container_identity(item)
-        namespace_path = self.path("/proc/" + str(expected["pid"]) + "/ns/net")
-        sandbox = Path(item["NetworkSettings"].get("SandboxKey", ""))
-        require(sandbox.parent in {self.path("/run/docker/netns"), self.path("/var/run/docker/netns")}
-                and not sandbox.is_symlink(), "unreviewed QuizCraft Docker sandbox path")
-        # /var/run may be the system's root-owned /run alias. Validate the
-        # resolved retained mount and every parent before using its identity.
-        sandbox = sandbox.resolve(strict=True)
-        self.trusted(sandbox)
-        if self.testing:
-            self.trusted(namespace_path)
-        else:
-            require(namespace_path.is_symlink()
-                    and re.fullmatch(r"net:\[[0-9]+\]", os.readlink(namespace_path)),
-                    "QuizCraft proc entry is not a kernel network namespace")
-        descriptor = os.open(namespace_path, os.O_RDONLY | os.O_CLOEXEC)
-        try:
-            opened = os.fstat(descriptor)
-            require(stat.S_ISREG(opened.st_mode), "QuizCraft network namespace is not a regular namespace handle")
-            if not self.testing:
-                require(fcntl.ioctl(descriptor, NS_GET_NSTYPE) == CLONE_NEWNET,
-                        "QuizCraft handle is not a Linux network namespace")
-
-            def unchanged():
-                actual = json.loads(self.run("docker", "inspect", item["Id"]))
-                require(len(actual) == 1 and self.namespace_container_identity(actual[0]) == expected,
-                        "QuizCraft container changed during namespace binding")
-                for path in (namespace_path, sandbox):
-                    current = path.stat()
-                    require((current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino),
-                            "QuizCraft process and Docker sandbox namespaces differ or changed")
-
-            unchanged()
-            yield descriptor
-            unchanged()
-        finally:
-            os.close(descriptor)
+    def provenance(self):
+        images = super().provenance()
+        self.verify_database_module_source()
+        return images
 
     def database_target(self, containers):
-        # The new Portal exposes Food author editing, so the retained Food
-        # boundary is part of this fixed dependency closure as well.
         engine.Release.database_target(self, containers)
-        item = containers["henukit-quizcraft-1"]
-        raw = self.container_environment(item).get("DATABASE_URL", "")
-        target = urlsplit(raw)
-        require(
-            target.scheme in ("postgres", "postgresql")
-            and target.hostname == "host.docker.internal" and target.port in (None, 5432)
-            and target.path == "/quizcraft_v2" and target.username and target.password
-            and not target.fragment and target.query in ("", "sslmode=disable"),
-            "QuizCraft target is not the reviewed host PostgreSQL database",
-        )
-        require("host.docker.internal:host-gateway" in item.get("HostConfig", {}).get("ExtraHosts", []), "QuizCraft host route is not Docker host-gateway")
-        # Docker's host-gateway may resolve to its default bridge, rather than
-        # this container's Compose network gateway. Read the kernel-managed
-        # container hosts file which Docker inspect binds to this exact ID.
-        require(re.fullmatch(r"[0-9a-f]{64}", item["Id"]), "invalid QuizCraft container identity")
-        hosts = self.path("/var/lib/docker/containers/" + item["Id"] + "/hosts")
-        require(item.get("HostsPath") == str(hosts), "QuizCraft hosts path differs from container identity")
-        self.trusted(hosts)
-        addresses = set()
-        for line in hosts.read_text().splitlines():
-            fields = line.partition("#")[0].split()
-            if len(fields) > 1 and "host.docker.internal" in fields[1:]:
-                addresses.add(fields[0])
-        require(len(addresses) == 1, "ambiguous QuizCraft host-gateway resolution")
-        gateway = next(iter(addresses))
-        require(ipaddress.ip_address(gateway).version == 4 and ipaddress.ip_address(gateway).is_private, "unreviewed QuizCraft gateway address")
-        # Preserve the exact scheme, credentials, port spelling, DB and query.
-        authority = target.netloc
-        require(authority.count("host.docker.internal") == 1, "ambiguous database authority")
-        def routed(host):
-            return urlunsplit((target.scheme, authority.replace("host.docker.internal", host), target.path, target.query, ""))
-        self.database_url = routed("127.0.0.1")
-        host_identity = self.psql(IDENTITY, url=self.database_url)
-        with self.owner_network_namespace(item) as namespace:
-            gateway_identity = self.psql(IDENTITY, url=routed(gateway), namespace=namespace)
-        admin_identity = self.psql(IDENTITY, database="quizcraft_v2")
-        require(host_identity == gateway_identity == admin_identity, "QuizCraft owner route and host admin target differ")
-        require(host_identity["database"] == "quizcraft_v2" and host_identity["port"] == 5432 and 160000 <= host_identity["version"] < 170000, "QuizCraft requires installed PostgreSQL 16 target")
-        for name in ("psql", "pg_dump", "pg_restore", "createdb", "dropdb"):
-            require(re.search(rb"\b16\.[0-9]+\b", self.run(name, "--version")), "PostgreSQL tool major mismatch")
-        self.database_identity = host_identity
+        self.bind_quizcraft_database(containers["henukit-quizcraft-1"])
 
     def migration_inventory(self, sha):
         entries = json.loads(self.run("gh", "api", "repos/" + engine.REPO + "/contents/" + MIGRATIONS + "?ref=" + sha))
@@ -288,7 +176,7 @@ class Release(engine.Release):
             require(names == {"migrations/quizcraft/" + n for n in after}, "attested QuizCraft migration inventory differs")
             for name in after:
                 require(archive.extractfile("./migrations/quizcraft/" + name).read() == (folder / name).read_bytes(), "attested QuizCraft migration content differs")
-        data.update(scope=list(SERVICES), engine_sha256=engine.digest(BASE), candidate_compose_sha256=engine.digest(self.runtime / "docker-compose.henukit.release.yml"), quizcraft_migrations=after, database_identity=self.database_identity)
+        data.update(scope=list(SERVICES), engine_sha256=engine.digest(BASE), database_helper_sha256=engine.digest(DB_BASE), candidate_compose_sha256=engine.digest(self.runtime / "docker-compose.henukit.release.yml"), quizcraft_migrations=after, database_identity=self.database_identity)
         return data
 
     @contextlib.contextmanager
@@ -386,6 +274,7 @@ class Release(engine.Release):
         require(data.get("sha") == self.o.sha and data.get("run_id") == self.o.run_id and data.get("format") == self.receipt_format and data.get("scope") == list(SERVICES), "receipt release identity mismatch")
         self.trusted(self.runtime / "docker-compose.henukit.release.yml")
         require(data.get("engine_sha256") == engine.digest(BASE), "receipt engine identity mismatch")
+        require(data.get("database_helper_sha256") == engine.digest(DB_BASE), "receipt database authority identity mismatch")
         require(data.get("candidate_compose_sha256") == engine.digest(self.runtime / "docker-compose.henukit.release.yml"), "candidate Compose changed")
         if "application_secret_sha256" in data:
             path = self.record.parent / "quizcraft-console-application.json"

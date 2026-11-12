@@ -1432,6 +1432,9 @@ ACTIVE_ALIAS_TRANSACTION
 
 record_activation() {
   local release_sha="$1"
+  if [[ -e "$state_root/rollback-contracts/pending/$release_sha" ]]; then
+    quizcraft_gate accept "$release_sha" || die "Core schema/consumer health could not be accepted"
+  fi
   verify_active_release "$release_sha" || die "active-alias publication requires a verified running release"
   if [[ ! -e "$state_root/active-aliases/$release_sha" &&
         ! -e "$state_root/rollback-contracts/pending/$release_sha" &&
@@ -1467,6 +1470,34 @@ account_portfolio_schema_is_present() {
   docker exec "$postgres_container" sh -ceu \
     'psql -U "$POSTGRES_USER" -d account_portfolio -Atqc "$1"' sh \
     "SELECT to_regclass('public.account_portfolio_accounts') IS NOT NULL AND to_regclass('public.account_portfolio_points') IS NOT NULL AND to_regclass('public.account_portfolio_memberships') IS NOT NULL AND to_regclass('public.account_portfolio_point_ledger') IS NOT NULL AND to_regclass('public.account_portfolio_notifications') IS NOT NULL AND to_regclass('public.account_portfolio_tickets') IS NOT NULL AND to_regclass('public.account_portfolio_ticket_messages') IS NOT NULL AND to_regclass('public.account_portfolio_membership_orders') IS NOT NULL AND to_regclass('public.account_portfolio_service_nonces') IS NOT NULL AND to_regclass('public.account_portfolio_schema_migrations') IS NOT NULL"
+}
+
+# This companion owns only native Core DB gates; this watcher retains approval,
+# artifacts, images, aliases, source lease and all existing rollback selection.
+quizcraft_gate() {
+  local action="$1" candidate="$2" previous="${3:-${rollback_contract_previous_sha:-}}"
+  local runtime="$release_root/$candidate" archive="${runtime_archive:-}"
+  local owner="${HENUKIT_QUIZCRAFT_RELEASE_OWNER:-$script_dir/henukit-quizcraft-release.py}"
+  release_has_service "$candidate" quizcraft || { [[ "$?" == 1 ]]; return; }
+  trusted_root_file "$owner" "QuizCraft release owner"
+  trusted_root_parent_chain "$owner" "QuizCraft release owner"
+  if [[ -z "$archive" ]]; then
+    local receipt="$state_root/quizcraft-releases/$candidate/identity.json"
+    trusted_root_file "$receipt" "QuizCraft original release identity"
+    archive="$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["archive_path"])' "$receipt")" || return 1
+  fi
+  [[ -n "$previous" ]] || previous="$(current_release_sha)"
+  export HENUKIT_QUIZCRAFT_RELEASE_OWNER="$owner"
+  export HENUKIT_QUIZCRAFT_CANDIDATE_SHA="$candidate"
+  export HENUKIT_QUIZCRAFT_PREVIOUS_SHA="$previous"
+  export HENUKIT_QUIZCRAFT_RUNTIME="$runtime"
+  export HENUKIT_QUIZCRAFT_ARCHIVE="$archive"
+  export HENUKIT_QUIZCRAFT_STATE_ROOT="$state_root"
+  export HENUKIT_QUIZCRAFT_BACKUP_ROOT="$backup_root"
+  export HENUKIT_QUIZCRAFT_ENV_FILE="$env_file"
+  python3 -I "$owner" "$action" --sha "$candidate" --previous-sha "$previous" \
+    --release-dir "$runtime" --archive "$archive" --state-root "$state_root" \
+    --env-file "$env_file" --backup-root "$backup_root"
 }
 
 prepare_backup() {
@@ -2193,6 +2224,7 @@ rollback_release() {
      "$rollback_contract_candidate_sha" == "$candidate_sha" &&
      ( "$rollback_contract_mode" == "normal" || "$rollback_contract_mode" =~ ^preserve-existing:[0-9a-f]{64}$ ) ]] || return 1
   rollback_contract_is_ready "$previous_sha" "$candidate_sha" || return 1
+  quizcraft_gate rollback "$candidate_sha" "$previous_sha" || return 1
   [[ "$(sha256sum "$previous_compose" | awk '{print $1}')" == "$rollback_contract_compose_sha" ]] || return 1
   [[ "$(sha256sum "$rollback_env_file" | awk '{print $1}')" == "$rollback_contract_env_sha" ]] || return 1
   [[ "$(sha256sum "$previous_dir/materials-runtime/SHA256SUMS" | awk '{print $1}')" == "$rollback_contract_materials_sha" ]] || return 1
@@ -2294,6 +2326,8 @@ ensure_degraded_recovery_audit() {
 
 restore_degraded_baseline() {
   local previous_sha="$1"
+  quizcraft_gate rollback "$rollback_contract_candidate_sha" "$previous_sha" || return 1
+  export HENUKIT_QUIZCRAFT_GUARD_ACTION=guard-rollback
   local previous_dir="$release_root/$previous_sha"
   local previous_helper="$previous_dir/bin/deploy-henukit-artifact.sh"
   [[ "$previous_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
@@ -2435,6 +2469,7 @@ deploy_release() {
   if ! release_is_approved "$release_sha"; then
     prepared_backup_file=""
     prepare_backup "$release_sha"
+    quizcraft_gate prepare "$release_sha" || die "QuizCraft preparation failed before approval"
     log "release $release_sha prepared with verified backup $prepared_backup_file"
     log "release $release_sha awaits exact-SHA approval at $state_root/approvals/$release_sha"
     return
@@ -2490,6 +2525,7 @@ deploy_release() {
   configure_getwork_relay_ingress "$release_sha" ||
     die "candidate relay ingress could not be restricted to the HENUKit network"
   verify_preservation "$release_sha" candidate || die "preservation authority changed before approval consumption"
+  quizcraft_gate begin "$release_sha" "$previous_sha" || die "QuizCraft release identity could not bind before approval consumption"
   consume_approval "$release_sha"
   for image in "${load_images[@]}"; do
     log "loading ${image}:${release_sha}"
@@ -2502,6 +2538,10 @@ deploy_release() {
     die "materials quiesce failed; restored the captured operational state"
   fi
 
+  if ! quizcraft_gate migrate "$release_sha" "$previous_sha"; then
+    fail_candidate_activation "QuizCraft write freeze/backup/schema" "$previous_sha" "$release_sha"
+  fi
+  export HENUKIT_QUIZCRAFT_GUARD_ACTION=guard
   if preservation_enabled "$release_sha"; then
     export HENUKIT_PRESERVE_EXISTING_SHA="$release_sha"
   fi
