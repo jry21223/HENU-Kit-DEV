@@ -39,6 +39,18 @@ type QuizcraftBankVersionQuestion struct {
 	Position          int32     `json:"position"`
 }
 
+type QuizcraftExpectedLearningState struct {
+	UserID            interface{} `json:"user_id"`
+	BankID            uuid.UUID   `json:"bank_id"`
+	QuestionID        uuid.UUID   `json:"question_id"`
+	QuestionVersionID uuid.UUID   `json:"question_version_id"`
+	Wrong             pgtype.Bool `json:"wrong"`
+	AttemptCount      int64       `json:"attempt_count"`
+	CorrectCount      int64       `json:"correct_count"`
+	LatestAttemptID   uuid.UUID   `json:"latest_attempt_id"`
+	UpdatedAt         interface{} `json:"updated_at"`
+}
+
 type QuizcraftFavorite struct {
 	UserID     uuid.UUID          `json:"user_id"`
 	BankID     uuid.UUID          `json:"bank_id"`
@@ -103,6 +115,16 @@ type QuizcraftIdempotencyResult struct {
 	ResponseBody   string             `json:"response_body"`
 	ResourceID     uuid.NullUUID      `json:"resource_id"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftLearningAttemptFact struct {
+	ID                uuid.UUID          `json:"id"`
+	BankID            uuid.UUID          `json:"bank_id"`
+	QuestionID        uuid.UUID          `json:"question_id"`
+	QuestionVersionID uuid.UUID          `json:"question_version_id"`
+	SubmittedAt       pgtype.Timestamptz `json:"submitted_at"`
+	UserID            interface{}        `json:"user_id"`
+	Correct           interface{}        `json:"correct"`
 }
 
 type QuizcraftLearningState struct {
@@ -197,6 +219,22 @@ type QuizcraftMigrationRun struct {
 	ResumeAttemptCount   int32              `json:"resume_attempt_count"`
 }
 
+type QuizcraftOrdinaryAttempt struct {
+	ID                uuid.UUID          `json:"id"`
+	SessionID         uuid.UUID          `json:"session_id"`
+	BankID            uuid.UUID          `json:"bank_id"`
+	BankVersionID     uuid.UUID          `json:"bank_version_id"`
+	QuestionID        uuid.UUID          `json:"question_id"`
+	QuestionVersionID uuid.UUID          `json:"question_version_id"`
+	UserID            uuid.NullUUID      `json:"user_id"`
+	SubmittedAnswer   []byte             `json:"submitted_answer"`
+	Correct           bool               `json:"correct"`
+	ExpectedAnswer    []byte             `json:"expected_answer"`
+	Analysis          string             `json:"analysis"`
+	ResponseBody      string             `json:"response_body"`
+	SubmittedAt       pgtype.Timestamptz `json:"submitted_at"`
+}
+
 type QuizcraftPracticeAttempt struct {
 	ID                uuid.UUID          `json:"id"`
 	SessionID         uuid.UUID          `json:"session_id"`
@@ -222,6 +260,7 @@ type QuizcraftPracticeSession struct {
 	Mode          string             `json:"mode"`
 	ChapterID     pgtype.Text        `json:"chapter_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	Purpose       string             `json:"purpose"`
 }
 
 type QuizcraftPracticeSessionClaim struct {
@@ -320,6 +359,54 @@ type QuizcraftShadowGateReport struct {
 	Decision           string             `json:"decision"`
 	Reasons            []byte             `json:"reasons"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuizcraftTrainingDisclosure struct {
+	ID                  uuid.UUID          `json:"id"`
+	SessionID           uuid.UUID          `json:"session_id"`
+	Kind                string             `json:"kind"`
+	TargetID            string             `json:"target_id"`
+	Level               int32              `json:"level"`
+	AffectedQuestionIds []uuid.UUID        `json:"affected_question_ids"`
+	DisclosedAt         pgtype.Timestamptz `json:"disclosed_at"`
+}
+
+type QuizcraftTrainingMember struct {
+	UnitVersionID     uuid.UUID `json:"unit_version_id"`
+	BankID            uuid.UUID `json:"bank_id"`
+	BankVersionID     uuid.UUID `json:"bank_version_id"`
+	QuestionID        uuid.UUID `json:"question_id"`
+	QuestionVersionID uuid.UUID `json:"question_version_id"`
+	Position          int32     `json:"position"`
+}
+
+type QuizcraftTrainingOutcome struct {
+	AttemptID      uuid.UUID `json:"attempt_id"`
+	Assisted       bool      `json:"assisted"`
+	Outcome        string    `json:"outcome"`
+	ReviewRequired bool      `json:"review_required"`
+}
+
+type QuizcraftTrainingSession struct {
+	SessionID     uuid.UUID `json:"session_id"`
+	UnitVersionID uuid.UUID `json:"unit_version_id"`
+	BankID        uuid.UUID `json:"bank_id"`
+	BankVersionID uuid.UUID `json:"bank_version_id"`
+}
+
+type QuizcraftTrainingUnit struct {
+	ID           uuid.UUID `json:"id"`
+	BankID       uuid.UUID `json:"bank_id"`
+	SourceUnitID string    `json:"source_unit_id"`
+}
+
+type QuizcraftTrainingUnitVersion struct {
+	ID            uuid.UUID `json:"id"`
+	UnitID        uuid.UUID `json:"unit_id"`
+	BankID        uuid.UUID `json:"bank_id"`
+	BankVersionID uuid.UUID `json:"bank_version_id"`
+	ContentSha256 string    `json:"content_sha256"`
+	Document      []byte    `json:"document"`
 }
 
 type QuizcraftWorkshopAuditEvent struct {

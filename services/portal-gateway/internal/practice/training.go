@@ -55,6 +55,28 @@ func (c *Client) TrainingRead(ctx context.Context, suffix, actor, requestID stri
 	default:
 		return CommandResult{}, ErrPracticeCommandBadRequest
 	}
+
+	if schema == "TrainingReviewEnvelope" {
+		pinned, err := c.TrainingRead(ctx, strings.TrimSuffix(suffix, "/review"), actor, requestID, cookie)
+		if err != nil {
+			return CommandResult{}, err
+		}
+		var snapshot trainingcontract.TrainingSessionEnvelope
+		if json.Unmarshal(pinned.Raw, &snapshot) != nil {
+			return CommandResult{}, ErrPracticeCommandInvalid
+		}
+		if snapshot.Data.Phase != "completed" {
+			return CommandResult{}, &TrainingFailure{Status: 409, Envelope: trainingcontract.TrainingErrorEnvelope{RequestId: requestID, Error: trainingcontract.TrainingError{Code: "UNIT_INCOMPLETE", Message: "请先保存整组答案，再查看解析"}}}
+		}
+		result, err := trainingRequest(ctx, c.httpClient, c.signer, c.baseURL, http.MethodGet, suffix, actor, requestID, "", nil, cookie, http.StatusOK, schema)
+		if err != nil {
+			return CommandResult{}, err
+		}
+		if validatePinnedTrainingReview(snapshot.Data, result.Raw) != nil {
+			return CommandResult{}, ErrPracticeCommandInvalid
+		}
+		return result, nil
+	}
 	return trainingRequest(ctx, c.httpClient, c.signer, c.baseURL, http.MethodGet, suffix, actor, requestID, "", nil, cookie, http.StatusOK, schema)
 }
 
@@ -420,6 +442,80 @@ func validateTrainingLayers(layers []trainingcontract.TrainingLayerDisclosure, k
 			if len(seen) != len(segments) {
 				return errors.New("incomplete training text layer")
 			}
+		}
+	}
+	return nil
+}
+
+func validatePinnedTrainingReview(snapshot trainingcontract.TrainingSession, raw []byte) error {
+	var envelope trainingcontract.TrainingReviewEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return err
+	}
+	unitRaw, _ := snapshot.Unit.MarshalJSON()
+	reviewRaw, _ := envelope.Data.MarshalJSON()
+	var unitKind, reviewKind struct {
+		Kind string `json:"kind"`
+	}
+	_ = json.Unmarshal(unitRaw, &unitKind)
+	_ = json.Unmarshal(reviewRaw, &reviewKind)
+	if unitKind.Kind != reviewKind.Kind {
+		return errors.New("review kind differs from pinned unit")
+	}
+	var questions []trainingcontract.TrainingQuestion
+	var reviews []trainingcontract.TrainingQuestionReview
+	var layers []trainingcontract.TrainingLayerDisclosure
+	var version, reviewVersion string
+	if unitKind.Kind == "listening" {
+		unit, err := snapshot.Unit.AsTrainingListeningUnit()
+		if err != nil {
+			return err
+		}
+		review, err := envelope.Data.AsTrainingListeningReview()
+		if err != nil {
+			return err
+		}
+		questions, reviews, layers = unit.Questions, review.Questions, review.Layers
+		version, reviewVersion = unit.UnitVersionId.String(), review.UnitVersionId.String()
+		for _, segment := range review.Segments {
+			if segment.EndMs > unit.Media.DurationMs {
+				return errors.New("review sentence exceeds pinned media")
+			}
+		}
+	} else {
+		unit, err := snapshot.Unit.AsTrainingClozeUnit()
+		if err != nil {
+			return err
+		}
+		review, err := envelope.Data.AsTrainingClozeReview()
+		if err != nil {
+			return err
+		}
+		questions, reviews, layers = unit.Questions, review.Questions, review.Layers
+		version, reviewVersion = unit.UnitVersionId.String(), review.UnitVersionId.String()
+	}
+	if version != reviewVersion || len(questions) != len(reviews) || len(layers) != len(snapshot.RevealedLayers) {
+		return errors.New("review does not match pinned unit")
+	}
+	for i, q := range questions {
+		review := reviews[i]
+		if q.QuestionId != review.QuestionId || q.QuestionVersionId != review.QuestionVersionId || review.ExpectedAnswer < 0 || review.ExpectedAnswer >= len(q.Options) {
+			return errors.New("review question differs from pinned member")
+		}
+		for _, receipt := range snapshot.Receipts {
+			if receipt.QuestionId == q.QuestionId && receipt.Correct != (receipt.Answer == review.ExpectedAnswer) {
+				return errors.New("review key contradicts saved fact")
+			}
+		}
+	}
+	for i, layer := range layers {
+		content, _ := layer.Content.MarshalJSON()
+		var name struct {
+			Layer string `json:"layer"`
+		}
+		_ = json.Unmarshal(content, &name)
+		if name.Layer != string(snapshot.RevealedLayers[i]) {
+			return errors.New("review layer has not been disclosed")
 		}
 	}
 	return nil

@@ -344,10 +344,26 @@ func TestTrainingRecoveryRejectsIncompleteOrInconsistentOwnerProjection(t *testi
 
 func TestTrainingReviewRejectsForeignSessionAndMalformedEvidence(t *testing.T) {
 	review := `{"request_id":"req_review","data":{"kind":"listening","session_id":"22222222-2222-4222-8222-222222222222","unit_version_id":"44444444-4444-4444-8444-444444444444","questions":[{"question_id":"77777777-7777-4777-8777-777777777777","question_version_id":"88888888-8888-4888-8888-888888888888","expected_answer":0,"analysis":"The sun made the traveller warm.","error_category":"detail","evidence":{"kind":"listening","segment_ids":["sentence-a"]}}],"segments":[{"segment_id":"sentence-a","start_ms":0,"end_ms":1000}],"layers":[]}}`
+	var base map[string]any
+	_ = json.Unmarshal([]byte(review), &base)
+	q := base["data"].(map[string]any)["questions"].([]any)[0].(map[string]any)
+	q2 := map[string]any{}
+	for name, value := range q {
+		q2[name] = value
+	}
+	q2["question_id"] = "99999999-9999-4999-8999-999999999999"
+	q2["question_version_id"] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	base["data"].(map[string]any)["questions"] = []any{q, q2}
+	baseRaw, _ := json.Marshal(base)
+	review = string(baseRaw)
 	response := []byte(review)
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(response)
+		if strings.HasSuffix(r.URL.Path, "/review") {
+			_, _ = w.Write(response)
+		} else {
+			_, _ = w.Write(trainingCompleted(t))
+		}
 	}))
 	defer core.Close()
 	h := trainingHandler(t, core.URL, true)
@@ -387,7 +403,7 @@ func TestTrainingOwnerConflictIsPreservedAndServiceAuthFailureIsClosed(t *testin
 	}))
 	defer core.Close()
 	h := trainingHandler(t, core.URL, true)
-	for _, want := range []int{409, 503} {
+	for _, want := range []int{409, 502} {
 		req := authenticatedPracticeCommandRequest(t, h, "GET", "/api/v1/practice/training/sessions/"+trainingSessionID, "", "unused-idempotency-key")
 		rec := httptest.NewRecorder()
 		h.Router().ServeHTTP(rec, req)
@@ -426,4 +442,71 @@ func TestTrainingCompletedRecoveryRejectsChineseWithoutEnglish(t *testing.T) {
 	if rec.Code != 502 {
 		t.Fatalf("nonsequential revealed layer = %d %s", rec.Code, rec.Body.String())
 	}
+}
+
+func TestTrainingOwnerTransportAndAuthenticationFailuresAre502(t *testing.T) {
+	for _, status := range []int{0, 401} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }))
+			defer core.Close()
+			url := core.URL
+			if status == 0 {
+				url = "http://127.0.0.1:1"
+			}
+			handler := trainingHandler(t, url, true)
+			rec := httptest.NewRecorder()
+			handler.Router().ServeHTTP(rec, httptest.NewRequest("GET", "https://portal.test/api/v1/practice/training/catalog", nil))
+			if rec.Code != 502 || !strings.Contains(rec.Body.String(), `"code":"DEPENDENCY_UNAVAILABLE"`) {
+				t.Fatalf("owner failure %d = %d %s", status, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestTrainingReviewMustMatchPinnedSessionMembership(t *testing.T) {
+	var snapshot map[string]any
+	_ = json.Unmarshal(trainingPending(t), &snapshot)
+	data := snapshot["data"].(map[string]any)
+	data["phase"] = "completed"
+	data["saved_count"] = 2
+	var receipts []any
+	for _, value := range data["unit"].(map[string]any)["questions"].([]any) {
+		q := value.(map[string]any)
+		receipts = append(receipts, map[string]any{"session_id": trainingSessionID, "unit_version_id": "44444444-4444-4444-8444-444444444444", "question_id": q["question_id"], "question_version_id": q["question_version_id"], "answer": 0, "correct": true, "assisted": false, "outcome": "independent_correct", "review_required": false, "submitted_at": "2026-11-12T08:00:00Z", "replayed": true, "saved_count": 2, "total_count": 2, "phase": "completed"})
+	}
+	data["receipts"] = receipts
+	snapshotBody, _ := json.Marshal(snapshot)
+	review := `{"request_id":"req_review","data":{"kind":"listening","session_id":"22222222-2222-4222-8222-222222222222","unit_version_id":"11111111-1111-4111-8111-111111111111","questions":[{"question_id":"77777777-7777-4777-8777-777777777777","question_version_id":"88888888-8888-4888-8888-888888888888","expected_answer":0,"analysis":"private review from another version","error_category":"detail","evidence":{"kind":"listening","segment_ids":["sentence-a"]}}],"segments":[{"segment_id":"sentence-a","start_ms":0,"end_ms":1000}],"layers":[]}}`
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/review") {
+			_, _ = w.Write([]byte(review))
+		} else {
+			_, _ = w.Write(snapshotBody)
+		}
+	}))
+	defer core.Close()
+	h := trainingHandler(t, core.URL, true)
+	rec := httptest.NewRecorder()
+	h.Router().ServeHTTP(rec, authenticatedPracticeCommandRequest(t, h, "GET", "/api/v1/practice/training/sessions/"+trainingSessionID+"/review", "", "unused-idempotency-key"))
+	if rec.Code != 502 || strings.Contains(rec.Body.String(), "private review from another version") {
+		t.Fatalf("foreign review leaked %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func trainingCompleted(t *testing.T) []byte {
+	t.Helper()
+	var envelope map[string]any
+	_ = json.Unmarshal(trainingPending(t), &envelope)
+	data := envelope["data"].(map[string]any)
+	data["phase"] = "completed"
+	data["saved_count"] = 2
+	receipts := []any{}
+	for _, value := range data["unit"].(map[string]any)["questions"].([]any) {
+		q := value.(map[string]any)
+		receipts = append(receipts, map[string]any{"session_id": trainingSessionID, "unit_version_id": "44444444-4444-4444-8444-444444444444", "question_id": q["question_id"], "question_version_id": q["question_version_id"], "answer": 0, "correct": true, "assisted": false, "outcome": "independent_correct", "review_required": false, "submitted_at": "2026-11-12T08:00:00Z", "replayed": true, "saved_count": 2, "total_count": 2, "phase": "completed"})
+	}
+	data["receipts"] = receipts
+	raw, _ := json.Marshal(envelope)
+	return raw
 }

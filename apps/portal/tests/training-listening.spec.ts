@@ -104,6 +104,9 @@ test("partial save recovers after refresh, retries only missing answers, and unl
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status").filter({ hasText: "已保存 1/4 题" })).toBeVisible();
   await expect(page.getByText(/部分答案可能尚未保存/)).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "部分答案可能尚未保存" })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("button", { name: "继续保存答案" })).toBeFocused();
+  await page.screenshot({ path: testInfo.outputPath("listening-retry-feedback-360.png") });
   expect(reviewCalls).toBe(0);
   await expect(page.getByText(/参考答案/)).toHaveCount(0);
   await page.evaluate(() => scrollTo(0, 0));
@@ -113,6 +116,8 @@ test("partial save recovers after refresh, retries only missing answers, and unl
   await expect(page.getByRole("radio").nth(2)).toBeChecked();
   await page.getByRole("button", { name: "继续保存答案" }).click();
   await expect(page.getByRole("heading", { name: "本组训练已完成" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "训练结果" })).toBeFocused();
+  await expect(page.getByRole("region", { name: "训练结果" })).toBeInViewport({ ratio: 1 });
   await expect(page.getByText("来自已完成训练的解析。", { exact: true })).toHaveCount(4);
   await expect(page.getByText("独立答对 3 题 · 提示后答对 0 题 · 需要复习 1 题", { exact: true })).toBeVisible();
   expect(bodies).toHaveLength(5);

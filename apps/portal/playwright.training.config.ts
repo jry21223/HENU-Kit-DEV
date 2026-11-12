@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const port = Number(process.env.PLAYWRIGHT_TRAINING_PORT || 3164);
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "training-listening.spec.ts",
+  testMatch: process.env.PLAYWRIGHT_TRAINING_STACK === "1" ? "training-stack.spec.ts" : "training-listening.spec.ts",
   timeout: 45_000,
   expect: { timeout: 10_000 },
   workers: 1,

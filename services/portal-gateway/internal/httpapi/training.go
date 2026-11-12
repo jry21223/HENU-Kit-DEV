@@ -110,7 +110,7 @@ func (h *Handler) training(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, practice.ErrPracticeCommandInvalid):
 			h.trainingError(w, r, 502, "DEPENDENCY_UNAVAILABLE", "训练响应暂时不可用，请稍后重试")
 		default:
-			h.trainingError(w, r, 503, "DEPENDENCY_UNAVAILABLE", "训练暂时不可用，请稍后重试")
+			h.trainingError(w, r, 502, "DEPENDENCY_UNAVAILABLE", "训练暂时不可用，请稍后重试")
 		}
 		return
 	}

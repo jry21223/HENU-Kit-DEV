@@ -18,6 +18,7 @@ export default function TrainingCatalog() {
   const [units, setUnits] = useState<TrainingCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryUnit, setRetryUnit] = useState<TrainingCatalogItem | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const keys = useRef<Record<string, string>>({});
   const busy = useRef(false);
@@ -44,6 +45,7 @@ export default function TrainingCatalog() {
     if (busy.current) return;
     busy.current = true;
     setStarting(unit.unit_version_id);
+    setRetryUnit(null);
     setError(null);
     const storageKey = `training-start:${unit.unit_version_id}`;
     let remembered: string | null = null;
@@ -56,6 +58,7 @@ export default function TrainingCatalog() {
       router.push(`/practice/training/${response.data.session_id}`);
     } catch (cause) {
       setError(cause instanceof PortalUnauthorizedError ? "登录状态已失效，请重新登录后重试。" : "训练暂时无法开始，请重试。重试会继续这次操作。");
+      setRetryUnit(unit);
       setStarting(null);
       busy.current = false;
     }
@@ -67,7 +70,7 @@ export default function TrainingCatalog() {
         <p className="font-mono text-xs tracking-[0.2em] text-accent-text">ENGLISH / LISTENING</p>
         <h1 className="mt-3 font-display text-3xl font-bold md:text-5xl">英语听力训练</h1>
         <p className="mt-4 text-sm leading-7 text-ink/70">通用英语练习：听完整段音频，完成一组理解题，再核对答案与依据。训练结果单独记录。</p>
-        {error && <ErrorBanner message={error} className="mt-6" onRetry={starting ? undefined : () => void load()} />}
+        {error && <ErrorBanner message={error} className="mt-6" onRetry={starting ? undefined : retryUnit ? () => void start(retryUnit) : () => void load()} />}
         {loading ? <div className="mt-8"><LoadingBlock label="加载听力材料" /></div> : units.length === 0 && !error ? <div className="mt-8"><EmptyBlock label="暂时没有可练习的听力材料。" action={{ label: "返回题库", href: "/practice" }} /></div> : (
           <div className="mt-8 divide-y divide-line border-y border-line">
             {units.map(unit => <article key={unit.unit_version_id} className="py-6">

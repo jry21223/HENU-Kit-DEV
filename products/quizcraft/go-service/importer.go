@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"henukit.dev/quizcraft/internal/trainingcontract"
 )
 
 var (
@@ -77,9 +78,10 @@ func (e ImportValidationError) Error() string {
 }
 
 type bankDocument struct {
-	Meta      bankMeta        `json:"meta"`
-	Questions []questionInput `json:"questions"`
-	Chunks    json.RawMessage `json:"chunks"`
+	Meta      bankMeta                            `json:"meta"`
+	Questions []questionInput                     `json:"questions"`
+	Chunks    json.RawMessage                     `json:"chunks"`
+	Training  *trainingcontract.TrainingAuthoring `json:"training,omitempty"`
 }
 
 type bankMeta struct {
@@ -262,6 +264,16 @@ func (s *Service) importJSON(ctx context.Context, bankKey string, source []byte,
 		"bank_key": bankKey, "name": strings.TrimSpace(document.Meta.Name),
 		"source_version": document.Meta.Version, "questions": report.Questions,
 	}
+	if document.Training != nil {
+		// Decode the union's raw object before hashing so object-key order is
+		// canonical, while array order and every explicitly present source field stay.
+		rawTraining, _ := json.Marshal(document.Training)
+		var sourceTraining any
+		if err := json.Unmarshal(rawTraining, &sourceTraining); err != nil {
+			return report, err
+		}
+		bankSemantic["training"] = sourceTraining
+	}
 	canonical, _ := json.Marshal(bankSemantic)
 	report.ContentSHA256 = hash(canonical)
 	bankVersionID := stableID(bankID, "version:"+report.ContentSHA256)
@@ -282,6 +294,9 @@ func (s *Service) importJSON(ctx context.Context, bankKey string, source []byte,
 		return report, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO quizcraft_banks(id,bank_key,name) VALUES($1,$2,$3) ON CONFLICT(bank_key) DO UPDATE SET name=EXCLUDED.name,updated_at=now()`, bankID, bankKey, strings.TrimSpace(document.Meta.Name)); err != nil {
+		return report, err
+	}
+	if err = guardTrainingImport(ctx, tx, bankID, document.Training); err != nil {
 		return report, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO quizcraft_bank_versions(id,bank_id,name,source_version,source_sha256,content_sha256,import_report) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO NOTHING`, bankVersionID, bankID, strings.TrimSpace(document.Meta.Name), document.Meta.Version, report.SourceSHA256, report.ContentSHA256, encodedReport); err != nil {
@@ -317,6 +332,11 @@ func (s *Service) importJSON(ctx context.Context, bankKey string, source []byte,
 		}
 	}
 	report.Accepted = true
+	if document.Training != nil {
+		if err = persistListeningVersion(ctx, tx, report, *document.Training, normalized); err != nil {
+			return report, err
+		}
+	}
 	if options.beforeCommit != nil {
 		if err = options.beforeCommit(tx, report); err != nil {
 			return report, err

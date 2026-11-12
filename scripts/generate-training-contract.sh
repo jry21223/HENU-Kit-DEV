@@ -8,6 +8,7 @@ portal_contract="$repo_root/packages/api-contracts/openapi/portal-training.yaml"
 mkdir -p "$repo_root/products/quizcraft/go-service/internal/trainingcontract" \
   "$repo_root/services/portal-gateway/internal/trainingcontract"
 cp "$owner_contract" "$repo_root/services/portal-gateway/internal/trainingcontract/owner.yaml"
+cp "$owner_contract" "$repo_root/products/quizcraft/go-service/internal/trainingcontract/owner.yaml"
 cd "$repo_root/products/quizcraft/go-service"
 go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 \
   -generate types,skip-prune -package trainingcontract \

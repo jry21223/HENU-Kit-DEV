@@ -49,6 +49,10 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
   const [reviewError, setReviewError] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const resultRef = useRef<HTMLElement>(null);
+  const retryRef = useRef<HTMLButtonElement>(null);
+  const submittedHere = useRef(false);
+  const completionFocused = useRef(false);
   const busy = useRef(false);
   const alive = useRef(true);
 
@@ -93,6 +97,23 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [session?.phase, loadReview]);
 
+  useEffect(() => {
+    if (!submittedHere.current) return;
+    if (session?.phase === "completed") {
+      // Review inserts explanations above the summary. Keep it in view when
+      // that response arrives, unless the learner has already moved focus.
+      if (!completionFocused.current || document.activeElement === resultRef.current) {
+        resultRef.current?.focus({ preventScroll: true });
+        resultRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+        completionFocused.current = true;
+      }
+      if (review || reviewError) submittedHere.current = false;
+    } else if (error) {
+      retryRef.current?.focus({ preventScroll: true });
+      retryRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    }
+  }, [session?.phase, error, review, reviewError]);
+
   function choose(questionID: string, answer: number) {
     if (!session || saving || drafts[questionID]?.locked) return;
     const question = session.unit.questions.find(item => item.question_id === questionID);
@@ -107,6 +128,8 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
     const saved = new Set(session.receipts.map(item => item.question_id));
     if (session.unit.questions.some(question => !saved.has(question.question_id) && !drafts[question.question_id])) return;
     busy.current = true;
+    submittedHere.current = true;
+    completionFocused.current = false;
     setSaving(true);
     setError(null);
     const frozen = Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, { ...draft, locked: true }]));
@@ -163,7 +186,6 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
           {audioError && <ErrorBanner className="mt-4" message="音频暂时无法播放，请检查网络后重试。" onRetry={() => { setAudioError(false); audioRef.current?.load(); }} />}
         </section>
         <p role="status" className="mt-5 font-mono text-sm text-ink/70">{complete ? "已完成" : "已保存"} {session.saved_count}/{session.total_count} 题{saving ? " · 正在保存…" : ""}</p>
-        {error && !complete && <ErrorBanner className="mt-5" message={error} />}
         <form className="mt-6 space-y-8" onSubmit={event => { event.preventDefault(); void saveUnit(); }}>
           {session.unit.questions.map((question, index) => {
             const receipt = receipts.get(question.question_id);
@@ -186,9 +208,10 @@ export default function ListeningSession({ sessionID }: { sessionID: string }) {
               </div>}
             </fieldset>;
           })}
-          {!complete && <Button type="submit" variant="accent" disabled={!ready || saving}>{saving ? "正在保存…" : error || session.saved_count > 0 || Object.values(drafts).some(draft => draft.locked) ? "继续保存答案" : "提交整组答案"}</Button>}
+          {error && !complete && <ErrorBanner message={error} />}
+          {!complete && <Button ref={retryRef} type="submit" variant="accent" disabled={!ready || saving}>{saving ? "正在保存…" : error || session.saved_count > 0 || Object.values(drafts).some(draft => draft.locked) ? "继续保存答案" : "提交整组答案"}</Button>}
         </form>
-        {complete && <section aria-label="训练结果" className="mt-8 border-y border-line py-6">
+        {complete && <section ref={resultRef} tabIndex={-1} aria-label="训练结果" className="mt-8 scroll-mt-32 border-y border-line py-6 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
           <h2 className="font-display text-2xl font-bold">本组训练已完成</h2>
           <p className="mt-3 text-sm leading-7">独立答对 {session.receipts.filter(item => item.outcome === "independent_correct").length} 题 · 提示后答对 {session.receipts.filter(item => item.outcome === "assisted_completion").length} 题 · 需要复习 {session.receipts.filter(item => item.review_required).length} 题</p>
           <p className="mt-2 text-xs leading-6 text-ink/70">训练结果不计入普通刷题统计与排行榜。</p>

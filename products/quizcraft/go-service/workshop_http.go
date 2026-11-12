@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"henukit.dev/quizcraft/internal/store"
+	"henukit.dev/quizcraft/internal/trainingcontract"
 )
 
 var sha256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -41,9 +42,10 @@ type createWorkshopVersionRequest struct {
 }
 
 type importWorkshopVersionRequest struct {
-	ExpectedVersion *int64                    `json:"expected_version"`
-	SourceSHA256    string                    `json:"source_sha256"`
-	Questions       []workshopQuestionRequest `json:"questions"`
+	Training        *trainingcontract.TrainingAuthoring `json:"training,omitempty"`
+	ExpectedVersion *int64                              `json:"expected_version"`
+	SourceSHA256    string                              `json:"source_sha256"`
+	Questions       []workshopQuestionRequest           `json:"questions"`
 }
 
 type versionCommandRequest struct {
@@ -342,7 +344,20 @@ func (service *practiceHTTP) getWorkshopVersion(writer http.ResponseWriter, requ
 		_ = json.Unmarshal(answerJSON, &answer)
 		questions = append(questions, map[string]any{"question_id": questionID, "question_version_id": questionVersionID, "source_question_id": sourceID, "type": questionType, "chapter_id": chapterID, "chapter": chapter, "content": content, "options": options, "answer": answer, "analysis": analysis, "position": position})
 	}
-	writeJSON(writer, http.StatusOK, responseEnvelope{RequestID: requestID(), Data: map[string]any{"bank_id": bankID, "bank_version_id": versionID, "state": state, "content_sha256": contentSHA, "questions": questions}})
+	detail := map[string]any{"bank_id": bankID, "bank_version_id": versionID, "state": state, "content_sha256": contentSHA, "questions": questions}
+	var trainingJSON []byte
+	if err := service.database.QueryRow(request.Context(), `SELECT document FROM quizcraft_training_unit_versions WHERE bank_version_id=$1`, versionID).Scan(&trainingJSON); err == nil {
+		var training trainingcontract.TrainingUnitVersion
+		if json.Unmarshal(trainingJSON, &training) != nil {
+			writeError(writer, 503, "database_unavailable", "Training content is unavailable")
+			return
+		}
+		detail["training"] = training
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		writeError(writer, 503, "database_unavailable", "Training content is unavailable")
+		return
+	}
+	writeJSON(writer, 200, responseEnvelope{RequestID: requestID(), Data: detail})
 }
 
 func (service *practiceHTTP) getWorkshopFeedback(writer http.ResponseWriter, request *http.Request) {
@@ -375,7 +390,7 @@ func (service *practiceHTTP) createWorkshopVersion(writer http.ResponseWriter, r
 		writeError(writer, http.StatusBadRequest, "invalid_request", "Workshop version body is invalid")
 		return
 	}
-	service.importWorkshopDraft(writer, request, raw, input.ExpectedVersion, "create_bank_version", "create_version", "", input.Questions)
+	service.importWorkshopDraft(writer, request, raw, input.ExpectedVersion, "create_bank_version", "create_version", "", input.Questions, nil)
 }
 
 func (service *practiceHTTP) importWorkshopVersion(writer http.ResponseWriter, request *http.Request) {
@@ -385,14 +400,18 @@ func (service *practiceHTTP) importWorkshopVersion(writer http.ResponseWriter, r
 		writeError(writer, http.StatusBadRequest, "invalid_request", "Workshop import body is invalid")
 		return
 	}
+	if jsonFieldPresent(raw, "training") && trainingcontract.Validate("TrainingBankImportRequest", raw) != nil {
+		writeError(writer, 400, "invalid_request", "Training import does not match its closed contract")
+		return
+	}
 	expectedVersion := int64(-1)
 	if input.ExpectedVersion != nil {
 		expectedVersion = *input.ExpectedVersion
 	}
-	service.importWorkshopDraft(writer, request, raw, expectedVersion, "import_bank", "import_version", input.SourceSHA256, input.Questions)
+	service.importWorkshopDraft(writer, request, raw, expectedVersion, "import_bank", "import_version", input.SourceSHA256, input.Questions, input.Training)
 }
 
-func (service *practiceHTTP) importWorkshopDraft(writer http.ResponseWriter, request *http.Request, raw []byte, expectedVersion int64, operationKind, action, sourceSHA string, questions []workshopQuestionRequest) {
+func (service *practiceHTTP) importWorkshopDraft(writer http.ResponseWriter, request *http.Request, raw []byte, expectedVersion int64, operationKind, action, sourceSHA string, questions []workshopQuestionRequest, training *trainingcontract.TrainingAuthoring) {
 	bankID, err := uuid.Parse(chi.URLParam(request, "bank_id"))
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, "invalid_bank_id", "bank_id must be a UUID")
@@ -419,7 +438,11 @@ func (service *practiceHTTP) importWorkshopDraft(writer http.ResponseWriter, req
 	for _, question := range questions {
 		documentQuestions = append(documentQuestions, map[string]any{"id": question.SourceQuestionID, "type": question.Type, "chapter_id": question.ChapterID, "chapter": question.Chapter, "content": question.Content, "options": question.Options, "answer": question.Answer, "analysis": question.Analysis})
 	}
-	source, _ := json.Marshal(map[string]any{"meta": map[string]any{"name": name, "version": "workshop"}, "questions": documentQuestions})
+	sourceDocument := map[string]any{"meta": map[string]any{"name": name, "version": "workshop"}, "questions": documentQuestions}
+	if training != nil {
+		sourceDocument["training"] = training
+	}
+	source, _ := json.Marshal(sourceDocument)
 	requestHash := hashCanonical(raw)
 	var encoded []byte
 	core := &Service{database: service.database}
@@ -523,6 +546,9 @@ func (service *practiceHTTP) workshopVersionCommand(writer http.ResponseWriter, 
 		if err := requireLifecycleVersion(ctx, tx, bankID, input.ExpectedVersion); err != nil {
 			return err
 		}
+		if err := validateTrainingBinding(ctx, tx, bankID, versionID); err != nil {
+			return err
+		}
 		switch action {
 		case "validate_version":
 			result, err := tx.Exec(ctx, `UPDATE quizcraft_workshop_version_states SET state='validated',validated_by=$3,validated_at=now(),validation_note=$4 WHERE bank_id=$1 AND bank_version_id=$2 AND state='draft'`, bankID, versionID, *actor.userID, input.Note)
@@ -565,6 +591,9 @@ func (service *practiceHTTP) rollbackWorkshopBank(writer http.ResponseWriter, re
 	}
 	service.runWorkshopMutation(writer, request, actor, "rollback_bank", http.StatusOK, raw, input.TargetBankVersionID, func(ctx context.Context, tx pgx.Tx, requestID string) error {
 		if err := requireLifecycleVersion(ctx, tx, bankID, input.ExpectedVersion); err != nil {
+			return err
+		}
+		if err := validateTrainingBinding(ctx, tx, bankID, input.TargetBankVersionID); err != nil {
 			return err
 		}
 		result, err := tx.Exec(ctx, `UPDATE quizcraft_banks b SET active_version_id=$2,lifecycle_version=lifecycle_version+1,updated_at=now() WHERE b.id=$1 AND EXISTS(SELECT 1 FROM quizcraft_workshop_version_states s WHERE s.bank_id=$1 AND s.bank_version_id=$2 AND s.state='validated')`, bankID, input.TargetBankVersionID)
