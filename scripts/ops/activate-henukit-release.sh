@@ -8,7 +8,7 @@ program="activate-henukit-release"
 
 usage() {
   cat >&2 <<'EOF'
-usage: activate-henukit-release.sh <full-main-sha> --execute
+usage: activate-henukit-release.sh <full-main-sha> [--preserve-existing] --execute
        activate-henukit-release.sh <full-main-sha> --notice-url <apply|reconcile|restore> --plan <private-plan> --execute
        activate-henukit-release.sh <full-main-sha> --notice-url accept --plan <private-plan> --evidence <private-evidence> --execute
        activate-henukit-release.sh <full-main-sha> \
@@ -17,11 +17,15 @@ usage: activate-henukit-release.sh <full-main-sha> --execute
        activate-henukit-release.sh <full-main-sha> --local-artifacts <artifact-dir> \
          --recover-degraded-baseline <full-current-sha> --execute
 
-The command is the production approval action. It first asks the watcher to
+The command is the production approval action. Default activation asks the watcher to
 prepare and restore-test backups without approval, installs the tested EasyPay
 gateway patch set on MetaView, then atomically approves that exact SHA and asks
 the watcher to activate HENU Kit. It never approves while the QuizCraft
 cutover blocker is open or when preparation, mock, or gateway gates fail.
+
+--preserve-existing uses only valid existing configuration and grants, preserves
+credential files in place and checks the installed gateway read-only. Missing
+or changed authority fails closed; it never installs credentials or grants.
 
 Set HENUKIT_RETAINED_RELEASE_OWNER_UID only when the exact healthy rollback
 release predates the root-owned release boundary. The command then runs the
@@ -91,6 +95,12 @@ if [[ $# -ge 4 && "${@: -3:1}" == "--notice-url-plan" && "${@: -1}" == "--execut
   set -- "${@:1:$#-3}" --execute
 fi
 
+preserve_existing=0
+if [[ $# -ge 3 && "${@: -2:1}" == "--preserve-existing" && "${@: -1}" == "--execute" ]]; then
+  preserve_existing=1
+  set -- "${@:1:$#-2}" --execute
+fi
+
 release_source="actions"
 local_artifact_dir=""
 recovery_baseline_sha=""
@@ -156,6 +166,12 @@ if [[ -n "$retained_release_owner_uid" ]]; then
     die "HENUKIT_RETAINED_RELEASE_OWNER_UID is only valid for normal activation"
   [[ "$retained_release_owner_uid" =~ ^[1-9][0-9]*$ ]] ||
     die "HENUKIT_RETAINED_RELEASE_OWNER_UID must be a non-root numeric UID"
+fi
+if [[ "$preserve_existing" == 1 ]]; then
+  [[ -z "$notice_url_plan" && -z "$recovery_baseline_sha" && -z "$retained_release_owner_uid" ]] ||
+    die "preservation cannot change configuration or adopt degraded authority"
+  preservation_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/henukit-preserve-existing.py"
+  [[ -f "$preservation_helper" && ! -L "$preservation_helper" ]] || die "preservation verifier is unavailable"
 fi
 [[ -x "$watcher" ]] || die "watcher is not executable: $watcher"
 command -v gh >/dev/null 2>&1 || die "gh CLI is required"
@@ -376,6 +392,37 @@ if [[ -e "$approval" ]]; then
   resume_existing_approval=1
   printf '%s: resuming valid unconsumed approval for release %s\n' "$program" "$release_sha"
 fi
+preservation_receipt="$state_root/prepared/${release_sha}.preserve-existing.json"
+preservation_required() {
+  local contract backup root="${HENUKIT_BACKUP_ROOT:-/opt/henukit-backups}"
+  [[ ! -e "$preservation_receipt" && ! -L "$preservation_receipt" ]] || return 0
+  for contract in "$state_root/rollback-contracts/pending/$release_sha" "$state_root/rollback-contracts/completed/$release_sha".*; do
+    [[ -f "$contract" && ! -L "$contract" ]] || continue
+    if grep -q '^rollback_mode=preserve-existing' "$contract"; then return 0; fi
+  done
+  if [[ -f "$prepared" && ! -L "$prepared" ]]; then
+    backup="$(tr -d '\r\n' < "$prepared")"
+    if [[ "$backup" == "$root/"* && "$backup" =~ ^/[A-Za-z0-9_./-]+$ &&
+          -f "$backup.meta" && ! -L "$backup.meta" ]]; then
+      if grep -q '^preservation_mode=preserve-existing' "$backup.meta"; then return 0; fi
+    fi
+  fi
+  return 1
+}
+if preservation_required; then
+  [[ "$preserve_existing" == 1 ]] || die "existing preservation attempt requires --preserve-existing"
+  [[ -f "$preservation_receipt" && ! -L "$preservation_receipt" ]] ||
+    die "existing preservation attempt lost its original receipt; operator review required"
+fi
+if [[ "$preserve_existing" == 1 ]]; then
+  validate_private_file "$env_file" "existing production environment"
+  validate_trusted_helper "$preservation_helper" "preservation verifier"
+  python3 -I "$preservation_helper" capture --sha "$release_sha" --env-file "$env_file" \
+    --receipt "$preservation_receipt" --release-dir "$release_root/$baseline_sha" \
+    --role "${HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE:-}"
+  export HENUKIT_PRESERVE_EXISTING_SHA="$release_sha"
+  export HENUKIT_ROLLBACK_ENV_FILE="$env_file"
+fi
 if [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]]; then
   active_aliases_match "$release_sha" || die "active release aliases disagree; operator reconciliation is required"
   [[ -z "$notice_url_plan" ]] || die "already-active Notice URL change requires the explicit --notice-url apply entry"
@@ -383,8 +430,8 @@ if [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]]; then
   exit 0
 fi
 
-[[ -n "$env_file" && -r "$env_file" && -w "$env_file" && ! -L "$env_file" ]] ||
-  die "HENUKIT_ENV_FILE must be a writable, non-symlink production environment file"
+[[ -n "$env_file" && -r "$env_file" && ! -L "$env_file" && ( "$preserve_existing" == 1 || -w "$env_file" ) ]] ||
+  die "HENUKIT_ENV_FILE must be readable, non-symlinked and writable for default activation"
 if [[ -n "$notice_url_plan" ]]; then
   python3 -I "$notice_url_helper" --mode preflight --sha "$release_sha" --env-file "$env_file" --plan "$notice_url_plan"
   export HENUKIT_NOTICE_URL_PLAN="$notice_url_plan"
@@ -401,6 +448,7 @@ if [[ -n "$recovery_baseline_sha" ]]; then
   watcher_args+=(--recover-degraded-baseline "$recovery_baseline_sha")
 fi
 
+if [[ "$preserve_existing" == 0 ]]; then
 tenant_credentials="$(ssh "$epay_ssh_target" bash -s -- "$epay_gateway_dir" <<'REMOTE'
 set -Eeuo pipefail
 env_file="$1/.env"
@@ -417,6 +465,8 @@ tenant_pid="${tenant_credentials%%$'\n'*}"
 tenant_key="${tenant_credentials#*$'\n'}"
 [[ "$tenant_pid" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "MetaView HENU tenant PID is missing or invalid"
 [[ ${#tenant_key} -ge 16 && "$tenant_key" != *[[:space:]]* ]] || die "MetaView HENU tenant key is missing or invalid"
+
+fi
 
 set_account_env_value() {
   local key="$1"
@@ -439,10 +489,13 @@ approval_incoming=""
 recovery_binding_incoming=""
 recovery_source_binding_incoming=""
 remote_stage=""
-environment_backup="$(dirname "$env_file")/.henukit-env.backup.$$"
+environment_backup=""
+if [[ "$preserve_existing" == 0 ]]; then
+  environment_backup="$(dirname "$env_file")/.henukit-env.backup.$$"
 cp -p "$env_file" "$environment_backup"
 chmod 0600 "$environment_backup"
 export HENUKIT_ROLLBACK_ENV_FILE="$environment_backup"
+fi
 cleanup() {
   if [[ -n "${approval_incoming:-}" && -f "$approval_incoming" ]]; then
     rm -f -- "$approval_incoming"
@@ -461,6 +514,7 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+if [[ "$preserve_existing" == 0 ]]; then
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_PID "$tenant_pid" || die "could not install the HENU tenant PID"
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_KEY "$tenant_key" || die "could not install the HENU tenant key"
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_BASE_URL "https://metaview.top/epay" || die "could not configure the EasyPay base URL"
@@ -468,6 +522,8 @@ set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_NOTIFY_URL "https://henukit.cn/a
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_RETURN_URL "https://henukit.cn/account/membership" || die "could not configure the EasyPay return URL"
 set_account_env_value ACCOUNT_PORTFOLIO_EASYPAY_ENABLED 1 || die "could not atomically enable Account Portfolio EasyPay"
 set_account_env_value QUIZCRAFT_CORE_URL "http://quizcraft:10089" || die "could not configure the containerized QuizCraft Core URL"
+
+fi
 
 # With no approval, the first pass can only verify artifacts and restore-test
 # backups. An exact local recovery may resume an approval left unconsumed by a
@@ -497,6 +553,7 @@ if [[ -n "$retained_release_owner_uid" ]]; then
 fi
 
 release_dir="$release_root/$release_sha"
+if [[ "$preserve_existing" == 0 ]]; then
 epay_installer="$release_dir/bin/deploy-epay-gateway-patches.sh"
 epay_patches="$release_dir/infra/epay-gateway/patches"
 [[ -x "$epay_installer" ]] || die "release has no executable EasyPay gateway installer"
@@ -516,6 +573,13 @@ ssh "$epay_ssh_target" \
   "$remote_stage/infra/epay-gateway/patches" \
   --execute
 verify_release_current
+
+fi
+if [[ "$preserve_existing" == 1 ]]; then
+  python3 -I "$preservation_helper" candidate --sha "$release_sha" --env-file "$env_file" \
+    --receipt "$preservation_receipt" --release-dir "$release_dir" \
+    --role "$HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE"
+fi
 
 if [[ "$resume_existing_approval" -eq 0 ]]; then
   umask 077
@@ -546,7 +610,13 @@ fi
 [[ -s "$active" && "$(tr -d '\r\n' < "$active")" == "$release_sha" ]] ||
   die "watcher returned without activating release $release_sha"
 active_aliases_match "$release_sha" || die "watcher returned without the complete active-alias contract"
-rm -f -- "$environment_backup"
-environment_backup=""
+if [[ "$preserve_existing" == 1 ]]; then
+  python3 -I "$preservation_helper" runtime --sha "$release_sha" --env-file "$env_file" \
+    --receipt "$preservation_receipt" --release-dir "$release_dir" \
+    --role "$HENUKIT_ACCOUNT_OPERATOR_ROLE_CODE"
+else
+  rm -f -- "$environment_backup"
+  environment_backup=""
+fi
 
 printf '%s: release %s activated\n' "$program" "$release_sha"

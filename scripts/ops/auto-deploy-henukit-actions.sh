@@ -161,7 +161,7 @@ activate_locked() (
   active_aliases_match "$baseline_sha" || die 'active alias topology requires a reviewed versioned bootstrap'
   write_audit "$state/$sha.attempted.json" attempted
   local status=0
-  HENUKIT_EXPECTED_ACTIONS_IDENTITY="actions:$run_id:$run_attempt" "$activator" "$sha" --execute || status=$?
+  HENUKIT_EXPECTED_ACTIONS_IDENTITY="actions:$run_id:$run_attempt" "$activator" "$sha" --preserve-existing --execute || status=$?
   if [[ "$status" == 0 ]]; then
     private_file "$watcher_state/last-activated-sha"
     [[ "$(tr -d '\r\n' < "$watcher_state/last-activated-sha")" == "$sha" ]] || status=1
