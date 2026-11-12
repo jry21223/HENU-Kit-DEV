@@ -19,6 +19,8 @@ on:
       - packages/api-contracts/openapi/quizcraft-training.yaml
       - packages/api-contracts/openapi/portal-training.yaml
       - scripts/generate-training-contract.sh
+      - scripts/snapshot-openapi-base.sh
+      - scripts/tests/quizcraft-contract-base.test.mjs
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
       - .github/workflows/quizcraft-go.yml
@@ -40,6 +42,8 @@ on:
       - packages/api-contracts/openapi/quizcraft-training.yaml
       - packages/api-contracts/openapi/portal-training.yaml
       - scripts/generate-training-contract.sh
+      - scripts/snapshot-openapi-base.sh
+      - scripts/tests/quizcraft-contract-base.test.mjs
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
       - .github/workflows/quizcraft-go.yml
@@ -131,6 +135,8 @@ jobs:
         working-directory: products/quizcraft/go-service
         run: go test -count=1 -run '^TestReconcileCLIBlocksARealPartialImportThenResumesTheSameRun$' ./cmd/reconcile
       - name: Verify QuizCraft contract
+        env:
+          QUIZCRAFT_CONTRACT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/products/quizcraft/go-service:/src" -w /src sqlc/sqlc:1.31.0 generate
@@ -141,12 +147,15 @@ jobs:
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft.yaml
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft-console-management.yaml
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft-training.yaml packages/api-contracts/openapi/portal-training.yaml
-          if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" 2>/dev/null; then
-            git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" > /tmp/quizcraft-base.yaml
+          node --test scripts/tests/quizcraft-contract-base.test.mjs
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            base_dir="$(mktemp -d "${TMPDIR:-/tmp}/quizcraft-base.XXXXXX")"
+            trap 'rm -rf "$base_dir"' EXIT
+            bash scripts/snapshot-openapi-base.sh "$QUIZCRAFT_CONTRACT_BASE_SHA" "$base_dir"
             cd products/quizcraft/go-service
             # The two standalone browser OAuth endpoints were intentionally retired
             # with the Account Center convergence. Keep every other breaking check.
-            go run github.com/oasdiff/oasdiff@v1.23.0 breaking --unmatch-path '^/auth/(login|callback)$' /tmp/quizcraft-base.yaml ../../../packages/api-contracts/openapi/quizcraft.yaml
+            go run github.com/oasdiff/oasdiff@v1.23.0 breaking --fail-on ERR --unmatch-path '^/auth/(login|callback)$' "$base_dir/packages/api-contracts/openapi/quizcraft.yaml" ../../../packages/api-contracts/openapi/quizcraft.yaml
           fi
       - name: Vet, test, and build
         working-directory: products/quizcraft/go-service

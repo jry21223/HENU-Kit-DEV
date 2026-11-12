@@ -30,3 +30,15 @@ it("rejects invalid route IDs and keys before sending commands", async () => {
   expect(() => createTrainingSession({ unit_id: "u", unit_version_id: "v" }, "short")).toThrow(PortalApiError);
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it("reveals only the requested owner layer and reads the actor-bound review index", async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ request_id: "r1", data: {} }), { status: 200 })));
+  vi.stubGlobal("fetch", fetch);
+  const { revealTrainingLayer, fetchTrainingReviewItems } = await import("./training");
+  const input = { unit_version_id: "77777777-7777-4777-8777-777777777777", layer: "english" as const };
+  await revealTrainingLayer("22222222-2222-4222-8222-222222222222", input, "training-reveal-retry-0001");
+  expect(fetch).toHaveBeenLastCalledWith("/api/v1/practice/training/sessions/22222222-2222-4222-8222-222222222222/reveals", expect.objectContaining({ method: "POST", body: JSON.stringify(input), cache: "no-store", credentials: "same-origin", headers: expect.objectContaining({ "Idempotency-Key": "training-reveal-retry-0001" }) }));
+  await fetchTrainingReviewItems("opaque_cursor-2");
+  expect(fetch).toHaveBeenLastCalledWith("/api/v1/practice/training/review-items?cursor=opaque_cursor-2", expect.objectContaining({ cache: "no-store", credentials: "same-origin" }));
+  expect(() => fetchTrainingReviewItems("../foreign")).toThrow();
+});

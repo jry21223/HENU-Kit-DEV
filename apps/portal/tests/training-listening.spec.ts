@@ -139,12 +139,187 @@ test("audio failure has an honest retry and preserves the selected answer", asyn
   const failAudio = async (route: import("@playwright/test").Route) => route.abort();
   await page.route(`**${mediaURL}`, failAudio);
   await page.goto(`/practice/training/${sessionID}`);
-  await expect(page.getByText("音频暂时无法播放，请检查网络后重试。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "音频暂时无法播放" })).toBeVisible();
   await page.getByRole("group", { name: /Listening question 1/ }).getByRole("radio").first().check();
   await page.unroute(`**${mediaURL}`, failAudio);
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect.poll(() => page.locator("audio").evaluate(node => (node as HTMLAudioElement).readyState)).toBeGreaterThanOrEqual(2);
-  await expect(page.getByText("音频暂时无法播放，请检查网络后重试。", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: "音频暂时无法播放" })).toHaveCount(0);
   await expect(page.getByRole("group", { name: /Listening question 1/ }).getByRole("radio").first()).toBeChecked();
   await expect(page.getByRole("button", { name: "提交整组答案" })).toBeDisabled();
 });
+
+async function completedFixture(page: Page) {
+  const fixture = await ownerFixture(page);
+  fixture.set({ ...fixture.get(), phase: "completed", saved_count: 4, receipts: questions.map((question, index) => ({ session_id: sessionID, unit_version_id: versionID, question_id: question.question_id, question_version_id: question.question_version_id, answer: 0, correct: index !== 3, assisted: false, outcome: index === 3 ? "review_required" : "independent_correct", review_required: index === 3, submitted_at: "2026-11-12T12:00:00Z", replayed: true, saved_count: 4, total_count: 4, phase: "completed" })) });
+  const pack = JSON.parse(await readFile(path.join(__dirname, "../../../products/quizcraft/go-service/content/english-training/north-wind.import.json"), "utf8"));
+  const layers: import("../src/lib/api/generated/training").TrainingLayerDisclosure[] = [];
+  const review = () => ({ session_id: sessionID, unit_version_id: versionID, kind: "listening", questions: questions.map((question, index) => ({ question_id: question.question_id, question_version_id: question.question_version_id, expected_answer: 0, analysis: "来自已完成训练的解析。", error_category: "detail", evidence: { kind: "listening", segment_ids: [index === 3 ? "s4" : "s1"] } })), segments: pack.training.segments, layers: [...layers] });
+  await page.route(`**/api/v1/practice/training/sessions/${sessionID}/review`, route => route.fulfill({ json: { request_id: "review", data: review() } }));
+  const commands: { layer: string; key: string }[] = [];
+  await page.route(`**/api/v1/practice/training/sessions/${sessionID}/reveals`, route => {
+    const body = route.request().postDataJSON();
+    commands.push({ layer: body.layer, key: route.request().headers()["idempotency-key"] });
+    let disclosure = layers.find(item => item.content.layer === body.layer);
+    if (!disclosure) {
+      disclosure = { disclosure_id: body.layer === "english" ? "77777777-7777-4777-8777-777777777777" : "88888888-8888-4888-8888-888888888888", disclosed_at: "2026-11-12T12:05:00Z", content: pack.training.layers.find((item: { layer: string }) => item.layer === body.layer) };
+      layers.push(disclosure!);
+      fixture.set({ ...fixture.get(), revealed_layers: layers.map(item => item.content.layer) });
+    }
+    return route.fulfill({ json: { request_id: "reveal", data: disclosure } });
+  });
+  return { ...fixture, commands, layers, review };
+}
+
+test("completed review discloses English then Chinese through Core and refresh restores those exact layers", async ({ page }) => {
+  const fixture = await completedFixture(page);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`/practice/training/${sessionID}`);
+  await expect(page.getByRole("button", { name: "查看英文原文", exact: true })).toBeVisible();
+  await expect(page.getByText(/The North Wind and the Sun were disputing/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "查看中文译文", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "查看英文原文", exact: true }).click();
+  await expect(page.getByText(/The North Wind and the Sun were disputing/)).toBeVisible();
+  await expect(page.getByText(/北风和太阳正在争论/)).toHaveCount(0);
+  await page.getByRole("button", { name: "查看中文译文", exact: true }).focus();
+  const scrollBefore = await page.evaluate(() => scrollY);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/北风和太阳正在争论/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "文字已全部展开", exact: true })).toBeFocused();
+  expect(await page.evaluate(() => scrollY)).toBe(scrollBefore);
+  await page.reload();
+  await expect(page.getByText(/The North Wind and the Sun were disputing/)).toBeVisible();
+  await expect(page.getByText(/北风和太阳正在争论/)).toBeVisible();
+  expect(fixture.commands.map(item => item.layer)).toEqual(["english", "chinese"]);
+  expect(fixture.get().receipts.every(item => !item.assisted)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+});
+
+test("evidence playback uses authored sentence boundaries at changed speed and cancels old loops", async ({ page }, testInfo) => {
+  await completedFixture(page);
+  await page.goto(`/practice/training/${sessionID}`);
+  const audio = page.locator("audio");
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).readyState)).toBeGreaterThanOrEqual(2);
+  await page.getByRole("combobox", { name: "播放速度" }).selectOption("1.5");
+  expect(await audio.evaluate(node => (node as HTMLAudioElement).playbackRate)).toBe(1.5);
+  await page.getByRole("button", { name: "循环第 4 句", exact: true }).click();
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeGreaterThan(26.5);
+  const cycle = await audio.evaluate(node => new Promise<{ max: number; elapsed: number }>((resolve, reject) => {
+    const element = node as HTMLAudioElement;
+    const start = performance.now();
+    let maximum = element.currentTime;
+    let approachedEnd = false;
+    const timeout = setTimeout(() => { clearInterval(sample); reject(new Error("Sentence did not loop")); }, 9_000);
+    const sample = setInterval(() => {
+      maximum = Math.max(maximum, element.currentTime);
+      if (element.currentTime > 31.1) approachedEnd = true;
+      if (approachedEnd && element.currentTime < 27) { clearInterval(sample); clearTimeout(timeout); resolve({ max: maximum, elapsed: performance.now() - start }); }
+    }, 10);
+  }));
+  // Chromium media clocks advance in output quanta; the following sentence
+  // starts at the authored31.690s. Keep the observed bound well before it.
+  expect(cycle.max).toBeLessThan(31.60);
+  expect(cycle.elapsed).toBeGreaterThan(2_000);
+  expect(cycle.elapsed).toBeLessThan(6_000);
+  // Changing evidence replaces the old boundary timer, including its captured sentence.
+  await page.getByRole("button", { name: "循环第 1 句", exact: true }).first().click();
+  await audio.evaluate(node => { (node as HTMLAudioElement).currentTime = 6.75; });
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).currentTime), { intervals: [20, 30, 50] }).toBeLessThan(0.5);
+  await audio.evaluate(node => (node as HTMLAudioElement).pause());
+  const pausedAt = await audio.evaluate(node => (node as HTMLAudioElement).currentTime);
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).paused)).toBe(true);
+  await page.getByRole("button", { name: "停止单句循环", exact: true }).click();
+  expect(await audio.evaluate(node => (node as HTMLAudioElement).paused)).toBe(true);
+  expect(await audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeCloseTo(pausedAt, 1);
+  await page.getByRole("button", { name: "播放第 4 句", exact: true }).click();
+  await audio.evaluate(node => { (node as HTMLAudioElement).currentTime = 31.42; });
+  await expect.poll(() => audio.evaluate(node => (node as HTMLAudioElement).paused), { intervals: [20, 30, 50] }).toBe(true);
+  expect(await audio.evaluate(node => (node as HTMLAudioElement).currentTime)).toBeLessThanOrEqual(31.486);
+  await page.screenshot({ path: testInfo.outputPath("listening-evidence-wide.png"), fullPage: true });
+});
+
+test("the Core review index opens complete pinned context and offers fresh published practice", async ({ page }) => {
+  await completedFixture(page);
+  let reviewIndexReads = 0;
+  await page.route("**/api/v1/practice/training/review-items", route => {
+    reviewIndexReads++;
+    return route.fulfill({ json: { request_id: "review-index", data: { items: [{ unit_id: unitID, unit_version_id: versionID, session_id: sessionID, title: unit.title, kind: "listening", phase: "completed", review_required_count: 1, last_attempt_at: "2026-11-12T12:00:00Z" }], next_cursor: "" } } });
+  });
+  await page.goto("/practice/training");
+  await page.getByRole("link", { name: "待复习训练", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "待复习训练", exact: true })).toBeVisible();
+  await expect(page.getByText(/1 题需要独立复习/)).toBeVisible();
+  await page.getByRole("link", { name: "打开完整复盘", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/practice/training/${sessionID}$`));
+  await expect(page.getByRole("group", { name: /Listening question/ })).toHaveCount(4);
+  await expect(page.getByText("来自已完成训练的解析。", { exact: true })).toHaveCount(4);
+  await page.getByRole("link", { name: "返回听力目录", exact: true }).click();
+  await expect(page.getByRole("button", { name: "开始听力训练", exact: true })).toBeVisible();
+  expect(reviewIndexReads).toBeGreaterThan(0);
+});
+
+test("starting the same unit again uses a fresh session and stops old playback and loop timers", async ({ page }) => {
+  await completedFixture(page);
+  const nextID = "99999999-9999-4999-8999-999999999999";
+  const fresh = { ...session(), session_id: nextID };
+  const keys: string[] = [];
+  await page.route("**/api/v1/practice/training/sessions", route => {
+    keys.push(route.request().headers()["idempotency-key"]);
+    return route.fulfill({ status: 201, json: { request_id: "new-session", data: keys.length === 1 ? { ...fresh, session_id: sessionID } : fresh } });
+  });
+  await page.route(`**/api/v1/practice/training/sessions/${nextID}`, route => route.fulfill({ json: { request_id: "fresh", data: fresh } }));
+  await page.goto("/practice/training");
+  await page.getByRole("button", { name: "开始听力训练", exact: true }).click();
+  await page.getByRole("button", { name: "循环第 4 句", exact: true }).click();
+  const oldAudio = await page.locator("audio").elementHandle();
+  await expect.poll(() => oldAudio!.evaluate(node => (node as HTMLAudioElement).paused)).toBe(false);
+  await page.getByRole("link", { name: "返回听力目录", exact: true }).click();
+  await expect.poll(() => oldAudio!.evaluate(node => (node as HTMLAudioElement).paused)).toBe(true);
+  expect(await oldAudio!.getAttribute("src")).toBeNull();
+  await page.getByRole("button", { name: "开始听力训练", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/practice/training/${nextID}$`));
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).not.toBe(keys[0]);
+  await expect(page.getByRole("button", { name: "停止单句循环", exact: true })).toHaveCount(0);
+  expect(await page.locator("audio").evaluate(node => (node as HTMLAudioElement).paused)).toBe(true);
+  expect(await page.locator("audio").evaluate(node => (node as HTMLAudioElement).currentTime)).toBe(0);
+});
+
+test("a committed reveal with a lost response recovers Core text without another command or answer changes", async ({ page }) => {
+  const fixture = await completedFixture(page);
+  const originalReceipts = JSON.stringify(fixture.get().receipts);
+  const pack = JSON.parse(await readFile(path.join(__dirname, "../../../products/quizcraft/go-service/content/english-training/north-wind.import.json"), "utf8"));
+  let commands = 0;
+  await page.route(`**/api/v1/practice/training/sessions/${sessionID}/reveals`, route => {
+    commands++;
+    fixture.layers.push({ disclosure_id: "77777777-7777-4777-8777-777777777777", disclosed_at: "2026-11-12T12:05:00Z", content: pack.training.layers[0] });
+    fixture.set({ ...fixture.get(), revealed_layers: ["english"] });
+    return route.abort();
+  });
+  await page.goto(`/practice/training/${sessionID}`);
+  await page.getByRole("button", { name: "查看英文原文", exact: true }).dispatchEvent("click");
+  await page.getByRole("button", { name: "正在读取文字…", exact: true }).dispatchEvent("click");
+  await expect(page.getByText(/The North Wind and the Sun were disputing/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "查看中文译文", exact: true })).toBeVisible();
+  await expect(page.getByText(/文字暂时无法读取/)).toHaveCount(0);
+  expect(commands).toBe(1);
+  expect(JSON.stringify(fixture.get().receipts)).toBe(originalReceipts);
+});
+
+for (const failure of ["missing", "unsupported"] as const) {
+  test(`actual ${failure} media can retry without losing saved first answers`, async ({ page }) => {
+    const fixture = await completedFixture(page);
+    const receipts = JSON.stringify(fixture.get().receipts);
+    const fail = (route: import("@playwright/test").Route) => route.fulfill(failure === "missing" ? { status: 404, body: "Not found" } : { status: 200, contentType: "audio/mpeg", body: "invalid-mp3-bytes" });
+    await page.route(`**${mediaURL}`, fail);
+    await page.goto(`/practice/training/${sessionID}`);
+    await expect(page.getByRole("alert").filter({ hasText: "音频暂时无法播放" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "已完成 4/4 题" })).toBeVisible();
+    await page.unroute(`**${mediaURL}`, fail);
+    await page.getByRole("alert").filter({ hasText: "音频暂时无法播放" }).getByRole("button", { name: "重试", exact: true }).click();
+    await expect.poll(() => page.locator("audio").evaluate(node => (node as HTMLAudioElement).readyState)).toBeGreaterThanOrEqual(2);
+    await expect(page.getByRole("alert").filter({ hasText: "音频暂时无法播放" })).toHaveCount(0);
+    expect(JSON.stringify(fixture.get().receipts)).toBe(receipts);
+  });
+}

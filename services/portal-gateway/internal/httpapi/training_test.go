@@ -510,3 +510,216 @@ func trainingCompleted(t *testing.T) []byte {
 	raw, _ := json.Marshal(envelope)
 	return raw
 }
+
+func TestTrainingRevealCommitsThenValidatesPinnedOwnerReview(t *testing.T) {
+	disclosure := trainingDisclosure("english")
+	calls := []string{}
+	nonces := map[string]bool{}
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertTrainingSignature(t, r, raw, practiceCommandUserID)
+		if nonces[r.Header.Get("X-Nonce")] {
+			t.Error("service retry reused a nonce")
+		}
+		nonces[r.Header.Get("X-Nonce")] = true
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" {
+			if r.URL.Path != "/api/v1/portal/practice/training/sessions/"+trainingSessionID+"/reveals" || string(raw) != `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english"}` || r.Header.Get("Idempotency-Key") != "training-reveal-exact-0001" || r.Header.Get("X-Key-Id") != "portal-practice-command-key" || r.Header.Get("Cookie") != "quizcraft_anonymous=original-guest" {
+				t.Errorf("unsafe reveal: %s %s %v", r.URL, raw, r.Header)
+			}
+			w.Header().Set("Set-Cookie", "quizcraft_anonymous=claimed; Secure; HttpOnly; SameSite=Lax; Path=/")
+			_, _ = fmt.Fprintf(w, `{"request_id":"req_reveal","data":%s}`, disclosure)
+			return
+		}
+		if r.Header.Get("X-Key-Id") != "training-read-key" || r.Header.Get("X-Permission-Code") != "portal.practice.read" || r.Header.Get("Cookie") != "quizcraft_anonymous=claimed" {
+			t.Errorf("unsafe verification read: %v", r.Header)
+		}
+		if strings.HasSuffix(r.URL.Path, "/review") {
+			_, _ = w.Write(trainingReviewWithLayers(t, disclosure))
+		} else {
+			_, _ = w.Write(trainingSnapshotWithLayers(t, "english"))
+		}
+	}))
+	defer core.Close()
+	h := trainingHandler(t, core.URL, true)
+	input := `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english"}`
+	req := authenticatedPracticeCommandRequest(t, h, "POST", "/api/v1/practice/training/sessions/"+trainingSessionID+"/reveals", input, "training-reveal-exact-0001")
+	req.Header.Set("X-Actor-User-Id", "spoofed")
+	req.AddCookie(&http.Cookie{Name: "quizcraft_anonymous", Value: "original-guest"})
+	req.AddCookie(&http.Cookie{Name: "other", Value: "hidden"})
+	rec := httptest.NewRecorder()
+	h.Router().ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "The sun made him warm.") || rec.Header().Get("Cache-Control") != "private, no-store" || !strings.Contains(rec.Header().Get("Set-Cookie"), "quizcraft_anonymous=claimed") {
+		t.Fatalf("reveal = %d %s", rec.Code, rec.Body.String())
+	}
+	if len(calls) != 3 || calls[0] != "POST /api/v1/portal/practice/training/sessions/"+trainingSessionID+"/reveals" || !strings.HasSuffix(calls[2], "/review") {
+		t.Fatalf("reveal validation requests = %v", calls)
+	}
+}
+
+func trainingDisclosure(layer string) string {
+	id, text, at := "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "The sun made him warm.", "2026-11-12T08:01:00Z"
+	if layer == "chinese" {
+		id, text, at = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "太阳使他暖和起来。", "2026-11-12T08:02:00Z"
+	}
+	return fmt.Sprintf(`{"disclosure_id":%q,"disclosed_at":%q,"content":{"kind":"listening","layer":%q,"segments":[{"segment_id":"sentence-a","text":%q}]}}`, id, at, layer, text)
+}
+
+func trainingSnapshotWithLayers(t *testing.T, layers ...string) []byte {
+	t.Helper()
+	var envelope map[string]any
+	if err := json.Unmarshal(trainingCompleted(t), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	envelope["data"].(map[string]any)["revealed_layers"] = layers
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func trainingReviewWithLayers(t *testing.T, layers ...string) []byte {
+	t.Helper()
+	return []byte(fmt.Sprintf(`{"request_id":"req_review","data":{"kind":"listening","session_id":"22222222-2222-4222-8222-222222222222","unit_version_id":"44444444-4444-4444-8444-444444444444","questions":[{"question_id":"77777777-7777-4777-8777-777777777777","question_version_id":"88888888-8888-4888-8888-888888888888","expected_answer":0,"analysis":"The sun made the traveller warm.","error_category":"detail","evidence":{"kind":"listening","segment_ids":["sentence-a"]}},{"question_id":"99999999-9999-4999-8999-999999999999","question_version_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","expected_answer":0,"analysis":"The sun won.","error_category":"detail","evidence":{"kind":"listening","segment_ids":["sentence-a"]}}],"segments":[{"segment_id":"sentence-a","start_ms":0,"end_ms":1000}],"layers":[%s]}}`, strings.Join(layers, ",")))
+}
+
+func TestTrainingRevealRejectsUnverifiableOwnerDisclosure(t *testing.T) {
+	for _, name := range []string{"different-text", "different-id", "different-time", "different-language", "unknown-sentence", "incomplete-layer", "uncommitted-layer", "foreign-version", "foreign-session", "incomplete-session", "read-failed"} {
+		t.Run(name, func(t *testing.T) {
+			disclosure := trainingDisclosure("english")
+			returned := disclosure
+			snapshot := trainingSnapshotWithLayers(t, "english")
+			review := trainingReviewWithLayers(t, disclosure)
+			switch name {
+			case "different-text":
+				returned = strings.ReplaceAll(disclosure, "The sun made him warm.", "private text from another unit")
+			case "different-id":
+				returned = strings.ReplaceAll(disclosure, "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "ffffffff-ffff-4fff-8fff-ffffffffffff")
+			case "different-time":
+				returned = strings.ReplaceAll(disclosure, "08:01:00Z", "08:01:01Z")
+			case "different-language":
+				returned = trainingDisclosure("chinese")
+			case "unknown-sentence":
+				returned = strings.ReplaceAll(disclosure, "sentence-a", "foreign-sentence")
+			case "incomplete-layer":
+				review = []byte(strings.ReplaceAll(string(review), `"segment_id":"sentence-a","start_ms":0,"end_ms":1000`, `"segment_id":"sentence-a","start_ms":0,"end_ms":1000},{"segment_id":"sentence-b","start_ms":1000,"end_ms":2000`))
+			case "uncommitted-layer":
+				snapshot = trainingCompleted(t)
+				review = trainingReviewWithLayers(t)
+			case "foreign-version":
+				review = []byte(strings.ReplaceAll(string(review), "44444444-4444-4444-8444-444444444444", "11111111-1111-4111-8111-111111111111"))
+			case "foreign-session":
+				review = []byte(strings.ReplaceAll(string(review), trainingSessionID, "11111111-1111-4111-8111-111111111111"))
+			case "incomplete-session":
+				snapshot = trainingPending(t)
+			}
+			core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == "POST" {
+					_, _ = fmt.Fprintf(w, `{"request_id":"req_reveal","data":%s}`, returned)
+				} else if name == "read-failed" {
+					w.WriteHeader(503)
+					_, _ = w.Write([]byte(`{"request_id":"req_failed","error":{"code":"DEPENDENCY_UNAVAILABLE","message":"训练暂时不可用，请稍后重试"}}`))
+				} else if strings.HasSuffix(r.URL.Path, "/review") {
+					_, _ = w.Write(review)
+				} else {
+					_, _ = w.Write(snapshot)
+				}
+			}))
+			defer core.Close()
+			h := trainingHandler(t, core.URL, true)
+			req := authenticatedPracticeCommandRequest(t, h, "POST", "/api/v1/practice/training/sessions/"+trainingSessionID+"/reveals", `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english"}`, "training-reveal-unverified-01")
+			rec := httptest.NewRecorder()
+			h.Router().ServeHTTP(rec, req)
+			if rec.Code != 502 || !strings.Contains(rec.Body.String(), `"code":"DEPENDENCY_UNAVAILABLE"`) || strings.Contains(rec.Body.String(), "The sun made him warm.") || strings.Contains(rec.Body.String(), "private text") {
+				t.Fatalf("unverified reveal = %d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestTrainingRevealRequiresClosedRequestActorAndBothExistingGates(t *testing.T) {
+	calls := 0
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ }))
+	defer core.Close()
+	for _, test := range []struct {
+		name, input string
+		want        int
+	}{
+		{"unknown-field", `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english","submitted":true}`, 400},
+		{"duplicate-field", `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english","layer":"chinese"}`, 400},
+		{"invalid-layer", `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"all"}`, 400},
+		{"invalid-login", `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english"}`, 401},
+		{"private-reads-off", `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english"}`, 503},
+		{"commands-off", `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"english"}`, 503},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := trainingHandler(t, core.URL, true)
+			if test.name == "private-reads-off" {
+				h.quizCraft = nil
+			}
+			if test.name == "commands-off" {
+				h.practiceCommands = nil
+			}
+			req := authenticatedPracticeCommandRequest(t, h, "POST", "/api/v1/practice/training/sessions/"+trainingSessionID+"/reveals", test.input, "training-reveal-invalid-01")
+			if test.name == "invalid-login" {
+				req.Header.Set("Cookie", "__Host-henukit_portal_session=invalid; quizcraft_anonymous=guest")
+			}
+			rec := httptest.NewRecorder()
+			h.Router().ServeHTTP(rec, req)
+			if rec.Code != test.want || rec.Header().Get("Cache-Control") != "private, no-store" {
+				t.Fatalf("reveal = %d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	if calls != 0 {
+		t.Fatalf("invalid/disabled reveal reached Core %d times", calls)
+	}
+}
+
+func TestTrainingGuestRevealAndReplayRecoverBothCommittedLanguages(t *testing.T) {
+	english, chinese := trainingDisclosure("english"), trainingDisclosure("chinese")
+	nonces := map[string]bool{}
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		assertTrainingSignature(t, r, raw, "")
+		if nonces[r.Header.Get("X-Nonce")] {
+			t.Error("replay reused service nonce")
+		}
+		nonces[r.Header.Get("X-Nonce")] = true
+		if r.Header.Get("X-Actor-User-Id") != "" || r.Header.Get("Cookie") != "quizcraft_anonymous=owner-cookie" {
+			t.Errorf("guest identity changed: %v", r.Header)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" {
+			if string(raw) != `{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"chinese"}` || r.Header.Get("Idempotency-Key") != "training-reveal-guest-replay-01" {
+				t.Errorf("retry changed command: %s %v", raw, r.Header)
+			}
+			_, _ = fmt.Fprintf(w, `{"request_id":"req_reveal","data":%s}`, chinese)
+		} else if strings.HasSuffix(r.URL.Path, "/review") {
+			_, _ = w.Write(trainingReviewWithLayers(t, english, chinese))
+		} else {
+			_, _ = w.Write(trainingSnapshotWithLayers(t, "english", "chinese"))
+		}
+	}))
+	defer core.Close()
+	h := trainingHandler(t, core.URL, true)
+	for range 2 {
+		req := httptest.NewRequest("POST", "https://portal.test/api/v1/practice/training/sessions/"+trainingSessionID+"/reveals", strings.NewReader(`{"unit_version_id":"44444444-4444-4444-8444-444444444444","layer":"chinese"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "training-reveal-guest-replay-01")
+		req.AddCookie(&http.Cookie{Name: "quizcraft_anonymous", Value: "owner-cookie"})
+		req.AddCookie(&http.Cookie{Name: "other", Value: "hidden"})
+		req.Header.Set("X-Actor-User-Id", practiceCommandUserID)
+		rec := httptest.NewRecorder()
+		h.Router().ServeHTTP(rec, req)
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "太阳使他暖和起来。") || strings.Contains(rec.Body.String(), "The sun made him warm.") || rec.Header().Get("Set-Cookie") != "" {
+			t.Fatalf("guest reveal replay = %d %s", rec.Code, rec.Body.String())
+		}
+	}
+}

@@ -106,7 +106,7 @@ func (service *practiceHTTP) registerTraining(router chi.Router) {
 		commands.Post("/sessions", service.createTraining)
 		commands.Post("/sessions/{session_id}/answers", service.answerTraining)
 		commands.Post("/sessions/{session_id}/hints", service.trainingNotAvailable)
-		commands.Post("/sessions/{session_id}/reveals", service.trainingNotAvailable)
+		commands.Post("/sessions/{session_id}/reveals", service.revealTraining)
 	})
 }
 func (service *practiceHTTP) trainingWriteGate(next http.Handler) http.Handler {
@@ -272,7 +272,55 @@ func trainingSnapshot(ctx context.Context, tx pgx.Tx, session uuid.UUID, actor p
 		result.Receipts[i].SavedCount = result.SavedCount
 		result.Receipts[i].Phase = result.Phase
 	}
+	layers, err := trainingListeningLayers(ctx, tx, session, version)
+	if err != nil {
+		return result, version, err
+	}
+	for _, disclosure := range layers {
+		content, err := disclosure.Content.AsTrainingListeningLayer()
+		if err != nil {
+			return result, version, err
+		}
+		result.RevealedLayers = append(result.RevealedLayers, tc.TrainingSessionRevealedLayers(content.Layer))
+	}
 	return result, version, nil
+}
+
+// Disclosure identity and time are immutable facts; content is always recovered
+// from this session's pinned version, never the currently published unit.
+func trainingListeningLayers(ctx context.Context, tx pgx.Tx, session uuid.UUID, version tc.TrainingListeningVersion) ([]tc.TrainingLayerDisclosure, error) {
+	layers := []tc.TrainingLayerDisclosure{}
+	rows, err := tx.Query(ctx, `SELECT id,kind,disclosed_at FROM quizcraft_training_disclosures WHERE session_id=$1 AND kind IN ('english','chinese') ORDER BY CASE kind WHEN 'english' THEN 0 ELSE 1 END`, session)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var disclosure tc.TrainingLayerDisclosure
+		var language string
+		if err := rows.Scan(&disclosure.DisclosureId, &language, &disclosure.DisclosedAt); err != nil {
+			return nil, err
+		}
+		if (len(layers) == 0 && language != "english") || len(layers) >= 2 {
+			return nil, errors.New("invalid training language disclosure order")
+		}
+		var content *tc.TrainingListeningLayer
+		for i := range version.Layers {
+			if string(version.Layers[i].Layer) == language {
+				content = &version.Layers[i]
+				break
+			}
+		}
+		if content == nil {
+			return nil, errors.New("disclosed training layer is missing from pinned version")
+		}
+		disclosure.DisclosedAt = disclosure.DisclosedAt.UTC()
+		if err := disclosure.Content.FromTrainingListeningLayer(*content); err != nil {
+			return nil, err
+		}
+		layers = append(layers, disclosure)
+	}
+	return layers, rows.Err()
 }
 func (service *practiceHTTP) createTraining(w http.ResponseWriter, r *http.Request) {
 	if !noTrainingQuery(w, r) {
@@ -429,7 +477,12 @@ func (service *practiceHTTP) readTraining(w http.ResponseWriter, r *http.Request
 			writeError(w, 409, "UNIT_INCOMPLETE", "Save every answer before opening the unit review")
 			return
 		}
-		writeJSON(w, 200, responseEnvelope{RequestID: serviceRequestIDFromHeader(r), Data: tc.TrainingListeningReview{Kind: "listening", SessionId: session, UnitVersionId: version.Unit.UnitVersionId, Questions: version.ReviewQuestions, Segments: version.Segments, Layers: []tc.TrainingLayerDisclosure{}}})
+		layers, err := trainingListeningLayers(r.Context(), tx, session, version)
+		if err != nil {
+			trainingUnavailable(w)
+			return
+		}
+		writeJSON(w, 200, responseEnvelope{RequestID: serviceRequestIDFromHeader(r), Data: tc.TrainingListeningReview{Kind: "listening", SessionId: session, UnitVersionId: version.Unit.UnitVersionId, Questions: version.ReviewQuestions, Segments: version.Segments, Layers: layers}})
 		return
 	}
 	writeJSON(w, 200, responseEnvelope{RequestID: serviceRequestIDFromHeader(r), Data: snapshot})
@@ -439,6 +492,140 @@ func (service *practiceHTTP) recoverTraining(w http.ResponseWriter, r *http.Requ
 }
 func (service *practiceHTTP) reviewTraining(w http.ResponseWriter, r *http.Request) {
 	service.readTraining(w, r, true)
+}
+
+func (service *practiceHTTP) revealTraining(w http.ResponseWriter, r *http.Request) {
+	if !noTrainingQuery(w, r) {
+		return
+	}
+	var input tc.TrainingRevealRequest
+	raw, err := decodeBody(r, &input)
+	session, parseErr := uuid.Parse(chi.URLParam(r, "session_id"))
+	if err != nil || parseErr != nil || tc.Validate("TrainingRevealRequest", raw) != nil {
+		writeError(w, 400, "INVALID_REQUEST", "Choose an available text layer for this session")
+		return
+	}
+	key := r.Header.Get("Idempotency-Key")
+	if len(key) < 16 || len(key) > 160 {
+		writeError(w, 400, "INVALID_REQUEST", "A valid save key is required")
+		return
+	}
+	actor, ok := service.trainingActor(r)
+	if !ok {
+		trainingNotFound(w)
+		return
+	}
+	tx, err := service.database.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		trainingUnavailable(w)
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	queries := store.New(tx)
+	if queries.LockSubmission(r.Context(), session.String()) != nil {
+		trainingUnavailable(w)
+		return
+	}
+	// Claims must serialize with account learning refreshes in answer commands.
+	if actor.userID != nil {
+		var bank uuid.UUID
+		err := tx.QueryRow(r.Context(), `SELECT bank_id FROM quizcraft_training_sessions WHERE session_id=$1`, session).Scan(&bank)
+		if errors.Is(err, pgx.ErrNoRows) {
+			trainingNotFound(w)
+			return
+		}
+		if err != nil || lockIdempotency(r.Context(), queries, actor.key, "training-learning", bank.String()) != nil {
+			trainingUnavailable(w)
+			return
+		}
+	}
+	// Ownership precedes every idempotency lookup, including stale guest replays
+	// after a session has been claimed by an account.
+	owns, err := service.trainingOwner(r.Context(), tx, r, session, actor, true)
+	if err != nil {
+		trainingUnavailable(w)
+		return
+	}
+	if !owns {
+		trainingNotFound(w)
+		return
+	}
+	snapshot, version, err := trainingSnapshot(r.Context(), tx, session, actor)
+	if errors.Is(err, pgx.ErrNoRows) {
+		trainingNotFound(w)
+		return
+	}
+	if err != nil {
+		trainingUnavailable(w)
+		return
+	}
+	if input.UnitVersionId != version.Unit.UnitVersionId {
+		writeError(w, 400, "INVALID_REQUEST", "The training version does not match; reopen this session")
+		return
+	}
+	if snapshot.Phase != "completed" {
+		writeError(w, 409, "UNIT_INCOMPLETE", "Save every answer before opening the text")
+		return
+	}
+	kind := "POST " + r.URL.Path
+	requestHash := hash(raw)
+	_, _, found, conflict, err := loadIdempotency(r.Context(), queries, actor.key, kind, key, requestHash)
+	if err != nil {
+		trainingUnavailable(w)
+		return
+	}
+	if conflict {
+		writeError(w, 409, "IDEMPOTENCY_CONFLICT", "This save key was used for a different text layer")
+		return
+	}
+	layers, err := trainingListeningLayers(r.Context(), tx, session, version)
+	if err != nil {
+		trainingUnavailable(w)
+		return
+	}
+	var disclosure *tc.TrainingLayerDisclosure
+	for i := range layers {
+		content, err := layers[i].Content.AsTrainingListeningLayer()
+		if err != nil {
+			trainingUnavailable(w)
+			return
+		}
+		if string(content.Layer) == string(input.Layer) {
+			disclosure = &layers[i]
+		}
+	}
+	if disclosure == nil {
+		if input.Layer == "chinese" && len(layers) == 0 {
+			writeError(w, 409, "LAYER_LOCKED", "Open the English text before the Chinese meaning")
+			return
+		}
+		// now() is the transaction start, which can precede another command that
+		// acquired this session lock first. Timestamp the serialized disclosure.
+		if _, err = tx.Exec(r.Context(), `INSERT INTO quizcraft_training_disclosures(id,session_id,kind,disclosed_at) VALUES($1,$2,$3,clock_timestamp())`, uuid.New(), session, input.Layer); err != nil {
+			trainingUnavailable(w)
+			return
+		}
+		layers, err = trainingListeningLayers(r.Context(), tx, session, version)
+		if err != nil || len(layers) == 0 {
+			trainingUnavailable(w)
+			return
+		}
+		disclosure = &layers[len(layers)-1]
+	}
+	if actor.userID != nil && refreshTrainingLearning(r.Context(), tx, *actor.userID, version.Unit.BankId) != nil {
+		trainingUnavailable(w)
+		return
+	}
+	encoded, _ := json.Marshal(responseEnvelope{RequestID: serviceRequestIDFromHeader(r), Data: disclosure})
+	if !found && storeIdempotency(r.Context(), queries, actor.key, kind, key, requestHash, 200, encoded, session) != nil {
+		trainingUnavailable(w)
+		return
+	}
+	if tx.Commit(r.Context()) != nil {
+		trainingUnavailable(w)
+		return
+	}
+	writeRawJSON(w, 200, encoded)
 }
 
 func (service *practiceHTTP) answerTraining(w http.ResponseWriter, r *http.Request) {
