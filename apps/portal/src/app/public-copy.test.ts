@@ -95,7 +95,7 @@ function sourceFiles(dir: string): string[] {
 
 /**
  * 源码里会被渲染出来的文字：JSX 文本、字符串和模板字面量。
- * 走语法树而不是正则，注释和标识符天然不在其中。
+ * 走语法树而不是正则，注释、标识符和仅类型字符串不在其中。
  */
 function renderableStrings(fileName: string, source: string) {
   const file = ts.createSourceFile(
@@ -107,6 +107,7 @@ function renderableStrings(fileName: string, source: string) {
   );
   const strings: Array<{ text: string; line: number }> = [];
   const visit = (node: ts.Node) => {
+    if (ts.isTypeNode(node)) return;
     if (ts.isJsxText(node) || ts.isStringLiteral(node) || ts.isTemplateLiteralToken(node)) {
       const { line } = file.getLineAndCharacterOfPosition(node.getStart(file));
       strings.push({ text: node.text, line: line + 1 });
@@ -121,6 +122,7 @@ describe("user-visible copy", () => {
   it("reads JSX text, attributes and literals but skips comments and identifiers", () => {
     const probe = `
       // 服务端注释
+      type TransportCode = "FIRST_ANSWER_IMMUTABLE";
       const REAL_FACTS = "字符串文案";
       export function Probe() {
         /* 服务端 */

@@ -51,6 +51,8 @@
 
 48. [`0048-materials-admin-resync.md`](./0048-materials-admin-resync.md) — 过期资料投递的 root 管理员恢复、共同锁与持久收敛边界。
 
+60. [`0060-core-owned-english-training.md`](./0060-core-owned-english-training.md) — Core-owned immutable listening/cloze units, whole-session ordinary metric isolation, persisted assistance/reveal, exact signed guest recovery/review boundary and additive training contracts (HC-641; amends 0018/0021/0036/0038/0052).
+
 ## 使用规则
 
 - ADR 的状态为 Accepted 时，实现不得静默偏离；如需变更，新增或修订 ADR 并明确替代关系。

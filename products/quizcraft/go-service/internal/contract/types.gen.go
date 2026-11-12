@@ -5,6 +5,7 @@ package contract
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
@@ -428,6 +429,318 @@ func (e ReadinessEnvelopeDataStatus) Valid() bool {
 	}
 }
 
+// Defines values for TrainingAttributionComponent.
+const (
+	TrainingAttributionComponentAudio       TrainingAttributionComponent = "audio"
+	TrainingAttributionComponentText        TrainingAttributionComponent = "text"
+	TrainingAttributionComponentTranslation TrainingAttributionComponent = "translation"
+)
+
+// Valid indicates whether the value is a known member of the TrainingAttributionComponent enum.
+func (e TrainingAttributionComponent) Valid() bool {
+	switch e {
+	case TrainingAttributionComponentAudio:
+		return true
+	case TrainingAttributionComponentText:
+		return true
+	case TrainingAttributionComponentTranslation:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingAuthoredMediaContentType.
+const (
+	TrainingAuthoredMediaContentTypeAudiompeg TrainingAuthoredMediaContentType = "audio/mpeg"
+)
+
+// Valid indicates whether the value is a known member of the TrainingAuthoredMediaContentType enum.
+func (e TrainingAuthoredMediaContentType) Valid() bool {
+	switch e {
+	case TrainingAuthoredMediaContentTypeAudiompeg:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingBlankPartKind.
+const (
+	TrainingBlankPartKindBlank TrainingBlankPartKind = "blank"
+)
+
+// Valid indicates whether the value is a known member of the TrainingBlankPartKind enum.
+func (e TrainingBlankPartKind) Valid() bool {
+	switch e {
+	case TrainingBlankPartKindBlank:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingClozeAuthoringKind.
+const (
+	TrainingClozeAuthoringKindCloze TrainingClozeAuthoringKind = "cloze"
+)
+
+// Valid indicates whether the value is a known member of the TrainingClozeAuthoringKind enum.
+func (e TrainingClozeAuthoringKind) Valid() bool {
+	switch e {
+	case TrainingClozeAuthoringKindCloze:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingClozeEvidenceKind.
+const (
+	TrainingClozeEvidenceKindCloze TrainingClozeEvidenceKind = "cloze"
+)
+
+// Valid indicates whether the value is a known member of the TrainingClozeEvidenceKind enum.
+func (e TrainingClozeEvidenceKind) Valid() bool {
+	switch e {
+	case TrainingClozeEvidenceKindCloze:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingClozeLayerKind.
+const (
+	TrainingClozeLayerKindCloze TrainingClozeLayerKind = "cloze"
+)
+
+// Valid indicates whether the value is a known member of the TrainingClozeLayerKind enum.
+func (e TrainingClozeLayerKind) Valid() bool {
+	switch e {
+	case TrainingClozeLayerKindCloze:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingClozeLayerLayer.
+const (
+	TrainingClozeLayerLayerChinese TrainingClozeLayerLayer = "chinese"
+	TrainingClozeLayerLayerEnglish TrainingClozeLayerLayer = "english"
+)
+
+// Valid indicates whether the value is a known member of the TrainingClozeLayerLayer enum.
+func (e TrainingClozeLayerLayer) Valid() bool {
+	switch e {
+	case TrainingClozeLayerLayerChinese:
+		return true
+	case TrainingClozeLayerLayerEnglish:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingClozeUnitKind.
+const (
+	TrainingClozeUnitKindCloze TrainingClozeUnitKind = "cloze"
+)
+
+// Valid indicates whether the value is a known member of the TrainingClozeUnitKind enum.
+func (e TrainingClozeUnitKind) Valid() bool {
+	switch e {
+	case TrainingClozeUnitKindCloze:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingImportedQuestionType.
+const (
+	TrainingImportedQuestionTypeSingle TrainingImportedQuestionType = "single"
+)
+
+// Valid indicates whether the value is a known member of the TrainingImportedQuestionType enum.
+func (e TrainingImportedQuestionType) Valid() bool {
+	switch e {
+	case TrainingImportedQuestionTypeSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingListeningAuthoringKind.
+const (
+	TrainingListeningAuthoringKindListening TrainingListeningAuthoringKind = "listening"
+)
+
+// Valid indicates whether the value is a known member of the TrainingListeningAuthoringKind enum.
+func (e TrainingListeningAuthoringKind) Valid() bool {
+	switch e {
+	case TrainingListeningAuthoringKindListening:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingListeningEvidenceKind.
+const (
+	TrainingListeningEvidenceKindListening TrainingListeningEvidenceKind = "listening"
+)
+
+// Valid indicates whether the value is a known member of the TrainingListeningEvidenceKind enum.
+func (e TrainingListeningEvidenceKind) Valid() bool {
+	switch e {
+	case TrainingListeningEvidenceKindListening:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingListeningLayerKind.
+const (
+	TrainingListeningLayerKindListening TrainingListeningLayerKind = "listening"
+)
+
+// Valid indicates whether the value is a known member of the TrainingListeningLayerKind enum.
+func (e TrainingListeningLayerKind) Valid() bool {
+	switch e {
+	case TrainingListeningLayerKindListening:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingListeningLayerLayer.
+const (
+	TrainingListeningLayerLayerChinese TrainingListeningLayerLayer = "chinese"
+	TrainingListeningLayerLayerEnglish TrainingListeningLayerLayer = "english"
+)
+
+// Valid indicates whether the value is a known member of the TrainingListeningLayerLayer enum.
+func (e TrainingListeningLayerLayer) Valid() bool {
+	switch e {
+	case TrainingListeningLayerLayerChinese:
+		return true
+	case TrainingListeningLayerLayerEnglish:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingListeningUnitKind.
+const (
+	TrainingListeningUnitKindListening TrainingListeningUnitKind = "listening"
+)
+
+// Valid indicates whether the value is a known member of the TrainingListeningUnitKind enum.
+func (e TrainingListeningUnitKind) Valid() bool {
+	switch e {
+	case TrainingListeningUnitKindListening:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingMediaContentType.
+const (
+	TrainingMediaContentTypeAudiompeg TrainingMediaContentType = "audio/mpeg"
+)
+
+// Valid indicates whether the value is a known member of the TrainingMediaContentType enum.
+func (e TrainingMediaContentType) Valid() bool {
+	switch e {
+	case TrainingMediaContentTypeAudiompeg:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingQuestionReviewErrorCategory.
+const (
+	TrainingQuestionReviewErrorCategoryCollocation TrainingQuestionReviewErrorCategory = "collocation"
+	TrainingQuestionReviewErrorCategoryDetail      TrainingQuestionReviewErrorCategory = "detail"
+	TrainingQuestionReviewErrorCategoryGrammar     TrainingQuestionReviewErrorCategory = "grammar"
+	TrainingQuestionReviewErrorCategoryInference   TrainingQuestionReviewErrorCategory = "inference"
+	TrainingQuestionReviewErrorCategoryLogic       TrainingQuestionReviewErrorCategory = "logic"
+	TrainingQuestionReviewErrorCategoryVocabulary  TrainingQuestionReviewErrorCategory = "vocabulary"
+)
+
+// Valid indicates whether the value is a known member of the TrainingQuestionReviewErrorCategory enum.
+func (e TrainingQuestionReviewErrorCategory) Valid() bool {
+	switch e {
+	case TrainingQuestionReviewErrorCategoryCollocation:
+		return true
+	case TrainingQuestionReviewErrorCategoryDetail:
+		return true
+	case TrainingQuestionReviewErrorCategoryGrammar:
+		return true
+	case TrainingQuestionReviewErrorCategoryInference:
+		return true
+	case TrainingQuestionReviewErrorCategoryLogic:
+		return true
+	case TrainingQuestionReviewErrorCategoryVocabulary:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingSourceReviewErrorCategory.
+const (
+	TrainingSourceReviewErrorCategoryCollocation TrainingSourceReviewErrorCategory = "collocation"
+	TrainingSourceReviewErrorCategoryDetail      TrainingSourceReviewErrorCategory = "detail"
+	TrainingSourceReviewErrorCategoryGrammar     TrainingSourceReviewErrorCategory = "grammar"
+	TrainingSourceReviewErrorCategoryInference   TrainingSourceReviewErrorCategory = "inference"
+	TrainingSourceReviewErrorCategoryLogic       TrainingSourceReviewErrorCategory = "logic"
+	TrainingSourceReviewErrorCategoryVocabulary  TrainingSourceReviewErrorCategory = "vocabulary"
+)
+
+// Valid indicates whether the value is a known member of the TrainingSourceReviewErrorCategory enum.
+func (e TrainingSourceReviewErrorCategory) Valid() bool {
+	switch e {
+	case TrainingSourceReviewErrorCategoryCollocation:
+		return true
+	case TrainingSourceReviewErrorCategoryDetail:
+		return true
+	case TrainingSourceReviewErrorCategoryGrammar:
+		return true
+	case TrainingSourceReviewErrorCategoryInference:
+		return true
+	case TrainingSourceReviewErrorCategoryLogic:
+		return true
+	case TrainingSourceReviewErrorCategoryVocabulary:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrainingTextPartKind.
+const (
+	TrainingTextPartKindText TrainingTextPartKind = "text"
+)
+
+// Valid indicates whether the value is a known member of the TrainingTextPartKind enum.
+func (e TrainingTextPartKind) Valid() bool {
+	switch e {
+	case TrainingTextPartKindText:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkshopBankVersionState.
 const (
 	WorkshopBankVersionStateDraft     WorkshopBankVersionState = "draft"
@@ -577,6 +890,10 @@ type BankImportRequest struct {
 	ExpectedVersion *int                    `json:"expected_version,omitempty"`
 	Questions       []ImportedQuestionInput `json:"questions"`
 	SourceSha256    string                  `json:"source_sha256"`
+
+	// Training Closed optional training input on the existing Workshop bank import only. Uses source IDs; owner resolves generated UUIDs within the import transaction. All fields participate in bank semantic hashing before unit-version binding.
+	Training *TrainingAuthoring `json:"training,omitempty"`
+	union    json.RawMessage
 }
 
 // BankListEnvelope defines model for BankListEnvelope.
@@ -916,6 +1233,14 @@ type OperationEnvelope struct {
 // OperationKind defines model for OperationKind.
 type OperationKind string
 
+// OrdinaryBankImportRequest defines model for OrdinaryBankImportRequest.
+type OrdinaryBankImportRequest struct {
+	// ExpectedVersion Workshop clients send the observed lifecycle version. Omission is retained for older import clients and serializes against the current version while still creating only an unpublished draft.
+	ExpectedVersion *int                    `json:"expected_version,omitempty"`
+	Questions       []ImportedQuestionInput `json:"questions"`
+	SourceSha256    string                  `json:"source_sha256"`
+}
+
 // PersonalPracticeStats defines model for PersonalPracticeStats.
 type PersonalPracticeStats struct {
 	// Accuracy Rounded correct_answers divided by total_answers.
@@ -1051,6 +1376,314 @@ type RollbackCommand struct {
 	TargetBankVersionId openapi_types.UUID `json:"target_bank_version_id"`
 }
 
+// TrainingAttribution defines model for TrainingAttribution.
+type TrainingAttribution struct {
+	Attribution   string                       `json:"attribution"`
+	Component     TrainingAttributionComponent `json:"component"`
+	LicenseId     string                       `json:"license_id"`
+	LicenseUrl    string                       `json:"license_url"`
+	Modifications string                       `json:"modifications"`
+	Original      bool                         `json:"original"`
+	SourceUrl     string                       `json:"source_url"`
+}
+
+// TrainingAttributionComponent defines model for TrainingAttribution.Component.
+type TrainingAttributionComponent string
+
+// TrainingAuthoredHint defines model for TrainingAuthoredHint.
+type TrainingAuthoredHint struct {
+	HintId TrainingStableID `json:"hint_id"`
+	Levels []string         `json:"levels"`
+}
+
+// TrainingAuthoredMedia defines model for TrainingAuthoredMedia.
+type TrainingAuthoredMedia struct {
+	ContentType TrainingAuthoredMediaContentType `json:"content_type"`
+	DurationMs  int                              `json:"duration_ms"`
+	Sha256      TrainingSHA256                   `json:"sha256"`
+}
+
+// TrainingAuthoredMediaContentType defines model for TrainingAuthoredMedia.ContentType.
+type TrainingAuthoredMediaContentType string
+
+// TrainingAuthoring Closed optional training input on the existing Workshop bank import only. Uses source IDs; owner resolves generated UUIDs within the import transaction. All fields participate in bank semantic hashing before unit-version binding.
+type TrainingAuthoring struct {
+	union json.RawMessage
+}
+
+// TrainingBankImportRequest defines model for TrainingBankImportRequest.
+type TrainingBankImportRequest struct {
+	ExpectedVersion int                        `json:"expected_version"`
+	Questions       []TrainingImportedQuestion `json:"questions"`
+	SourceSha256    TrainingSHA256             `json:"source_sha256"`
+
+	// Training Closed optional training input on the existing Workshop bank import only. Uses source IDs; owner resolves generated UUIDs within the import transaction. All fields participate in bank semantic hashing before unit-version binding.
+	Training TrainingAuthoring `json:"training"`
+}
+
+// TrainingBlank defines model for TrainingBlank.
+type TrainingBlank struct {
+	BlankId    TrainingStableID   `json:"blank_id"`
+	QuestionId openapi_types.UUID `json:"question_id"`
+}
+
+// TrainingBlankPart defines model for TrainingBlankPart.
+type TrainingBlankPart struct {
+	BlankId TrainingStableID      `json:"blank_id"`
+	Kind    TrainingBlankPartKind `json:"kind"`
+	PartId  TrainingStableID      `json:"part_id"`
+}
+
+// TrainingBlankPartKind defines model for TrainingBlankPart.Kind.
+type TrainingBlankPartKind string
+
+// TrainingClozeAuthoring defines model for TrainingClozeAuthoring.
+type TrainingClozeAuthoring struct {
+	Attributions    []TrainingAttribution      `json:"attributions"`
+	Blanks          []TrainingSourceBlank      `json:"blanks"`
+	Hints           []TrainingAuthoredHint     `json:"hints"`
+	Kind            TrainingClozeAuthoringKind `json:"kind"`
+	Layers          []TrainingClozeLayer       `json:"layers"`
+	Parts           []TrainingPassagePart      `json:"parts"`
+	QuestionReviews []TrainingSourceReview     `json:"question_reviews"`
+	SourceUnitId    TrainingStableID           `json:"source_unit_id"`
+	Title           string                     `json:"title"`
+}
+
+// TrainingClozeAuthoringKind defines model for TrainingClozeAuthoring.Kind.
+type TrainingClozeAuthoringKind string
+
+// TrainingClozeEvidence defines model for TrainingClozeEvidence.
+type TrainingClozeEvidence struct {
+	Kind    TrainingClozeEvidenceKind `json:"kind"`
+	PartIds []TrainingStableID        `json:"part_ids"`
+}
+
+// TrainingClozeEvidenceKind defines model for TrainingClozeEvidence.Kind.
+type TrainingClozeEvidenceKind string
+
+// TrainingClozeLayer defines model for TrainingClozeLayer.
+type TrainingClozeLayer struct {
+	Kind  TrainingClozeLayerKind  `json:"kind"`
+	Layer TrainingClozeLayerLayer `json:"layer"`
+	Parts []TrainingPartText      `json:"parts"`
+}
+
+// TrainingClozeLayerKind defines model for TrainingClozeLayer.Kind.
+type TrainingClozeLayerKind string
+
+// TrainingClozeLayerLayer defines model for TrainingClozeLayer.Layer.
+type TrainingClozeLayerLayer string
+
+// TrainingClozeUnit defines model for TrainingClozeUnit.
+type TrainingClozeUnit struct {
+	Attributions  []TrainingAttribution    `json:"attributions"`
+	BankId        openapi_types.UUID       `json:"bank_id"`
+	BankVersionId openapi_types.UUID       `json:"bank_version_id"`
+	Blanks        []TrainingBlank          `json:"blanks"`
+	ContentSha256 TrainingSHA256           `json:"content_sha256"`
+	Hints         []TrainingHintDescriptor `json:"hints"`
+	Kind          TrainingClozeUnitKind    `json:"kind"`
+	Parts         []TrainingPassagePart    `json:"parts"`
+	Questions     []TrainingQuestion       `json:"questions"`
+	Title         string                   `json:"title"`
+	UnitId        openapi_types.UUID       `json:"unit_id"`
+	UnitVersionId openapi_types.UUID       `json:"unit_version_id"`
+}
+
+// TrainingClozeUnitKind defines model for TrainingClozeUnit.Kind.
+type TrainingClozeUnitKind string
+
+// TrainingClozeVersion defines model for TrainingClozeVersion.
+type TrainingClozeVersion struct {
+	Hints           []TrainingAuthoredHint   `json:"hints"`
+	Layers          []TrainingClozeLayer     `json:"layers"`
+	ReviewQuestions []TrainingQuestionReview `json:"review_questions"`
+	Unit            TrainingClozeUnit        `json:"unit"`
+}
+
+// TrainingEvidence defines model for TrainingEvidence.
+type TrainingEvidence struct {
+	union json.RawMessage
+}
+
+// TrainingHintDescriptor defines model for TrainingHintDescriptor.
+type TrainingHintDescriptor struct {
+	HintId     TrainingStableID `json:"hint_id"`
+	LevelCount int              `json:"level_count"`
+}
+
+// TrainingImportedQuestion defines model for TrainingImportedQuestion.
+type TrainingImportedQuestion struct {
+	Analysis         string                       `json:"analysis"`
+	Answer           int                          `json:"answer"`
+	Chapter          string                       `json:"chapter"`
+	ChapterId        string                       `json:"chapter_id"`
+	Content          string                       `json:"content"`
+	Options          []string                     `json:"options"`
+	SourceQuestionId string                       `json:"source_question_id"`
+	Type             TrainingImportedQuestionType `json:"type"`
+}
+
+// TrainingImportedQuestionType defines model for TrainingImportedQuestion.Type.
+type TrainingImportedQuestionType string
+
+// TrainingListeningAuthoring defines model for TrainingListeningAuthoring.
+type TrainingListeningAuthoring struct {
+	Attributions    []TrainingAttribution          `json:"attributions"`
+	Kind            TrainingListeningAuthoringKind `json:"kind"`
+	Layers          []TrainingListeningLayer       `json:"layers"`
+	Media           TrainingAuthoredMedia          `json:"media"`
+	QuestionReviews []TrainingSourceReview         `json:"question_reviews"`
+	Segments        []TrainingSentenceSegment      `json:"segments"`
+	SourceUnitId    TrainingStableID               `json:"source_unit_id"`
+	Title           string                         `json:"title"`
+}
+
+// TrainingListeningAuthoringKind defines model for TrainingListeningAuthoring.Kind.
+type TrainingListeningAuthoringKind string
+
+// TrainingListeningEvidence defines model for TrainingListeningEvidence.
+type TrainingListeningEvidence struct {
+	Kind       TrainingListeningEvidenceKind `json:"kind"`
+	SegmentIds []TrainingStableID            `json:"segment_ids"`
+}
+
+// TrainingListeningEvidenceKind defines model for TrainingListeningEvidence.Kind.
+type TrainingListeningEvidenceKind string
+
+// TrainingListeningLayer defines model for TrainingListeningLayer.
+type TrainingListeningLayer struct {
+	Kind     TrainingListeningLayerKind  `json:"kind"`
+	Layer    TrainingListeningLayerLayer `json:"layer"`
+	Segments []TrainingSegmentText       `json:"segments"`
+}
+
+// TrainingListeningLayerKind defines model for TrainingListeningLayer.Kind.
+type TrainingListeningLayerKind string
+
+// TrainingListeningLayerLayer defines model for TrainingListeningLayer.Layer.
+type TrainingListeningLayerLayer string
+
+// TrainingListeningUnit defines model for TrainingListeningUnit.
+type TrainingListeningUnit struct {
+	Attributions  []TrainingAttribution     `json:"attributions"`
+	BankId        openapi_types.UUID        `json:"bank_id"`
+	BankVersionId openapi_types.UUID        `json:"bank_version_id"`
+	ContentSha256 TrainingSHA256            `json:"content_sha256"`
+	Kind          TrainingListeningUnitKind `json:"kind"`
+	Media         TrainingMedia             `json:"media"`
+	Questions     []TrainingQuestion        `json:"questions"`
+	Title         string                    `json:"title"`
+	UnitId        openapi_types.UUID        `json:"unit_id"`
+	UnitVersionId openapi_types.UUID        `json:"unit_version_id"`
+}
+
+// TrainingListeningUnitKind defines model for TrainingListeningUnit.Kind.
+type TrainingListeningUnitKind string
+
+// TrainingListeningVersion defines model for TrainingListeningVersion.
+type TrainingListeningVersion struct {
+	Layers          []TrainingListeningLayer  `json:"layers"`
+	ReviewQuestions []TrainingQuestionReview  `json:"review_questions"`
+	Segments        []TrainingSentenceSegment `json:"segments"`
+	Unit            TrainingListeningUnit     `json:"unit"`
+}
+
+// TrainingMedia defines model for TrainingMedia.
+type TrainingMedia struct {
+	AssetId     openapi_types.UUID       `json:"asset_id"`
+	ContentType TrainingMediaContentType `json:"content_type"`
+	DurationMs  int                      `json:"duration_ms"`
+	Sha256      TrainingSHA256           `json:"sha256"`
+	Url         string                   `json:"url"`
+}
+
+// TrainingMediaContentType defines model for TrainingMedia.ContentType.
+type TrainingMediaContentType string
+
+// TrainingPartText defines model for TrainingPartText.
+type TrainingPartText struct {
+	PartId TrainingStableID `json:"part_id"`
+	Text   string           `json:"text"`
+}
+
+// TrainingPassagePart defines model for TrainingPassagePart.
+type TrainingPassagePart struct {
+	union json.RawMessage
+}
+
+// TrainingQuestion defines model for TrainingQuestion.
+type TrainingQuestion struct {
+	Content           string             `json:"content"`
+	Options           []string           `json:"options"`
+	QuestionId        openapi_types.UUID `json:"question_id"`
+	QuestionVersionId openapi_types.UUID `json:"question_version_id"`
+}
+
+// TrainingQuestionReview defines model for TrainingQuestionReview.
+type TrainingQuestionReview struct {
+	Analysis          string                              `json:"analysis"`
+	ErrorCategory     TrainingQuestionReviewErrorCategory `json:"error_category"`
+	Evidence          TrainingEvidence                    `json:"evidence"`
+	ExpectedAnswer    int                                 `json:"expected_answer"`
+	QuestionId        openapi_types.UUID                  `json:"question_id"`
+	QuestionVersionId openapi_types.UUID                  `json:"question_version_id"`
+}
+
+// TrainingQuestionReviewErrorCategory defines model for TrainingQuestionReview.ErrorCategory.
+type TrainingQuestionReviewErrorCategory string
+
+// TrainingSHA256 defines model for TrainingSHA256.
+type TrainingSHA256 = string
+
+// TrainingSegmentText defines model for TrainingSegmentText.
+type TrainingSegmentText struct {
+	SegmentId TrainingStableID `json:"segment_id"`
+	Text      string           `json:"text"`
+}
+
+// TrainingSentenceSegment defines model for TrainingSentenceSegment.
+type TrainingSentenceSegment struct {
+	EndMs     int              `json:"end_ms"`
+	SegmentId TrainingStableID `json:"segment_id"`
+	StartMs   int              `json:"start_ms"`
+}
+
+// TrainingSourceBlank defines model for TrainingSourceBlank.
+type TrainingSourceBlank struct {
+	BlankId          TrainingStableID `json:"blank_id"`
+	SourceQuestionId string           `json:"source_question_id"`
+}
+
+// TrainingSourceReview defines model for TrainingSourceReview.
+type TrainingSourceReview struct {
+	ErrorCategory    TrainingSourceReviewErrorCategory `json:"error_category"`
+	Evidence         TrainingEvidence                  `json:"evidence"`
+	SourceQuestionId string                            `json:"source_question_id"`
+}
+
+// TrainingSourceReviewErrorCategory defines model for TrainingSourceReview.ErrorCategory.
+type TrainingSourceReviewErrorCategory string
+
+// TrainingStableID defines model for TrainingStableID.
+type TrainingStableID = string
+
+// TrainingTextPart defines model for TrainingTextPart.
+type TrainingTextPart struct {
+	Kind   TrainingTextPartKind `json:"kind"`
+	PartId TrainingStableID     `json:"part_id"`
+	Text   string               `json:"text"`
+}
+
+// TrainingTextPartKind defines model for TrainingTextPart.Kind.
+type TrainingTextPartKind string
+
+// TrainingUnitVersion Owner-only import/version representation, validated atomically by the existing explicit publication lifecycle. Not exposed on any learner route. See ADR-0060 for cross-reference and canonical-hash invariants.
+type TrainingUnitVersion struct {
+	union json.RawMessage
+}
+
 // VersionCommand defines model for VersionCommand.
 type VersionCommand struct {
 	ExpectedVersion int     `json:"expected_version"`
@@ -1128,6 +1761,9 @@ type WorkshopVersionDetail struct {
 	ContentSha256 string                     `json:"content_sha256"`
 	Questions     []WorkshopQuestionDetail   `json:"questions"`
 	State         WorkshopVersionDetailState `json:"state"`
+
+	// Training Owner-only resolved authored training binding for operator review; absent for ordinary versions. Never forwarded to learner routes.
+	Training *TrainingUnitVersion `json:"training,omitempty"`
 }
 
 // WorkshopVersionDetailState defines model for WorkshopVersionDetail.State.
@@ -1366,6 +2002,142 @@ type UnpublishWorkshopBankVersionJSONRequestBody = VersionCommand
 // ValidateWorkshopBankVersionJSONRequestBody defines body for ValidateWorkshopBankVersion for application/json ContentType.
 type ValidateWorkshopBankVersionJSONRequestBody = VersionCommand
 
+// AsOrdinaryBankImportRequest returns the union data inside the BankImportRequest as a OrdinaryBankImportRequest
+func (t BankImportRequest) AsOrdinaryBankImportRequest() (OrdinaryBankImportRequest, error) {
+	var body OrdinaryBankImportRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOrdinaryBankImportRequest overwrites any union data inside the BankImportRequest as the provided OrdinaryBankImportRequest
+func (t *BankImportRequest) FromOrdinaryBankImportRequest(v OrdinaryBankImportRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOrdinaryBankImportRequest performs a merge with any union data inside the BankImportRequest, using the provided OrdinaryBankImportRequest
+func (t *BankImportRequest) MergeOrdinaryBankImportRequest(v OrdinaryBankImportRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTrainingBankImportRequest returns the union data inside the BankImportRequest as a TrainingBankImportRequest
+func (t BankImportRequest) AsTrainingBankImportRequest() (TrainingBankImportRequest, error) {
+	var body TrainingBankImportRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingBankImportRequest overwrites any union data inside the BankImportRequest as the provided TrainingBankImportRequest
+func (t *BankImportRequest) FromTrainingBankImportRequest(v TrainingBankImportRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingBankImportRequest performs a merge with any union data inside the BankImportRequest, using the provided TrainingBankImportRequest
+func (t *BankImportRequest) MergeTrainingBankImportRequest(v TrainingBankImportRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t BankImportRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.ExpectedVersion != nil {
+		object["expected_version"], err = json.Marshal(t.ExpectedVersion)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'expected_version': %w", err)
+		}
+	}
+
+	if t.Questions != nil {
+		object["questions"], err = json.Marshal(t.Questions)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'questions': %w", err)
+		}
+	}
+
+	object["source_sha256"], err = json.Marshal(t.SourceSha256)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'source_sha256': %w", err)
+	}
+
+	if t.Training != nil {
+		object["training"], err = json.Marshal(t.Training)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'training': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *BankImportRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["expected_version"]; found {
+		err = json.Unmarshal(raw, &t.ExpectedVersion)
+		if err != nil {
+			return fmt.Errorf("error reading 'expected_version': %w", err)
+		}
+	}
+
+	if raw, found := object["questions"]; found {
+		err = json.Unmarshal(raw, &t.Questions)
+		if err != nil {
+			return fmt.Errorf("error reading 'questions': %w", err)
+		}
+	}
+
+	if raw, found := object["source_sha256"]; found {
+		err = json.Unmarshal(raw, &t.SourceSha256)
+		if err != nil {
+			return fmt.Errorf("error reading 'source_sha256': %w", err)
+		}
+	}
+
+	if raw, found := object["training"]; found {
+		err = json.Unmarshal(raw, &t.Training)
+		if err != nil {
+			return fmt.Errorf("error reading 'training': %w", err)
+		}
+	}
+
+	return err
+}
+
 // AsRandomPracticeSelection returns the union data inside the CreatePracticeSession as a RandomPracticeSelection
 func (t CreatePracticeSession) AsRandomPracticeSelection() (RandomPracticeSelection, error) {
 	var body RandomPracticeSelection
@@ -1512,6 +2284,254 @@ func (t PracticeQuestion) MarshalJSON() ([]byte, error) {
 }
 
 func (t *PracticeQuestion) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTrainingListeningAuthoring returns the union data inside the TrainingAuthoring as a TrainingListeningAuthoring
+func (t TrainingAuthoring) AsTrainingListeningAuthoring() (TrainingListeningAuthoring, error) {
+	var body TrainingListeningAuthoring
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingListeningAuthoring overwrites any union data inside the TrainingAuthoring as the provided TrainingListeningAuthoring
+func (t *TrainingAuthoring) FromTrainingListeningAuthoring(v TrainingListeningAuthoring) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingListeningAuthoring performs a merge with any union data inside the TrainingAuthoring, using the provided TrainingListeningAuthoring
+func (t *TrainingAuthoring) MergeTrainingListeningAuthoring(v TrainingListeningAuthoring) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTrainingClozeAuthoring returns the union data inside the TrainingAuthoring as a TrainingClozeAuthoring
+func (t TrainingAuthoring) AsTrainingClozeAuthoring() (TrainingClozeAuthoring, error) {
+	var body TrainingClozeAuthoring
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingClozeAuthoring overwrites any union data inside the TrainingAuthoring as the provided TrainingClozeAuthoring
+func (t *TrainingAuthoring) FromTrainingClozeAuthoring(v TrainingClozeAuthoring) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingClozeAuthoring performs a merge with any union data inside the TrainingAuthoring, using the provided TrainingClozeAuthoring
+func (t *TrainingAuthoring) MergeTrainingClozeAuthoring(v TrainingClozeAuthoring) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TrainingAuthoring) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TrainingAuthoring) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTrainingListeningEvidence returns the union data inside the TrainingEvidence as a TrainingListeningEvidence
+func (t TrainingEvidence) AsTrainingListeningEvidence() (TrainingListeningEvidence, error) {
+	var body TrainingListeningEvidence
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingListeningEvidence overwrites any union data inside the TrainingEvidence as the provided TrainingListeningEvidence
+func (t *TrainingEvidence) FromTrainingListeningEvidence(v TrainingListeningEvidence) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingListeningEvidence performs a merge with any union data inside the TrainingEvidence, using the provided TrainingListeningEvidence
+func (t *TrainingEvidence) MergeTrainingListeningEvidence(v TrainingListeningEvidence) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTrainingClozeEvidence returns the union data inside the TrainingEvidence as a TrainingClozeEvidence
+func (t TrainingEvidence) AsTrainingClozeEvidence() (TrainingClozeEvidence, error) {
+	var body TrainingClozeEvidence
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingClozeEvidence overwrites any union data inside the TrainingEvidence as the provided TrainingClozeEvidence
+func (t *TrainingEvidence) FromTrainingClozeEvidence(v TrainingClozeEvidence) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingClozeEvidence performs a merge with any union data inside the TrainingEvidence, using the provided TrainingClozeEvidence
+func (t *TrainingEvidence) MergeTrainingClozeEvidence(v TrainingClozeEvidence) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TrainingEvidence) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TrainingEvidence) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTrainingTextPart returns the union data inside the TrainingPassagePart as a TrainingTextPart
+func (t TrainingPassagePart) AsTrainingTextPart() (TrainingTextPart, error) {
+	var body TrainingTextPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingTextPart overwrites any union data inside the TrainingPassagePart as the provided TrainingTextPart
+func (t *TrainingPassagePart) FromTrainingTextPart(v TrainingTextPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingTextPart performs a merge with any union data inside the TrainingPassagePart, using the provided TrainingTextPart
+func (t *TrainingPassagePart) MergeTrainingTextPart(v TrainingTextPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTrainingBlankPart returns the union data inside the TrainingPassagePart as a TrainingBlankPart
+func (t TrainingPassagePart) AsTrainingBlankPart() (TrainingBlankPart, error) {
+	var body TrainingBlankPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingBlankPart overwrites any union data inside the TrainingPassagePart as the provided TrainingBlankPart
+func (t *TrainingPassagePart) FromTrainingBlankPart(v TrainingBlankPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingBlankPart performs a merge with any union data inside the TrainingPassagePart, using the provided TrainingBlankPart
+func (t *TrainingPassagePart) MergeTrainingBlankPart(v TrainingBlankPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TrainingPassagePart) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TrainingPassagePart) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTrainingListeningVersion returns the union data inside the TrainingUnitVersion as a TrainingListeningVersion
+func (t TrainingUnitVersion) AsTrainingListeningVersion() (TrainingListeningVersion, error) {
+	var body TrainingListeningVersion
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingListeningVersion overwrites any union data inside the TrainingUnitVersion as the provided TrainingListeningVersion
+func (t *TrainingUnitVersion) FromTrainingListeningVersion(v TrainingListeningVersion) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingListeningVersion performs a merge with any union data inside the TrainingUnitVersion, using the provided TrainingListeningVersion
+func (t *TrainingUnitVersion) MergeTrainingListeningVersion(v TrainingListeningVersion) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTrainingClozeVersion returns the union data inside the TrainingUnitVersion as a TrainingClozeVersion
+func (t TrainingUnitVersion) AsTrainingClozeVersion() (TrainingClozeVersion, error) {
+	var body TrainingClozeVersion
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrainingClozeVersion overwrites any union data inside the TrainingUnitVersion as the provided TrainingClozeVersion
+func (t *TrainingUnitVersion) FromTrainingClozeVersion(v TrainingClozeVersion) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrainingClozeVersion performs a merge with any union data inside the TrainingUnitVersion, using the provided TrainingClozeVersion
+func (t *TrainingUnitVersion) MergeTrainingClozeVersion(v TrainingClozeVersion) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TrainingUnitVersion) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TrainingUnitVersion) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

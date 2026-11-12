@@ -16,6 +16,9 @@ on:
       - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
       - packages/api-contracts/openapi/quizcraft-console-management.yaml
+      - packages/api-contracts/openapi/quizcraft-training.yaml
+      - packages/api-contracts/openapi/portal-training.yaml
+      - scripts/generate-training-contract.sh
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
       - .github/workflows/quizcraft-go.yml
@@ -34,6 +37,9 @@ on:
       - products/quizcraft/deploy/quizcraft-cn.env.example
       - packages/api-contracts/openapi/quizcraft.yaml
       - packages/api-contracts/openapi/quizcraft-console-management.yaml
+      - packages/api-contracts/openapi/quizcraft-training.yaml
+      - packages/api-contracts/openapi/portal-training.yaml
+      - scripts/generate-training-contract.sh
       - packages/api-contracts/README.md
       - CONTEXT-MAP.md
       - .github/workflows/quizcraft-go.yml
@@ -128,9 +134,12 @@ jobs:
           set -euo pipefail
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/products/quizcraft/go-service:/src" -w /src sqlc/sqlc:1.31.0 generate
           bash products/quizcraft/go-service/scripts/generate-contract.sh
+          bash scripts/generate-training-contract.sh
           git diff --exit-code -- products/quizcraft/go-service/internal/contract products/quizcraft/go-service/internal/store products/quizcraft/web-app/src/generated/quizcraft-api
+          git diff --exit-code -- products/quizcraft/go-service/internal/trainingcontract services/portal-gateway/internal/trainingcontract apps/portal/src/lib/api/generated/training
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft.yaml
           npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft-console-management.yaml
+          npx --yes --package=@redocly/cli@2.39.0 redocly lint packages/api-contracts/openapi/quizcraft-training.yaml packages/api-contracts/openapi/portal-training.yaml
           if [ "${{ github.event_name }}" = "pull_request" ] && git cat-file -e "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" 2>/dev/null; then
             git show "origin/${{ github.base_ref }}:packages/api-contracts/openapi/quizcraft.yaml" > /tmp/quizcraft-base.yaml
             cd products/quizcraft/go-service
