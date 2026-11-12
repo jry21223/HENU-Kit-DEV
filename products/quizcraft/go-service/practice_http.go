@@ -280,6 +280,7 @@ func NewPracticeHTTP(config PracticeHTTPConfig) (http.Handler, error) {
 		}
 	}
 	router := chi.NewRouter()
+	service.registerTraining(router)
 	router.Get("/healthz", service.health)
 	router.Get("/readyz", service.readiness)
 	if len(service.cutoverEvidenceSecret) != 0 {
@@ -744,6 +745,15 @@ func (service *practiceHTTP) createFavoritesSessionForActor(writer http.Response
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft favorites are temporarily unavailable")
 		return
 	}
+	var training bool
+	if err := tx.QueryRow(request.Context(), `SELECT EXISTS(SELECT 1 FROM quizcraft_training_units WHERE bank_id=$1)`, bankID).Scan(&training); err != nil {
+		writeError(writer, 503, "database_unavailable", "QuizCraft is temporarily unavailable")
+		return
+	}
+	if training {
+		writeError(writer, 400, "training_requires_training_route", "Training requires the training session route")
+		return
+	}
 	bankVersionID, err := queries.GetActiveBankVersion(request.Context(), bankID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1029,6 +1039,15 @@ func (service *practiceHTTP) submitAnswer(writer http.ResponseWriter, request *h
 	queries := store.New(tx)
 	if err = queries.LockSubmission(request.Context(), sessionID.String()); err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "QuizCraft is temporarily unavailable")
+		return
+	}
+	var training bool
+	if err := tx.QueryRow(request.Context(), `SELECT EXISTS(SELECT 1 FROM quizcraft_practice_sessions WHERE id=$1 AND purpose='training')`, sessionID).Scan(&training); err != nil {
+		writeError(writer, 503, "database_unavailable", "QuizCraft is temporarily unavailable")
+		return
+	}
+	if training {
+		writeError(writer, 400, "training_requires_training_route", "Training answers require the training answer route")
 		return
 	}
 	sessionActorKey, err := queries.GetPracticeSessionActor(request.Context(), sessionID)

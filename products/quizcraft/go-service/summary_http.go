@@ -27,6 +27,7 @@ type serviceAuthRequirement struct {
 	label              string
 	requiredPermission string
 	actorBound         bool
+	optionalActor      bool
 }
 
 const maxPortalPracticeCommandBodyBytes = 2 << 20
@@ -74,7 +75,7 @@ func (service *practiceHTTP) authenticateSignedGET(requirement serviceAuthRequir
 		}
 		digest := sha256.Sum256(nil)
 		canonicalParts := []string{request.Method, request.URL.RequestURI(), request.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
-		if requirement.actorBound {
+		if requirement.actorBound || (requirement.optionalActor && len(request.Header.Values("X-Actor-User-Id")) > 0) {
 			// Only personal stats opts into this branch. The strict parser keeps
 			// malformed and guest actors out before any fact query, while the
 			// original header text remains the sixth canonical HMAC line.

@@ -72,3 +72,16 @@ _Avoid_: 当前页面结果、精准长期诊断
 HC-641 仅冻结 [ADR-0060](../../docs/adr/0060-core-owned-english-training.md)、
 [契约](../../docs/development/english-training-contract.md)及生成类型。
 训练内容、首答、披露、恢复和学习状态由 Practice Core 所有；未在此切片实现运行能力。
+
+
+HC-642 implements the listening first-answer slice through explicit Workshop
+source imports, immutable unit/bank/question bindings, signed training routes and
+Core-owned recovery. Training sessions are created atomically with a purpose and
+unit binding. Ordinary projections use `quizcraft_ordinary_attempts`; canonical
+training attempts retain factual correctness and independent review outcomes.
+Guest-to-account writes retain prior facts in the learning projection; reads never
+claim ownership. Shared review requires every exact first answer. Hint/reveal
+commands remain closed for the following listening/cloze tickets. The publication
+package and the post-write old-binary recovery boundary are documented under
+`go-service/content/english-training/`. No production content is automatically
+loaded; new human listening acceptance and production publication remain separate.
