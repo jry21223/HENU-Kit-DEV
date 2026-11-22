@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchLibraryMaterials,
-  formatPortalError,
   portalErrorRequestId,
 } from "@/lib/api/client";
 import type { Material } from "@/lib/library/mock";
@@ -78,7 +77,7 @@ export default function LibraryHomePage() {
       setLoadState("ready");
       return;
     } catch (loadError) {
-      setError({ message: formatPortalError(loadError), requestId: portalErrorRequestId(loadError) });
+      setError({ message: "资料库暂时无法加载，请稍后重试。", requestId: portalErrorRequestId(loadError) });
       setLoadState("error");
     }
   }, []);

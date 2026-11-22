@@ -85,13 +85,13 @@ export default function FoodBoardPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-site px-5 py-5 md:px-8 md:py-12">
-        <div data-enter className="flex flex-col gap-3 border-b border-ink pb-4 md:flex-row md:flex-wrap md:items-end md:justify-between md:gap-5 md:pb-6">
+      <div className="mx-auto max-w-site px-5 py-3 md:px-8 md:py-12">
+        <div data-enter className="flex flex-col gap-2 border-b border-ink pb-3 md:flex-row md:flex-wrap md:items-end md:justify-between md:gap-5 md:pb-6">
           <div>
-            <p className="font-mono text-xs tracking-[0.28em] text-ink/60">
+            <p className="hidden font-mono text-xs tracking-[0.28em] text-ink/60 md:block">
               CAMPUS FILTER
             </p>
-            <div className="mt-2 grid grid-cols-4 gap-1 md:mt-3 md:flex md:flex-wrap md:gap-2">
+            <div className="grid grid-cols-4 gap-1 md:mt-3 md:flex md:flex-wrap md:gap-2">
               <button
                 ref={allCampusRef}
                 type="button"
@@ -124,13 +124,13 @@ export default function FoodBoardPage() {
               ))}
             </div>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-end gap-2 md:flex-wrap md:gap-3">
             <label className="min-w-36 flex-1 text-xs text-ink/70">
-              搜索美食点评
-              <Input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="店名、菜品或关键词" className="mt-1" />
+              <span className="sr-only md:not-sr-only">搜索美食点评</span>
+              <Input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="店名、菜品或关键词" className="md:mt-1" />
             </label>
-            <label className="flex flex-col gap-1 text-xs text-ink/70">
-              排序
+            <label className="flex shrink-0 flex-col gap-1 text-xs text-ink/70">
+              <span className="sr-only md:not-sr-only">排序</span>
               <Select value={order} onChange={(event) => setOrder(event.target.value)}>
                 <option value="default">默认</option>
                 <option value="latest">最新发布</option>

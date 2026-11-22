@@ -143,12 +143,13 @@ describe("Portal search discovery routes", () => {
     }
   });
 
-  it("describes the campus market as browse-only, like the page itself (#482)", () => {
+  it("describes the campus market accurately, matching the page itself (#482)", () => {
     const llmsCampus = readFileSync(new URL("../../public/llms.txt", import.meta.url), "utf8")
       .split("\n")
       .find((line) => line.includes("https://henukit.cn/campus"));
     for (const text of [String(campusMetadata.description), llmsCampus ?? ""]) {
-      expect(text).toContain("发布、接单和结算暂未开放");
+      expect(text).toContain("双方同意后交换联系方式");
+      expect(text).toContain("线上接单与结算暂未开放");
     }
   });
 

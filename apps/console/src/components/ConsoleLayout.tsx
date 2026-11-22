@@ -35,7 +35,6 @@ import {
   type NavGroupKey,
   type ConsoleNavItem,
 } from "@/lib/console-context";
-import { consoleLoginHref } from "@/lib/console-gateway";
 
 const { Header, Sider, Content } = Layout;
 
@@ -246,11 +245,7 @@ export function ConsoleLayout({ children }: ConsoleLayoutProps) {
         </Button>
       );
     }
-    return (
-      <Button type="primary" size="small" href={consoleLoginHref()}>
-        登录 Console
-      </Button>
-    );
+    return <Tag color="default">未登录</Tag>;
   })();
 
   return (
