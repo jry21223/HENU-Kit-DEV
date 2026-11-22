@@ -319,10 +319,3 @@ func maxSignedBody(requestPath string) int {
 	}
 	return 512 << 10
 }
-
-func abs(value int64) int64 {
-	if value < 0 {
-		return -value
-	}
-	return value
-}

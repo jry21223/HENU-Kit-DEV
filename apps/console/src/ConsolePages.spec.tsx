@@ -100,10 +100,11 @@ describe("Console module pages", () => {
       return jsonResponse({}, 404);
     });
     renderAt("/library");
-    expect(await screen.findByRole("tab", { name: "公开版本与下载统计" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "编辑课程" }));
+    const releaseTab = await screen.findByText("公开版本与下载统计");
+    expect(releaseTab.closest('[role="tab"]')).toBeTruthy();
+    fireEvent.click(screen.getByText("编辑课程", { selector: "button span" }));
     fireEvent.change(screen.getByLabelText("课程名称"), { target: { value: "离散数学基础" } });
-    fireEvent.click(screen.getByRole("button", { name: /^保\s*存$/ }));
+    fireEvent.click(screen.getByText(/^保\s*存$/, { selector: "button span" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toMatchObject({ key: expect.any(String), body: { kind: "course_update", resource_id: "course-one", expected_version: "3", payload: { name: "离散数学基础" } } });
   }, 30000);
@@ -126,12 +127,16 @@ describe("Console module pages", () => {
     });
     renderAt("/career");
     expect(await screen.findByText("岗位数据源当前暂停，仍可查看历史任务。")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "简历解析任务" }));
+    const extractionTab = screen.getByText("简历解析任务");
+    expect(extractionTab.closest('[role="tab"]')).toBeTruthy();
+    fireEvent.click(extractionTab);
     expect(screen.queryByText("私人简历.pdf")).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "邮件简报投递" }));
-    fireEvent.click(screen.getByRole("button", { name: "重新投递" }));
+    const digestTab = screen.getByText("邮件简报投递");
+    expect(digestTab.closest('[role="tab"]')).toBeTruthy();
+    fireEvent.click(digestTab);
+    fireEvent.click(await screen.findByText("重新投递", { selector: "button span" }));
     expect(writes).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: "确认投递" }));
+    fireEvent.click(await screen.findByText("确认投递", { selector: "button span" }));
     await waitFor(() => expect(writes).toEqual([expect.any(String)]));
   }, 30000);
 
