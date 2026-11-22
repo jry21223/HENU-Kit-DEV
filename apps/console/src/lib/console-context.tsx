@@ -53,7 +53,7 @@ export const ALL_CONSOLE_NAV_ITEMS: ConsoleNavItem[] = [
   {
     key: "/practice",
     path: "/practice",
-    label: "题库工坊",
+    label: "题库管理",
     group: "business",
     permission: "quizcraft.workshop.read",
     product: "quizcraft",

@@ -188,7 +188,10 @@ describe("HENUKit Console App shell & auth flows", () => {
 
     expect(await screen.findByRole("heading", { name: "工作台总览" })).toBeTruthy();
     expect(await screen.findByText("美食内容审核")).toBeTruthy();
-    expect(await screen.findByText("题库工坊")).toBeTruthy();
+    expect(await screen.findByText("题库管理")).toBeTruthy();
+    for (const retiredCopy of ["QuizCraft", "题库工坊", "后台口令"]) {
+      expect(document.body.textContent).not.toContain(retiredCopy);
+    }
 
     // Verify SPA navigation to /library keeps heading ID intact
     const user = userEvent.setup();

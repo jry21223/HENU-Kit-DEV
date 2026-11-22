@@ -635,7 +635,7 @@ export function OverviewPage() {
             title={
               <Space>
                 <ExperimentOutlined />
-                <span>题库工坊（刷题练习）</span>
+                <span>题库管理（刷题练习）</span>
               </Space>
             }
             extra={

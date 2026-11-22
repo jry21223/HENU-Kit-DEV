@@ -559,7 +559,7 @@ export function PracticeWorkshopPage() {
       <div className="console-page-header">
         <div>
           <h1 id="practice-heading" className="console-page-title">
-            题库工坊
+            题库管理
           </h1>
           <p className="console-page-subtitle">
             统一管理刷题题库的创建、JSON 导入校验、人工逐题抽查、发布上架、下架与历史版本回滚。
@@ -581,8 +581,8 @@ export function PracticeWorkshopPage() {
         <ModuleStateView
           state={state === "disabled" ? "not_configured" : state}
           loadingText="正在读取题库目录…"
-          deniedTitle="没有题库工坊访问权限"
-          notConfiguredTitle="题库工坊后台尚未开启"
+          deniedTitle="没有题库管理访问权限"
+          notConfiguredTitle="题库管理后台尚未开启"
           notConfiguredDescription="当前环境尚未开启题库管理桥接，请联系平台管理员在部署配置中启用；开启前不影响学生端正常刷题。"
           onRetry={() => void refresh()}
         />

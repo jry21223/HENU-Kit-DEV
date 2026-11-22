@@ -73,15 +73,15 @@ const COMMON_ROLES = [
   { value: "food-reviewer", label: "food-reviewer（美食审核）" },
   { value: "notice-operator", label: "notice-operator（校园通知运营）" },
   { value: "support-agent", label: "support-agent（客服工单专员）" },
-  { value: "quizcraft-editor", label: "quizcraft-editor（题库维护）" },
+  { value: "quizcraft-editor", label: "题库维护专员" },
 ];
 
 const COMMON_PRODUCTS = [
-  { value: "food", label: "food（美食榜）" },
-  { value: "notice", label: "notice（校园通知）" },
-  { value: "library", label: "library（资料库）" },
-  { value: "quizcraft", label: "quizcraft（刷题练习）" },
-  { value: "account-portfolio", label: "account-portfolio（账户与工单）" },
+  { value: "food", label: "美食榜（food）" },
+  { value: "notice", label: "校园通知（notice）" },
+  { value: "library", label: "资料库（library）" },
+  { value: "quizcraft", label: "刷题练习" },
+  { value: "account-portfolio", label: "账户与工单（account-portfolio）" },
 ];
 
 const REASON_LABELS: Record<string, string> = {
@@ -997,7 +997,7 @@ export function PlatformPage() {
                             <Descriptions.Item label="说明">
                               {item.source_product_code === "quizcraft" &&
                               item.source_resource_type === "feedback"
-                                ? "来自刷题纠错反馈，请结合题库工坊核查后在此流转处理状态。"
+                                ? "来自刷题纠错反馈，请结合题库管理核查后在此流转处理状态。"
                                 : "跨产品运营待办，处理完毕后可直接标记解决或归档。"}
                             </Descriptions.Item>
                             {item.sla_due_at && (

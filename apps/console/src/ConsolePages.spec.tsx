@@ -269,7 +269,7 @@ describe("Console module pages", () => {
     });
 
     renderAt("/practice");
-    expect(await screen.findByText("题库工坊后台尚未开启")).toBeTruthy();
+    expect(await screen.findByText("题库管理后台尚未开启")).toBeTruthy();
     expect(screen.queryByText(/QUIZCRAFT_CONSOLE_ENABLED/)).toBeNull();
   });
 
