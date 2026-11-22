@@ -33,12 +33,12 @@ type WorkFunc func(ctx context.Context, profile any) (WorkResult, error)
 
 type Config struct {
 	ConsoleClientID string
-	ConsoleKeys map[string]string
-	Database *pgxpool.Pool
-	Redis    redis.UniversalClient
-	ClientID string
-	Keys     map[string]string
-	Work     WorkFunc
+	ConsoleKeys     map[string]string
+	Database        *pgxpool.Pool
+	Redis           redis.UniversalClient
+	ClientID        string
+	Keys            map[string]string
+	Work            WorkFunc
 	// JobSourceDisabled explicitly stops new scans and fails retained queued
 	// scans. Profile, history and resume features remain available.
 	JobSourceDisabled bool
@@ -250,63 +250,63 @@ func (h *service) authenticate(next http.Handler) http.Handler {
 
 func (h *service) authenticateService(expectedClient string, keys map[string]string, bindActor bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientID, basicSecret, basic := r.BasicAuth()
-		secret, keyKnown := keys[r.Header.Get("X-Key-Id")]
-		if !basic || clientID != expectedClient || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
-			return
-		}
-		userID := r.Header.Get("X-Actor-User-Id")
-		if _, err := uuid.Parse(userID); bindActor && err != nil {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
-			return
-		}
-		timestamp, err := strconv.ParseInt(r.Header.Get("X-Timestamp"), 10, 64)
-		now := h.now().Unix()
-		window := int64(nonceTTL / time.Second)
-		if err != nil || timestamp < now-window || timestamp > now+window {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service timestamp is invalid")
-			return
-		}
-		nonce := r.Header.Get("X-Nonce")
-		decoded, err := base64.RawURLEncoding.DecodeString(nonce)
-		if err != nil || len(decoded) != 24 {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid")
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(maxSignedBody(r.URL.Path))))
-		if err != nil {
-			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body is too large")
-			return
-		}
-		r.Body = io.NopCloser(strings.NewReader(string(body)))
-		digest := sha256.Sum256(body)
-		// The actor UUID is the sixth canonical line, exactly as Portal
-		// Gateway's SignWithActor appends it: an actor not bound to the
-		// signature could be swapped by replaying a signed request.
-		lines := []string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
-		if bindActor {
-			lines = append(lines, userID)
-		}
-		canonical := strings.Join(lines, "\n")
-		mac := hmac.New(sha256.New, []byte(secret))
-		_, _ = mac.Write([]byte(canonical))
-		if !hmac.Equal([]byte(r.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service signature is invalid")
-			return
-		}
-		accepted, err := h.redis.SetNX(r.Context(), "career:nonce:"+clientID+":"+nonce, "1", 2*nonceTTL).Result()
-		if err != nil {
-			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "nonce store is unavailable")
-			return
-		}
-		if !accepted {
-			writeError(w, r, http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used")
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID})))
-	})
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			clientID, basicSecret, basic := r.BasicAuth()
+			secret, keyKnown := keys[r.Header.Get("X-Key-Id")]
+			if !basic || clientID != expectedClient || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
+				return
+			}
+			userID := r.Header.Get("X-Actor-User-Id")
+			if _, err := uuid.Parse(userID); bindActor && err != nil {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
+				return
+			}
+			timestamp, err := strconv.ParseInt(r.Header.Get("X-Timestamp"), 10, 64)
+			now := h.now().Unix()
+			window := int64(nonceTTL / time.Second)
+			if err != nil || timestamp < now-window || timestamp > now+window {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service timestamp is invalid")
+				return
+			}
+			nonce := r.Header.Get("X-Nonce")
+			decoded, err := base64.RawURLEncoding.DecodeString(nonce)
+			if err != nil || len(decoded) != 24 {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid")
+				return
+			}
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(maxSignedBody(r.URL.Path))))
+			if err != nil {
+				writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body is too large")
+				return
+			}
+			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			digest := sha256.Sum256(body)
+			// The actor UUID is the sixth canonical line, exactly as Portal
+			// Gateway's SignWithActor appends it: an actor not bound to the
+			// signature could be swapped by replaying a signed request.
+			lines := []string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
+			if bindActor {
+				lines = append(lines, userID)
+			}
+			canonical := strings.Join(lines, "\n")
+			mac := hmac.New(sha256.New, []byte(secret))
+			_, _ = mac.Write([]byte(canonical))
+			if !hmac.Equal([]byte(r.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service signature is invalid")
+				return
+			}
+			accepted, err := h.redis.SetNX(r.Context(), "career:nonce:"+clientID+":"+nonce, "1", 2*nonceTTL).Result()
+			if err != nil {
+				writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "nonce store is unavailable")
+				return
+			}
+			if !accepted {
+				writeError(w, r, http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used")
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID})))
+		})
 	}
 }
 

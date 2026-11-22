@@ -26,12 +26,12 @@ func (h *Handler) listPlatformOperationRoles(w http.ResponseWriter, r *http.Requ
 
 func (h *Handler) updatePlatformInboxItem(w http.ResponseWriter, r *http.Request) {
 	raw, body, ok := decodeInboxBody[struct {
-		ExpectedVersion int64 `json:"expected_version"`
-		Status string `json:"status"`
-		Priority *string `json:"priority,omitempty"`
-		SourceProductCode string `json:"source_product_code,omitempty"`
-		SourceResourceType string `json:"source_resource_type,omitempty"`
-		SourceResourceID string `json:"source_resource_id,omitempty"`
+		ExpectedVersion    int64   `json:"expected_version"`
+		Status             string  `json:"status"`
+		Priority           *string `json:"priority,omitempty"`
+		SourceProductCode  string  `json:"source_product_code,omitempty"`
+		SourceResourceType string  `json:"source_resource_type,omitempty"`
+		SourceResourceID   string  `json:"source_resource_id,omitempty"`
 	}](w, r)
 	if !ok || body.Status == "" {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Operations Inbox request is invalid")

@@ -119,6 +119,7 @@ func (h *service) listSources(w http.ResponseWriter, r *http.Request) {
 	}
 	writeData(w, r, http.StatusOK, map[string]any{"sources": sources})
 }
+
 type versionInput struct {
 	Title             string     `json:"title"`
 	Body              string     `json:"body"`

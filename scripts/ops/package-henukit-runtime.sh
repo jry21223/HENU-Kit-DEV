@@ -147,7 +147,7 @@ docker run --rm --platform linux/amd64 \
   --volume "$runtime/materials-runtime/bin:/out" \
   --volume "$runtime/bin:/host-out" \
   --workdir /src \
-  golang:1.26.10-alpine \
+  golang:1.26.11-alpine \
   sh -ceu '
     cd /src/services/deploy-webhook
     go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/henukit-deploy-webhook ./cmd/server

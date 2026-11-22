@@ -16,11 +16,11 @@ type lifecycleStore struct {
 }
 
 type sourceView struct {
-	ID string `json:"id"`
-	Code string `json:"code"`
-	Name string `json:"name"`
-	CanonicalURL string `json:"canonical_url"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	Code         string    `json:"code"`
+	Name         string    `json:"name"`
+	CanonicalURL string    `json:"canonical_url"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 func (s *lifecycleStore) listSources(ctx context.Context) ([]sourceView, error) {

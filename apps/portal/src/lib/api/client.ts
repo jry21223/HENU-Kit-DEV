@@ -349,6 +349,20 @@ export async function logout(): Promise<void> {
   }
 }
 
+const cachedSessionClearedListeners = new Set<() => void>();
+
+/**
+ * Registers a synchronous listener invoked whenever `clearCachedSession()` runs.
+ * Keeps Account Console decoupled from the legacy auth store module while still
+ * dropping any in-memory cached user immediately on sign-out or 401 expiry.
+ */
+export function onCachedSessionCleared(listener: () => void): () => void {
+  cachedSessionClearedListeners.add(listener);
+  return () => {
+    cachedSessionClearedListeners.delete(listener);
+  };
+}
+
 /**
  * Clears the legacy cached auth session (henukit.session) written by the old
  * mock-era auth store. In require-Gateway builds the real session lives in the
@@ -361,6 +375,9 @@ export function clearCachedSession(): void {
     localStorage.removeItem("henukit.session");
   } catch {
     /* private-mode / storage-unavailable contexts: nothing to clear */
+  }
+  for (const listener of cachedSessionClearedListeners) {
+    listener();
   }
 }
 

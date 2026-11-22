@@ -39,8 +39,8 @@ type Service struct {
 }
 
 type Role struct {
-	Code string `json:"code"`
-	DisplayName string `json:"display_name"`
+	Code        string   `json:"code"`
+	DisplayName string   `json:"display_name"`
 	Permissions []string `json:"permissions"`
 }
 

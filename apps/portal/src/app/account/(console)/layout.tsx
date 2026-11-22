@@ -16,12 +16,6 @@ import {
 } from "@/lib/api/client";
 import type { PortalSession } from "@/lib/api/types";
 import { publicDisplayName } from "@/lib/auth/display-name";
-import { authStore } from "@/lib/auth/store";
-
-function clearBrowserSession() {
-  clearCachedSession();
-  authStore.clear();
-}
 
 const MENU = [
   { href: "/account", index: "A-01", label: "概览", exact: true },
@@ -88,7 +82,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
     setSessionState({ kind: "anonymous" });
     // The cached user must go too, or the login page bounces straight back
     // into the account console (the #412 loop).
-    clearBrowserSession();
+    clearCachedSession();
     redirectToAccountLogin();
   }, [redirectToAccountLogin]);
 
@@ -104,7 +98,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   // path so the OAuth entry can resume the account route after sign-in.
   useEffect(() => {
     if (sessionState.kind === "anonymous") {
-      clearBrowserSession();
+      clearCachedSession();
       redirectToAccountLogin();
     }
   }, [redirectToAccountLogin, sessionState.kind]);
@@ -117,7 +111,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
       // and the cached local user, so the login page stays put.
       await logout();
       requestVersion.current += 1;
-      clearBrowserSession();
+      clearCachedSession();
       router.replace("/account/login");
     } catch (error) {
       if (error instanceof PortalUnauthorizedError) {

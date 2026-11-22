@@ -66,17 +66,17 @@ func (h *service) consolePoints(w http.ResponseWriter, r *http.Request) {
 }
 
 type consoleOrderView struct {
-	ID string `json:"id"`
-	UserID string `json:"user_id"`
-	Plan string `json:"plan"`
-	AmountCents int64 `json:"amount_cents"`
-	Status string `json:"status"`
-	Version int `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	PaidAt *time.Time `json:"paid_at,omitempty"`
-	ClosedAt *time.Time `json:"closed_at,omitempty"`
-	RefundedAt *time.Time `json:"refunded_at,omitempty"`
+	ID           string          `json:"id"`
+	UserID       string          `json:"user_id"`
+	Plan         string          `json:"plan"`
+	AmountCents  int64           `json:"amount_cents"`
+	Status       string          `json:"status"`
+	Version      int             `json:"version"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+	PaidAt       *time.Time      `json:"paid_at,omitempty"`
+	ClosedAt     *time.Time      `json:"closed_at,omitempty"`
+	RefundedAt   *time.Time      `json:"refunded_at,omitempty"`
 	LatestRefund json.RawMessage `json:"latest_refund,omitempty"`
 }
 

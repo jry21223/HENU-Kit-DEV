@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +27,7 @@ import (
 
 const serviceSecret = "library-gateway-secret-at-least-32-bytes"
 
-func TestBoundedWorkspaceDegradesWithoutLeakingLegacyDomains(t *testing.T) {
+func TestBoundedWorkspaceWithoutLeakingLegacyDomains(t *testing.T) {
 	server, pool := newLibraryServer(t)
 	defer server.Close()
 	defer pool.Close()
@@ -35,7 +37,7 @@ func TestBoundedWorkspaceDegradesWithoutLeakingLegacyDomains(t *testing.T) {
 		t.Fatalf("workspace status = %d", response.StatusCode)
 	}
 	body := readBody(t, response)
-	for _, expected := range []string{`"courses"`, `"materials"`, `"downloads"`, `"submissions"`, `"corrections"`, `"status":"partial"`, `"degraded":true`} {
+	for _, expected := range []string{`"courses"`, `"materials"`, `"downloads"`, `"submissions"`, `"corrections"`, `"status":"ok"`, `"degraded":false`} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("workspace omitted %s: %s", expected, body)
 		}
@@ -50,31 +52,92 @@ func TestBoundedWorkspaceDegradesWithoutLeakingLegacyDomains(t *testing.T) {
 	}
 }
 
-func TestCommandsUnavailableAfterAdapterRemoval(t *testing.T) {
+func TestNativeCatalogCommandsAndOperationStatus(t *testing.T) {
 	server, pool := newLibraryServer(t)
 	defer server.Close()
 	defer pool.Close()
 
-	body := []byte(`{"kind":"submission_approve","resource_id":"22222222-2222-4222-8222-222222222222","expected_version":"2026-07-19T00:00:00.123Z","payload":{"reviewReason":"checked"}}`)
-	response := send(t, server.URL, "library.review", http.MethodPost, "/api/v1/commands", body, "idem_library_unavailable")
-	if response.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("command status = %d", response.StatusCode)
+	courseCode := "TEST-" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+	createCourseKey := "idem_course_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	createCourseBody := []byte(fmt.Sprintf(`{"kind":"course_create","payload":{"code":%q,"name":"数据结构测试课","department":"计算机学院"}}`, courseCode))
+	resp := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", createCourseBody, createCourseKey)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("course_create status = %d, body = %s", resp.StatusCode, readBody(t, resp))
 	}
-	payload, _ := io.ReadAll(response.Body)
-	response.Body.Close()
-	if !bytes.Contains(payload, []byte("LIBRARY_COMMANDS_UNAVAILABLE")) {
-		t.Fatalf("command error code missing: %s", payload)
+	var courseEnvelope struct {
+		Data struct {
+			Operation  string `json:"operation"`
+			ResourceID string `json:"resource_id"`
+			State      string `json:"state"`
+			Version    int    `json:"version"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(readBody(t, resp), &courseEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	courseID := courseEnvelope.Data.ResourceID
+	if courseID == "" || courseEnvelope.Data.State != "succeeded" || courseEnvelope.Data.Version != 1 {
+		t.Fatalf("unexpected course_create result: %+v", courseEnvelope.Data)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM library_materials WHERE course_id = $1::uuid`, courseID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM library_courses WHERE id = $1::uuid`, courseID)
+	})
+
+	// Replay with identical Idempotency-Key returns the original succeeded result.
+	replay := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", createCourseBody, createCourseKey)
+	if replay.StatusCode != http.StatusOK {
+		t.Fatalf("course_create replay status = %d", replay.StatusCode)
+	}
+	if !bytes.Contains(readBody(t, replay), []byte(courseID)) {
+		t.Fatal("replay response did not preserve resource_id")
 	}
 
-	operation := send(t, server.URL, "library.review", http.MethodGet, "/api/v1/operations/submission_approve", nil, "idem_library_unavailable")
-	if operation.StatusCode != http.StatusServiceUnavailable {
+	operation := send(t, server.URL, "library.manage", http.MethodGet, "/api/v1/operations/course_create", nil, createCourseKey)
+	if operation.StatusCode != http.StatusOK {
 		t.Fatalf("operation status = %d", operation.StatusCode)
 	}
+	if !bytes.Contains(readBody(t, operation), []byte(courseID)) {
+		t.Fatal("operation status omitted resource_id")
+	}
 
-	// No legacy requests and no operation ledger rows are created anymore.
-	var operations int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM library_adapter_operations`).Scan(&operations); err != nil || operations != 0 {
-		t.Fatalf("operation ledger rows = %d, %v", operations, err)
+	// Create a pending_review material and approve it via library.review.
+	createMaterialKey := "idem_mat_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	createMaterialBody := []byte(fmt.Sprintf(`{"kind":"material_create","payload":{"course_id":%q,"title":"测试讲义","material_type":"handout","access_level":"public_free","status":"pending_review"}}`, courseID))
+	matResp := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", createMaterialBody, createMaterialKey)
+	if matResp.StatusCode != http.StatusOK {
+		t.Fatalf("material_create status = %d, body = %s", matResp.StatusCode, readBody(t, matResp))
+	}
+	var matEnvelope struct {
+		Data struct {
+			ResourceID string `json:"resource_id"`
+			Version    int    `json:"version"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(readBody(t, matResp), &matEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	materialID := matEnvelope.Data.ResourceID
+
+	approveKey := "idem_approve_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	approveBody := []byte(fmt.Sprintf(`{"kind":"submission_approve","resource_id":%q,"expected_version":"1","payload":{"note":"checked"}}`, materialID))
+	approveResp := send(t, server.URL, "library.review", http.MethodPost, "/api/v1/commands", approveBody, approveKey)
+	if approveResp.StatusCode != http.StatusOK {
+		t.Fatalf("submission_approve status = %d, body = %s", approveResp.StatusCode, readBody(t, approveResp))
+	}
+	if !bytes.Contains(readBody(t, approveResp), []byte(`"version":2`)) {
+		t.Fatal("submission_approve did not bump version to 2")
+	}
+
+	// Stale expected_version must be rejected with 409 VERSION_CONFLICT.
+	staleResp := send(t, server.URL, "library.review", http.MethodPost, "/api/v1/commands", approveBody, "idem_stale_"+strings.ReplaceAll(uuid.NewString(), "-", "")[:16])
+	if staleResp.StatusCode != http.StatusConflict {
+		t.Fatalf("stale submission_approve status = %d", staleResp.StatusCode)
+	}
+	stalePayload, _ := io.ReadAll(staleResp.Body)
+	staleResp.Body.Close()
+	if !bytes.Contains(stalePayload, []byte("VERSION_CONFLICT")) {
+		t.Fatalf("stale response missing VERSION_CONFLICT: %s", stalePayload)
 	}
 }
 
@@ -87,16 +150,26 @@ func TestScopeAndCommandAllowlistDefaultDeny(t *testing.T) {
 	if denied.StatusCode != http.StatusForbidden {
 		t.Fatalf("foreign scope status = %d", denied.StatusCode)
 	}
-	command := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", []byte(`{"kind":"payment_refund","resource_id":"x","expected_version":"v1","payload":{}}`), "idem_forbidden_command")
-	if command.StatusCode != http.StatusServiceUnavailable {
+	command := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", []byte(`{"kind":"payment_refund","resource_id":"x","expected_version":"1","payload":{}}`), "idem_forbidden_command")
+	if command.StatusCode != http.StatusBadRequest {
 		t.Fatalf("forbidden command status = %d", command.StatusCode)
 	}
-	commercial := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", []byte(`{"kind":"material_update","resource_id":"22222222-2222-4222-8222-222222222222","expected_version":"2026-07-19T00:00:00Z","payload":{"accessLevel":"member_only"}}`), "idem_forbidden_access")
-	if commercial.StatusCode != http.StatusServiceUnavailable {
+	cmdPayload, _ := io.ReadAll(command.Body)
+	command.Body.Close()
+	if !bytes.Contains(cmdPayload, []byte("UNSUPPORTED_COMMAND")) {
+		t.Fatalf("forbidden command code missing: %s", cmdPayload)
+	}
+	commercial := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", []byte(`{"kind":"material_update","resource_id":"22222222-2222-4222-8222-222222222222","expected_version":"1","payload":{"access_level":"member_only"}}`), "idem_forbidden_access")
+	if commercial.StatusCode != http.StatusBadRequest {
 		t.Fatalf("commercial access level status = %d", commercial.StatusCode)
 	}
+	commPayload, _ := io.ReadAll(commercial.Body)
+	commercial.Body.Close()
+	if !bytes.Contains(commPayload, []byte("INVALID_ACCESS_LEVEL")) {
+		t.Fatalf("commercial access level code missing: %s", commPayload)
+	}
 	missingCreate := send(t, server.URL, "library.manage", http.MethodPost, "/api/v1/commands", []byte(`{"kind":"course_create","payload":{}}`), "idem_invalid_create_missing")
-	if missingCreate.StatusCode != http.StatusServiceUnavailable {
+	if missingCreate.StatusCode != http.StatusBadRequest {
 		t.Fatalf("missing create fields status = %d", missingCreate.StatusCode)
 	}
 	// A foreign permission still cannot reach the command surface.
