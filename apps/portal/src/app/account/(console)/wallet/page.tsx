@@ -6,6 +6,7 @@ import { useAccountConsoleUnauthorizedHandler } from "@/components/account/accou
 import { useReveal } from "@/components/account/use-reveal";
 import { fetchAccountPoints, formatPortalError } from "@/lib/api/client";
 import type { AccountPointEntry, AccountPointsResponse } from "@/lib/api/types";
+import { formatTimestamp } from "@/lib/format-date";
 
 type WalletState =
   | { kind: "loading" }
@@ -21,16 +22,6 @@ type WalletState =
 
 function formatPoints(value: number): string {
   return new Intl.NumberFormat("zh-CN").format(value);
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    dateStyle: "medium",
-    timeStyle: "medium",
-  }).format(date);
 }
 
 function mergeEntries(existing: AccountPointEntry[], next: AccountPointEntry[]): AccountPointEntry[] {
@@ -124,7 +115,7 @@ export default function WalletPage() {
         </p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight">积分钱包</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/60">
-          这里展示你的积分余额与变动明细。本页不提供签到、任务、支付或积分消费入口。
+          在这里查看积分余额与变动明细。
         </p>
       </section>
 
@@ -181,7 +172,7 @@ export default function WalletPage() {
                   <article key={entry.id} className="grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-6">
                     <div className="min-w-0">
                       <h3 className="break-words text-base font-semibold leading-6">{entry.reason}</h3>
-                      <p className="mt-2 font-mono text-xs text-ink/60">{formatTimestamp(entry.created_at)}</p>
+                      <p className="mt-2 font-mono text-xs text-ink/60">{formatTimestamp(entry.created_at, { seconds: true })}</p>
                     </div>
                     <p className={`font-display text-2xl font-bold ${entry.amount >= 0 ? "text-accent-text" : "text-ink"}`}>
                       {entry.amount > 0 ? "+" : ""}{formatPoints(entry.amount)}

@@ -52,15 +52,15 @@ export function careerSearchStatusLabel(status: CareerSearch["status"]): string 
 export function careerDigestStatusLabel(search: CareerSearch): string | null {
   switch (search.digest_status) {
     case "sent":
-      return "邮件简报已进入发送队列";
+      return "邮件简报正在发送，请留意邮箱";
     case "retry":
       return "邮件简报发送暂时失败，系统正在重试";
     case "sending":
-      return "正在将邮件简报加入发送队列";
+      return "正在准备邮件简报";
     case "skipped":
       return "未启用邮件简报";
     default:
-      if (search.has_email) return "邮件简报已进入发送队列";
+      if (search.has_email) return "邮件简报正在发送，请留意邮箱";
       return search.status === "completed" ? "历史任务无邮件状态" : null;
   }
 }

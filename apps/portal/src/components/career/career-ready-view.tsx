@@ -217,7 +217,9 @@ export default function CareerReadyView({
                 : scan.kind === "starting"
                 ? "正在创建任务…"
                 : isPolling
-                  ? "扫描进行中…"
+                  ? pollState?.kind === "completed"
+                    ? "简报准备中…"
+                    : "扫描进行中…"
                   : "开始扫描 →"}
             </button>
             <Link
@@ -241,6 +243,7 @@ export default function CareerReadyView({
           {pollState ? (
             <div data-enter>
               <CareerScanStatusPanel
+                filterJobs
                 state={pollState}
                 emailEnabled={profile.email_notification_enabled ?? false}
                 onRetry={() => void startScan()}

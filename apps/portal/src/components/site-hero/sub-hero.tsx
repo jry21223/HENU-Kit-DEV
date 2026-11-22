@@ -85,37 +85,60 @@ export default function SubHero({
 
   return (
     <section ref={sectionRef} className="relative overflow-hidden border-b border-line">
-      <div className={cn("mx-auto grid max-w-site lg:grid-cols-2", compactOnMobile ? "lg:min-h-[52vh]" : "min-h-[52vh]")}>
-        {/* 左：文案 + 计数 */}
-        <div className={cn("flex flex-col justify-center px-5 md:px-8", compactOnMobile ? "py-6 lg:py-14" : "py-14")}>
-          <p data-hero-title className="enter-rise font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent-text">{index}</span>
-            <span className="mx-2">/</span>
-            {en}
-          </p>
-          <h1
-            data-hero-title
-            className={cn("enter-rise font-display font-bold tracking-tight md:text-7xl", compactOnMobile ? "mt-3 text-4xl lg:mt-4" : "mt-4 text-6xl")}
-            style={{ animationDelay: "0.1s" }}
-          >
-            {title}
-          </h1>
-          <div
-            data-hero-line
-            className={cn("enter-grow-x h-px w-24 bg-accent", compactOnMobile ? "mt-3 lg:mt-6" : "mt-6")}
-            style={{ animationDelay: "0.6s", animationDuration: "0.6s" }}
-          />
+      {/* 移动端紧凑页头保留开放式图纸网格底纹，不另加边框小卡，与桌面右栏画板保持同一建筑语言。 */}
+      {compactOnMobile ? (
+        <div aria-hidden className="bg-blueprint pointer-events-none absolute inset-0 opacity-60 lg:hidden" />
+      ) : null}
+      <div className={cn("relative mx-auto grid max-w-site lg:grid-cols-2", compactOnMobile ? "lg:min-h-[52vh]" : "min-h-[52vh]")}>
+        {/* 左：文案 + 计数；移动端在标题右侧留白区铺开无边框工程线稿 */}
+        <div className={cn("flex flex-col justify-center px-5 md:px-8", compactOnMobile ? "py-5 lg:py-14" : "py-14")}>
+          {/* 移动端线稿绝对定位在标题行右上角，不占文档流高度：首屏的搜索和第一条内容不被往下推。 */}
+          <div className="relative">
+            <div className="min-w-0">
+              <p data-hero-title className="enter-rise font-mono text-xs tracking-[0.3em] text-ink/60">
+                <span className="text-accent-text">{index}</span>
+                <span className="mx-2">/</span>
+                {en}
+              </p>
+              <h1
+                data-hero-title
+                className={cn("enter-rise font-display font-bold tracking-tight md:text-7xl", compactOnMobile ? "mt-2.5 text-4xl lg:mt-4" : "mt-4 text-6xl")}
+                style={{ animationDelay: "0.1s" }}
+              >
+                {title}
+              </h1>
+              <div
+                data-hero-line
+                className={cn("enter-grow-x h-px w-24 bg-accent", compactOnMobile ? "mt-3 lg:mt-6" : "mt-6")}
+                style={{ animationDelay: "0.4s", animationDuration: "0.5s" }}
+              />
+            </div>
+
+            {compactOnMobile ? (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute right-0 top-0 flex w-24 flex-col items-end sm:w-32 lg:hidden"
+              >
+                <span className="font-mono text-[10px] tracking-[0.25em] text-ink/45">
+                  {fig.code}
+                </span>
+                <div className="mt-0.5 w-full opacity-80">{scene}</div>
+                <span className="font-mono text-[10px] leading-none text-accent-text">+</span>
+              </div>
+            ) : null}
+          </div>
+
           <p
             data-hero-title
             className={cn("enter-rise max-w-md text-sm leading-7 text-ink/70", compactOnMobile ? "mt-3 lg:mt-5" : "mt-5")}
-            style={{ animationDelay: "0.2s" }}
+            style={{ animationDelay: "0.18s" }}
           >
             {slogan}
           </p>
           <div
             data-hero-title
-            className={cn("enter-rise flex flex-wrap gap-x-10 gap-y-4", compactOnMobile ? "mt-5 lg:mt-8" : "mt-8")}
-            style={{ animationDelay: "0.3s" }}
+            className={cn("enter-rise flex flex-wrap gap-x-10 gap-y-3", compactOnMobile ? "mt-4 lg:mt-8" : "mt-8")}
+            style={{ animationDelay: "0.26s" }}
           >
             {counters.map((c, i) => (
               <div key={c.label} aria-busy={c.busy ?? false}>
@@ -142,7 +165,7 @@ export default function SubHero({
           <span aria-hidden className="absolute bottom-4 right-4 font-mono text-accent-text">+</span>
           <div
             className="enter-fade w-full max-w-sm"
-            style={{ animationDelay: "0.9s", animationDuration: "0.7s" }}
+            style={{ animationDelay: "0.25s", animationDuration: "0.6s" }}
           >
             {scene}
           </div>

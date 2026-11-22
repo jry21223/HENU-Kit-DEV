@@ -1,5 +1,7 @@
 "use client";
 
+import { matchesSearchText } from "@/lib/search-text";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -112,8 +114,7 @@ export default function PracticeBankPage() {
   const searching = query.trim().length > 0;
   const filteredQuizCraftBanks = useMemo(() => {
     if (!searching) return quizCraftBanks;
-    const q = query.trim();
-    return quizCraftBanks.filter((bank) => bank.name.includes(q));
+    return quizCraftBanks.filter((bank) => matchesSearchText(query, bank.name));
   }, [query, quizCraftBanks, searching]);
   const clearSearch = () => {
     setQuery("");

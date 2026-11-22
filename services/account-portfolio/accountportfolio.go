@@ -208,6 +208,8 @@ func New(config Config) (http.Handler, error) {
 		protected.Get(contract.MembershipOrdersRoute, h.membershipOrders)
 		protected.Post(contract.MembershipOrderCreateRoute, h.createMembershipOrder)
 		protected.Get(contract.ConsoleMembershipRoute, h.consoleMembership)
+		protected.Get("/api/v1/console/points/{user_id}", h.consolePoints)
+		protected.Get("/api/v1/console/membership-orders", h.consoleMembershipOrders)
 		protected.Post(contract.ConsoleMembershipGrantsRoute, h.grantConsoleMembership)
 		protected.Post(contract.ConsoleMembershipRevocationsRoute, h.revokeConsoleMembership)
 		protected.Post(contract.ConsolePointAdjustmentsRoute, h.adjustConsolePoints)

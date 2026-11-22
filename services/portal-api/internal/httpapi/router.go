@@ -53,6 +53,11 @@ func NewRouter() (http.Handler, error) {
 		campusSource.portalDB = campus.NewPortalDB(portalConn)
 	}
 
+	portalVerifier, consoleVerifier, err := buildCampusVerifiers()
+	if err != nil {
+		return nil, err
+	}
+
 	r := chi.NewRouter()
 	r.Use(requestID)
 	r.Use(cors(mode))
@@ -103,6 +108,7 @@ func NewRouter() (http.Handler, error) {
 	r.Get("/api/v1/campus/categories", func(w http.ResponseWriter, req *http.Request) {
 		listCategories(w, req, campusSource, mode)
 	})
+	mountCampusWorkflowRoutes(r, campusSource, portalVerifier, consoleVerifier)
 
 	// Notices — no notice DB wired; live returns empty real list, never fakes.
 	r.Get("/api/v1/notices", func(w http.ResponseWriter, req *http.Request) {
@@ -157,7 +163,7 @@ func cors(mode string) func(http.Handler) http.Handler {
 					w.Header().Set("Vary", "Origin")
 				}
 			}
-			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-Id")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -529,11 +535,10 @@ func getCampusItem(w http.ResponseWriter, r *http.Request, src campusSource, mod
 		return
 	}
 
-	messages := campus.MockMessages()
 	for _, it := range campus.MockItems() {
-		if it.ID == id {
+		if it.ID == id && it.Status != "hidden" {
 			var itemMsgs []campus.DealMessage
-			for _, m := range messages {
+			for _, m := range campus.MockMessages() {
 				if m.ItemID == id {
 					itemMsgs = append(itemMsgs, m)
 				}
@@ -549,18 +554,8 @@ func getCampusItem(w http.ResponseWriter, r *http.Request, src campusSource, mod
 }
 
 func listCategories(w http.ResponseWriter, r *http.Request, src campusSource, mode string) {
-	// No categories table is wired yet.
-	// Live without portal DB: 503. Live with DB connected: empty real list (never fake taxonomy).
-	// Mock mode: fixtures for local UI work.
-	if mode == db.ModeLive {
-		if src.portalDB == nil {
-			writeServiceUnavailable(w, "portal_database_unavailable", "PORTAL_DATABASE_URL not connected")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"categories": []campus.Category{},
-			"request_id": requestIDOf(w),
-		})
+	if mode == db.ModeLive && src.portalDB == nil {
+		writeServiceUnavailable(w, "portal_database_unavailable", "PORTAL_DATABASE_URL not connected")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"categories": campus.MockCategories(), "request_id": requestIDOf(w)})

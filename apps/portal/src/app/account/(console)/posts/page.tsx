@@ -9,20 +9,12 @@ import type { FoodPostListResponse } from "@/lib/api/types";
 import { CAMPUSES } from "@/lib/food/campuses";
 import { fetchMyFoodPosts } from "@/lib/food/myposts";
 import { FOOD_TIERS, resolveFoodTier } from "@/lib/food/ranking";
+import { formatTimestamp } from "@/lib/format-date";
 
 type ListState =
   | { kind: "loading" }
   | { kind: "success"; response: FoodPostListResponse }
   | { kind: "error"; message: string };
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
 
 function tierLabelFor(tags: string[]): string {
   const key = resolveFoodTier({ tags });

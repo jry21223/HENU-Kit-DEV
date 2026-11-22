@@ -596,6 +596,7 @@ test("a 409 follow-up refreshes the version and retries with a new idempotency k
   let version = 1;
   let commandCount = 0;
   let firstKey = "";
+  const messages: Array<{ id: string; author_kind: "operator" | "user"; body: string; created_at: string }> = [];
   const ticket = () => ({
     id: ticketID,
     reference: `HKT-${ticketID}`,
@@ -616,7 +617,7 @@ test("a 409 follow-up refreshes the version and retries with a new idempotency k
   await page.route(`**/api/v1/account/tickets/${ticketID}`, async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ data: { ticket: ticket(), messages: [], events: [] }, request_id: "req_followup_detail" }),
+      body: JSON.stringify({ data: { ticket: ticket(), messages, events: [] }, request_id: "req_followup_detail" }),
     });
   });
   await page.route(`**/api/v1/account/tickets/${ticketID}/follow-ups`, async (route) => {
@@ -627,6 +628,12 @@ test("a 409 follow-up refreshes the version and retries with a new idempotency k
       firstKey = key;
       expect(input).toEqual({ body: "请保留这段补充说明。", expected_version: 1 });
       version = 2;
+      messages.push({
+        id: "96969696-9696-4969-8969-969696969696",
+        author_kind: "operator",
+        body: "客服已补充处理进展，请核对后再追问。",
+        created_at: "2030-01-01T00:00:02Z",
+      });
       await route.fulfill({
         status: 409,
         contentType: "application/json",
@@ -637,6 +644,12 @@ test("a 409 follow-up refreshes the version and retries with a new idempotency k
     expect(key).not.toBe(firstKey);
     expect(input).toEqual({ body: "请保留这段补充说明。", expected_version: 2 });
     version = 3;
+    messages.push({
+      id: "97979797-9797-4979-8979-979797979797",
+      author_kind: "user",
+      body: "请保留这段补充说明。",
+      created_at: "2030-01-01T00:00:03Z",
+    });
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ data: { ticket: ticket() }, request_id: "req_followup_success" }),
@@ -648,11 +661,13 @@ test("a 409 follow-up refreshes the version and retries with a new idempotency k
   await expect(page.locator('[data-account-ticket-detail-state="success"]')).toBeVisible();
   await page.getByLabel("补充说明").fill("请保留这段补充说明。");
   await page.getByRole("button", { name: "提交补充" }).click();
-  await expect(page.getByText("工单刚刚发生更新，已刷新最新记录后再试。")).toBeVisible();
-  await expect(page.getByText(/版本 2/)).toBeVisible();
+  await expect(page.getByText("工单有新进展。请查看最新记录后再提交。")).toBeVisible();
+  await expect(page.getByText("客服已补充处理进展，请核对后再追问。")).toBeVisible();
+  await expect(page.getByText(/版本 \d+/)).toHaveCount(0);
   await page.getByRole("button", { name: "提交补充" }).click();
   await expect.poll(() => commandCount).toBe(2);
-  await expect(page.getByText(/版本 3/)).toBeVisible();
+  await expect(page.getByText("请保留这段补充说明。")).toBeVisible();
+  await expect(page.getByLabel("补充说明")).toHaveValue("");
 });
 
 for (const viewport of [

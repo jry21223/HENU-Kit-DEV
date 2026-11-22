@@ -59,10 +59,19 @@ func main() {
 			log.Fatalf("Career extraction LLM startup probe failed: %v", err)
 		}
 	}
+	consoleClient := strings.TrimSpace(os.Getenv("CAREER_CONSOLE_CLIENT_ID"))
+	consoleKey := strings.TrimSpace(os.Getenv("CAREER_CONSOLE_KEY_ID"))
+	consoleSecret := os.Getenv("CAREER_CONSOLE_SECRET")
+	var consoleKeys map[string]string
+	if consoleClient != "" || consoleKey != "" || consoleSecret != "" {
+		consoleKeys = map[string]string{consoleKey: consoleSecret}
+	}
 	service, err := career.New(career.Config{
+		ConsoleClientID: consoleClient, ConsoleKeys: consoleKeys,
 		Database: pool, Redis: redisClient, ClientID: clientID, Keys: map[string]string{keyID: secret},
 		Work:              work,
 		JobSourceDisabled: strings.TrimSpace(os.Getenv("CAREER_GETWORK_ENABLED")) == "0",
+		AIMode:            strings.TrimSpace(os.Getenv("CAREER_AI_MODE")),
 		Extract:           extractor,
 		Suify:             suifier,
 		ExtractRateLimit:  intEnv("CAREER_EXTRACT_RATE_LIMIT", 5),

@@ -75,6 +75,10 @@ type Config struct {
 	CareerURL  string
 	CareerAuth ServiceAuth
 
+	// CampusPortalAuth signs authenticated Campus writes and private Contact
+	// Book requests to portal-api. Unset leaves those routes fail-closed (503).
+	CampusPortalAuth ServiceAuth
+
 	PortalOrigin           string
 	LocalOAuthCookieName   string
 	LocalSessionCookieName string
@@ -153,6 +157,11 @@ func FromEnv() (Config, error) {
 			ClientID:     strings.TrimSpace(os.Getenv("CAREER_CLIENT_ID")),
 			ClientSecret: os.Getenv("CAREER_CLIENT_SECRET"),
 			KeyID:        strings.TrimSpace(os.Getenv("CAREER_KEY_ID")),
+		},
+		CampusPortalAuth: ServiceAuth{
+			ClientID:     strings.TrimSpace(os.Getenv("CAMPUS_PORTAL_CLIENT_ID")),
+			ClientSecret: os.Getenv("CAMPUS_PORTAL_SECRET"),
+			KeyID:        strings.TrimSpace(os.Getenv("CAMPUS_PORTAL_KEY_ID")),
 		},
 		PortalOrigin:           mustEnv("PORTAL_ORIGIN"),
 		LocalOAuthCookieName:   envOrDefault("PORTAL_LOCAL_OAUTH_COOKIE_NAME", "henukit_portal_oauth_local"),

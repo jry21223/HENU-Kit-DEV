@@ -49,6 +49,8 @@ type platformClient interface {
 	CheckPlatformOperations(context.Context, string) error
 	CheckPlatformOperationsWrite(context.Context, string) error
 	PlatformOperations(context.Context, string, platformcore.PlatformOperationPages) (json.RawMessage, error)
+	Roles(context.Context, string) (json.RawMessage, error)
+	UpdateInbox(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	SearchPlatformOperationAccounts(context.Context, string, []byte) (json.RawMessage, error)
 	RevokeSession(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	UpdateAccess(context.Context, string, string, string, []byte) (json.RawMessage, error)
@@ -64,6 +66,7 @@ type platformClient interface {
 
 type noticeClient interface {
 	Snapshot(context.Context, string) (json.RawMessage, error)
+	Sources(context.Context, string) (json.RawMessage, error)
 	CreateSource(context.Context, string, string, []byte) (json.RawMessage, error)
 	CreateVersion(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	Review(context.Context, string, string, string, []byte) (json.RawMessage, error)
@@ -87,6 +90,8 @@ type foodClient interface {
 type accountPortfolioClient interface {
 	Operation(context.Context, string, string, string) (json.RawMessage, error)
 	Membership(context.Context, string, string) (json.RawMessage, error)
+	Points(context.Context, string, string, url.Values) (json.RawMessage, error)
+	MembershipOrders(context.Context, string, url.Values) (json.RawMessage, error)
 	Grant(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	Revoke(context.Context, string, string, string, []byte) (json.RawMessage, error)
 	Adjust(context.Context, string, string, []byte) (json.RawMessage, error)
@@ -151,6 +156,8 @@ type overviewClient interface {
 
 type Handler struct {
 	quizcraft                             quizcraftClient
+	career                                careerClient
+	campus                                campusClient
 	platformOrigin, clientID, redirectURI string
 	platform                              platformClient
 	notice                                noticeClient
@@ -200,6 +207,12 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	if len(ownerClients) > 3 {
 		handler.quizcraft, _ = ownerClients[3].(quizcraftClient)
 	}
+	if len(ownerClients) > 4 {
+		handler.career, _ = ownerClients[4].(careerClient)
+	}
+	if len(ownerClients) > 5 {
+		handler.campus, _ = ownerClients[5].(campusClient)
+	}
 	router := chi.NewRouter()
 	router.Use(handler.requestContext)
 	router.Use(securityHeaders)
@@ -210,6 +223,8 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.SessionRoute, handler.getSession)
 	router.Get(contract.OverviewRoute, handler.getOverview)
 	router.Get(contract.OperationsRoute, handler.getPlatformOperations)
+	router.Get(contract.OperationsRoute+"/roles", handler.listRoles)
+	router.Post(contract.OperationsRoute+"/inbox/{item_id}/updates", handler.updateInbox)
 	router.Post(contract.AccountSearchRoute, handler.searchPlatformOperationAccounts)
 	router.Post(contract.RevokeSessionRoute, handler.revokePlatformSession)
 	router.Post(contract.UpdateAccessRoute, handler.updatePlatformAccess)
@@ -217,6 +232,7 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.AccountLookupRoute, handler.lookupAccount)
 	router.Get(contract.NoticeSnapshotRoute, handler.getNotices)
 	router.Post(contract.NoticeSourceRoute, handler.createNoticeSource)
+	router.Get(contract.NoticeSourceRoute, handler.listSources)
 	router.Post(contract.NoticeVersionRoute, handler.createNoticeVersion)
 	router.Post(contract.NoticeReviewRoute, handler.reviewNoticeVersion)
 	router.Post(contract.NoticeDistributionRoute, handler.distributeNoticeVersion)
@@ -231,6 +247,8 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Get(contract.FoodOperationRoute, handler.getFoodOperation)
 	router.Get(contract.FoodOperationOutcomeRoute, handler.getFoodOperationOutcome)
 	router.Get(contract.AccountMembershipRoute, handler.getAccountMembership)
+	router.Get("/api/v1/account/points/{user_id}", handler.getAccountPoints)
+	router.Get("/api/v1/account/membership-orders", handler.listMembershipOrders)
 	router.Post(contract.SearchAccountMembershipsRoute, handler.searchAccountMemberships)
 	router.Post(contract.AccountMembershipGrantsRoute, handler.grantAccountMembership)
 	router.Post(contract.AccountMembershipRevocationsRoute, handler.revokeAccountMembership)
@@ -244,6 +262,11 @@ func New(platformOrigin, clientID, redirectURI string, platform platformClient, 
 	router.Post(contract.AccountMembershipOrderClosuresRoute, handler.closeAccountMembershipOrder)
 	router.Post(contract.AccountMembershipOrderRefundsRoute, handler.refundAccountMembershipOrder)
 	router.Get(contract.AccountMembershipOrderRefundRoute, handler.getAccountMembershipOrderRefund)
+	router.Get("/api/v1/career/workspace", handler.getCareerWorkspace)
+	router.Post("/api/v1/career/searches/{search_id}/retry-digest", handler.retryCareerDigest)
+	router.Get("/api/v1/campus/workspace", handler.getCampusWorkspace)
+	router.Post("/api/v1/campus/items/{id}/moderate", handler.moderateCampusItem)
+	router.Post("/api/v1/campus/messages/{id}/moderate", handler.moderateCampusMessage)
 	router.Post(contract.LogoutRoute, handler.logout)
 	return router, nil
 }
@@ -1520,22 +1543,60 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		foodAnomalyErr = h.platform.CheckFood(ctx, value.ExchangeToken, "food.anomaly")
 		foodTierErr = h.platform.CheckFood(ctx, value.ExchangeToken, "food.tier_adjust")
 	}
-	accountMembershipErr, accountPointsAdjustErr, accountReadErr, accountReplyErr, accountTransitionErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	accountMembershipErr, accountPointsAdjustErr, accountReadErr, accountReplyErr, accountTransitionErr, accountOrdersReadErr, accountOrdersCloseErr, accountOrdersRefundErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
 	if h.account != nil {
 		accountMembershipErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.membership.write")
 		accountPointsAdjustErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.points.adjust")
 		accountReadErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.tickets.read")
 		accountReplyErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.tickets.reply")
 		accountTransitionErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.tickets.transition")
+		accountOrdersReadErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.orders.read")
+		accountOrdersCloseErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.orders.close")
+		accountOrdersRefundErr = h.platform.CheckAccount(ctx, value.ExchangeToken, "account.orders.refund")
 	}
-	if errors.Is(overviewErr, platformcore.ErrUnauthorized) || errors.Is(operationsErr, platformcore.ErrUnauthorized) || errors.Is(operationsWriteErr, platformcore.ErrUnauthorized) || errors.Is(noticeErr, platformcore.ErrUnauthorized) || errors.Is(noticeManageErr, platformcore.ErrUnauthorized) || errors.Is(noticeReviewErr, platformcore.ErrUnauthorized) || errors.Is(noticeDistributeErr, platformcore.ErrUnauthorized) || errors.Is(libraryReadErr, platformcore.ErrUnauthorized) || errors.Is(libraryManageErr, platformcore.ErrUnauthorized) || errors.Is(libraryReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodReadErr, platformcore.ErrUnauthorized) || errors.Is(foodReviewErr, platformcore.ErrUnauthorized) || errors.Is(foodAnomalyErr, platformcore.ErrUnauthorized) || errors.Is(foodTierErr, platformcore.ErrUnauthorized) || errors.Is(accountMembershipErr, platformcore.ErrUnauthorized) || errors.Is(accountPointsAdjustErr, platformcore.ErrUnauthorized) || errors.Is(accountReadErr, platformcore.ErrUnauthorized) || errors.Is(accountReplyErr, platformcore.ErrUnauthorized) || errors.Is(accountTransitionErr, platformcore.ErrUnauthorized) {
-		h.clearSession(writer)
-		h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
-		return
+	quizcraftReadErr, quizcraftWriteErr, quizcraftPublishErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	if !isUnconfigured(h.quizcraft) {
+		if authorizer, ok := h.platform.(quizcraftAuthorizer); ok {
+			quizcraftReadErr = authorizer.CheckQuizcraft(ctx, value.ExchangeToken, "quizcraft.workshop.read", "")
+			quizcraftWriteErr = authorizer.CheckQuizcraft(ctx, value.ExchangeToken, "quizcraft.workshop.write", "")
+			quizcraftPublishErr = authorizer.CheckQuizcraft(ctx, value.ExchangeToken, "quizcraft.workshop.publish", "")
+		}
+	}
+	careerReadErr, careerManageErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	if !isUnconfigured(h.career) {
+		if authorizer, ok := h.platform.(careerAuthorizer); ok {
+			careerReadErr = authorizer.CheckCareer(ctx, value.ExchangeToken, "career.read")
+			careerManageErr = authorizer.CheckCareer(ctx, value.ExchangeToken, "career.manage")
+		}
+	}
+	campusReadErr, campusModerateErr := error(platformcore.ErrForbidden), error(platformcore.ErrForbidden)
+	if !isUnconfigured(h.campus) {
+		if authorizer, ok := h.platform.(campusAuthorizer); ok {
+			campusReadErr = authorizer.CheckCampus(ctx, value.ExchangeToken, "campus.read")
+			campusModerateErr = authorizer.CheckCampus(ctx, value.ExchangeToken, "campus.moderate")
+		}
+	}
+	allSessionChecks := []error{
+		overviewErr, operationsErr, operationsWriteErr,
+		noticeErr, noticeManageErr, noticeReviewErr, noticeDistributeErr,
+		libraryReadErr, libraryManageErr, libraryReviewErr,
+		foodReadErr, foodReviewErr, foodAnomalyErr, foodTierErr,
+		accountMembershipErr, accountPointsAdjustErr, accountReadErr, accountReplyErr, accountTransitionErr,
+		accountOrdersReadErr, accountOrdersCloseErr, accountOrdersRefundErr,
+		quizcraftReadErr, quizcraftWriteErr, quizcraftPublishErr,
+		careerReadErr, careerManageErr,
+		campusReadErr, campusModerateErr,
+	}
+	for _, err := range allSessionChecks {
+		if errors.Is(err, platformcore.ErrUnauthorized) {
+			h.clearSession(writer)
+			h.writePlatformError(writer, request, platformcore.ErrUnauthorized)
+			return
+		}
 	}
 	// A Core outage is not a denial. Do not advertise a complete verified
 	// access context when any configured capability could not be checked.
-	for _, err := range []error{overviewErr, operationsErr, operationsWriteErr, noticeErr, noticeManageErr, noticeReviewErr, noticeDistributeErr, libraryReadErr, libraryManageErr, libraryReviewErr, foodReadErr, foodReviewErr, foodAnomalyErr, foodTierErr, accountMembershipErr, accountPointsAdjustErr, accountReadErr, accountReplyErr, accountTransitionErr} {
+	for _, err := range allSessionChecks {
 		if err != nil && !errors.Is(err, platformcore.ErrForbidden) {
 			h.unavailable(writer, request, err)
 			return
@@ -1599,6 +1660,36 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 	if accountTransitionErr == nil {
 		permissions = append(permissions, "account.tickets.transition")
 	}
+	if accountOrdersReadErr == nil {
+		permissions = append(permissions, "account.orders.read")
+	}
+	if accountOrdersCloseErr == nil {
+		permissions = append(permissions, "account.orders.close")
+	}
+	if accountOrdersRefundErr == nil {
+		permissions = append(permissions, "account.orders.refund")
+	}
+	if quizcraftReadErr == nil {
+		permissions = append(permissions, "quizcraft.workshop.read")
+	}
+	if quizcraftWriteErr == nil {
+		permissions = append(permissions, "quizcraft.workshop.write")
+	}
+	if quizcraftPublishErr == nil {
+		permissions = append(permissions, "quizcraft.workshop.publish")
+	}
+	if careerReadErr == nil {
+		permissions = append(permissions, "career.read")
+	}
+	if careerManageErr == nil {
+		permissions = append(permissions, "career.manage")
+	}
+	if campusReadErr == nil {
+		permissions = append(permissions, "campus.read")
+	}
+	if campusModerateErr == nil {
+		permissions = append(permissions, "campus.moderate")
+	}
 	if len(permissions) == 0 {
 		err := overviewErr
 		if errors.Is(err, platformcore.ErrForbidden) {
@@ -1628,9 +1719,21 @@ func (h *Handler) getSession(writer http.ResponseWriter, request *http.Request) 
 		foodProduct := "food"
 		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &foodProduct})
 	}
-	if accountMembershipErr == nil || accountPointsAdjustErr == nil || accountReadErr == nil || accountReplyErr == nil || accountTransitionErr == nil {
+	if accountMembershipErr == nil || accountPointsAdjustErr == nil || accountReadErr == nil || accountReplyErr == nil || accountTransitionErr == nil || accountOrdersReadErr == nil || accountOrdersCloseErr == nil || accountOrdersRefundErr == nil {
 		accountProduct := "account-portfolio"
 		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &accountProduct})
+	}
+	if quizcraftReadErr == nil || quizcraftWriteErr == nil || quizcraftPublishErr == nil {
+		quizcraftProduct := "quizcraft"
+		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &quizcraftProduct})
+	}
+	if careerReadErr == nil || careerManageErr == nil {
+		careerProduct := "career"
+		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &careerProduct})
+	}
+	if campusReadErr == nil || campusModerateErr == nil {
+		campusProduct := "campus"
+		response.AccessContext.Scopes = append(response.AccessContext.Scopes, contract.ConsoleScope{Kind: "product", ProductCode: &campusProduct})
 	}
 	response.User.ID = value.UserID
 	writeJSON(writer, request, http.StatusOK, response)

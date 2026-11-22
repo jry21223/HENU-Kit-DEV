@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ComponentType, type ReactNode } from "react";
 import AccountEntry from "@/components/account/account-entry";
 import BackLink from "@/components/back-link";
+import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
 import { INSET_FOCUS_RING, revealInScroller, revealKeyboardFocus } from "@/lib/navigation/scroller-focus";
 
@@ -16,6 +17,11 @@ export type SubSiteTab = {
   /** 功能还没开放：标签不可点，旁边直接写「未开放」，触屏和键盘用户都看得到。 */
   disabled?: boolean;
 };
+
+const MODULES = [
+  ["/library", "资料库"], ["/practice", "智能刷题"], ["/food", "美食榜"],
+  ["/campus", "校园互助"], ["/career", "求职雷达"], ["/account", "账户中心"],
+] as const;
 
 type TabLink = ComponentType<{ href: string; className?: string; "aria-current"?: "page"; children: ReactNode }>;
 
@@ -60,11 +66,34 @@ export default function SubSiteNav({
             showTabs && "md:h-auto md:w-auto md:justify-start md:gap-4"
           )}
         >
-          <div className="flex items-baseline gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <BackLink className="inline-flex min-h-11 min-w-11 items-center" />
             <span className="font-display text-base font-bold tracking-tight">
               {brand}<span className="text-accent">®</span>
             </span>
+            <Dialog>
+              <DialogTrigger asChild>
+                <button type="button" aria-label="切换站点模块" className="inline-flex size-11 shrink-0 items-center justify-center focus-visible:outline-2 focus-visible:outline-focus-ring">
+                  <svg aria-hidden="true" viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor">
+                    <path d="M2 2h6v6H2zM12 2h6v6h-6zM2 12h6v6H2zM12 12h6v6h-6z" />
+                  </svg>
+                </button>
+              </DialogTrigger>
+              <DialogContent aria-describedby={undefined}>
+                <DialogTitle className="pr-10">切换站点模块</DialogTitle>
+                <ul className="mt-5 grid grid-cols-2 gap-2">
+                  {MODULES.map(([href, label]) => (
+                    <li key={href}>
+                      <DialogClose asChild>
+                        <Link href={href} className="flex min-h-11 items-center border border-line px-3 text-sm hover:border-ink focus-visible:outline-2 focus-visible:outline-focus-ring">
+                          {label}
+                        </Link>
+                      </DialogClose>
+                    </li>
+                  ))}
+                </ul>
+              </DialogContent>
+            </Dialog>
           </div>
           <div className={showTabs ? "md:hidden" : undefined}>
             <AccountEntry compact />

@@ -55,6 +55,10 @@ func New(baseURL, clientID, clientSecret, keyID string, httpClient *http.Client)
 func (c *Client) Snapshot(ctx context.Context, actorID string) (json.RawMessage, error) {
 	return c.request(ctx, http.MethodGet, SnapshotPath, actorID, "notice.read", "", nil)
 }
+
+func (c *Client) Sources(ctx context.Context, actorID string) (json.RawMessage, error) {
+	return c.request(ctx, http.MethodGet, SourcePath, actorID, "notice.read", "", nil)
+}
 func (c *Client) CreateSource(ctx context.Context, actorID, key string, body []byte) (json.RawMessage, error) {
 	return c.request(ctx, http.MethodPost, SourcePath, actorID, "notice.manage", key, body)
 }

@@ -34,6 +34,11 @@ import { usePageEnter } from "@/components/practice/transition/use-page-enter";
 import TransitionLink from "@/components/practice/transition/transition-link";
 import { gsap, REDUCED_MOTION } from "@/lib/gsap";
 import QuestionMarkdown from "@/components/practice/question-markdown";
+import {
+  QuizDesktopAnswerSheet,
+  QuizMobileAnswerSheetDialog,
+} from "@/components/practice/quiz-answer-sheet";
+import { QuizFeedbackPanel } from "@/components/practice/quiz-feedback-panel";
 import { LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
 import { choiceOptionState, judgeOptionState, type OptionFeedbackState } from "@/lib/practice/answer-feedback";
@@ -48,22 +53,6 @@ const OPTION_LABEL = ["A", "B", "C", "D", "E", "F", "G", "H"];
 // Match the canonical UUID text form accepted by Gateway and QuizCraft Core;
 // do not unnecessarily reject a newer UUID version issued by a real bank.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const FEEDBACK_CATEGORIES: Array<{ value: PracticeFeedbackCategory; label: string }> = [
-  { value: "wrong_answer", label: "答案有误" },
-  { value: "ambiguous", label: "表述歧义" },
-  { value: "typo", label: "错别字" },
-  { value: "outdated", label: "内容过时" },
-  { value: "other", label: "其他" },
-];
-
-const FEEDBACK_STATUS_LABEL: Record<PortalPracticeFeedbackStatusResponse["data"]["status"], string> = {
-  pending: "已受理",
-  in_progress: "处理中",
-  blocked: "暂时受阻",
-  resolved: "已解决",
-  archived: "已归档",
-};
 
 type LoadState = "loading" | "setup" | "ready" | "empty" | "missing-selection" | "error" | "finished";
 type AnswerResult = PortalPracticeAnswerResponse["data"];
@@ -228,6 +217,7 @@ export default function QuizPage() {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackError, setFeedbackError] = useState("");
+  const feedbackRevision = useRef(0);
   const [feedbackID, setFeedbackID] = useState<string | null>(null);
   const [feedbackStatus, setFeedbackStatus] = useState<
     PortalPracticeFeedbackStatusResponse["data"]["status"] | null
@@ -340,14 +330,27 @@ export default function QuizPage() {
     }
   };
 
+  const resetFeedback = useCallback(() => {
+    feedbackRevision.current += 1;
+    setFeedbackOpen(false);
+    setFeedbackCategory("other");
+    setFeedbackDetail("");
+    setFeedbackSubmitting(false);
+    setFeedbackMessage("");
+    setFeedbackError("");
+    setFeedbackID(null);
+    setFeedbackStatus(null);
+  }, []);
+
   const goToQuestion = useCallback((nextIndex: number) => {
-    if (submitting || nextIndex < 0 || nextIndex >= questions.length) return;
+    if (submitting || nextIndex === idx || nextIndex < 0 || nextIndex >= questions.length) return;
     const focused = document.activeElement;
     if (focused instanceof HTMLElement && cardRef.current?.contains(focused)) {
       navigationFocusRef.current = focused.getAttribute("aria-label") ?? "";
     }
+    resetFeedback();
     setIdx(nextIndex);
-  }, [submitting, questions.length, cardRef]);
+  }, [submitting, idx, questions.length, cardRef, resetFeedback]);
 
   // A result belongs to its immutable question key. Restore the explanation
   // after returning to a scored question; never hide a cached server result.
@@ -427,27 +430,24 @@ export default function QuizPage() {
   };
 
   const refreshFeedbackStatus = async (id: string) => {
+    const revision = feedbackRevision.current;
     try {
       const response = await fetchPracticeFeedbackStatus(id);
-      setFeedbackStatus(response.data.status);
+      if (revision === feedbackRevision.current) setFeedbackStatus(response.data.status);
     } catch {
       // A later status read can still succeed; never block the accepted write.
     }
   };
 
-  const openFeedback = () => {
-    setFeedbackOpen(true);
-    setFeedbackError("");
-    setFeedbackMessage("");
-  };
-
   const submitFeedback = async () => {
+    if (feedbackSubmitting) return;
     const detail = feedbackDetail.trim();
     if (!detail) {
       setFeedbackError("请简单描述问题，方便题库维护者定位。");
       return;
     }
     if (!question || !session) return;
+    const revision = feedbackRevision.current;
     const currentKeyValue = questionKey(question);
     const idempotencyKey = idempotencyKeyFor(
       `feedback:${currentKeyValue}`,
@@ -466,11 +466,13 @@ export default function QuizPage() {
         detail,
       };
       const response = await createPracticeFeedback(input, idempotencyKey);
+      if (revision !== feedbackRevision.current) return;
       setFeedbackID(response.data.resource_id);
       setFeedbackDetail("");
       setFeedbackMessage("反馈已提交，感谢你的建议！");
       void refreshFeedbackStatus(response.data.resource_id);
     } catch (error) {
+      if (revision !== feedbackRevision.current) return;
       if (error instanceof PortalUnauthorizedError) {
         window.location.assign(
           `/account/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
@@ -479,11 +481,12 @@ export default function QuizPage() {
       }
       setFeedbackError(formatPortalError(error));
     } finally {
-      setFeedbackSubmitting(false);
+      if (revision === feedbackRevision.current) setFeedbackSubmitting(false);
     }
   };
 
   const resetSessionView = () => {
+    resetFeedback();
     setLoadError(null);
     setSession(null);
     setIdx(0);
@@ -887,7 +890,7 @@ export default function QuizPage() {
               )}
             </div>
 
-            <div className="mt-4 flex items-center justify-between gap-3 lg:hidden" role="group" aria-label="题目导航">
+            <div className="mt-4 flex items-center justify-between gap-2 lg:hidden" role="group" aria-label="题目导航">
               <button
                 type="button"
                 aria-label="上一道题"
@@ -897,6 +900,13 @@ export default function QuizPage() {
               >
                 ← 上一题
               </button>
+              <QuizMobileAnswerSheetDialog
+                questions={questions}
+                currentIndex={idx}
+                answers={answers}
+                disabled={submitting}
+                onSelect={goToQuestion}
+              />
               <button
                 type="button"
                 aria-label="下一道题"
@@ -908,93 +918,21 @@ export default function QuizPage() {
               </button>
             </div>
 
-            <div data-feedback className="mt-5 border-t border-line pt-4">
-              {/* 文字按钮的点击区撑到 44px 高，等量负外边距让文字和下面的面板都不挪位置。 */}
-              <button
-                type="button"
-                onClick={openFeedback}
-                aria-expanded={feedbackOpen}
-                className="-my-3.5 inline-flex min-h-11 items-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
-              >
-                {feedbackOpen ? "收起纠错 −" : "这道题有问题？提交纠错 +"}
-              </button>
-
-              {feedbackOpen && (
-                <div className="mt-4 border border-dashed border-ink/25 p-5">
-                  <p className="font-mono text-xs text-ink/60">
-                    <span className="tracking-[0.25em]">CORRECTION</span> / 题内纠错
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {FEEDBACK_CATEGORIES.map((item) => (
-                      <button
-                        key={item.value}
-                        type="button"
-                        onClick={() => setFeedbackCategory(item.value)}
-                        aria-pressed={feedbackCategory === item.value}
-                        className={cn(
-                          "min-h-11 border px-3 py-1.5 font-mono text-xs transition-colors",
-                          feedbackCategory === item.value
-                            ? "border-ink bg-ink text-paper"
-                            : "border-line text-ink/60 hover:border-ink/40"
-                        )}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={feedbackDetail}
-                    onChange={(event) => setFeedbackDetail(event.target.value)}
-                    rows={3}
-                    maxLength={4000}
-                    placeholder="简单描述问题，例如：第 2 题解析里的公式有笔误。"
-                    className="mt-4 w-full border border-ink/30 bg-transparent p-3 text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
-                  />
-                  {feedbackMessage && (
-                    <p className="mt-3 text-sm text-ink/70">
-                      {feedbackMessage}
-                      {feedbackStatus && (
-                        <span className="ml-2 border border-accent/60 px-1.5 py-0.5 font-mono text-xs text-accent-text">
-                          {FEEDBACK_STATUS_LABEL[feedbackStatus]}
-                        </span>
-                      )}
-                    </p>
-                  )}
-                  {feedbackError && (
-                    <p role="alert" className="mt-3 text-sm text-accent-text">
-                      {feedbackError}
-                    </p>
-                  )}
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => void submitFeedback()}
-                      disabled={feedbackSubmitting}
-                      className={cn(
-                        "min-h-11 border px-5 py-2 font-mono text-xs transition-colors",
-                        feedbackSubmitting
-                          ? "cursor-not-allowed border-line text-ink/30"
-                          : "border-ink bg-ink text-paper hover:border-accent hover:bg-accent hover:text-ink"
-                      )}
-                    >
-                      {feedbackSubmitting ? "提交中…" : "提交纠错"}
-                    </button>
-                    {feedbackID && (
-                      <button
-                        type="button"
-                        onClick={() => void refreshFeedbackStatus(feedbackID)}
-                        className="min-h-11 border border-ink/30 px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
-                      >
-                        刷新状态
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-3 font-mono text-xs leading-5 text-ink/60">
-                    纠错需要登录后提交；内容会连同题目版本引用交给题库维护者处理。
-                  </p>
-                </div>
-              )}
-            </div>
+            <QuizFeedbackPanel
+              open={feedbackOpen}
+              onToggle={() => setFeedbackOpen((open) => !open)}
+              category={feedbackCategory}
+              onCategoryChange={setFeedbackCategory}
+              detail={feedbackDetail}
+              onDetailChange={setFeedbackDetail}
+              submitting={feedbackSubmitting}
+              message={feedbackMessage}
+              status={feedbackStatus}
+              error={feedbackError}
+              feedbackId={feedbackID}
+              onSubmit={() => void submitFeedback()}
+              onRefreshStatus={(id) => void refreshFeedbackStatus(id)}
+            />
           </div>
     );
   };
@@ -1017,41 +955,12 @@ export default function QuizPage() {
           <QuestionPager count={questions.length} index={idx} disabled={submitting} onChange={goToQuestion} renderQuestion={renderQuestion} />
         </div>
 
-        <aside data-enter className="hidden lg:block">
-          <p className="font-mono text-xs text-ink/60">
-            <span className="tracking-[0.25em]">INDEX</span> / 跳题
-          </p>
-          <div className="mt-3 grid grid-cols-4 gap-1.5">
-            {questions.map((item, itemIndex) => {
-              const itemResult = answers[questionKey(item)];
-              return (
-                <button
-                  key={questionKey(item)}
-                  type="button"
-                  onClick={() => goToQuestion(itemIndex)}
-                  aria-current={itemIndex === idx ? "step" : undefined}
-                  aria-label={`第 ${itemIndex + 1} 题${itemResult ? (itemResult.correct ? "，答对" : "，答错") : "，未答"}`}
-                  className={cn(
-                    "flex h-9 items-center justify-center border font-mono text-xs transition-colors",
-                    !itemResult && itemIndex === idx && "border-accent text-accent-text",
-                    !itemResult && itemIndex !== idx && "border-line text-ink/60 hover:border-ink/40",
-                    itemResult?.correct && "border-ink bg-ink text-paper",
-                    itemResult && !itemResult.correct && "border-accent bg-accent text-ink",
-                    // The current question keeps its result colour; an outline marks position.
-                    itemIndex === idx && itemResult && "outline outline-2 outline-offset-2 outline-ink"
-                  )}
-                >
-                  {String(itemIndex + 1).padStart(2, "0")}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-4 space-y-1.5 font-mono text-xs text-ink/60">
-            <p><span className="mr-2 inline-block h-2 w-2 border border-line align-middle" />未答</p>
-            <p><span className="mr-2 inline-block h-2 w-2 bg-ink align-middle" />答对</p>
-            <p><span className="mr-2 inline-block h-2 w-2 bg-accent align-middle" />答错</p>
-          </div>
-        </aside>
+        <QuizDesktopAnswerSheet
+          questions={questions}
+          currentIndex={idx}
+          answers={answers}
+          onSelect={goToQuestion}
+        />
       </div>
     </main>
   );

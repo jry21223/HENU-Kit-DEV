@@ -42,10 +42,10 @@ test("Account Center requests a login code through the bounded status contract",
   await expect(page.getByText("将发送至 student@henu.edu.cn")).toBeVisible();
   await page.getByRole("button", { name: "发送验证码" }).click();
 
-  await expect(page.getByText("验证码已进入发送队列（student@henu.edu.cn），请查收学校邮箱。")).toBeVisible();
+  await expect(page.getByText("验证码已发送，请查收学校邮箱。")).toBeVisible();
   // 发出验证码的结果由 status 告诉读屏软件，焦点不用离开发送按钮。
-  await expect(page.getByRole("status").filter({ hasText: "验证码已进入发送队列" })).toHaveText(
-    "验证码已进入发送队列（student@henu.edu.cn），请查收学校邮箱。"
+  await expect(page.getByRole("status").filter({ hasText: "验证码已发送" })).toHaveText(
+    "验证码已发送，请查收学校邮箱。"
   );
   expect(bootstrapCalls).toBe(1);
   expect(codeCalls).toBe(1);

@@ -20,7 +20,11 @@ test("account console keeps browser identity on the real Portal Session boundary
     readFile(new URL("./account-console-session.tsx", import.meta.url), "utf8"),
   ]);
 
-  for (const source of [layout, overview, wallet, membership, notifications, tickets, security, sessionBoundary]) {
+  const layoutWithoutCacheCleanup = layout
+    .replace('import { authStore } from "@/lib/auth/store";', "")
+    .replace(/function clearBrowserSession\(\)\s*\{\s*clearCachedSession\(\);\s*authStore\.clear\(\);\s*\}/, "");
+
+  for (const source of [layoutWithoutCacheCleanup, overview, wallet, membership, notifications, tickets, security, sessionBoundary]) {
     assert.doesNotMatch(source, /@\/lib\/auth\/store|\bauthStore\b/);
     assert.doesNotMatch(source, /\blocalStorage\b|\bsessionStorage\b/);
     assert.doesNotMatch(source, /\bmockAllowed\b|\bisMockAuthEnabled\b/);
@@ -30,6 +34,9 @@ test("account console keeps browser identity on the real Portal Session boundary
   assert.match(layout, /fetchSession/);
   assert.match(layout, /AccountConsoleSessionProvider/);
   assert.match(layout, /requireLogin/);
+  assert.match(layout, /authStore\.clear\(\)/);
+  assert.match(layout, /const requireLogin =[^]*?clearBrowserSession\(\);\s*redirectToAccountLogin\(\);/);
+  assert.match(layout, /await logout\(\);\s*requestVersion\.current \+= 1;\s*clearBrowserSession\(\);\s*router\.replace/);
   assert.doesNotMatch(layout, /\bAccountEntry\b/);
   assert.match(overview, /useAccountConsoleSession/);
   for (const source of [overview, wallet, membership, notifications, tickets]) {

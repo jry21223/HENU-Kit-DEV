@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { authStore } from "@/lib/auth/store";
+import { fetchMyFoodPosts } from "@/lib/food/myposts";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   fetchFoodPost,
   formatPortalError,
@@ -25,8 +28,41 @@ import {
 
 type LoadState = "loading" | "ready" | "error" | "missing";
 
+function PreviewPhoto({ src, alt, ...props }: ComponentProps<typeof Img>) {
+  if (!src) return <Img {...props} src={src} alt={alt} />;
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button type="button" aria-label={`查看大图：${alt}`} className="block min-h-11 w-full cursor-zoom-in focus-visible:outline-2 focus-visible:outline-focus-ring">
+          <Img {...props} src={src} alt={alt} />
+        </button>
+      </DialogTrigger>
+      <DialogContent aria-describedby={undefined} className="w-[min(92vw,64rem)]">
+        <DialogTitle className="pr-10">{alt}</DialogTitle>
+        <Img src={src} alt={alt} className="mt-4 h-[65vh] w-full object-contain" />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function PostDetail({ id }: { id: string }) {
+  const { user } = useSyncExternalStore(authStore.subscribe, authStore.get, authStore.getServer);
   const [post, setPost] = useState<FoodPost | null>(null);
+  const [verifiedOwner, setVerifiedOwner] = useState<{ userID: string; postID: string } | null>(null);
+  const ownerID = post && "author_user_id" in post ? post.author_user_id : undefined;
+  const userID = user?.uid;
+  const postID = post?.id;
+  const canEdit = Boolean(userID && postID && (typeof ownerID === "string"
+    ? ownerID === userID
+    : verifiedOwner?.userID === userID && verifiedOwner.postID === postID));
+  useEffect(() => {
+    if (!userID || !postID || typeof ownerID === "string") return;
+    let active = true;
+    void fetchMyFoodPosts().then(({ posts }) => {
+      if (active) setVerifiedOwner(posts.some((entry) => entry.id === postID && !entry.hidden) ? { userID, postID } : null);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [userID, postID, ownerID]);
   const [comments, setComments] = useState<FoodComment[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -186,7 +222,7 @@ export default function PostDetail({ id }: { id: string }) {
 
           {detail.heroImage && (
             <div className="mt-8">
-              <Img
+              <PreviewPhoto
                 src={detail.heroImage}
                 alt={`${post.shop.name}参考图`}
                 label="VENUE / REFERENCE"
@@ -237,7 +273,7 @@ export default function PostDetail({ id }: { id: string }) {
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {detail.gallery.map((src, index) => (
                   <figure key={`${src}-${index}`}>
-                    <Img
+                    <PreviewPhoto
                       src={src}
                       alt={`${post.shop.name}稿件参考图 ${index + 1}`}
                       label={`PHOTO ${String(index + 1).padStart(2, "0")}`}
@@ -301,6 +337,11 @@ export default function PostDetail({ id }: { id: string }) {
         </div>
 
         <aside className="lg:sticky lg:top-24 lg:h-fit">
+          {canEdit ? (
+            <Link href={`/food/post/${post.id}/edit`} className="mb-4 inline-flex min-h-11 items-center border border-ink px-4 text-sm focus-visible:outline-2 focus-visible:outline-focus-ring">
+              编辑我的点评 →
+            </Link>
+          ) : null}
           <section className="border border-ink">
             <div className="p-5">
               <p className="font-mono text-xs tracking-[0.25em] text-accent-text">

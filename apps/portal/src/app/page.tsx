@@ -25,7 +25,7 @@ export default function Home() {
         <SectionCampus />
         <SectionCareer />
       </main>
-      <Footer />
+      <Footer copyrightYear={new Date().getUTCFullYear()} />
     </>
   );
 }

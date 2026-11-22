@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/portal-gateway/internal/accountportfolio"
+	"henukit.dev/portal-gateway/internal/campus"
 	"henukit.dev/portal-gateway/internal/career"
 	"henukit.dev/portal-gateway/internal/config"
 	"henukit.dev/portal-gateway/internal/contract"
@@ -46,6 +47,7 @@ type Handler struct {
 	accountPortfolio   *accountportfolio.Client
 	foodPosts          *foodposts.Client
 	career             *career.Client
+	campus             *campus.Client
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
 	redis              *redis.Client
@@ -133,6 +135,16 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 			return nil, fmt.Errorf("career.NewClient: %w", err)
 		}
 	}
+	var campusClient *campus.Client
+	if strings.TrimSpace(cfg.CampusPortalAuth.ClientID) != "" && strings.TrimSpace(cfg.CampusPortalAuth.ClientSecret) != "" {
+		campusClient, err = campus.NewClient(
+			cfg.PortalAPIURL,
+			cfg.CampusPortalAuth.ClientID, cfg.CampusPortalAuth.ClientSecret, cfg.CampusPortalAuth.KeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("campus.NewClient: %w", err)
+		}
+	}
 	var practiceCommands *practice.CommandClient
 	if cfg.PracticeCommandsEnabled {
 		practiceCommands, err = practice.NewCommandClient(
@@ -188,6 +200,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		accountPortfolio:   portfolio,
 		foodPosts:          foodPosts,
 		career:             careerClient,
+		campus:             campusClient,
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
 		redis:              rdb,
@@ -305,6 +318,15 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/practice/lists/{list_id}", h.practiceLegacyGone)
 	r.Get("/api/v1/practice/leaderboard", h.practiceLegacyGone)
 	r.Get("/api/v1/practice/*", h.proxyToPortalAPI)
+	// Exact authenticated Campus workflow & private Contact Book routes shadow the public GET wildcard.
+	r.Get("/api/v1/campus/contact-book", h.campusGetContactBook)
+	r.Put("/api/v1/campus/contact-book", h.campusPutContactBook)
+	r.Post("/api/v1/campus/items", h.campusCreateItem)
+	r.Post("/api/v1/campus/items/{id}/messages", h.campusCreateMessage)
+	r.Get("/api/v1/campus/items/{id}/exchanges", h.campusListExchanges)
+	r.Post("/api/v1/campus/items/{id}/exchanges", h.campusRequestExchange)
+	r.Post("/api/v1/campus/items/{id}/exchanges/{exchange_id}/respond", h.campusRespondExchange)
+	r.Post("/api/v1/campus/items/{id}/complete", h.campusCompleteItem)
 	r.Get("/api/v1/campus/*", h.proxyToPortalAPI)
 	r.Get("/api/v1/notices", h.proxyToPortalAPI)
 

@@ -100,13 +100,13 @@ function StaticKnowledgeMesh({ mastery }: { mastery: MasterySnapshot }) {
       })}
       {Array.from({ length: cubeCount }, (_, index) => {
         const angle = (Math.PI * 2 * index) / cubeCount;
-        const x = 100 + Math.cos(angle) * staticOrbitRadius;
-        const y = 110 + Math.sin(angle) * staticOrbitRadius * 0.42;
+        const centerX = 100 + Math.cos(angle) * staticOrbitRadius;
+        const centerY = 110 + Math.sin(angle) * staticOrbitRadius * 0.42;
         return (
           <rect
             key={index}
-            x={x - 2.5}
-            y={y - 2.5}
+            x={Number((centerX - 2.5).toFixed(2))}
+            y={Number((centerY - 2.5).toFixed(2))}
             width="5"
             height="5"
             className="stroke-accent"

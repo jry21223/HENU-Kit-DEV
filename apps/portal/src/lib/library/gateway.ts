@@ -13,7 +13,7 @@ import { STATIC_MATERIALS, type Material } from "./mock";
 let cachedMaterials: Material[] | null = null;
 let inflight: Promise<Material[]> | null = null;
 
-function toMaterial(m: ApiMaterial): Material {
+export function toMaterial(m: ApiMaterial): Material {
   return {
     id: m.id,
     type: m.type,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
@@ -21,6 +21,7 @@ interface RankRowItem {
 
 function RankRow({ item }: { item: RankRowItem }) {
   const reviewRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
 
   // 卸载时清理未完成的补间
   useGSAP(
@@ -30,23 +31,44 @@ function RankRow({ item }: { item: RankRowItem }) {
     { scope: reviewRef }
   );
 
-  const open = () => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    gsap.to(reviewRef.current, { height: "auto", duration: 0.35, ease: "power2.out" });
+  const animateReview = (show: boolean) => {
+    const el = reviewRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      gsap.set(el, { height: show ? "auto" : 0 });
+      return;
+    }
+    gsap.to(el, {
+      height: show ? "auto" : 0,
+      duration: show ? 0.35 : 0.3,
+      ease: show ? "power2.out" : "power2.in",
+    });
   };
-  const close = () => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    gsap.to(reviewRef.current, { height: 0, duration: 0.3, ease: "power2.in" });
+
+  const openOnHover = () => {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    setExpanded(true);
+    animateReview(true);
+  };
+  const closeOnHover = () => {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    setExpanded(false);
+    animateReview(false);
+  };
+  const toggleReview = () => {
+    const next = !expanded;
+    setExpanded(next);
+    animateReview(next);
   };
 
   return (
     <li
       data-rank-row
-      onMouseEnter={open}
-      onMouseLeave={close}
+      onMouseEnter={openOnHover}
+      onMouseLeave={closeOnHover}
       className="border-b border-line"
     >
-      <div className="flex items-baseline gap-5 py-5 md:gap-10">
+      <div className="flex items-baseline gap-4 py-5 md:gap-10">
         {/* 编号列定宽、等宽数字，01–05 下店名左缘对齐；宽度与下方锐评的缩进一致。
             名次是信息：36px 粗体算大字，ink/50 在纸白上 3.35:1，过大字的 3:1。 */}
         <span className="w-[3.25rem] shrink-0 font-display text-4xl font-bold tabular-nums text-ink/50 md:w-20 md:text-6xl">
@@ -69,9 +91,19 @@ function RankRow({ item }: { item: RankRowItem }) {
         >
           {item.tier.label}
         </span>
+        {/* 触屏设备无 hover：用克制的 + / − 符号按钮展开锐评，避免叠加多余线框，同时保证 44×44 触控区 */}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "收起" : "展开"} ${item.name} 锐评`}
+          onClick={toggleReview}
+          className="-my-2 -mr-2 inline-flex min-h-11 min-w-11 shrink-0 touch-manipulation items-center justify-center font-mono text-base text-ink/60 transition-colors active:text-accent-text hover:text-accent-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring md:hidden"
+        >
+          <span aria-hidden>{expanded ? "−" : "+"}</span>
+        </button>
       </div>
-      <div ref={reviewRef} className="h-0 overflow-hidden">
-        <p className="pb-5 pl-[4.5rem] text-sm text-ink/60 md:pl-[7.5rem]">
+      <div ref={reviewRef} className={cn("overflow-hidden", expanded ? "h-auto" : "h-0")}>
+        <p className="pb-5 pl-[4.25rem] text-sm text-ink/65 md:pl-[7.5rem]">
           锐评：{item.review}
         </p>
       </div>
@@ -142,7 +174,7 @@ export default function SectionFood() {
           <MagneticButton href="/food" className="mt-8">
             进入模块
           </MagneticButton>
-          <AmbientSvg variant="flow" className="mt-12 hidden text-ink/30 md:block" />
+          <AmbientSvg variant="flow" className="mt-8 text-ink/30 md:mt-12" />
         </div>
 
         <ul className="border-t border-line">

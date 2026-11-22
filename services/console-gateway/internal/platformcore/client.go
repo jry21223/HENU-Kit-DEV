@@ -122,7 +122,7 @@ func (c *Client) AccountLookup(ctx context.Context, exchangeToken string, body [
 }
 
 func (c *Client) UserIdentities(ctx context.Context, exchangeToken, permission string, userIDs []string) (json.RawMessage, error) {
-	if len(userIDs) == 0 || len(userIDs) > 100 || (permission != "account.tickets.read" && permission != "account.tickets.reply" && permission != "account.tickets.transition") {
+	if len(userIDs) == 0 || len(userIDs) > 100 || (permission != "account.tickets.read" && permission != "account.tickets.reply" && permission != "account.tickets.transition" && permission != "account.orders.read") {
 		return nil, ErrInvalid
 	}
 	seen := make(map[string]struct{}, len(userIDs))
@@ -144,6 +144,14 @@ func (c *Client) UserIdentities(ctx context.Context, exchangeToken, permission s
 
 func (c *Client) MembershipAccounts(ctx context.Context, exchangeToken string, body []byte) (json.RawMessage, error) {
 	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/membership-accounts/search", exchangeToken, "", body)
+}
+
+func (c *Client) Roles(ctx context.Context, exchangeToken string) (json.RawMessage, error) {
+	return c.operationRequest(ctx, http.MethodGet, "/api/v1/platform-operations/roles", exchangeToken, "", nil)
+}
+
+func (c *Client) UpdateInbox(ctx context.Context, exchangeToken, itemID, key string, body []byte) (json.RawMessage, error) {
+	return c.operationRequest(ctx, http.MethodPost, "/api/v1/platform-operations/inbox/"+url.PathEscape(itemID)+"/updates", exchangeToken, key, body)
 }
 
 func (c *Client) operationRequest(ctx context.Context, method, path, exchangeToken, idempotencyKey string, body []byte) (json.RawMessage, error) {
@@ -283,7 +291,7 @@ func (c *Client) CheckFood(ctx context.Context, exchangeToken, permissionCode st
 // check for points or payment state.
 func (c *Client) CheckAccount(ctx context.Context, exchangeToken, permissionCode string) error {
 	switch permissionCode {
-	case "account.membership.write", "account.points.adjust", "account.tickets.read", "account.tickets.reply", "account.tickets.transition":
+	case "account.membership.write", "account.points.adjust", "account.tickets.read", "account.tickets.reply", "account.tickets.transition", "account.orders.read", "account.orders.close", "account.orders.refund":
 	default:
 		return ErrInvalid
 	}
@@ -373,4 +381,22 @@ func (c *Client) CheckQuizcraft(ctx context.Context, token, permission, bank str
 		scope = map[string]string{"kind": "resource", "product_code": "quizcraft", "resource_type": "bank", "resource_id": bank}
 	}
 	return c.checkPermission(ctx, token, permission, scope)
+}
+
+func (c *Client) CheckCareer(ctx context.Context, exchangeToken, permissionCode string) error {
+	switch permissionCode {
+	case "career.read", "career.manage":
+	default:
+		return ErrInvalid
+	}
+	return c.checkPermission(ctx, exchangeToken, permissionCode, map[string]string{"kind": "product", "product_code": "career"})
+}
+
+func (c *Client) CheckCampus(ctx context.Context, exchangeToken, permissionCode string) error {
+	switch permissionCode {
+	case "campus.read", "campus.moderate":
+	default:
+		return ErrInvalid
+	}
+	return c.checkPermission(ctx, exchangeToken, permissionCode, map[string]string{"kind": "product", "product_code": "campus"})
 }

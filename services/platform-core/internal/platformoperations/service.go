@@ -38,6 +38,36 @@ type Service struct {
 	emailCodec      *securebox.Codec
 }
 
+type Role struct {
+	Code string `json:"code"`
+	DisplayName string `json:"display_name"`
+	Permissions []string `json:"permissions"`
+}
+
+func (s *Service) ListRoles(ctx context.Context) ([]Role, error) {
+	rows, err := s.database.Query(ctx, `
+		SELECT roles.code, roles.display_name, ARRAY(
+			SELECT permission_code FROM role_permissions WHERE role_id = roles.id ORDER BY permission_code
+		)
+		FROM authorization_roles AS roles WHERE roles.status = 'active' ORDER BY roles.code`)
+	if err != nil {
+		return nil, ErrDependency
+	}
+	roles, err := pgx.CollectRows(rows, pgx.RowToStructByPos[Role])
+	if err != nil {
+		return nil, ErrDependency
+	}
+	if roles == nil {
+		return []Role{}, nil
+	}
+	for i := range roles {
+		if roles[i].Permissions == nil {
+			roles[i].Permissions = []string{}
+		}
+	}
+	return roles, nil
+}
+
 var (
 	ErrInvalid             = errors.New("invalid platform operation")
 	ErrNotFound            = errors.New("platform operation resource not found")

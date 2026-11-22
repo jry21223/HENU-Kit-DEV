@@ -30,6 +30,10 @@ type Config struct {
 	FoodCredentials             SummaryCredentials
 	AccountPortfolioAPIURL      string
 	AccountPortfolioCredentials SummaryCredentials
+	CareerAPIURL                string
+	CareerCredentials           SummaryCredentials
+	CampusAPIURL                string
+	CampusCredentials           SummaryCredentials
 }
 
 type SummaryCredentials struct{ ClientID, ClientSecret, KeyID string }
@@ -56,6 +60,12 @@ func FromEnv() (Config, error) {
 		LibraryAPIURL: strings.TrimRight(os.Getenv("LIBRARY_API_URL"), "/"), LibraryCredentials: summaryCredentials("LIBRARY"),
 		FoodAPIURL: strings.TrimRight(os.Getenv("FOOD_API_URL"), "/"), FoodCredentials: summaryCredentials("FOOD"),
 		AccountPortfolioAPIURL: strings.TrimRight(os.Getenv("ACCOUNT_PORTFOLIO_API_URL"), "/"), AccountPortfolioCredentials: accountPortfolioConsoleCredentials(),
+		CareerAPIURL: strings.TrimRight(os.Getenv("CAREER_API_URL"), "/"), CareerCredentials: SummaryCredentials{
+			ClientID: os.Getenv("CAREER_CONSOLE_CLIENT_ID"), ClientSecret: os.Getenv("CAREER_CONSOLE_SECRET"), KeyID: os.Getenv("CAREER_CONSOLE_KEY_ID"),
+		},
+		CampusAPIURL: strings.TrimRight(os.Getenv("CAMPUS_API_URL"), "/"), CampusCredentials: SummaryCredentials{
+			ClientID: os.Getenv("CAMPUS_CONSOLE_CLIENT_ID"), ClientSecret: os.Getenv("CAMPUS_CONSOLE_SECRET"), KeyID: os.Getenv("CAMPUS_CONSOLE_KEY_ID"),
+		},
 	}
 	if config.ListenAddr == "" {
 		config.ListenAddr = ":8082"

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAccountConsoleUnauthorizedHandler } from "@/components/account/account-console-session";
 import { useReveal } from "@/components/account/use-reveal";
+import { CareerResumeUpload, CareerResumeSummary, type UploadState, type SuificationState } from "@/components/account/career-resume-panel";
 import {
   createCareerResumeExtraction,
   createCareerResumeSuification,
@@ -17,7 +18,6 @@ import type {
   CareerJobType,
   CareerProfile,
   CareerProfileInput,
-  CareerResumeExtraction,
 } from "@/lib/api/types";
 import {
   isCareerLifetimeRequiredError,
@@ -64,19 +64,7 @@ type ProfileForm = {
   email_notification_enabled: boolean;
 };
 
-type UploadState =
-  | { kind: "idle" }
-  | { kind: "uploading" }
-  | { kind: "active"; extraction: CareerResumeExtraction; label: string }
-  | { kind: "done"; extraction: CareerResumeExtraction }
-  | { kind: "error"; message: string };
 
-type SuificationState =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "preview"; original: string; draft: string }
-  | { kind: "applied"; original: string }
-  | { kind: "error"; message: string };
 
 function emptyInput(profile: CareerProfile): ProfileForm {
   return {
@@ -307,14 +295,14 @@ export default function CareerProfilePage() {
         setState({ kind: "locked" });
         return;
       }
-      let message = "酥化暂时失败，请稍后重试。";
+      let message = "AI 润色暂时失败，请稍后重试。";
       if (error instanceof PortalHttpError) {
         if (error.errorCode === "AI_UNCONFIGURED") {
-          message = "酥化功能暂未开放，请稍后再试。";
+          message = "AI 润色暂不可用，请稍后再试。";
         } else if (error.errorCode === "SUIFY_RATE_LIMITED") {
-          message = "本小时酥化次数已达上限，请稍后再试。";
+          message = "本小时的 AI 润色次数已用完，请稍后再试。";
         } else if (error.errorCode === "SUIFY_ALREADY_ACTIVE") {
-          message = "上一次酥化仍在进行，请稍等后重试。";
+          message = "上一次润色还没完成，请稍后再试。";
         }
       }
       setSuification({ kind: "error", message });
@@ -401,7 +389,7 @@ export default function CareerProfilePage() {
 
       {state.kind === "locked" ? (
         <section data-account-career-profile-state="locked" className="mt-6 border border-accent px-5 py-8">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">LIFETIME MEMBERSHIP</p>
+          <p className="font-mono text-xs text-accent-text">终身会员权益</p>
           <h2 className="mt-3 font-display text-2xl font-bold tracking-tight">求职雷达需要终身会员</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/70">
             求职画像、匹配扫描与结果简报属于终身会员权益；免费会员无法查看或编辑画像。
@@ -417,7 +405,7 @@ export default function CareerProfilePage() {
 
       {state.kind === "error" ? (
         <section data-account-career-profile-state="error" role="alert" className="mt-6 border border-accent px-5 py-6">
-          <p className="font-mono text-xs tracking-[0.14em] text-accent-text">CAREER PROFILE UNAVAILABLE</p>
+          <p className="font-mono text-xs text-accent-text">求职画像暂时不可用</p>
           <p className="mt-3 text-sm leading-6 text-ink/65">{state.message}</p>
           <button
             type="button"
@@ -440,66 +428,7 @@ export default function CareerProfilePage() {
               void save();
             }}
           >
-            <div data-account-career-extraction className="border border-ink/20 px-5 py-6 md:px-6">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-mono text-xs text-ink/60">
-                  上传简历 · 自动识别填写（默认方式）
-                </p>
-                <p className="font-mono text-xs text-ink/60">PDF ≤10 页 · DOCX / TXT · 全部 ≤10 MB</p>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-ink/60">
-                上传简历后由后台 AI 识别并自动填入下方画像字段，识别结果可核对修改后再保存；简历文件在识别完成或失败后即删除，保留文件名、文件校验值和识别出的内容。
-              </p>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <input
-                  ref={fileInputRef}
-                  id="career-resume-upload"
-                  type="file"
-                  accept=".pdf,.docx,.txt"
-                  className="hidden"
-                  onChange={handleFilePick}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper"
-                >
-                  选择简历文件
-                </button>
-                {selectedFile ? (
-                  <span className="max-w-56 truncate font-mono text-xs text-ink/70">
-                    {selectedFile.name}
-                  </span>
-                ) : (
-                  <span className="font-mono text-xs text-ink/60">
-                    未选择文件
-                  </span>
-                )}
-                <button
-                  type="button"
-                  disabled={!selectedFile || upload.kind === "uploading" || upload.kind === "active"}
-                  onClick={() => void uploadResume()}
-                  className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink disabled:cursor-wait disabled:opacity-50"
-                >
-                  {upload.kind === "uploading" ? "上传中…" : "上传并识别"}
-                </button>
-              </div>
-              {upload.kind === "active" ? (
-                <p data-account-career-extraction="active" aria-live="polite" className="mt-4 border border-line px-4 py-3 text-sm leading-6 text-ink/70">
-                  识别任务{upload.label}…通常几十秒，识别完成自动填入表单
-                </p>
-              ) : null}
-              {upload.kind === "done" ? (
-                <p data-account-career-extraction="done" aria-live="polite" className="mt-4 border border-ink px-4 py-3 text-sm leading-6 text-ink/75">
-                  已识别并填入画像字段，请核对修改后点击「保存画像」。
-                </p>
-              ) : null}
-              {upload.kind === "error" ? (
-                <p data-account-career-extraction="error" role="alert" className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-ink/75">
-                  {upload.message}
-                </p>
-              ) : null}
-            </div>
+            <CareerResumeUpload fileInputRef={fileInputRef} handleFilePick={handleFilePick} selectedFile={selectedFile} upload={upload} uploadResume={uploadResume} />
 
             <div className="grid gap-10 border-t border-ink pt-8 md:grid-cols-2">
               <div className="space-y-8 md:col-span-2">
@@ -578,7 +507,7 @@ export default function CareerProfilePage() {
                   </div>
                   <div>
                     <label htmlFor="career-graduation-year" className="mb-1 block font-mono text-xs text-ink/60">
-                      毕业年份（可空）
+                      毕业年份（选填）
                     </label>
                     <input
                       id="career-graduation-year"
@@ -597,96 +526,17 @@ export default function CareerProfilePage() {
                   </div>
                 </div>
 
-                <div>
-                  <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-                    <label htmlFor="career-resume-text" className="block font-mono text-xs text-ink/60">
-                      经历摘要（≤4000 字）
-                    </label>
-                    <button
-                      type="button"
-                      aria-label={suification.kind === "loading" ? "酥化中" : "酥化"}
-                      aria-busy={suification.kind === "loading"}
-                      disabled={
-                        !form.resume_text.trim() ||
-                        suification.kind === "loading" ||
-                        upload.kind === "uploading" ||
-                        upload.kind === "active"
-                      }
-                      onClick={() => void suifyResume()}
-                      className="inline-flex min-h-11 items-center justify-center border border-ink px-4 py-2 font-mono text-xs transition-colors hover:bg-ink hover:text-paper disabled:cursor-wait disabled:opacity-50"
-                    >
-                      {suification.kind === "loading" ? "酥化中…" : "🧀 酥化"}
-                    </button>
-                  </div>
-                  <textarea
-                    id="career-resume-text"
-                    value={form.resume_text}
-                    onChange={(e) => setField({ resume_text: e.target.value })}
-                    disabled={suification.kind === "loading"}
-                    maxLength={FIELD_LIMITS.resume_text}
-                    rows={6}
-                    placeholder="简述项目、竞赛或实习经历，用于匹配命中原因说明。不上传文件。"
-                    className="w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none placeholder:text-ink/60 focus:border-ink"
-                  />
-                  <p className="mt-1 text-right font-mono text-xs text-ink/60">
-                    {form.resume_text.length} / {FIELD_LIMITS.resume_text}
-                  </p>
-                  <p className="mt-2 text-xs leading-5 text-ink/60">
-                    娱乐功能。点击后，当前经历摘要会发送给 HENU Kit 配置的外部 AI 模型服务。HENU Kit 仅为重试临时保存草稿最多 10 分钟，且不自动写入画像；模型服务可能按其自身政策处理请求数据。应用前请逐项核对事实。
-                  </p>
-                  {suification.kind === "preview" ? (
-                    <div
-                      data-account-career-suification="preview"
-                      className="mt-4 border border-ink px-4 py-4"
-                    >
-                      <label htmlFor="career-resume-suification-preview" className="font-mono text-xs text-ink/60">
-                        酥化预览
-                      </label>
-                      <textarea
-                        id="career-resume-suification-preview"
-                        aria-label="酥化预览"
-                        readOnly
-                        value={suification.draft}
-                        rows={6}
-                        className="mt-2 w-full resize-y border-b border-ink/30 bg-transparent py-2 font-mono text-sm leading-6 outline-none"
-                      />
-                      <div className="mt-4 flex flex-wrap items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setSuification({ kind: "idle" })}
-                          className="inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
-                        >
-                          撤销
-                        </button>
-                        <button
-                          type="button"
-                          onClick={applySuification}
-                          className="inline-flex min-h-11 items-center justify-center border border-ink bg-ink px-4 py-2 font-mono text-xs text-paper transition-colors hover:bg-paper hover:text-ink"
-                        >
-                          应用
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                  {suification.kind === "applied" ? (
-                    <button
-                      type="button"
-                      onClick={restoreSuificationOriginal}
-                      className="mt-4 inline-flex min-h-11 items-center justify-center border border-line px-4 py-2 font-mono text-xs transition-colors hover:border-ink"
-                    >
-                      恢复原文
-                    </button>
-                  ) : null}
-                  {suification.kind === "error" ? (
-                    <p
-                      data-account-career-suification="error"
-                      role="alert"
-                      className="mt-4 border border-accent px-4 py-3 text-sm leading-6 text-ink/75"
-                    >
-                      {suification.message}
-                    </p>
-                  ) : null}
-                </div>
+                <CareerResumeSummary
+                  resumeText={form.resume_text}
+                  maxLength={FIELD_LIMITS.resume_text}
+                  onChange={(value) => setField({ resume_text: value })}
+                  upload={upload}
+                  suification={suification}
+                  suifyResume={suifyResume}
+                  onDismiss={() => setSuification({ kind: "idle" })}
+                  applySuification={applySuification}
+                  restoreSuificationOriginal={restoreSuificationOriginal}
+                />
 
                 {/* 整行都是它的标签：点说明文字也能勾选，点击区是这一整块（DESIGN_SYSTEM §13，#557）。 */}
                 <label className="flex cursor-pointer items-start gap-3 border border-line px-4 py-4">
@@ -717,9 +567,12 @@ export default function CareerProfilePage() {
               </p>
             ) : null}
             {saveSuccess ? (
-              <p data-account-career-profile-save="success" aria-live="polite" className="mt-6 border border-ink px-4 py-3 text-sm leading-6 text-ink/75">
-                求职画像已保存，将用于下一次求职雷达匹配。
-              </p>
+              <div data-account-career-profile-save="success" className="mt-6 border border-ink px-4 py-3 text-sm leading-6 text-ink/75">
+                <p role="status">求职画像已保存，将用于下一次求职雷达匹配。</p>
+                <Link href="/career" className="inline-flex min-h-11 items-center text-accent-text underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring">
+                  去求职雷达发起扫描 →
+                </Link>
+              </div>
             ) : null}
 
             <div className="mt-8 flex items-center gap-4">

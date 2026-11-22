@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchLibraryMaterials,
+  formatPortalError,
   portalErrorRequestId,
 } from "@/lib/api/client";
-import type { Material as ApiMaterial } from "@/lib/api/types";
 import type { Material } from "@/lib/library/mock";
-import { rememberLibraryMaterials } from "@/lib/library/gateway";
+import { rememberLibraryMaterials, toMaterial } from "@/lib/library/gateway";
 import { MATERIAL_TYPES, type MaterialType } from "@/lib/library/material-types";
 import { readableMaterialTitle } from "@/lib/library/material-title";
 import MaterialCard from "@/components/library/material-card";
@@ -17,6 +17,7 @@ import { useReveal } from "@/components/account/use-reveal";
 import { useScrollRestoration } from "@/components/use-scroll-restoration";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
+import { matchesSearchText } from "@/lib/search-text";
 
 const TYPE_KEYS = Object.keys(MATERIAL_TYPES) as MaterialType[];
 const PAGE_SIZE = 24;
@@ -29,25 +30,6 @@ type LibraryView = {
 const DEFAULT_VIEW: LibraryView = { query: "", type: "all", subject: "all", visibleCount: PAGE_SIZE };
 // 仅 effect 写入：同一标签页内返回目录时立即恢复，不进入服务端共享状态。
 let rememberedView = DEFAULT_VIEW;
-
-function toMaterial(m: ApiMaterial): Material {
-  return {
-    id: m.id,
-    type: m.type,
-    subject: m.subject,
-    title: m.title,
-    author: m.author,
-    intro: m.intro,
-    toc: m.toc ?? [],
-    pages: [],
-    price: m.price,
-    previewPages: 0,
-    rating: m.rating,
-    downloads: m.downloads,
-    favs: m.favs,
-    downloadAvailable: m.downloadAvailable,
-  };
-}
 
 type LoadState = "loading" | "ready" | "error";
 type LibraryStatistics = {
@@ -96,7 +78,7 @@ export default function LibraryHomePage() {
       setLoadState("ready");
       return;
     } catch (loadError) {
-      setError({ message: "资料库暂时无法加载，请稍后重试。", requestId: portalErrorRequestId(loadError) });
+      setError({ message: formatPortalError(loadError), requestId: portalErrorRequestId(loadError) });
       setLoadState("error");
     }
   }, []);
@@ -115,11 +97,7 @@ export default function LibraryHomePage() {
     (m) =>
       (type === "all" || m.type === type) &&
       (subject === "all" || m.subject === subject) &&
-      // 原始标题、卡片上显示的易读标题（间隔号分段）和课程都能搜到。
-      (!query.trim() ||
-        m.title.includes(query.trim()) ||
-        readableMaterialTitle(m).includes(query.trim()) ||
-        m.subject.includes(query.trim()))
+      matchesSearchText(query, m.title, readableMaterialTitle(m), m.subject, m.author, m.intro)
   );
   const hasActiveFilter = query.trim() !== "" || type !== "all" || subject !== "all";
   const clearFilters = () => {

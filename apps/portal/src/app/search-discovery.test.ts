@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import robots from "./robots";
 import sitemap from "./sitemap";
 import nextConfig from "../../next.config";
+import { matchesSearchText } from "../lib/search-text";
 import {
   campusMetadata,
   careerMetadata,
@@ -21,6 +22,14 @@ import {
 } from "../lib/seo";
 
 describe("Portal search discovery routes", () => {
+  it("matches case-insensitively across fields and treats punctuation literally", () => {
+    expect(matchesSearchText(" python ", "入门", "PYTHON 基础")).toBe(true);
+    expect(matchesSearchText("java", "Java 复习")).toBe(true);
+    expect(matchesSearchText("C++", "c++ 组队")).toBe(true);
+    expect(matchesSearchText("c++", "C# 组队")).toBe(false);
+    expect(matchesSearchText("  ")).toBe(true);
+  });
+
   it("publishes only stable public entry points in the sitemap", () => {
     expect(sitemap()).toEqual([
       { url: "https://henukit.cn", changeFrequency: "weekly", priority: 1 },

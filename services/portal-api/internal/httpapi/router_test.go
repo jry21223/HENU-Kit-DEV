@@ -77,6 +77,59 @@ func TestNewRouterMockNoDSN(t *testing.T) {
 	}
 }
 
+func TestCampusMockItemVisibility(t *testing.T) {
+	t.Setenv("PORTAL_API_MODE", "mock")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PORTAL_ORIGIN", "")
+	t.Setenv("STUDY_DATABASE_URL", "")
+	t.Setenv("PORTAL_DATABASE_URL", "")
+	handler, err := NewRouter()
+	if err != nil {
+		t.Fatalf("router: %v", err)
+	}
+
+	const path = "/api/v1/campus/items"
+	list := httptest.NewRecorder()
+	handler.ServeHTTP(list, httptest.NewRequest(http.MethodGet, path, nil))
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", list.Code)
+	}
+	var body struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode items: %v", err)
+	}
+	visible := false
+	for _, item := range body.Items {
+		if item.ID == "s-05" {
+			t.Error("list exposed hidden item s-05")
+		}
+		visible = visible || item.ID == "h-01"
+	}
+	if !visible {
+		t.Error("list omitted visible item h-01")
+	}
+
+	for _, item := range []struct {
+		id     string
+		status int
+	}{
+		{"s-05", http.StatusNotFound},
+		{"h-01", http.StatusOK},
+	} {
+		t.Run(item.id, func(t *testing.T) {
+			detail := httptest.NewRecorder()
+			handler.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, path+"/"+item.id, nil))
+			if detail.Code != item.status {
+				t.Errorf("detail status = %d, want %d", detail.Code, item.status)
+			}
+		})
+	}
+}
+
 func TestCORSNeverStarWithCredentials(t *testing.T) {
 	t.Setenv("PORTAL_API_MODE", "mock")
 	t.Setenv("PORTAL_ORIGIN", "")

@@ -121,6 +121,8 @@ func New(flow *identity.Service, verificationFlow *verification.Service, continu
 	router.Post(contract.PlatformOperationsMembershipAccountsRoute, handler.listPlatformOperationMembershipAccounts)
 	router.Post(contract.RevokePlatformOperationSessionRoute, handler.revokePlatformOperationSession)
 	router.Post(contract.UpdatePlatformOperationAccessRoute, handler.updatePlatformOperationAccess)
+	router.Get(contract.PlatformOperationsRoute+"/roles", handler.listPlatformOperationRoles)
+	router.Post(contract.PlatformOperationsRoute+"/inbox/{item_id}/updates", handler.updatePlatformInboxItem)
 	router.Get(contract.PlatformOperationStatusRoute, handler.getPlatformOperationStatus)
 	router.Post(contract.CareerDigestMailEnqueueRoute, handler.enqueueCareerDigestMail)
 	return router
@@ -320,7 +322,7 @@ func (h *Handler) resolveConsoleUserIdentities(writer http.ResponseWriter, reque
 }
 
 func consoleTicketIdentityPermission(permission string) bool {
-	return permission == "account.tickets.read" || permission == "account.tickets.reply" || permission == "account.tickets.transition"
+	return permission == "account.tickets.read" || permission == "account.tickets.reply" || permission == "account.tickets.transition" || permission == "account.orders.read"
 }
 
 // resolveUserDisplayNames is the ADR-0038 read-only boundary that resolves a

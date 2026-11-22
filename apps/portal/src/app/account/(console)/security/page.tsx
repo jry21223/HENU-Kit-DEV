@@ -82,6 +82,7 @@ export default function SecurityPage() {
   };
 
   const submit = async () => {
+    if (pending) return;
     setError("");
     setOk(false);
     if (!oldPwd) return setError("请输入当前密码");
@@ -130,7 +131,10 @@ export default function SecurityPage() {
       {/* 点击区撑到 44px 高，外边距跟着让出（原先 mt-6），文字和下面的表单都不挪位置。 */}
       <a href="/bind/qq" className="-mb-2.5 mt-3.5 inline-flex min-h-11 items-center underline">管理 HENU Bot 的 QQ 账号绑定</a>
 
-      <section data-enter className="mt-8 max-w-md border border-ink/25 p-6">
+      <form data-enter noValidate className="mt-8 max-w-md border border-ink/25 p-6" onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}>
         <p className="font-mono text-xs text-ink/60">修改密码</p>
         <p className="mt-3 font-mono text-xs leading-5 text-ink/60">
           修改密码需当前密码与学校邮箱验证码；成功后其他设备会自动下线。
@@ -204,8 +208,7 @@ export default function SecurityPage() {
           </p>
         )}
         <button
-          type="button"
-          onClick={() => void submit()}
+          type="submit"
           disabled={pending}
           className={cn(
             "mt-5 min-h-11 border px-6 py-2.5 font-mono text-xs transition-colors",
@@ -216,7 +219,7 @@ export default function SecurityPage() {
         >
           {pending ? "提交中…" : "确认修改"}
         </button>
-      </section>
+      </form>
 
       <section data-enter className="mt-10">
         <p className="font-mono text-xs text-ink/60">

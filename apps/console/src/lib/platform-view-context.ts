@@ -2,11 +2,11 @@ import type { PlatformOperationsPageRequest } from "./console-gateway";
 
 export type PlatformPageSection = "accounts_page" | "sessions_page" | "inbox_page" | "audit_page";
 export type PlatformCursorHistory = Record<PlatformPageSection, Array<string | undefined>>;
-export type InboxStatusFilter = "all" | "open" | "in_progress" | "blocked" | "resolved" | "archived";
+export type InboxStatusFilter = "all" | "open" | "in_progress" | "blocked" | "resolved" | "cancelled" | "archived";
 export const platformPageSections: PlatformPageSection[] = ["accounts_page", "sessions_page", "inbox_page", "audit_page"];
 export const platformCursorFields = { accounts_page: "accounts_cursor", sessions_page: "sessions_cursor", inbox_page: "inbox_cursor", audit_page: "audit_cursor" } as const;
 const storageKey = "henukit.console.platform-view.v1";
-const statuses = ["all", "open", "in_progress", "blocked", "resolved", "archived"];
+const statuses = ["all", "open", "in_progress", "blocked", "resolved", "cancelled", "archived"];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface PlatformViewContext {
   pages: PlatformOperationsPageRequest;

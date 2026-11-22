@@ -29,7 +29,9 @@ modules:
     deploy_unit: study-web
     current_domain: study.superhuazai.me
     target_domain: study.henukit.cn
-    status: migrate_in_place
+    status: retired_keep_source
+    notes:
+      - Retired legacy Study web surface; Portal (apps/portal) is the active public product
 
   - id: study_legacy_admin
     kind: web_app
@@ -47,12 +49,23 @@ modules:
     current_path: apps/console
     target_path: apps/console
     owner: platform
-    deploy_unit: henukit-console
+    deploy_unit: console
     target_domain: console.henukit.cn
     status: active
     notes:
-      - Primary ops/admin UI; dual Study admin entry is retired from product path
+      - Primary ops/admin UI (React 19 + Ant Design 6 + Vite 8, ADR-0060)
       - Served on its own subdomain so same-origin /api/* reaches Console Gateway
+
+  - id: console_gateway
+    kind: go_service
+    current_path: services/console-gateway
+    target_path: services/console-gateway
+    owner: platform
+    deploy_unit: console-gateway
+    status: active
+    notes:
+      - Stateless BFF and authorization/aggregation boundary for HENUKit Console
+      - Proxies controlled management commands to Platform Core, Account Portfolio, Food, Notice, Library, and QuizCraft
 
   - id: study_api
     kind: go_service
@@ -60,10 +73,9 @@ modules:
     target_path: services/study-api
     owner: study
     deploy_unit: study-api
-    status: mixed_legacy
+    status: retired_keep_source
     notes:
-      - 当前包含账号、资料、刷题、社区、支付、AI 等混合能力
-      - 公共能力迁出前不得直接改名为 platform-core
+      - Retired legacy Study monolith; ADR-0037 removed the Library legacy adapter
 
   - id: study_worker
     kind: go_worker
@@ -71,7 +83,7 @@ modules:
     target_path: services/study-worker
     owner: study
     deploy_unit: study-worker
-    status: migrate_in_place
+    status: retired_keep_source
 
   - id: quizcraft_product
     kind: imported_product
@@ -257,19 +269,26 @@ data_owners:
   sessions: platform_core
   account_links: platform_core
   user_roles: platform_core
-  memberships: platform_core
-  entitlement_grants: platform_core
-  notifications: platform_core
   email_deliveries: platform_core
+  operations_inbox: platform_core
   user_metrics: platform_core
-  courses: study_api
-  materials: study_api
-  material_files: study_api
-  material_downloads: study_api
+  memberships: account_portfolio
+  membership_orders: account_portfolio
+  points_ledger: account_portfolio
+  notifications: account_portfolio
+  support_tickets: account_portfolio
+  campus_notices: notice
+  courses: library
+  materials: library
+  material_files: library
+  material_downloads: library
   question_banks: quizcraft_product
   questions: quizcraft_product
   attempts: quizcraft_product
   wrong_questions: quizcraft_product
   rankings: quizcraft_product
   food_rankings: food
+  food_posts: food
+  career_opportunities: career_opportunities
+  career_profiles: career_opportunities
   tool_catalog: portal

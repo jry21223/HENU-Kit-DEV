@@ -24,10 +24,17 @@ import ItemCard from "@/components/campus/item-card";
 import SubHero from "@/components/site-hero/sub-hero";
 import { SceneHandshake } from "@/components/site-hero/scenes";
 import { useReveal } from "@/components/account/use-reveal";
+import { useScrollRestoration } from "@/components/use-scroll-restoration";
 import { EmptyBlock, ErrorBanner, LoadingBlock } from "@/components/data-state";
 import { cn } from "@/lib/cn";
+import { matchesSearchText } from "@/lib/search-text";
+import { CampusContactDialog, CampusPublishDialog } from "@/components/campus/campus-actions";
 
 type LoadState = "loading" | "ready" | "error";
+type CampusView = { query: string; cat: string; type: ItemType | "all" };
+const DEFAULT_VIEW: CampusView = { query: "", cat: "all", type: "all" };
+// 仅 effect 写入：同一标签页内从单子详情返回时保留筛选与滚动位置（与资料库/美食榜一致）。
+let rememberedView: CampusView = DEFAULT_VIEW;
 
 function toItem(it: CampusItem): Item {
   return {
@@ -55,15 +62,23 @@ function toCategories(cats: CampusCategory[] | null): Category[] {
 }
 
 export default function MarketPage() {
+  const [view, setView] = useState<CampusView>(rememberedView);
+  const { query, cat, type } = view;
   const [items, setItems] = useState<Item[]>([]);
   const [categories, setCategories] = useState<Category[]>(CATEGORIES);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
-  const [query, setQuery] = useState("");
-  const [cat, setCat] = useState<string>("all");
-  const [type, setType] = useState<ItemType | "all">("all");
   const filtersRef = useRef<HTMLDivElement>(null);
   useReveal();
+  useScrollRestoration(loadState === "ready");
+
+  useEffect(() => {
+    rememberedView = view;
+  }, [view]);
+
+  const setQuery = (next: string) => setView((v) => ({ ...v, query: next }));
+  const setCat = (next: string) => setView((v) => ({ ...v, cat: next }));
+  const setType = (next: ItemType | "all") => setView((v) => ({ ...v, type: next }));
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -110,15 +125,13 @@ export default function MarketPage() {
       it.status !== "hidden" &&
       (cat === "all" || it.category === cat) &&
       (type === "all" || it.type === type) &&
-      (!query.trim() || it.title.includes(query.trim()))
+      matchesSearchText(query, it.title, it.desc, it.place ?? "")
   );
   const openCount = items.filter((i) => i.status !== "hidden").length;
   const doneCount = items.filter((i) => i.status === "done").length;
   const hasActiveFilter = query.trim() !== "" || cat !== "all" || type !== "all";
   const clearFilters = () => {
-    setQuery("");
-    setCat("all");
-    setType("all");
+    setView(DEFAULT_VIEW);
     // 清除筛选按钮会随空状态一起消失；焦点交给刚复位的搜索与筛选区，键盘和读屏用户不丢位置。
     // 不直接聚焦搜索框：手机上会弹出输入法，挡住刚恢复的列表。
     filtersRef.current?.focus();
@@ -132,7 +145,7 @@ export default function MarketPage() {
         index="04"
         en="CAMPUS MARKET"
         title="互助平台"
-        slogan="可浏览互助与闲置信息；发布、接单和结算暂未开放。"
+        slogan="发布互助或闲置单，双方同意后交换联系方式。"
         counters={[
           { label: "在架单子", value: loadState === "ready" ? openCount : null, busy: loadState === "loading" },
           { label: "已完成单子", value: loadState === "ready" ? doneCount : null, busy: loadState === "loading" },
@@ -143,6 +156,10 @@ export default function MarketPage() {
       />
 
       <div className="mx-auto max-w-site px-5 py-6 md:px-8 lg:py-10">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <CampusContactDialog path="/campus" />
+          <CampusPublishDialog categories={categories} />
+        </div>
         {loadState === "error" && error && (
           <ErrorBanner message={error.message} requestId={error.requestId} onRetry={() => void load()} className="mb-6" />
         )}

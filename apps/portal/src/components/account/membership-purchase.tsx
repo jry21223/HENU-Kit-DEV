@@ -155,9 +155,9 @@ export function MembershipPurchase({ onPaid }: { onPaid: () => void }) {
       {state.kind === "starting" ? (
         <p
           aria-live="polite"
-          className="mt-6 font-mono text-xs tracking-[0.2em] text-ink/60"
+          className="mt-6 font-mono text-xs text-ink/60"
         >
-          CREATING ORDER<span aria-hidden className="animate-pulse text-accent-text">…</span>
+          正在创建订单<span aria-hidden className="animate-pulse text-accent-text">…</span>
         </p>
       ) : null}
 

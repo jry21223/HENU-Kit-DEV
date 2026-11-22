@@ -38,6 +38,8 @@ func main() {
 		LibraryAPIURL: config.LibraryAPIURL, LibraryCredentials: overview.Credentials{ClientID: config.LibraryCredentials.ClientID, ClientSecret: config.LibraryCredentials.ClientSecret, KeyID: config.LibraryCredentials.KeyID},
 		FoodAPIURL: config.FoodAPIURL, FoodCredentials: overview.Credentials{ClientID: config.FoodCredentials.ClientID, ClientSecret: config.FoodCredentials.ClientSecret, KeyID: config.FoodCredentials.KeyID},
 		AccountPortfolioAPIURL: config.AccountPortfolioAPIURL, AccountPortfolioCredentials: overview.Credentials{ClientID: config.AccountPortfolioCredentials.ClientID, ClientSecret: config.AccountPortfolioCredentials.ClientSecret, KeyID: config.AccountPortfolioCredentials.KeyID},
+		CareerAPIURL: config.CareerAPIURL, CareerCredentials: overview.Credentials{ClientID: config.CareerCredentials.ClientID, ClientSecret: config.CareerCredentials.ClientSecret, KeyID: config.CareerCredentials.KeyID},
+		CampusAPIURL: config.CampusAPIURL, CampusCredentials: overview.Credentials{ClientID: config.CampusCredentials.ClientID, ClientSecret: config.CampusCredentials.ClientSecret, KeyID: config.CampusCredentials.KeyID},
 	})
 	if err != nil {
 		logger.Error("create_gateway", "error", err)

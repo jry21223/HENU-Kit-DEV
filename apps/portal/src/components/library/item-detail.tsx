@@ -7,6 +7,7 @@ import { readableMaterialTitle } from "@/lib/library/material-title";
 import { relatedMaterials } from "@/lib/library/related-materials";
 import { getMaterials, loadLibraryMaterials } from "@/lib/library/gateway";
 import MaterialCard from "@/components/library/material-card";
+import Collapse from "@/components/ui/collapse";
 import { useReveal } from "@/components/account/use-reveal";
 import { LibraryLoading, LibraryNotFound, LibraryUnavailable } from "@/components/library/material-states";
 import { useMaterialDetail } from "@/lib/library/use-material-detail";
@@ -46,7 +47,8 @@ export default function ItemDetail({ id }: { id: string }) {
   const title = readableMaterialTitle(material);
   const free = material.price === 0;
   const related = relatedMaterials(catalog, material);
-  const toc = tocOpen ? material.toc : material.toc.slice(0, 6);
+  const tocHead = material.toc.slice(0, 6);
+  const tocRest = material.toc.slice(6);
 
   return (
     <main className="mx-auto max-w-site px-5 py-10 md:px-8">
@@ -86,13 +88,26 @@ export default function ItemDetail({ id }: { id: string }) {
                 <span className="tracking-[0.25em]">CONTENTS</span> / 目录
               </p>
               <ul className="mt-2 border-t border-line">
-                {toc.map((c, i) => (
+                {tocHead.map((c, i) => (
                   <li key={i} className="flex gap-3 border-b border-line py-2 font-mono text-xs text-ink/70">
                     <span className="text-ink/60">{String(i + 1).padStart(2, "0")}</span>
                     {c}
                   </li>
                 ))}
               </ul>
+              {/* 第七节起按高度展开 / 收起，前六节不动。 */}
+              {tocRest.length > 0 && (
+                <Collapse open={tocOpen}>
+                  <ul>
+                    {tocRest.map((c, i) => (
+                      <li key={i} className="flex gap-3 border-b border-line py-2 font-mono text-xs text-ink/70">
+                        <span className="text-ink/60">{String(i + 7).padStart(2, "0")}</span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </Collapse>
+              )}
               {/* 文字按钮的点击区撑到 44 × 44：上下各多出 14px，外边距跟着让出，文字仍在原位（原先 mt-2）。 */}
               {material.toc.length > 6 && (
                 <button
