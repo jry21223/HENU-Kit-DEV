@@ -51,14 +51,16 @@ function FavoriteRow({
               </span>
             )}
           </div>
-          <p className="mt-1.5 truncate font-mono text-xs text-ink/70">{item.question_id}</p>
-          {item.available && item.question_version_id ? (
+          <p className="mt-1.5 text-sm font-medium text-ink">
+            已收藏题目 #{String(index + 1).padStart(2, "0")}
+          </p>
+          {item.available ? (
             <p className="mt-0.5 font-mono text-xs text-ink/60">
-              内容版本 {item.question_version_id.slice(0, 8)}
+              题目编号 {item.question_id.slice(0, 8)} · 点击右上角「发起收藏练习」即可作答
             </p>
           ) : (
             <p className="mt-0.5 font-mono text-xs text-ink/60">
-              题目内容暂不可用，保留收藏关系
+              题目内容暂不可用，已保留收藏记录
             </p>
           )}
         </div>
@@ -178,10 +180,10 @@ export default function FavoritesFolder({ bankID }: { bankID: string }) {
     <main className="mx-auto max-w-site px-5 py-12 md:px-8 md:py-16">
       <div data-block ref={heroRef} className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-            <span className="text-accent-text">FAV</span>
+          <p className="font-mono text-xs text-ink/60">
+            <span className="text-accent-text">收藏夹</span>
             <span className="mx-2">/</span>
-            BANK {bankID.slice(0, 8)}
+            练习收藏
           </p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
             {bankName || "题库收藏夹"}

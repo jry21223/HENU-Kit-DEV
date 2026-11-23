@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deprecated wrapper. The verified one-command local build-and-deploy flow is
+# Deprecated deployment entry point retained for older automation. Use
 # scripts/ops/deploy-henukit-local.sh (see docs/operations/henukit-local-deploy.md).
 # This wrapper exists only so older references keep working; it forwards to the
 # verified script.

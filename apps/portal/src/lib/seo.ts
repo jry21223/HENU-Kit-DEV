@@ -157,7 +157,7 @@ export const foodMetadata: Metadata = pageMetadata(
 export const campusMetadata: Metadata = pageMetadata(
   "/campus",
   MODULE_TITLES.campus,
-  "HENU Kit 互助平台可浏览同校互助与闲置信息；发布、接单和结算暂未开放。学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
+  "HENU Kit 互助平台可发布与浏览同校互助和闲置信息，双方同意后交换联系方式；线上接单与结算暂未开放。学生自主运营，非河南大学官方项目，信息以河南大学及各学院官方来源为准。"
 );
 
 export const careerMetadata: Metadata = pageMetadata(

@@ -158,6 +158,20 @@ func (f *fakeAccountPortfolio) RefundMembershipOrder(_ context.Context, actor, o
 	f.actor, f.orderID, f.key, f.orderCommandBody, f.refundOrderCalls = actor, orderID, key, append([]byte(nil), body...), f.refundOrderCalls+1
 	return f.order, f.err
 }
+func (f *fakeAccountPortfolio) Points(_ context.Context, actor, userID string, _ url.Values) (json.RawMessage, error) {
+	f.actor, f.membershipUserID = actor, userID
+	if len(f.points) > 0 {
+		return f.points, f.err
+	}
+	return json.RawMessage(`{"balance":0,"entries":[]}`), f.err
+}
+func (f *fakeAccountPortfolio) MembershipOrders(_ context.Context, actor string, _ url.Values) (json.RawMessage, error) {
+	f.actor = actor
+	if len(f.order) > 0 {
+		return f.order, f.err
+	}
+	return json.RawMessage(`{"orders":[]}`), f.err
+}
 func (f *fakeAccountPortfolio) MembershipOrderRefund(_ context.Context, actor, orderID, refundID string) (json.RawMessage, error) {
 	f.actor, f.orderID, f.refundID, f.refundReadCalls = actor, orderID, refundID, f.refundReadCalls+1
 	return f.order, f.err
@@ -197,6 +211,13 @@ func (f *fakeLibrary) Operation(_ context.Context, actor, _, key string) (json.R
 func (f *fakeNotice) Snapshot(_ context.Context, actor string) (json.RawMessage, error) {
 	f.actor = actor
 	return f.snapshot, nil
+}
+func (f *fakeNotice) Sources(_ context.Context, actor string) (json.RawMessage, error) {
+	f.actor = actor
+	if len(f.result) > 0 {
+		return f.result, nil
+	}
+	return json.RawMessage(`{"sources":[]}`), nil
 }
 func (f *fakeNotice) CreateSource(_ context.Context, actor, key string, _ []byte) (json.RawMessage, error) {
 	f.actor, f.key = actor, key
@@ -321,6 +342,21 @@ func (fake *fakePlatform) CheckAccount(_ context.Context, token, permission stri
 func (fake *fakePlatform) PlatformOperations(_ context.Context, token string, pages platformcore.PlatformOperationPages) (json.RawMessage, error) {
 	fake.operationToken, fake.operationPages = token, pages
 	return fake.operations, fake.checkErr
+}
+
+func (fake *fakePlatform) Roles(_ context.Context, token string) (json.RawMessage, error) {
+	if token != fake.exchange.ExchangeToken {
+		return nil, platformcore.ErrUnauthorized
+	}
+	return json.RawMessage(`{"roles":[{"code":"platform-operator","display_name":"平台总控管理员","permissions":["platform.operations.read","platform.operations.write"]}]}`), fake.checkErr
+}
+
+func (fake *fakePlatform) UpdateInbox(_ context.Context, token, _, _ string, _ []byte) (json.RawMessage, error) {
+	fake.operationToken = token
+	if token != fake.exchange.ExchangeToken {
+		return nil, platformcore.ErrUnauthorized
+	}
+	return json.RawMessage(`{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","status":"in_progress","version":2}`), fake.checkErr
 }
 
 func (fake *fakePlatform) SearchPlatformOperationAccounts(_ context.Context, token string, body []byte) (json.RawMessage, error) {

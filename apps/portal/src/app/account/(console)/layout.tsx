@@ -38,8 +38,8 @@ type SessionState =
 function LoadingBlock() {
   return (
     <main data-account-session-state="loading" className="flex min-h-[60vh] items-center justify-center">
-      <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-        AUTH CHECK<span aria-hidden className="animate-pulse text-accent-text">…</span>
+      <p className="font-mono text-xs text-ink/60">
+        正在核对登录状态<span className="animate-pulse text-accent-text">…</span>
       </p>
     </main>
   );
@@ -98,6 +98,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   // path so the OAuth entry can resume the account route after sign-in.
   useEffect(() => {
     if (sessionState.kind === "anonymous") {
+      clearCachedSession();
       redirectToAccountLogin();
     }
   }, [redirectToAccountLogin, sessionState.kind]);
@@ -109,6 +110,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
       // Clears the Gateway session (including the Core session revocation)
       // and the cached local user, so the login page stays put.
       await logout();
+      requestVersion.current += 1;
       clearCachedSession();
       router.replace("/account/login");
     } catch (error) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# Deprecated: backs up the retired Study PostgreSQL stack. Retained for historical recovery only.
 set -eu
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.example.yml}"

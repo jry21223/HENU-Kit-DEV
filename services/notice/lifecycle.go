@@ -15,6 +15,29 @@ type lifecycleStore struct {
 	database *pgxpool.Pool
 }
 
+type sourceView struct {
+	ID           string    `json:"id"`
+	Code         string    `json:"code"`
+	Name         string    `json:"name"`
+	CanonicalURL string    `json:"canonical_url"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (s *lifecycleStore) listSources(ctx context.Context) ([]sourceView, error) {
+	rows, err := s.database.Query(ctx, `SELECT id::text, code, name, canonical_url, created_at FROM notice_sources ORDER BY created_at DESC, id DESC LIMIT 200`)
+	if err != nil {
+		return nil, err
+	}
+	sources, err := pgx.CollectRows(rows, pgx.RowToStructByPos[sourceView])
+	if err != nil {
+		return nil, err
+	}
+	if sources == nil {
+		return []sourceView{}, nil
+	}
+	return sources, nil
+}
+
 func (s *lifecycleStore) createSource(ctx context.Context, tx pgx.Tx, value actor, requestID string, input sourceInput) (map[string]any, error) {
 	id := uuid.New()
 	_, err := tx.Exec(ctx, `INSERT INTO notice_sources (id,code,name,canonical_url,created_by) VALUES ($1,$2,$3,$4,$5)`, id, input.Code, input.Name, input.CanonicalURL, value.userID)

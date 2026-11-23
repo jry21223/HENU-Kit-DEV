@@ -1,0 +1,2681 @@
+openapi: 3.1.0
+info:
+  title: HENU Kit Console and Campus extensions
+  version: 0.1.0
+  description: Phase 2 operations reads and writes, Phase 6 Library, Career and Campus operations, and signed-in
+    Campus workflows. Paths use the browser gateway unless an operation supplies a service origin. x-upstream
+    names the corresponding owner route.
+servers:
+  - url: https://console.henukit.cn
+    description: Console gateway
+paths:
+  /api/v1/notices/sources:
+    get:
+      operationId: listNoticeSourcesExtension
+      summary: List registered Notice sources
+      security:
+        - consoleSession: []
+      x-permission: notice.read
+      x-upstream: GET /api/v1/sources
+      x-scope: product:notice
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - sources
+                    properties:
+                      sources:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/NoticeSource"
+                        maxItems: 200
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/operations/roles:
+    get:
+      operationId: listPlatformRolesExtension
+      summary: List active Platform roles
+      security:
+        - consoleSession: []
+      x-permission: platform.operations.read
+      x-upstream: GET /api/v1/platform-operations/roles
+      x-scope: platform
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - roles
+                    properties:
+                      roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PlatformRole"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/operations/inbox/{item_id}/updates:
+    post:
+      operationId: updatePlatformInboxExtension
+      summary: Update a Platform operations inbox item
+      security:
+        - consoleSession: []
+      x-permission: platform.operations.write
+      x-upstream: POST /api/v1/platform-operations/inbox/{item_id}/updates
+      x-scope: platform
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboxUpdate"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/InboxItem"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: Requires the exact Console HTTPS Origin.
+  /api/v1/account/points/{user_id}:
+    get:
+      operationId: getAccountPointsExtension
+      summary: Read a user balance and recent ledger entries
+      security:
+        - consoleSession: []
+      x-permission: account.points.adjust
+      x-upstream: GET /api/v1/console/points/{user_id}
+      x-scope: product:account-portfolio
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Points"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: An empty ledger returns balance zero and an empty entries array.
+  /api/v1/account/membership-orders:
+    get:
+      operationId: listMembershipOrdersExtension
+      summary: List membership orders by creation time, newest first
+      security:
+        - consoleSession: []
+      x-permission: account.orders.read
+      x-upstream: GET /api/v1/console/membership-orders
+      x-scope: product:account-portfolio
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - all
+              - created
+              - pending_payment
+              - paid
+              - closed
+              - refunded
+        - name: user_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - orders
+                    properties:
+                      orders:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/MembershipOrder"
+                        maxItems: 100
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: Only public order and refund identifiers are returned.
+  /api/v1/library/readiness:
+    get:
+      operationId: getLibraryCatalogReadinessExtension
+      summary: Read native catalog capabilities
+      security:
+        - consoleSession: []
+      x-permission: library.read
+      x-upstream: GET /api/v1/console-readiness
+      x-scope: product:library
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LibraryReadiness"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/library:
+    get:
+      operationId: getLibraryCatalogWorkspaceExtension
+      summary: Read native courses, materials, corrections and immutable releases
+      security:
+        - consoleSession: []
+      x-permission: library.read
+      x-upstream: GET /api/v1/workspace
+      x-scope: product:library
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LibraryWorkspace"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/library/commands:
+    post:
+      operationId: writeLibraryCatalogExtension
+      summary: Apply a versioned Library catalog command
+      security:
+        - consoleSession: []
+      x-permission: library.manage or library.review
+      x-upstream: POST /api/v1/commands
+      x-scope: product:library
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryCommand"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LibraryCommandResult"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: The command kind selects library.manage or library.review. Catalog writes do not activate public
+        download releases.
+  /api/v1/library/operations/{operation}:
+    get:
+      operationId: getLibraryCatalogOperationExtension
+      summary: Read the original Library command result
+      security:
+        - consoleSession: []
+      x-permission: library.manage or library.review
+      x-upstream: GET /api/v1/operations/{operation}
+      x-scope: product:library
+      parameters:
+        - name: operation
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LibraryCommandResult"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: Use the original Idempotency-Key and the command kind. The result is scoped to the authenticated
+        operator and client.
+  /api/v1/career/workspace:
+    get:
+      operationId: getCareerWorkspaceExtension
+      summary: Read recent scans, resume extraction status and digest delivery
+      security:
+        - consoleSession: []
+      x-permission: career.read
+      x-upstream: GET /api/v1/console/workspace
+      x-scope: product:career
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CareerWorkspace"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: Includes operational metadata without resume text, file contents or extracted resume fields.
+  /api/v1/career/searches/{search_id}/retry-digest:
+    post:
+      operationId: retryCareerDigestExtension
+      summary: Retry a digest for a completed search
+      security:
+        - consoleSession: []
+      x-permission: career.manage
+      x-upstream: POST /api/v1/console/searches/{search_id}/retry-digest
+      x-scope: product:career
+      parameters:
+        - name: search_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DigestRetry"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /api/v1/campus/workspace:
+    get:
+      operationId: getCampusWorkspaceExtension
+      summary: Read Campus moderation workspace
+      security:
+        - consoleSession: []
+      x-permission: campus.read
+      x-upstream: GET /api/v1/campus/console/workspace
+      x-scope: product:campus
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CampusWorkspace"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: Includes hidden items and messages. Contact exchange data is limited to aggregate counts.
+  /api/v1/campus/items/{id}/moderate:
+    post:
+      operationId: moderateCampusItemExtension
+      summary: Hide, restore, or close a Campus item
+      security:
+        - consoleSession: []
+      x-permission: campus.moderate
+      x-upstream: POST /api/v1/campus/console/items/{id}/moderate
+      x-scope: product:campus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemModeration"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - id
+                      - status
+                      - version
+                      - moderation_note
+                    properties:
+                      id:
+                        type: string
+                      status:
+                        type: string
+                      version:
+                        type: integer
+                        minimum: 1
+                      moderation_note:
+                        type: string
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: Requires a same-origin Console request.
+  /api/v1/campus/messages/{id}/moderate:
+    post:
+      operationId: moderateCampusMessageExtension
+      summary: Hide or restore a Campus message
+      security:
+        - consoleSession: []
+      x-permission: campus.moderate
+      x-upstream: POST /api/v1/campus/console/messages/{id}/moderate
+      x-scope: product:campus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageModeration"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - id
+                      - hidden
+                    properties:
+                      id:
+                        type: string
+                      hidden:
+                        type: boolean
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      description: Requires a same-origin Console request.
+  /api/v1/console-summary:
+    get:
+      operationId: getLibraryOrCareerSummaryExtension
+      summary: Library or Career operations summary
+      security:
+        - ownerHmac: []
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ConsoleSummary"
+                  request_id:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      servers:
+        - url: https://library.example.invalid
+          description: Library service origin
+        - url: https://career.example.invalid
+          description: Career service origin
+  /api/v1/campus/console-summary:
+    get:
+      operationId: getCampusSummaryExtension
+      summary: Campus operations summary
+      security:
+        - ownerHmac: []
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - request_id
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ConsoleSummary"
+                  request_id:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+      servers:
+        - url: https://portal-api.example.invalid
+          description: Campus service origin
+  /api/v1/campus/contact-book:
+    get:
+      operationId: getCampusContactBookExtension
+      summary: Read the signed-in student’s private Contact Book
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - contact
+                  - request_id
+                properties:
+                  contact:
+                    $ref: "#/components/schemas/ContactBook"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+    put:
+      operationId: updateCampusContactBookExtension
+      summary: Replace the signed-in student’s private Contact Book
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactUpdate"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - contact
+                  - request_id
+                properties:
+                  contact:
+                    $ref: "#/components/schemas/ContactBook"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+  /api/v1/campus/items:
+    post:
+      operationId: createCampusItemExtension
+      summary: Publish a help request or sale listing
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampusItemCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - item
+                  - request_id
+                properties:
+                  item:
+                    $ref: "#/components/schemas/CampusItem"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+  /api/v1/campus/items/{id}/messages:
+    post:
+      operationId: createCampusMessageExtension
+      summary: Post a message on a visible listing
+      security:
+        - portalSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                  - request_id
+                properties:
+                  message:
+                    $ref: "#/components/schemas/CampusMessage"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+  /api/v1/campus/items/{id}/exchanges:
+    get:
+      operationId: listCampusExchangesExtension
+      summary: List only exchanges involving the authenticated student
+      security:
+        - portalSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - viewer_user_id
+                  - is_owner
+                  - exchanges
+                  - request_id
+                properties:
+                  viewer_user_id:
+                    type: string
+                    format: uuid
+                  is_owner:
+                    type: boolean
+                  exchanges:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CampusExchange"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+    post:
+      operationId: requestCampusExchangeExtension
+      summary: Request a contact exchange by selecting configured channels
+      security:
+        - portalSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - channels
+              properties:
+                channels:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - qq
+                      - wechat
+                      - phone
+                  maxItems: 3
+                  minItems: 1
+                  uniqueItems: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - exchange
+                  - request_id
+                properties:
+                  exchange:
+                    $ref: "#/components/schemas/CampusExchange"
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+  /api/v1/campus/items/{id}/exchanges/{exchange_id}/respond:
+    post:
+      operationId: respondCampusExchangeExtension
+      summary: Accept or decline an exchange as the listing owner
+      security:
+        - portalSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: exchange_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - accept
+                    - decline
+                channels:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - qq
+                      - wechat
+                      - phone
+                  maxItems: 3
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - exchange
+                  - item_status
+                  - request_id
+                properties:
+                  exchange:
+                    $ref: "#/components/schemas/CampusExchange"
+                  item_status:
+                    type: string
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      description: Accepting requires at least one configured channel and makes the exchange snapshots visible to
+        its two participants.
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+  /api/v1/campus/items/{id}/complete:
+    post:
+      operationId: completeCampusItemExtension
+      summary: Complete a listing as its owner
+      security:
+        - portalSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - item_id
+                  - status
+                  - request_id
+                properties:
+                  item_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - done
+                  request_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/CampusError"
+        "401":
+          $ref: "#/components/responses/CampusError"
+        "403":
+          $ref: "#/components/responses/CampusError"
+        "404":
+          $ref: "#/components/responses/CampusError"
+        "409":
+          $ref: "#/components/responses/CampusError"
+        "503":
+          $ref: "#/components/responses/CampusError"
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+  /api/v1/campus/categories:
+    get:
+      operationId: listCampusCategoriesExtension
+      summary: List standard Campus categories
+      servers:
+        - url: https://henukit.cn
+          description: Portal gateway
+      security: []
+      responses:
+        "200":
+          description: Standard categories available in both live and local mode.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - categories
+                  - request_id
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - key
+                        - name
+                        - code
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          type: string
+                        code:
+                          type: string
+                  request_id:
+                    type: string
+        "503":
+          $ref: "#/components/responses/CampusError"
+components:
+  securitySchemes:
+    consoleSession:
+      type: apiKey
+      in: cookie
+      name: __Host-henukit_console_session
+    portalSession:
+      type: apiKey
+      in: cookie
+      name: __Host-henukit_portal_session
+    ownerHmac:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: Service credentials and five-line HMAC over method, RequestURI, timestamp, nonce and hex SHA-256
+        body digest.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+  responses:
+    Error:
+      description: Invalid request, expired session, insufficient permission, missing item, conflict, or unavailable
+        dependency.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    CampusError:
+      description: Campus rejected the request or is unavailable.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - type: object
+                required:
+                  - error
+                  - message
+                  - request_id
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
+              - $ref: "#/components/schemas/Error"
+  schemas:
+    NoticeSource:
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - canonical_url
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        canonical_url:
+          type: string
+          format: uri
+        created_at:
+          type: string
+          format: date-time
+    PlatformRole:
+      type: object
+      required:
+        - code
+        - display_name
+        - permissions
+      properties:
+        code:
+          type: string
+        display_name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    InboxUpdate:
+      type: object
+      required:
+        - expected_version
+        - status
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - open
+            - in_progress
+            - blocked
+            - resolved
+            - archived
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - urgent
+        source_product_code:
+          type: string
+        source_resource_type:
+          type: string
+        source_resource_id:
+          type: string
+    InboxItem:
+      type: object
+      required:
+        - id
+        - status
+        - priority
+        - version
+        - source_product_code
+        - source_resource_type
+        - source_resource_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - open
+            - in_progress
+            - blocked
+            - resolved
+            - archived
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - urgent
+        version:
+          type: integer
+          minimum: 1
+        source_product_code:
+          type: string
+        source_resource_type:
+          type: string
+        source_resource_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        owner_user_id:
+          type: string
+          format: uuid
+        sla_due_at:
+          type: string
+          format: date-time
+        source_resource_url:
+          type: string
+          format: uri
+      description: The updated Operations Inbox item.
+    Points:
+      type: object
+      required:
+        - balance
+        - entries
+      properties:
+        balance:
+          type: integer
+          format: int64
+        entries:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - amount
+              - reason
+              - created_at
+            properties:
+              id:
+                type: string
+                format: uuid
+              amount:
+                type: integer
+                format: int64
+              reason:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+          maxItems: 50
+    MembershipOrder:
+      type: object
+      required:
+        - id
+        - user_id
+        - plan
+        - amount_cents
+        - status
+        - version
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        plan:
+          type: string
+          enum:
+            - lifetime
+        amount_cents:
+          type: integer
+          format: int64
+        status:
+          type: string
+          description: Current owner state. Unfiltered results may include failed orders.
+        version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        paid_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+        refunded_at:
+          type: string
+          format: date-time
+        latest_refund:
+          type: object
+          required:
+            - id
+            - status
+            - amount_cents
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+            amount_cents:
+              type: integer
+              format: int64
+    ConsoleSummary:
+      type: object
+      required:
+        - id
+        - status
+        - as_of
+        - status_message
+        - metrics
+      properties:
+        id:
+          type: string
+          enum:
+            - library
+            - career
+            - campus
+        status:
+          type: string
+          enum:
+            - ok
+            - partial
+        as_of:
+          type: string
+          format: date-time
+        status_message:
+          type: string
+        metrics:
+          type: array
+          items:
+            type: object
+            required:
+              - label
+              - value
+            properties:
+              label:
+                type: string
+              value:
+                type: string
+          maxItems: 8
+    LibraryReadiness:
+      type: object
+      required:
+        - management
+        - reason
+        - capabilities
+        - checked_at
+      properties:
+        management:
+          type: string
+          enum:
+            - ready
+        reason:
+          type: string
+          enum:
+            - native_catalog_ready
+        capabilities:
+          type: object
+          required:
+            - courses_write
+            - materials_write
+            - review
+            - releases_read
+            - workspace
+            - commands
+            - operation_results
+          properties:
+            courses_write:
+              type: boolean
+            materials_write:
+              type: boolean
+            review:
+              type: boolean
+            releases_read:
+              type: boolean
+            workspace:
+              type: boolean
+            commands:
+              type: boolean
+            operation_results:
+              type: boolean
+        checked_at:
+          type: string
+          format: date-time
+    LibraryCourse:
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - department
+        - slug
+        - grade
+        - status
+        - version
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        department:
+          type: string
+        slug:
+          type: string
+        grade:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - archived
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    LibraryMaterial:
+      type: object
+      required:
+        - id
+        - course_id
+        - title
+        - type
+        - file_name
+        - file_size
+        - access_level
+        - status
+        - version
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        course_id:
+          type: string
+          format: uuid
+        course_name:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum:
+            - handout
+            - exam
+            - slides
+            - exercise
+            - answer
+            - note
+            - textbook
+        description:
+          type: string
+        file_name:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+        access_level:
+          type: string
+          enum:
+            - public_free
+            - authenticated
+            - restricted
+        status:
+          type: string
+          enum:
+            - draft
+            - pending_review
+            - published
+            - archived
+        source_note:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    LibraryCorrection:
+      type: object
+      required:
+        - id
+        - target_type
+        - target_id
+        - reason
+        - description
+        - status
+        - version
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        material_id:
+          type: string
+          format: uuid
+        material_title:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        reason:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum:
+            - open
+            - in_progress
+            - resolved
+            - dismissed
+        resolution_note:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    LibraryWorkspace:
+      type: object
+      required:
+        - status
+        - status_message
+        - degraded
+        - courses
+        - materials
+        - corrections
+        - submissions
+        - releases
+        - downloads
+        - download_stats
+        - generated_at
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - partial
+        status_message:
+          type: string
+        degraded:
+          type: boolean
+        courses:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryCourse"
+        materials:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryMaterial"
+        corrections:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryCorrection"
+        submissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryMaterial"
+        releases:
+          type: array
+          items:
+            type: object
+            required:
+              - release_id
+              - state
+              - snapshot_count
+              - receipt_sha256
+              - activated_at
+            properties:
+              release_id:
+                type: string
+              state:
+                type: string
+                enum:
+                  - active
+                  - retired
+              snapshot_count:
+                type: integer
+              receipt_sha256:
+                type: string
+              activated_at:
+                type: string
+                format: date-time
+        downloads:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - material_id
+              - material_title
+              - access_level
+              - downloaded_at
+            properties:
+              id:
+                type: string
+                format: uuid
+              material_id:
+                type: string
+                format: uuid
+              material_title:
+                type: string
+              access_level:
+                type: string
+              downloaded_at:
+                type: string
+                format: date-time
+        download_stats:
+          type: object
+          required:
+            - total_starts
+            - last_24h_starts
+          properties:
+            total_starts:
+              type: integer
+              format: int64
+            last_24h_starts:
+              type: integer
+              format: int64
+        generated_at:
+          type: string
+          format: date-time
+    LibraryCommandResult:
+      type: object
+      required:
+        - operation
+        - resource_id
+        - state
+        - version
+      properties:
+        operation:
+          type: string
+        resource_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+    CareerWorkspace:
+      type: object
+      required:
+        - job_source_enabled
+        - ai_mode
+        - generated_at
+        - counts
+        - searches
+        - extractions
+        - digest_deliveries
+      properties:
+        job_source_enabled:
+          type: boolean
+        ai_mode:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          required:
+            - profiles
+            - searches_total
+            - searches_queued
+            - searches_running
+            - searches_completed
+            - searches_failed
+            - extractions_total
+            - digests_pending
+            - digests_sent
+          properties:
+            profiles:
+              type: integer
+            searches_total:
+              type: integer
+            searches_queued:
+              type: integer
+            searches_running:
+              type: integer
+            searches_completed:
+              type: integer
+            searches_failed:
+              type: integer
+            extractions_total:
+              type: integer
+            digests_pending:
+              type: integer
+            digests_sent:
+              type: integer
+        searches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CareerSearch"
+          maxItems: 50
+        extractions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CareerExtraction"
+          maxItems: 30
+        digest_deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CareerDigest"
+          maxItems: 30
+    CareerSearch:
+      type: object
+      required:
+        - id
+        - user_id
+        - status
+        - stage
+        - source_count
+        - job_count
+        - matched_count
+        - error_code
+        - error_message
+        - created_at
+        - started_at
+        - completed_at
+        - failed_at
+        - email_sent_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - completed
+            - failed
+        stage:
+          type: string
+        source_count:
+          type: integer
+        job_count:
+          type: integer
+        matched_count:
+          type: integer
+        error_code:
+          type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        completed_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        failed_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        email_sent_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+    CareerExtraction:
+      type: object
+      required:
+        - id
+        - user_id
+        - status
+        - file_name
+        - error_code
+        - error_message
+        - created_at
+        - completed_at
+        - failed_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - completed
+            - failed
+        file_name:
+          type: string
+        error_code:
+          type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        failed_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+    CareerDigest:
+      type: object
+      required:
+        - search_id
+        - status
+        - attempted_at
+        - enqueued_at
+        - created_at
+        - updated_at
+      properties:
+        search_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - sending
+            - retry
+            - sent
+            - skipped
+        attempted_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        enqueued_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DigestRetry:
+      type: object
+      required:
+        - search_id
+        - status
+        - updated_at
+      properties:
+        search_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - retry
+        updated_at:
+          type: string
+          format: date-time
+    ContactBook:
+      type: object
+      required:
+        - qq
+        - wechat
+        - phone
+        - note
+      properties:
+        qq:
+          type: string
+        wechat:
+          type: string
+        phone:
+          type: string
+        note:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    ContactUpdate:
+      type: object
+      required: []
+      properties:
+        qq:
+          type: string
+        wechat:
+          type: string
+        phone:
+          type: string
+        note:
+          type: string
+    CampusItemCreate:
+      type: object
+      required:
+        - type
+        - category
+        - title
+        - desc
+        - price
+        - place
+      properties:
+        type:
+          type: string
+          enum:
+            - help
+            - sell
+        category:
+          type: string
+        title:
+          type: string
+        desc:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        place:
+          type: string
+        deadline:
+          type: string
+    CampusItem:
+      type: object
+      required:
+        - id
+        - type
+        - category
+        - title
+        - desc
+        - price
+        - seller
+        - status
+        - time
+        - place
+        - credit
+        - dealsDone
+        - wants
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+            - help
+            - sell
+        category:
+          type: string
+        title:
+          type: string
+        desc:
+          type: string
+        price:
+          type: number
+        seller:
+          type: string
+        place:
+          type: string
+        deadline:
+          type: string
+        status:
+          type: string
+          enum:
+            - open
+            - ongoing
+            - done
+            - hidden
+        time:
+          type: string
+        credit:
+          type: integer
+        dealsDone:
+          type: integer
+        wants:
+          type: integer
+        images:
+          type: array
+          items:
+            type: string
+    CampusMessage:
+      type: object
+      required:
+        - id
+        - itemId
+        - author
+        - time
+        - text
+      properties:
+        id:
+          type: string
+        itemId:
+          type: string
+        author:
+          type: string
+        time:
+          type: string
+        text:
+          type: string
+    CampusExchange:
+      type: object
+      required:
+        - id
+        - item_id
+        - requester_user_id
+        - requester_name
+        - owner_user_id
+        - status
+        - requester_channels
+        - owner_channels
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        item_id:
+          type: string
+        requester_user_id:
+          type: string
+          format: uuid
+        requester_name:
+          type: string
+        owner_user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - requested
+            - accepted
+            - declined
+            - cancelled
+        requester_channels:
+          type: array
+          items:
+            type: string
+            enum:
+              - qq
+              - wechat
+              - phone
+          maxItems: 3
+        owner_channels:
+          type: array
+          items:
+            type: string
+            enum:
+              - qq
+              - wechat
+              - phone
+          maxItems: 3
+        requester_snapshot:
+          $ref: "#/components/schemas/ContactSnapshot"
+          description: Available only to participants after acceptance.
+        owner_snapshot:
+          $ref: "#/components/schemas/ContactSnapshot"
+          description: Available only to participants after acceptance.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ContactSnapshot:
+      type: object
+      required: []
+      properties:
+        qq:
+          type: string
+        wechat:
+          type: string
+        phone:
+          type: string
+        note:
+          type: string
+    CampusWorkspace:
+      type: object
+      required:
+        - generated_at
+        - counts
+        - items
+        - messages
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          required:
+            - open
+            - ongoing
+            - done
+            - hidden
+            - messages_total
+            - messages_hidden
+            - exchanges_total
+            - exchanges_accepted
+          properties:
+            open:
+              type: integer
+            ongoing:
+              type: integer
+            done:
+              type: integer
+            hidden:
+              type: integer
+            messages_total:
+              type: integer
+            messages_hidden:
+              type: integer
+            exchanges_total:
+              type: integer
+            exchanges_accepted:
+              type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampusConsoleItem"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampusConsoleMessage"
+    CampusConsoleItem:
+      type: object
+      required:
+        - id
+        - title
+        - status
+        - version
+        - moderation_note
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+            - help
+            - sell
+        category:
+          type: string
+        title:
+          type: string
+        desc:
+          type: string
+        price:
+          type: number
+        seller:
+          type: string
+        author_user_id:
+          type: string
+          format: uuid
+        accepted_by_user_id:
+          type: string
+          format: uuid
+        accepted_by_name:
+          type: string
+        place:
+          type: string
+        deadline:
+          type: string
+        status:
+          type: string
+          enum:
+            - open
+            - ongoing
+            - done
+            - hidden
+        moderation_note:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        time:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CampusConsoleMessage:
+      type: object
+      required:
+        - id
+        - item_id
+        - author
+        - text
+        - hidden
+        - time
+        - created_at
+      properties:
+        id:
+          type: string
+        item_id:
+          type: string
+        item_title:
+          type: string
+        author:
+          type: string
+        author_user_id:
+          type: string
+          format: uuid
+        text:
+          type: string
+        hidden:
+          type: boolean
+        time:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ItemModeration:
+      type: object
+      required:
+        - expected_version
+        - action
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+        action:
+          type: string
+          enum:
+            - hide
+            - restore
+            - close
+        note:
+          type: string
+    MessageModeration:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum:
+            - hide
+            - restore
+        note:
+          type: string
+    Error:
+      type: object
+      required:
+        - error
+        - request_id
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        request_id:
+          type: string
+    LibraryCommand:
+      oneOf:
+        - type: object
+          required:
+            - kind
+            - payload
+          properties:
+            kind:
+              const: course_create
+            resource_id:
+              type: string
+              format: uuid
+            expected_version:
+              type: string
+              pattern: ^[1-9][0-9]*$
+            payload:
+              type: object
+              required:
+                - code
+                - name
+              properties:
+                code:
+                  type: string
+                name:
+                  type: string
+                department:
+                  type: string
+          description: Requires library.manage.
+        - type: object
+          required:
+            - kind
+            - expected_version
+            - payload
+          properties:
+            kind:
+              const: course_update
+            resource_id:
+              type: string
+              format: uuid
+            expected_version:
+              type: string
+              pattern: ^[1-9][0-9]*$
+            payload:
+              type: object
+              required: []
+              properties:
+                name:
+                  type: string
+                department:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - active
+                    - archived
+                course_id:
+                  type: string
+                  format: uuid
+          description: Requires library.manage.
+          anyOf:
+            - required:
+                - resource_id
+            - properties:
+                payload:
+                  required:
+                    - course_id
+        - type: object
+          required:
+            - kind
+            - payload
+          properties:
+            kind:
+              const: material_create
+            resource_id:
+              type: string
+              format: uuid
+            expected_version:
+              type: string
+              pattern: ^[1-9][0-9]*$
+            payload:
+              type: object
+              required:
+                - course_id
+                - title
+                - material_type
+              properties:
+                course_id:
+                  type: string
+                  format: uuid
+                title:
+                  type: string
+                material_type:
+                  type: string
+                  enum:
+                    - handout
+                    - exam
+                    - slides
+                    - exercise
+                    - answer
+                    - note
+                    - textbook
+                description:
+                  type: string
+                access_level:
+                  type: string
+                  enum:
+                    - public_free
+                    - authenticated
+                    - restricted
+                source_note:
+                  type: string
+          description: Requires library.manage.
+        - type: object
+          required:
+            - kind
+            - expected_version
+            - payload
+          properties:
+            kind:
+              const: material_update
+            resource_id:
+              type: string
+              format: uuid
+            expected_version:
+              type: string
+              pattern: ^[1-9][0-9]*$
+            payload:
+              type: object
+              required: []
+              properties:
+                title:
+                  type: string
+                material_type:
+                  type: string
+                  enum:
+                    - handout
+                    - exam
+                    - slides
+                    - exercise
+                    - answer
+                    - note
+                    - textbook
+                description:
+                  type: string
+                access_level:
+                  type: string
+                  enum:
+                    - public_free
+                    - authenticated
+                    - restricted
+                source_note:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - draft
+                    - pending_review
+                    - published
+                    - archived
+                material_id:
+                  type: string
+                  format: uuid
+          description: Requires library.manage.
+          anyOf:
+            - required:
+                - resource_id
+            - properties:
+                payload:
+                  required:
+                    - material_id
+        - type: object
+          required:
+            - kind
+            - expected_version
+            - payload
+          properties:
+            kind:
+              const: submission_approve
+            resource_id:
+              type: string
+              format: uuid
+            expected_version:
+              type: string
+              pattern: ^[1-9][0-9]*$
+            payload:
+              type: object
+              required: []
+              properties:
+                note:
+                  type: string
+                material_id:
+                  type: string
+                  format: uuid
+          description: Requires library.review.
+          anyOf:
+            - required:
+                - resource_id
+            - properties:
+                payload:
+                  required:
+                    - material_id
+        - type: object
+          required:
+            - kind
+            - expected_version
+            - payload
+          properties:
+            kind:
+              const: submission_reject
+            resource_id:
+              type: string
+              format: uuid
+            expected_version:
+              type: string
+              pattern: ^[1-9][0-9]*$
+            payload:
+              type: object
+              required: []
+              properties:
+                note:
+                  type: string
+                material_id:
+                  type: string
+                  format: uuid
+          description: Requires library.review.
+          anyOf:
+            - required:
+                - resource_id
+            - properties:
+                payload:
+                  required:
+                    - material_id
+        - type: object
+          required:
+            - kind
+            - expected_version
+            - payload
+          properties:
+            kind:
+              const: correction_resolve
+            resource_id:
+              type: string
+              format: uuid
+            expected_version:
+              type: string
+              pattern: ^[1-9][0-9]*$
+            payload:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - in_progress
+                    - resolved
+                    - dismissed
+                resolution_note:
+                  type: string
+                correction_id:
+                  type: string
+                  format: uuid
+          description: Requires library.review.
+          anyOf:
+            - required:
+                - resource_id
+            - properties:
+                payload:
+                  required:
+                    - correction_id

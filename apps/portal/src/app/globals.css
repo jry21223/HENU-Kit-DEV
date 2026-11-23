@@ -100,6 +100,11 @@ body {
   color: transparent;
 }
 
+/* 底部安全区辅助类：兼容刘海屏 / 手势条 */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 /* 横向导航在小屏可滑动，但不占用视觉空间。 */
 .scrollbar-none {
   -ms-overflow-style: none;
@@ -157,6 +162,14 @@ body {
   }
 }
 
+/* 自上方落下：手机菜单逐行展开。 */
+@keyframes enter-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
 @keyframes enter-slide-up {
   from {
     transform: translateY(100%);
@@ -189,6 +202,10 @@ body {
 
   .enter-slide-up {
     animation: enter-slide-up 0.5s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+  }
+
+  .enter-drop {
+    animation: enter-drop 0.32s cubic-bezier(0.25, 1, 0.5, 1) backwards;
   }
 }
 

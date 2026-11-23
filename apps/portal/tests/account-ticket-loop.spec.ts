@@ -111,13 +111,13 @@ test("user creates a ticket, Console replies and resolves it, then the user read
   });
 
   await consolePage.goto("http://127.0.0.1:4174/account", { waitUntil: "domcontentloaded" });
-  await expect(consolePage.getByRole("heading", { name: "账户工单运营" })).toBeVisible();
-  await consolePage.getByRole("button", { name: "练习记录问题" }).click();
+  await expect(consolePage.getByRole("heading", { name: "客服工单" })).toBeVisible();
+  await consolePage.getByRole("button", { name: /练习记录问题/ }).click();
   await consolePage.getByLabel("客服回复").fill("我们已核对并正在处理。");
   await consolePage.getByRole("button", { name: "发送回复" }).click();
-  await expect(consolePage.getByRole("status")).toContainText("回复已写入工单");
+  await expect(consolePage.getByText("回复已发送。")).toBeVisible();
   await consolePage.getByRole("button", { name: "标记已解决" }).click();
-  await expect(consolePage.getByRole("status")).toContainText("工单已标记为已解决");
+  await expect(consolePage.getByText("工单已标记为已解决。")).toBeVisible();
 
   await portalPage.goto("/account/notifications", { waitUntil: "domcontentloaded" });
   await expect(portalPage.getByText("客服已回复你的问题。")).toBeVisible();

@@ -11,6 +11,7 @@ import {
   hasGateway,
   logout as apiLogout,
   mockAllowed,
+  onCachedSessionCleared,
   redirectToLogin,
 } from "@/lib/api/client";
 import { requireGateway } from "@/lib/api/env";
@@ -156,3 +157,7 @@ export const authStore = {
     setUser(null);
   },
 };
+
+onCachedSessionCleared(() => {
+  setUser(null);
+});

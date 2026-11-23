@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
 import { useReveal } from "@/components/account/use-reveal";
-import Img from "@/components/ui/img";
+import PostFormDishes, { MAX_DISHES, type DishDraft } from "@/components/food/post-form-dishes";
+import PostFormImages, { MAX_IMAGES, type ImageDraft } from "@/components/food/post-form-images";
 import {
   PortalApiError,
   PortalHttpError,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/api/client";
 import { authStore } from "@/lib/auth/store";
 import { cn } from "@/lib/cn";
+import { commandKey } from "@/lib/idempotency";
 import { CAMPUSES, CAMPUS_KEYS } from "@/lib/food/campuses";
 import { rememberCreatedFoodPost, rememberUpdatedFoodPost } from "@/lib/food/gateway";
 import { FOOD_TIERS, type FoodTierKey } from "@/lib/food/ranking";
@@ -31,36 +33,76 @@ import {
   type FoodPostImageInput,
 } from "@/lib/food/submit";
 
-const MAX_DISHES = 6;
-const MAX_IMAGES = 6;
 
-interface DishDraft {
-  name: string;
-  price: string;
-  reason: string;
-}
-
-interface ImageDraft {
-  file?: File;
-  position?: number;
-  preview: string;
-}
 
 function textLength(value: string): number {
   return Array.from(value.trim()).length;
 }
 
-function commandKey(prefix: string): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return `${prefix}:${crypto.randomUUID()}`;
-  }
-  return `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+const EMPTY_DISH: DishDraft = { name: "", price: "", reason: "" };
+
+interface FoodDraft {
+  venue: string;
+  campus: FoodPostCampus | null;
+  tier: FoodTierKey | null;
+  review: string;
+  price: string;
+  hours: string;
+  dishes: DishDraft[];
+  imageCount: number;
 }
 
-const EMPTY_DISH: DishDraft = { name: "", price: "", reason: "" };
+function draftKey(userID: string) {
+  return `henukit:food-draft:${userID}`;
+}
+
+function storeFoodDraft(userID: string, draft: FoodDraft, images: ImageDraft[]): boolean {
+  let saved = false;
+  try {
+    const key = draftKey(userID);
+    window.sessionStorage.removeItem(`${key}:images`);
+    window.sessionStorage.setItem(key, JSON.stringify(draft));
+    saved = true;
+    if (images.length) window.sessionStorage.setItem(`${key}:images`, JSON.stringify(images.map((image) => image.preview)));
+  } catch {
+    return saved;
+  }
+  return true;
+}
+
+function readFoodDraft(userID: string): (FoodDraft & { images: ImageDraft[] }) | null {
+  const key = draftKey(userID);
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as FoodDraft;
+    let images: ImageDraft[] = [];
+    try {
+      const previews = JSON.parse(window.sessionStorage.getItem(`${key}:images`) ?? "[]") as string[];
+      images = previews.flatMap((preview, index) => {
+        const match = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(preview);
+        if (!match) return [];
+        const bytes = Uint8Array.from(window.atob(match[2]), (character) => character.charCodeAt(0));
+        return [{ preview, file: new File([bytes], `photo-${index + 1}`, { type: match[1] }) }];
+      });
+    } catch {
+      images = [];
+    }
+    return { ...draft, images };
+  } catch {
+    return null;
+  }
+}
+
+function clearFoodDraft(userID: string) {
+  try {
+    const key = draftKey(userID);
+    window.sessionStorage.removeItem(key);
+    window.sessionStorage.removeItem(`${key}:images`);
+  } catch {
+    return;
+  }
+}
 
 interface FieldErrors {
   venue?: string;
@@ -115,10 +157,30 @@ export default function FoodPostForm({
   const [imageReading, setImageReading] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [draftNotice, setDraftNotice] = useState("");
   const returnPath = initial
     ? `/food/post/${initial.id}/edit`
     : "/food/publish";
   const submitKeyRef = useRef<string | null>(null);
+  const userID = user?.uid;
+
+  useEffect(() => {
+    if (!userID || initial) return;
+    const timer = window.setTimeout(() => {
+      const draft = readFoodDraft(userID);
+      if (!draft) return;
+      setVenue(draft.venue);
+      setCampus(draft.campus);
+      setTier(draft.tier);
+      setReview(draft.review);
+      setPrice(draft.price);
+      setHours(draft.hours);
+      setDishes(draft.dishes);
+      setImages(draft.images);
+      setDraftNotice(draft.images.length < draft.imageCount ? "已恢复上次填写的文字，请重新添加图片。" : "已恢复上次填写的草稿。");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [initial, userID]);
 
   // 守卫：未登录重定向
   useEffect(() => {
@@ -130,8 +192,8 @@ export default function FoodPostForm({
   if (!ready || !user) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center">
-        <p className="font-mono text-xs tracking-[0.3em] text-ink/60">
-          AUTH CHECK
+        <p className="font-mono text-xs text-ink/60">
+          正在核对登录状态
           <span aria-hidden className="animate-pulse text-accent-text">
             …
           </span>
@@ -297,7 +359,10 @@ export default function FoodPostForm({
         : await createFoodPost(input, idempotencyKey);
       submitKeyRef.current = null;
       if (initial) rememberUpdatedFoodPost(response.post);
-      else rememberCreatedFoodPost(response.post);
+      else {
+        if (userID) clearFoodDraft(userID);
+        rememberCreatedFoodPost(response.post);
+      }
       router.push(`/food/post/${response.post.id}`);
     } catch (err) {
       if (initial && err instanceof PortalUnauthorizedError) {
@@ -321,6 +386,11 @@ export default function FoodPostForm({
         return;
       }
       if (err instanceof PortalUnauthorizedError) {
+        if (!userID || !storeFoodDraft(userID, { venue, campus, tier, review, price, hours, dishes, imageCount: images.length }, images)) {
+          setSessionExpired(true);
+          setError("登录已过期，草稿无法暂存。请先复制已填写的内容，再重新登录。");
+          return;
+        }
         // 填表期间会话过期：回登录页，登录后回到表单
         router.replace(`/account/login?next=${encodeURIComponent(returnPath)}`);
         return;
@@ -398,6 +468,7 @@ export default function FoodPostForm({
               void submit();
             }}
           >
+            {draftNotice && <p role="status" className="mb-4 text-sm text-ink/70">{draftNotice}</p>}
             <fieldset disabled={pending || imageReading} className="min-w-0">
               <div className="border-b border-line py-6 md:py-8">
                 <label
@@ -585,112 +656,9 @@ export default function FoodPostForm({
                 </div>
               </div>
 
-              <section className="border-b border-line py-6 md:py-8">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div>
-                    <p className="font-mono text-xs text-ink/60">
-                      推荐菜品（可选）
-                    </p>
-                    <p className="mt-1 font-mono text-xs text-ink/60">
-                      至多 {MAX_DISHES} 道；菜名必填，价格与理由可留空。
-                    </p>
-                  </div>
-                  {dishes.length < MAX_DISHES && (
-                    <button
-                      type="button"
-                      onClick={addDish}
-                      className="min-h-11 border border-line px-3 py-1.5 font-mono text-xs transition-colors hover:border-ink"
-                    >
-                      + 加一道
-                    </button>
-                  )}
-                </div>
-                <div className="mt-4 space-y-3">
-                  {dishes.map((dish, index) => (
-                    <div
-                      key={index}
-                      className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_auto]"
-                    >
-                      <input
-                        aria-label={`菜品 ${index + 1} 名称`}
-                        maxLength={80}
-                        value={dish.name}
-                        onChange={(event) =>
-                          updateDish(index, { name: event.target.value })
-                        }
-                        placeholder="菜名（必填）"
-                        className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
-                      />
-                      <input
-                        aria-label={`菜品 ${index + 1} 价格`}
-                        maxLength={40}
-                        value={dish.price}
-                        onChange={(event) =>
-                          updateDish(index, { price: event.target.value })
-                        }
-                        placeholder="参考价格"
-                        className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
-                      />
-                      <input
-                        aria-label={`菜品 ${index + 1} 理由`}
-                        maxLength={200}
-                        value={dish.reason}
-                        onChange={(event) =>
-                          updateDish(index, { reason: event.target.value })
-                        }
-                        placeholder="推荐理由"
-                        className="min-h-11 w-full border-b border-ink/30 bg-transparent py-2 font-mono text-sm outline-none placeholder:text-ink/60 focus:border-ink"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeDish(index)}
-                        className="inline-flex min-h-11 min-w-11 items-center justify-center self-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
-                        aria-label={`删除菜品 ${index + 1}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
+              <PostFormDishes dishes={dishes} addDish={addDish} updateDish={updateDish} removeDish={removeDish} />
 
-              <section className="border-b border-line py-6 md:py-8">
-                <p className="font-mono text-xs text-ink/60">
-                  图片（{images.length}/{MAX_IMAGES}，单张 ≤2MB，可选）
-                </p>
-                <div className="mt-4 flex flex-wrap items-start gap-3">
-                  {images.map((image, index) => (
-                    <div key={index} className="flex w-28 flex-col">
-                      <Img
-                        src={image.preview}
-                        alt={`图 ${index + 1}`}
-                        label={`FIG.${index + 1}`}
-                        className="h-20 w-28"
-                      />
-                      {/* 删除是缩略图下方整行 44px 高的文字按钮，不压在图上（DESIGN_SYSTEM §13，#557）。 */}
-                      <button
-                        type="button"
-                        onClick={() => removeImage(index)}
-                        className="flex min-h-11 w-full items-center justify-center font-mono text-xs text-ink/60 transition-colors hover:text-accent-text"
-                        aria-label={`删除图 ${index + 1}`}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  ))}
-                  {images.length < MAX_IMAGES && (
-                    <label className="flex h-20 w-28 cursor-pointer items-center justify-center border border-dashed border-ink/30 font-mono text-xs text-ink/60 transition-colors hover:border-ink hover:text-ink">
-                      + 上传
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(event) => void addImage(event)}
-                      />
-                    </label>
-                  )}
-                </div>
-              </section>
+              <PostFormImages images={images} addImage={addImage} removeImage={removeImage} />
 
               <div className="pt-6">
                 {error && (

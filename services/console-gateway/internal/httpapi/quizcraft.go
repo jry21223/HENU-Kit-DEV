@@ -35,7 +35,7 @@ func (h *Handler) quizcraftManagement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		if r.Header.Get("Origin") != "https://"+r.Host {
+		if !sameOriginAllowed(r) {
 			writeError(w, r, 403, "ORIGIN_DENIED", "请求来源无效，请从控制台重新提交")
 			return
 		}

@@ -32,14 +32,18 @@ var requestIDPattern = regexp.MustCompile(`^req_[A-Za-z0-9_-]+$`)
 type WorkFunc func(ctx context.Context, profile any) (WorkResult, error)
 
 type Config struct {
-	Database *pgxpool.Pool
-	Redis    redis.UniversalClient
-	ClientID string
-	Keys     map[string]string
-	Work     WorkFunc
+	ConsoleClientID string
+	ConsoleKeys     map[string]string
+	Database        *pgxpool.Pool
+	Redis           redis.UniversalClient
+	ClientID        string
+	Keys            map[string]string
+	Work            WorkFunc
 	// JobSourceDisabled explicitly stops new scans and fails retained queued
 	// scans. Profile, history and resume features remain available.
 	JobSourceDisabled bool
+	// AIMode records the active extraction/suification provider mode for ops observability.
+	AIMode string
 	// Extract runs the resume AI extraction seam. Nil is the production-safe
 	// off state: uploads are rejected with a clear error until an operator
 	// configures a provider (or mock mode).
@@ -75,6 +79,7 @@ type service struct {
 	keys              map[string]string
 	work              WorkFunc
 	jobSourceDisabled bool
+	aiMode            string
 	extract           ExtractFunc
 	suify             SuifyFunc
 	extractRateLimit  int
@@ -105,6 +110,21 @@ func New(config Config) (*Service, error) {
 			return nil, errors.New("career service key ring is invalid")
 		}
 	}
+	if config.ConsoleClientID != "" || len(config.ConsoleKeys) != 0 {
+		if config.ConsoleClientID == "" || config.ConsoleClientID == config.ClientID || len(config.ConsoleKeys) == 0 || len(config.ConsoleKeys) > 2 {
+			return nil, errors.New("career console credentials must be independent")
+		}
+		for keyID, secret := range config.ConsoleKeys {
+			if keyID == "" || len(secret) < 32 {
+				return nil, errors.New("career console key ring is invalid")
+			}
+			for _, portalSecret := range config.Keys {
+				if hmac.Equal([]byte(secret), []byte(portalSecret)) {
+					return nil, errors.New("career console secret must be independent")
+				}
+			}
+		}
+	}
 	work := config.Work
 	if config.JobSourceDisabled {
 		work = DisabledJobSourceWork
@@ -130,7 +150,7 @@ func New(config Config) (*Service, error) {
 	if config.DigestResultURL != "" && !validDigestResultURL(config.DigestResultURL) {
 		return nil, errors.New("career digest result URL must be an http(s) URL")
 	}
-	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, jobSourceDisabled: config.JobSourceDisabled, extract: config.Extract, suify: config.Suify, extractRateLimit: rateLimit, suifyRateLimit: suifyRateLimit, searchRateLimit: searchRateLimit, searchActiveLimit: searchActiveLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
+	h := &service{database: config.Database, redis: config.Redis, clientID: config.ClientID, keys: config.Keys, work: work, jobSourceDisabled: config.JobSourceDisabled, aiMode: strings.TrimSpace(config.AIMode), extract: config.Extract, suify: config.Suify, extractRateLimit: rateLimit, suifyRateLimit: suifyRateLimit, searchRateLimit: searchRateLimit, searchActiveLimit: searchActiveLimit, now: time.Now, digestSender: config.DigestSender, digestResultURL: config.DigestResultURL}
 	router := chi.NewRouter()
 	router.Use(h.requestContext)
 	router.Get(contract.HealthRoute, func(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +167,11 @@ func New(config Config) (*Service, error) {
 		protected.Post(contract.CreateExtractionRoute, h.createExtraction)
 		protected.Get(contract.ExtractionRoute, h.extractionStatus)
 	})
+	if config.ConsoleClientID != "" {
+		router.With(h.authenticateService(config.ConsoleClientID, config.ConsoleKeys, false)).Get("/api/v1/console-summary", h.consoleSummary)
+		router.With(h.authenticateService(config.ConsoleClientID, config.ConsoleKeys, true)).Get("/api/v1/console/workspace", h.consoleWorkspace)
+		router.With(h.authenticateService(config.ConsoleClientID, config.ConsoleKeys, true)).Post("/api/v1/console/searches/{search_id}/retry-digest", h.retryConsoleDigest)
+	}
 	return &Service{h: h, router: router}, nil
 }
 
@@ -220,57 +245,69 @@ func (h *service) requestContext(next http.Handler) http.Handler {
 // the gateway-verified X-Actor-User-Id. The browser never supplies the actor;
 // the Portal Gateway signs it, so a search is always owned by the real actor.
 func (h *service) authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientID, basicSecret, basic := r.BasicAuth()
-		secret, keyKnown := h.keys[r.Header.Get("X-Key-Id")]
-		if !basic || clientID != h.clientID || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
-			return
-		}
-		userID := r.Header.Get("X-Actor-User-Id")
-		if _, err := uuid.Parse(userID); err != nil {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
-			return
-		}
-		timestamp, err := strconv.ParseInt(r.Header.Get("X-Timestamp"), 10, 64)
-		if err != nil || abs(h.now().Unix()-timestamp) > int64(nonceTTL/time.Second) {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service timestamp is invalid")
-			return
-		}
-		nonce := r.Header.Get("X-Nonce")
-		decoded, err := base64.RawURLEncoding.DecodeString(nonce)
-		if err != nil || len(decoded) != 24 {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid")
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(maxSignedBody(r.URL.Path))))
-		if err != nil {
-			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body is too large")
-			return
-		}
-		r.Body = io.NopCloser(strings.NewReader(string(body)))
-		digest := sha256.Sum256(body)
-		// The actor UUID is the sixth canonical line, exactly as Portal
-		// Gateway's SignWithActor appends it: an actor not bound to the
-		// signature could be swapped by replaying a signed request.
-		canonical := strings.Join([]string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:]), userID}, "\n")
-		mac := hmac.New(sha256.New, []byte(secret))
-		_, _ = mac.Write([]byte(canonical))
-		if !hmac.Equal([]byte(r.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
-			writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service signature is invalid")
-			return
-		}
-		accepted, err := h.redis.SetNX(r.Context(), "career:nonce:"+clientID+":"+nonce, "1", nonceTTL).Result()
-		if err != nil {
-			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "nonce store is unavailable")
-			return
-		}
-		if !accepted {
-			writeError(w, r, http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used")
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID})))
-	})
+	return h.authenticateService(h.clientID, h.keys, true)(next)
+}
+
+func (h *service) authenticateService(expectedClient string, keys map[string]string, bindActor bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			clientID, basicSecret, basic := r.BasicAuth()
+			secret, keyKnown := keys[r.Header.Get("X-Key-Id")]
+			if !basic || clientID != expectedClient || r.Header.Get("X-Service-Id") != clientID || !keyKnown || !hmac.Equal([]byte(secret), []byte(basicSecret)) {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service credentials are invalid")
+				return
+			}
+			userID := r.Header.Get("X-Actor-User-Id")
+			if _, err := uuid.Parse(userID); bindActor && err != nil {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_ACTOR", "actor context is invalid")
+				return
+			}
+			timestamp, err := strconv.ParseInt(r.Header.Get("X-Timestamp"), 10, 64)
+			now := h.now().Unix()
+			window := int64(nonceTTL / time.Second)
+			if err != nil || timestamp < now-window || timestamp > now+window {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service timestamp is invalid")
+				return
+			}
+			nonce := r.Header.Get("X-Nonce")
+			decoded, err := base64.RawURLEncoding.DecodeString(nonce)
+			if err != nil || len(decoded) != 24 {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid")
+				return
+			}
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(maxSignedBody(r.URL.Path))))
+			if err != nil {
+				writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body is too large")
+				return
+			}
+			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			digest := sha256.Sum256(body)
+			// The actor UUID is the sixth canonical line, exactly as Portal
+			// Gateway's SignWithActor appends it: an actor not bound to the
+			// signature could be swapped by replaying a signed request.
+			lines := []string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}
+			if bindActor {
+				lines = append(lines, userID)
+			}
+			canonical := strings.Join(lines, "\n")
+			mac := hmac.New(sha256.New, []byte(secret))
+			_, _ = mac.Write([]byte(canonical))
+			if !hmac.Equal([]byte(r.Header.Get("X-Signature")), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
+				writeError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service signature is invalid")
+				return
+			}
+			accepted, err := h.redis.SetNX(r.Context(), "career:nonce:"+clientID+":"+nonce, "1", 2*nonceTTL).Result()
+			if err != nil {
+				writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "nonce store is unavailable")
+				return
+			}
+			if !accepted {
+				writeError(w, r, http.StatusConflict, "REPLAY_DETECTED", "service nonce was already used")
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey, actor{userID: userID})))
+		})
+	}
 }
 
 // maxSignedBody is the authentication body cap per route. Everything except
@@ -281,11 +318,4 @@ func maxSignedBody(requestPath string) int {
 		return maxResumeBytes + 1<<20
 	}
 	return 512 << 10
-}
-
-func abs(value int64) int64 {
-	if value < 0 {
-		return -value
-	}
-	return value
 }

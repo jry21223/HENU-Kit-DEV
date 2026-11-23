@@ -1,33 +1,52 @@
 "use client";
 
-import { useRef } from "react";
-import { gsap, useGSAP, FINE_MOTION } from "@/lib/gsap";
+import { useRef, type RefObject } from "react";
+import { gsap, useGSAP, FINE_MOTION, ScrollTrigger } from "@/lib/gsap";
+import { useMotionCapability } from "@/lib/motion-capability";
+
+/**
+ * 场景循环：除「减少动态效果 / 省流量」外，手机和桌面都播放；只在场景滚入视口时播放，
+ * 滚出就暂停，不在看不见的地方耗电。
+ */
+function useSceneLoop(ref: RefObject<SVGSVGElement | null>, build: (loop: gsap.core.Timeline) => void) {
+  const tier = useMotionCapability();
+  useGSAP(
+    () => {
+      if (tier === "static" || !ref.current) return;
+      const mm = gsap.matchMedia();
+      mm.add(FINE_MOTION, () => {
+        const loop = gsap.timeline({ paused: true });
+        build(loop);
+        const watcher = ScrollTrigger.create({
+          trigger: ref.current,
+          start: "top bottom",
+          end: "bottom top",
+          onToggle: (self) => (self.isActive ? loop.play() : loop.pause()),
+        });
+        if (watcher.isActive) loop.play();
+      });
+      return () => mm.revert();
+    },
+    { scope: ref, dependencies: [tier], revertOnUpdate: true }
+  );
+}
 
 /** 资料库场景：书脊阵列 + 循环翻页描线 */
 export function SceneBooks() {
   const ref = useRef<SVGSVGElement>(null);
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(FINE_MOTION, () => {
-        gsap.to("[data-spine]", {
-          y: -5,
-          duration: 1.6,
-          yoyo: true,
-          repeat: -1,
-          ease: "sine.inOut",
-          stagger: 0.22,
-        });
-        gsap.fromTo(
-          "[data-page-line]",
-          { strokeDasharray: 90, strokeDashoffset: 90 },
-          { strokeDashoffset: -90, duration: 2.6, repeat: -1, repeatDelay: 0.9, ease: "power1.inOut" }
-        );
-      });
-      return () => mm.revert();
-    },
-    { scope: ref }
-  );
+  useSceneLoop(ref, (loop) => {
+    loop.to(
+      "[data-spine]",
+      { y: -5, duration: 1.6, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: 0.22 },
+      0
+    );
+    loop.fromTo(
+      "[data-page-line]",
+      { strokeDasharray: 90, strokeDashoffset: 90 },
+      { strokeDashoffset: -90, duration: 2.6, repeat: -1, repeatDelay: 0.9, ease: "power1.inOut" },
+      0
+    );
+  });
 
   const spines = [
     { x: 40, h: 96 },
@@ -53,37 +72,27 @@ export function SceneBooks() {
 /** 美食榜场景：定位针 + 辐射脉冲 + 热气上升线 */
 export function SceneFood() {
   const ref = useRef<SVGSVGElement>(null);
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(FINE_MOTION, () => {
-        gsap.fromTo(
-          "[data-ring]",
-          { scale: 0.4, opacity: 0.8 },
-          {
-            scale: 1.5,
-            opacity: 0,
-            duration: 2.2,
-            repeat: -1,
-            ease: "sine.out",
-            stagger: 0.7,
-            transformOrigin: "120px 92px",
-          }
-        );
-        gsap.to("[data-steam]", {
-          y: -8,
-          opacity: 0.3,
-          duration: 1.5,
-          yoyo: true,
-          repeat: -1,
-          ease: "sine.inOut",
-          stagger: 0.3,
-        });
-      });
-      return () => mm.revert();
-    },
-    { scope: ref }
-  );
+  useSceneLoop(ref, (loop) => {
+    loop.fromTo(
+      "[data-ring]",
+      { scale: 0.4, opacity: 0.8 },
+      {
+        scale: 1.5,
+        opacity: 0,
+        duration: 2.2,
+        repeat: -1,
+        ease: "sine.out",
+        stagger: 0.7,
+        transformOrigin: "120px 92px",
+      },
+      0
+    );
+    loop.to(
+      "[data-steam]",
+      { y: -8, opacity: 0.3, duration: 1.5, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: 0.3 },
+      0
+    );
+  });
 
   return (
     <svg ref={ref} viewBox="0 0 240 160" fill="none" stroke="currentColor" className="w-full text-ink/60">
@@ -109,27 +118,15 @@ export function SceneFood() {
 /** 互助平台场景：箱体交接 + 担保盾形描线循环 */
 export function SceneHandshake() {
   const ref = useRef<SVGSVGElement>(null);
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(FINE_MOTION, () => {
-        gsap.fromTo(
-          "[data-shield]",
-          { strokeDasharray: 220, strokeDashoffset: 220 },
-          { strokeDashoffset: -220, duration: 3.4, repeat: -1, repeatDelay: 0.8, ease: "power1.inOut" }
-        );
-        gsap.to("[data-box]", {
-          x: 14,
-          duration: 1.8,
-          yoyo: true,
-          repeat: -1,
-          ease: "sine.inOut",
-        });
-      });
-      return () => mm.revert();
-    },
-    { scope: ref }
-  );
+  useSceneLoop(ref, (loop) => {
+    loop.fromTo(
+      "[data-shield]",
+      { strokeDasharray: 220, strokeDashoffset: 220 },
+      { strokeDashoffset: -220, duration: 3.4, repeat: -1, repeatDelay: 0.8, ease: "power1.inOut" },
+      0
+    );
+    loop.to("[data-box]", { x: 14, duration: 1.8, yoyo: true, repeat: -1, ease: "sine.inOut" }, 0);
+  });
 
   return (
     <svg ref={ref} viewBox="0 0 240 160" fill="none" stroke="currentColor" className="w-full text-ink/60">

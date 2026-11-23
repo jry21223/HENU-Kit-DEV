@@ -69,9 +69,9 @@ export function MembershipCheckoutQR({ checkoutURL }: MembershipCheckoutQRProps)
       <div
         data-membership-checkout-qr="rendering"
         aria-live="polite"
-        className="flex aspect-square w-full max-w-[280px] items-center justify-center border border-line font-mono text-xs tracking-[0.2em] text-ink/60"
+        className="flex aspect-square w-full max-w-[280px] items-center justify-center border border-line font-mono text-xs text-ink/60"
       >
-        QR RENDERING<span aria-hidden className="animate-pulse text-accent-text">…</span>
+        正在生成收款码<span aria-hidden className="animate-pulse text-accent-text">…</span>
       </div>
     );
   }

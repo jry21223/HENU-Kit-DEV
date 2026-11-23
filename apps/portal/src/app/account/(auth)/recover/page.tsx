@@ -47,6 +47,12 @@ export default function RecoverPage() {
     return () => window.clearTimeout(t);
   }, [cd]);
 
+  useEffect(() => {
+    if (step !== 2) return;
+    const timer = window.setTimeout(() => window.location.assign(returnTo), 500);
+    return () => window.clearTimeout(timer);
+  }, [returnTo, step]);
+
   const ensureCsrf = async () => {
     if (csrf) return csrf;
     if (!csrfBootstrap.current) {
@@ -67,6 +73,7 @@ export default function RecoverPage() {
   };
 
   const onSend = async () => {
+    if (pending || (step === 1 && cd > 0)) return;
     setError("");
     if (!isValidHenuLocalPart(localPart)) {
       setError("请输入邮箱前缀（自动补全 @henu.edu.cn）");
@@ -97,6 +104,7 @@ export default function RecoverPage() {
   };
 
   const onVerify = async () => {
+    if (pending) return;
     setError("");
     if (!/^\d{6}$/.test(code.trim())) {
       setError("请输入 6 位数字验证码");
@@ -121,7 +129,6 @@ export default function RecoverPage() {
       });
       setStep(2);
       // Always continue via Portal Gateway OAuth after core session is set.
-      window.setTimeout(() => window.location.assign(returnTo), 500);
     } catch (e) {
       if (e instanceof AccountCenterError && e.code === "CSRF") {
         setCsrf("");
@@ -179,23 +186,27 @@ export default function RecoverPage() {
           ))}
         </ol>
 
-        <div className="mt-8 space-y-5">
+        <form className="mt-8 space-y-5" onSubmit={(event) => {
+          event.preventDefault();
+          if (step === 0) void onSend();
+          if (step === 1) void onVerify();
+        }}>
           {step === 0 && (
             <>
               <HenuEmailField
                 id="recover-email"
                 value={localPart}
                 onChange={setLocalPart}
+                showSendHint
                 autoFocus
               />
               {error ? (
                 <p className="font-mono text-xs text-accent-text">{error}</p>
               ) : null}
               <Button
-                type="button"
+                type="submit"
                 className="w-full"
                 disabled={pending}
-                onClick={() => void onSend()}
               >
                 {pending ? "发送中…" : "发送验证码"}
               </Button>
@@ -207,6 +218,15 @@ export default function RecoverPage() {
               <p className="font-mono text-xs text-ink/60">
                 已发送至 <span className="text-ink">{fullEmail}</span>
               </p>
+              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => {
+                setCode("");
+                setPassword("");
+                setPasswordConfirm("");
+                setError("");
+                setStep(0);
+              }}>
+                返回修改邮箱
+              </Button>
               <div>
                 <Label htmlFor="recover-code">6 位验证码</Label>
                 <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end sm:gap-3">
@@ -257,10 +277,9 @@ export default function RecoverPage() {
                 <p className="font-mono text-xs text-accent-text">{error}</p>
               ) : null}
               <Button
-                type="button"
+                type="submit"
                 className="w-full"
                 disabled={pending}
-                onClick={() => void onVerify()}
               >
                 {pending ? "重置中…" : "重置密码并登录"}
               </Button>
@@ -281,7 +300,7 @@ export default function RecoverPage() {
               </Button>
             </div>
           )}
-        </div>
+        </form>
       </div>
     </main>
   );

@@ -226,7 +226,9 @@ export default function SnapScroll() {
         });
 
         const onKey = (e: KeyboardEvent) => {
-          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+          const interactive = 'input, textarea, select, button, a, summary, [contenteditable]:not([contenteditable="false"]), dialog, [role="dialog"], [role="button"], [role="link"], [role="textbox"], [role="combobox"], [role="listbox"], [role="slider"], [role="menu"], [role="tablist"]';
+          if (document.activeElement?.closest(interactive)) return;
           if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
             e.preventDefault();
             go(1);

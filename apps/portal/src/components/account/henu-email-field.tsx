@@ -20,6 +20,7 @@ export function HenuEmailField({
   disabled,
   autoFocus,
   errorId,
+  showSendHint = false,
 }: {
   id?: string;
   label?: string;
@@ -30,6 +31,7 @@ export function HenuEmailField({
   autoFocus?: boolean;
   /** Id of the error shown under this field; marks the input invalid and reads the error with it. */
   errorId?: string;
+  showSendHint?: boolean;
 }) {
   const full = value ? toHenuEmail(value) : "";
 
@@ -66,7 +68,7 @@ export function HenuEmailField({
           {HENU_EMAIL_SUFFIX}
         </span>
       </div>
-      {full ? (
+      {showSendHint && full ? (
         <p className="mt-1 font-mono text-xs text-ink/60">
           将发送至 {full}
         </p>

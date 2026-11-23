@@ -1,5 +1,9 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { matchesSearchText } from "@/lib/search-text";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -20,16 +24,26 @@ let rememberedCampus: CampusKey | "all" = "all";
 export default function FoodBoardPage() {
   const { posts, loadState, error, requestId, load } = useFoodPosts();
   const [campus, setCampus] = useState<CampusKey | "all">(rememberedCampus);
+  const [query, setQuery] = useState("");
+  const [order, setOrder] = useState("default");
   const allCampusRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { rememberedCampus = campus; }, [campus]);
 
   useReveal([campus, loadState]);
   useScrollRestoration(loadState === "ready");
 
-  const groups = useMemo(
-    () => groupFoodPostsByTier(posts, campus),
-    [posts, campus]
-  );
+  const campusGroups = useMemo(() => groupFoodPostsByTier(posts, campus), [posts, campus]);
+  const campusHasPosts = campusGroups.some((group) => group.posts.length > 0);
+  const groups = useMemo(() => campusGroups.map(({ tier, posts: tierPosts }) => {
+    const matches = tierPosts.filter((post) =>
+      matchesSearchText(query, post.title, post.shop.name, post.excerpt, ...post.tags)
+    );
+    return { tier, posts: order === "latest" ? matches.toSorted((left, right) => {
+      const leftTime = Date.parse(left.time);
+      const rightTime = Date.parse(right.time);
+      return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+    }) : matches };
+  }), [campusGroups, order, query]);
   const visibleCount = groups.reduce((total, group) => total + group.posts.length, 0);
 
   return (
@@ -71,13 +85,13 @@ export default function FoodBoardPage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-site px-5 py-5 md:px-8 md:py-12">
-        <div data-enter className="flex flex-col gap-3 border-b border-ink pb-4 md:flex-row md:items-end md:justify-between md:gap-5 md:pb-6">
+      <div className="mx-auto max-w-site px-5 py-3 md:px-8 md:py-12">
+        <div data-enter className="flex flex-col gap-2 border-b border-ink pb-3 md:flex-row md:flex-wrap md:items-end md:justify-between md:gap-5 md:pb-6">
           <div>
-            <p className="font-mono text-xs tracking-[0.28em] text-ink/60">
+            <p className="hidden font-mono text-xs tracking-[0.28em] text-ink/60 md:block">
               CAMPUS FILTER
             </p>
-            <div className="mt-2 grid grid-cols-4 gap-1 md:mt-3 md:flex md:flex-wrap md:gap-2">
+            <div className="grid grid-cols-4 gap-1 md:mt-3 md:flex md:flex-wrap md:gap-2">
               <button
                 ref={allCampusRef}
                 type="button"
@@ -109,6 +123,19 @@ export default function FoodBoardPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="flex items-end gap-2 md:flex-wrap md:gap-3">
+            <label className="min-w-36 flex-1 text-xs text-ink/70">
+              <span className="sr-only md:not-sr-only">搜索美食点评</span>
+              <Input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="店名、菜品或关键词" className="md:mt-1" />
+            </label>
+            <label className="flex shrink-0 flex-col gap-1 text-xs text-ink/70">
+              <span className="sr-only md:not-sr-only">排序</span>
+              <Select value={order} onChange={(event) => setOrder(event.target.value)}>
+                <option value="default">默认</option>
+                <option value="latest">最新发布</option>
+              </Select>
+            </label>
           </div>
           {/* 失败时只由下方 ErrorBanner 说明，这里不再挂着“还在同步”。 */}
           {loadState === "error" ? null : (
@@ -161,8 +188,8 @@ export default function FoodBoardPage() {
               {visibleCount === 0 ? (
                 <div id="food-empty" className="mt-6 scroll-mt-28 border-t border-line py-6">
                   <EmptyBlock
-                    label={campus === "all" ? "美食榜当前暂无上榜条目" : "该校区暂未收录"}
-                    action={campus === "all" ? undefined : {
+                    label={campusHasPosts ? "没有找到匹配的美食点评" : campus === "all" ? "美食榜当前暂无上榜条目" : "该校区暂未收录"}
+                    action={campusHasPosts ? { label: "清除搜索", onClick: () => setQuery("") } : campus === "all" ? undefined : {
                       label: "查看全部校区",
                       onClick: () => { setCampus("all"); allCampusRef.current?.focus(); },
                     }}
@@ -263,7 +290,7 @@ export default function FoodBoardPage() {
               RANKING NOTE
             </p>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-ink/65">
-              分档代表学生攻略编辑视角；信息可能随价格、营业状态与出品变化。吃过以后，欢迎来补充真实体验。
+              分档来自同学的用餐体验，价格、营业时间和出品可能变化。吃过觉得不错或踩雷？欢迎投稿分享你的体验。
             </p>
           </div>
           <Link

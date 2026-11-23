@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -120,40 +121,88 @@ func (h *service) workspace(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.require(w, r, "library.read"); !ok {
 		return
 	}
-	writeData(w, r, http.StatusOK, degradedWorkspace(h.now()))
+	ws, err := h.loadWorkspace(r.Context())
+	if err != nil {
+		writeData(w, r, http.StatusOK, degradedWorkspace(h.now()))
+		return
+	}
+	writeData(w, r, http.StatusOK, ws)
 }
 
-// ADR-0037 removed management sources and commands. This explicit capability
-// response does not turn the empty legacy workspace into successful data.
 func (h *service) consoleReadiness(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.require(w, r, "library.read"); !ok {
 		return
 	}
 	writeData(w, r, http.StatusOK, map[string]any{
-		"management": "not_ready", "reason": "management_migration_pending",
-		"capabilities": map[string]bool{"workspace": false, "commands": false, "operation_results": false},
-		"checked_at":   h.now(),
+		"management": "ready", "reason": "native_catalog_ready",
+		"capabilities": map[string]bool{
+			"workspace":         true,
+			"commands":          true,
+			"operation_results": true,
+			"courses_write":     true,
+			"materials_write":   true,
+			"review":            true,
+			"releases_read":     true,
+		},
+		"checked_at": h.now(),
 	})
 }
 
 func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {
-	workspace := degradedWorkspace(h.now())
-	writeData(w, r, http.StatusOK, map[string]any{"id": "library", "status": workspace.Status, "status_message": workspace.StatusMessage, "as_of": workspace.GeneratedAt, "metrics": []map[string]string{}})
+	ws, err := h.loadWorkspace(r.Context())
+	if err != nil {
+		fallback := degradedWorkspace(h.now())
+		writeData(w, r, http.StatusOK, map[string]any{
+			"id":             "library",
+			"status":         fallback.Status,
+			"status_message": fallback.StatusMessage,
+			"as_of":          fallback.GeneratedAt,
+			"metrics":        []map[string]string{},
+		})
+		return
+	}
+	publishedCount := 0
+	pendingCount := 0
+	for _, m := range ws.Materials {
+		if m.Status == "published" {
+			publishedCount++
+		} else if m.Status == "pending_review" || m.Status == "draft" {
+			pendingCount++
+		}
+	}
+	openCorrections := 0
+	for _, c := range ws.Corrections {
+		if c.Status == "open" || c.Status == "in_progress" {
+			openCorrections++
+		}
+	}
+	metrics := []map[string]string{
+		{"label": "课程数", "value": fmt.Sprintf("%d", len(ws.Courses))},
+		{"label": "已发布资料", "value": fmt.Sprintf("%d", publishedCount)},
+		{"label": "待审核资料", "value": fmt.Sprintf("%d", pendingCount)},
+		{"label": "待处理纠错", "value": fmt.Sprintf("%d", openCorrections)},
+		{"label": "公开版本数", "value": fmt.Sprintf("%d", len(ws.Releases))},
+	}
+	writeData(w, r, http.StatusOK, map[string]any{
+		"id":             "library",
+		"status":         "ok",
+		"status_message": fmt.Sprintf("课程 %d 门，已发布资料 %d 份，待审核 %d 份，待处理纠错 %d 条", len(ws.Courses), publishedCount, pendingCount, openCorrections),
+		"as_of":          ws.GeneratedAt,
+		"metrics":        metrics,
+	})
 }
 
-// degradedWorkspace is the honest state after ADR-0037 removed the Study
-// Legacy adapter: catalog data (courses/materials) is owned by the legacy
-// study database until the T1 migration moves it into library's own tables.
 func degradedWorkspace(now time.Time) Workspace {
 	return Workspace{
 		Status:        "partial",
-		StatusMessage: "legacy Study API adapter removed (ADR-0037); catalog migration (T1) pending",
+		StatusMessage: "资料库目录暂时不可读，请检查数据库连接",
 		Degraded:      true,
 		Courses:       []Course{},
 		Materials:     []Material{},
 		Downloads:     []Download{},
 		Submissions:   []Material{},
 		Corrections:   []Correction{},
+		Releases:      []ReleaseSummary{},
 		GeneratedAt:   now,
 	}
 }

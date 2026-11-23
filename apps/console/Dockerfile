@@ -15,7 +15,6 @@ COPY apps/portal/package.json ./apps/portal/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/study-legacy-admin/package.json ./apps/study-legacy-admin/package.json
 COPY products/quizcraft/web-app/package.json ./products/quizcraft/web-app/package.json
-COPY packages/design-tokens ./packages/design-tokens
 RUN node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.pnpm=p.pnpm||{};p.pnpm.supportedArchitectures={os:["linux","current"],cpu:["x64","current"],libc:["musl","current"]};fs.writeFileSync("package.json",JSON.stringify(p,null,2));' \
  && pnpm install --frozen-lockfile --filter @henukit/console...
 

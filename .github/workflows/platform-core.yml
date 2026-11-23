@@ -117,11 +117,13 @@ jobs:
             000018_account_operator_role_grant_audit \
             000019_career_digest_mail \
             000020_mail_outbox_allow_bulk_priority \
-            000021_qq_bindings; do
+            000021_qq_bindings \
+            000022_career_campus_access; do
             psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f "services/platform-core/db/migrations/${migration}.up.sql"
             psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f "services/platform-core/db/migrations/${migration}.up.sql"
           done
-          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='mail_outbox' AND column_name='recipient_user_id') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='mail_outbox_kind_check' AND pg_get_constraintdef(oid) LIKE '%career_digest%') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='mail_outbox_priority_check' AND pg_get_constraintdef(oid) LIKE '%bulk%')")" = t
+          test "$(psql -h localhost -U platform_core -d platform_core_test -Atc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='mail_outbox' AND column_name='recipient_user_id') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='mail_outbox_kind_check' AND pg_get_constraintdef(oid) LIKE '%career_digest%') AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='mail_outbox_priority_check' AND pg_get_constraintdef(oid) LIKE '%bulk%') AND (SELECT count(*) = 4 FROM permission_codes WHERE code IN ('career.read', 'career.manage', 'campus.read', 'campus.moderate') AND status = 'active')")" = t
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000022_career_campus_access.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000021_qq_bindings.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000020_mail_outbox_allow_bulk_priority.down.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000019_career_digest_mail.down.sql
@@ -174,6 +176,7 @@ jobs:
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000019_career_digest_mail.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000020_mail_outbox_allow_bulk_priority.up.sql
           psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000021_qq_bindings.up.sql
+          psql -h localhost -U platform_core -d platform_core_test -v ON_ERROR_STOP=1 -f services/platform-core/db/migrations/000022_career_campus_access.up.sql
 
       - name: Verify QQ binding client provisioning
         env:

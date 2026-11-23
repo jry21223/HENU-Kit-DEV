@@ -32,8 +32,13 @@ export default function MagneticButton({
 
   const onMove = (e: React.MouseEvent) => {
     const el = ref.current;
-    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    if (
+      !el ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+      !window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    ) {
       return;
+    }
     const rect = el.getBoundingClientRect();
     const relX = e.clientX - rect.left - rect.width / 2;
     const relY = e.clientY - rect.top - rect.height / 2;
@@ -57,7 +62,7 @@ export default function MagneticButton({
       onMouseMove={onMove}
       onMouseLeave={onLeave}
       className={cn(
-        "group relative inline-flex w-fit items-center gap-3 overflow-hidden border px-7 py-3.5 font-mono text-sm",
+        "group relative inline-flex min-h-11 w-fit touch-manipulation items-center gap-3 overflow-hidden border px-7 py-3.5 font-mono text-sm transition-transform duration-150 active:scale-[0.98] motion-reduce:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring",
         dark
           ? "border-line-dark text-paper"
           : "border-ink/30 text-ink",
@@ -66,15 +71,15 @@ export default function MagneticButton({
     >
       <span
         aria-hidden
-        className="absolute inset-0 translate-y-full bg-accent transition-transform duration-300 ease-out group-hover:translate-y-0"
+        className="absolute inset-0 translate-y-full bg-accent transition-transform duration-300 ease-out group-hover:translate-y-0 group-active:translate-y-0"
       />
       {/* 橙色填充滑入后文字转墨色：纸白字在强调橙上只有 2.92:1。 */}
-      <span className="relative z-10 transition-colors duration-300 group-hover:text-ink">
+      <span className="relative z-10 transition-colors duration-300 group-hover:text-ink group-active:text-ink">
         {children}
       </span>
       <span
         aria-hidden
-        className="relative z-10 transition-all duration-300 group-hover:translate-x-1 group-hover:text-ink"
+        className="relative z-10 transition-all duration-300 group-hover:translate-x-1 group-hover:text-ink group-active:translate-x-1 group-active:text-ink"
       >
         →
       </span>

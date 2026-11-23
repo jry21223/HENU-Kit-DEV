@@ -64,12 +64,13 @@ test("account profile page renders the career profile and saves the full replace
   await expect(page.getByLabel("技术栈关键词（≤1000 字）")).toHaveValue("go,postgres");
   await expect(page.getByLabel("目标城市（≤500 字）")).toHaveValue("郑州");
   await expect(page.getByLabel("求职类型")).toHaveValue("daily_intern");
-  await expect(page.getByLabel("毕业年份（可空）")).toHaveValue("2027");
+  await expect(page.getByLabel("毕业年份（选填）")).toHaveValue("2027");
   await expect(page.getByLabel("经历摘要（≤4000 字）")).toHaveValue("校内项目经历");
   await expect(page.getByLabel("扫描结果邮件通知")).toBeChecked();
 
   await page.getByRole("button", { name: "保存画像" }).click();
   await expect(page.locator('[data-account-career-profile-save="success"]')).toBeVisible();
+  await expect(page.getByRole("link", { name: "去求职雷达发起扫描 →" })).toHaveAttribute("href", "/career");
   await expect(page.getByText("求职画像已保存，将用于下一次求职雷达匹配。")).toBeVisible();
 });
 
@@ -101,10 +102,10 @@ test("resume suification previews without overwriting and applies only after con
   const original = page.getByLabel("经历摘要（≤4000 字）");
   await expect(original).toHaveValue("校内项目经历");
 
-  await page.getByRole("button", { name: "酥化" }).click();
+  await page.getByRole("button", { name: "AI 润色经历" }).click();
   const preview = page.locator('[data-account-career-suification="preview"]');
   await expect(preview).toBeVisible();
-  await expect(preview.getByLabel("酥化预览")).toHaveValue("校内项目经历（重点表达版）");
+  await expect(preview.getByLabel("润色预览")).toHaveValue("校内项目经历（重点表达版）");
   await expect(original).toHaveValue("校内项目经历");
   expect(profilePutCount).toBe(0);
 
@@ -112,7 +113,7 @@ test("resume suification previews without overwriting and applies only after con
   await expect(preview).toHaveCount(0);
   await expect(original).toHaveValue("校内项目经历");
 
-  await page.getByRole("button", { name: "酥化" }).click();
+  await page.getByRole("button", { name: "AI 润色经历" }).click();
   await expect(preview).toBeVisible();
   await preview.getByRole("button", { name: "应用" }).click();
   await expect(preview).toHaveCount(0);
@@ -166,9 +167,9 @@ test("a newly extracted resume invalidates an older in-flight Suification", asyn
 
   await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
   const resumeText = page.getByLabel("经历摘要（≤4000 字）");
-  await page.getByRole("button", { name: "酥化" }).click();
-  await expect(page.getByRole("button", { name: "酥化中" })).toHaveText("酥化中…");
-  await expect(page.getByRole("button", { name: "酥化中" })).toHaveAttribute("aria-busy", "true");
+  await page.getByRole("button", { name: "AI 润色经历" }).click();
+  await expect(page.getByRole("button", { name: "AI 润色中…" })).toHaveText("AI 润色中…");
+  await expect(page.getByRole("button", { name: "AI 润色中…" })).toHaveAttribute("aria-busy", "true");
 
   await page.locator("#career-resume-upload").setInputFiles({
     name: "new-resume.txt",
@@ -266,7 +267,7 @@ test("invalid graduation year blocks saving with a readable message", async ({ p
 
   await page.goto("/account/profile", { waitUntil: "domcontentloaded" });
   await expect(page.locator('[data-account-career-profile-state="ready"]')).toBeVisible();
-  await page.getByLabel("毕业年份（可空）").fill("202");
+  await page.getByLabel("毕业年份（选填）").fill("202");
   await page.getByRole("button", { name: "保存画像" }).click();
   await expect(page.locator('[data-account-career-profile-save="error"]')).toContainText("毕业年份需为 4 位数字");
   expect(putCount).toBe(0);
@@ -528,7 +529,7 @@ test("completed scans expose every source outcome and keep low-score jobs inspec
       ],
       jobs: [
         { source_key: "getwork.meituan", company: "美团", title: "AI 工具开发实习生", location: "北京", url: "https://jobs.example.test/1", match_score: 24, match_reasons: ["匹配技术栈 Go、MCP"] },
-        { source_key: "getwork.meituan", company: "美团", title: "其他岗位", location: "", url: "https://jobs.example.test/2", match_score: 0, match_reasons: [] },
+        { source_key: "  ", company: "美团", title: "其他岗位", location: "", url: "https://jobs.example.test/2", match_score: 0, match_reasons: [] },
       ],
     },
   };
@@ -538,10 +539,18 @@ test("completed scans expose every source outcome and keep low-score jobs inspec
   await expect(page.locator('[data-career-scan-status="completed"]')).toBeVisible();
   await expect(page.getByText("AI 工具开发实习生")).toBeVisible();
   await expect(page.getByText("其他岗位")).toBeVisible();
-  await expect(page.getByText("meituan")).toBeVisible();
-  await expect(page.getByText("已响应 · 可展示 2 / 抓取 3 / 未展示 1")).toBeVisible();
+  const report = page.getByRole("listitem").filter({ hasText: "已响应 · 收录 2 个岗位" });
+  await expect(report.getByText("meituan", { exact: true })).toBeVisible();
+  await expect(page.getByText("已响应 · 收录 2 个岗位")).toBeVisible();
   await expect(page.getByText("tencent")).toBeVisible();
   await expect(page.getByText("暂时不可用")).toBeVisible();
+  const sources = page.getByRole("group", { name: "岗位来源" });
+  await expect(sources.getByRole("button")).toHaveCount(2);
+  await expect(sources.getByRole("button", { name: "全部来源", exact: true })).toHaveCount(1);
+  await expect(page.getByText(/展示共 2 个岗位/)).toBeVisible();
+  await sources.getByRole("button", { name: "meituan", exact: true }).click();
+  await expect(page.getByText("AI 工具开发实习生")).toBeVisible();
+  await expect(page.getByText("其他岗位")).toHaveCount(0);
 
   await page.goto("/career/history", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("2 个来源 · 2 个岗位")).toBeVisible();

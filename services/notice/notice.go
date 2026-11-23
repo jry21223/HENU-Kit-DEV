@@ -75,6 +75,7 @@ func New(config Config) (http.Handler, error) {
 		protected.Get(contract.ConsoleSummaryRoute, h.consoleSummary)
 		protected.Get(contract.SnapshotRoute, h.snapshot)
 		protected.Post(contract.SourceCreateRoute, h.createSource)
+		protected.Get(contract.SourceCreateRoute, h.listSources)
 		protected.Post(contract.VersionCreateRoute, h.createVersion)
 		protected.Post(contract.ReviewRoute, h.review)
 		protected.Post(contract.DistributionRoute, h.distribute)
@@ -106,6 +107,19 @@ type sourceInput struct {
 	Name         string `json:"name"`
 	CanonicalURL string `json:"canonical_url"`
 }
+
+func (h *service) listSources(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.require(w, r, "notice.read"); !ok {
+		return
+	}
+	sources, err := h.lifecycle.listSources(r.Context())
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "Notice sources are unavailable")
+		return
+	}
+	writeData(w, r, http.StatusOK, map[string]any{"sources": sources})
+}
+
 type versionInput struct {
 	Title             string     `json:"title"`
 	Body              string     `json:"body"`

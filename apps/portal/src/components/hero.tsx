@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION } from "@/lib/gsap";
+import { gsap, useGSAP, FINE_MOTION, REDUCED_MOTION, ScrollTrigger } from "@/lib/gsap";
 import Marquee from "@/components/marquee";
 import AmbientSvg from "@/components/ui/ambient-svg";
 import { SITE_STATEMENT_FULL } from "@/lib/site-legal";
@@ -45,7 +45,10 @@ function useDesktop() {
   );
 }
 
-/** reduced-motion 时替代 3D 场景的静态 SVG 图纸网格 */
+/**
+ * 不渲染 3D 时（手机、减少动态效果）的图纸 SVG。画面与原来一致；动效开启时外圈虚线、方框和
+ * 三个橙点慢速公转、橙点呼吸，内圈与十字基准线不动；减少动态效果时整幅静止。
+ */
 function StaticBlueprint() {
   return (
     <svg
@@ -55,13 +58,15 @@ function StaticBlueprint() {
       fill="none"
       stroke="currentColor"
     >
-      <circle cx="200" cy="200" r="120" strokeDasharray="4 6" />
       <circle cx="200" cy="200" r="70" />
-      <rect x="130" y="130" width="140" height="140" strokeDasharray="4 6" />
       <path d="M200 40v320M40 200h320" strokeDasharray="2 6" />
-      <circle cx="200" cy="80" r="6" className="fill-accent stroke-none" />
-      <circle cx="320" cy="200" r="6" className="fill-accent stroke-none" />
-      <circle cx="140" cy="290" r="6" className="fill-accent stroke-none" />
+      <g data-blueprint-orbit>
+        <circle cx="200" cy="200" r="120" strokeDasharray="4 6" />
+        <rect x="130" y="130" width="140" height="140" strokeDasharray="4 6" />
+        <circle data-blueprint-node cx="200" cy="80" r="6" className="fill-accent stroke-none" />
+        <circle data-blueprint-node cx="320" cy="200" r="6" className="fill-accent stroke-none" />
+        <circle data-blueprint-node cx="140" cy="290" r="6" className="fill-accent stroke-none" />
+      </g>
     </svg>
   );
 }
@@ -70,6 +75,7 @@ export default function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
   const isDesktop = useDesktop();
+  const use3D = isDesktop && !reduced;
   // Hero 有任何一部分在视窗内才驱动 3D 渲染循环
   const [inView, setInView] = useState(true);
 
@@ -98,10 +104,26 @@ export default function Hero() {
           repeat: -1,
           ease: "none",
         });
+        // 图纸 SVG 的公转：只在 Hero 可见时播放，滚走就停。
+        if (use3D) return;
+        const orbit = gsap.timeline({ paused: true });
+        orbit.to("[data-blueprint-orbit]", { rotate: 360, svgOrigin: "200 200", duration: 48, repeat: -1, ease: "none" }, 0);
+        orbit.to(
+          "[data-blueprint-node]",
+          { scale: 1.5, opacity: 0.5, transformOrigin: "50% 50%", duration: 1.6, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: 0.5 },
+          0
+        );
+        const watcher = ScrollTrigger.create({
+          trigger: sectionRef.current,
+          start: "top bottom",
+          end: "bottom top",
+          onToggle: (self) => (self.isActive ? orbit.play() : orbit.pause()),
+        });
+        if (watcher.isActive) orbit.play();
       });
       return () => mm.revert();
     },
-    { scope: sectionRef }
+    { scope: sectionRef, dependencies: [use3D], revertOnUpdate: true }
   );
 
   return (
@@ -127,7 +149,7 @@ export default function Hero() {
         className="enter-fade pointer-events-none absolute inset-y-0 right-0 w-full md:w-[55%]"
         style={{ animationDelay: "1.14s" }}
       >
-        {!isDesktop || reduced ? (
+        {!use3D ? (
           <div className="h-full w-full p-16 opacity-60">
             <StaticBlueprint />
           </div>
@@ -190,7 +212,7 @@ export default function Hero() {
             <Link
               key={entry.href}
               href={entry.href}
-              className={`inline-flex min-h-12 items-center justify-center border px-3 py-3 font-mono text-sm text-ink transition-colors hover:border-ink hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${index === 0 ? "border-accent bg-accent" : "border-ink/30 bg-paper"}`}
+              className={`inline-flex min-h-12 touch-manipulation items-center justify-center border px-3 py-3 font-mono text-sm text-ink transition-[colors,transform] duration-150 active:scale-[0.98] motion-reduce:active:scale-100 hover:border-ink hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${index === 0 ? "border-accent bg-accent active:border-ink active:bg-ink active:text-paper" : "border-ink/30 bg-paper active:border-ink active:bg-ink/5"}`}
             >
               {entry.label}
             </Link>

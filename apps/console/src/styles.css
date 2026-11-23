@@ -1,489 +1,79 @@
-@import "tailwindcss";
-
-/* Console is an internal operations tool, not a brand surface. It deliberately
-   does NOT consume packages/design-tokens (the Portal's engineering-drawing
-   theme): a stylised palette costs operators reading speed on dense,
-   high-consequence screens. This file therefore carries shadcn-vue's stock
-   neutral scale unmodified, so every component renders the way the library
-   was designed and tested to look. */
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.625rem;
-
-  /* Status hues for operational state. Kept close to the neutral scale's
-     chroma so a page full of badges stays calm. */
-  --success: oklch(0.55 0.13 155);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.68 0.15 70);
-  --warning-foreground: oklch(0.205 0 0);
-  --info: oklch(0.55 0.16 255);
-  --info-foreground: oklch(0.985 0 0);
-
-  /* Sidebar reads as a quiet surface beside the content, not an ink slab. */
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.94 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-}
-
-@theme inline {
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
-
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-}
-
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html {
-  scroll-behavior: smooth;
-}
-
-body {
+html,
+body,
+#app {
   margin: 0;
-  min-width: 320px;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  line-height: 1.6;
+  padding: 0;
+  min-height: 100%;
+  background: #f6f7f9;
+  color: #18181b;
   -webkit-font-smoothing: antialiased;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
+.console-mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Dense operational tables and long identifiers need to wrap rather than push
-   the page into horizontal scroll on narrow screens. */
-.console-main {
-  min-width: 0;
-}
-
-/* Overview facts share one module surface; metric cells are not nested cards. */
-.console-module-card {
-  overflow-wrap: anywhere;
-}
-
-.console-module-card > header {
+.console-page-header {
+  display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 20px;
 }
 
-.console-module-card > header > .min-w-0 {
-  min-width: 7rem;
+.console-page-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: #0f172a;
 }
 
-.console-access-details summary {
-  min-height: 44px;
-  align-content: center;
+.console-page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #64748b;
 }
 
-.console-access-details summary:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 4px;
-  border-radius: var(--radius-sm);
+.console-sider-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
 }
 
-.console-access-details code {
-  overflow-wrap: anywhere;
+.console-ticket-bubble-user {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
 }
 
-@media (max-width: 640px) {
-  .console-module-card { padding: 1rem; }
-  .console-module-card > p { display: none; }
-  .console-module-metrics { margin-top: 0.5rem; }
-  .console-module-metrics > div { padding-block: 0.5rem; }
-  .console-module-card > footer { margin-top: 0.75rem; padding-top: 0.5rem; }
+.console-ticket-bubble-operator {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  padding: 12px 14px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-}
-
-/* The overview leads with business work; diagnostic evidence is disclosed once. */
-.console-overview-main { max-width: 86rem; }
-.overview-workspace { animation: overview-arrive 180ms ease-out both; }
-.overview-heading { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 2rem; }
-.overview-heading h1 { margin: 0 0 .5rem; font-size: 1.8rem; font-weight: 680; line-height: 1.25; letter-spacing: -.035em; }
-.overview-subtitle { margin: 0; color: var(--muted-foreground); font-size: .875rem; line-height: 1.6; }
-.overview-section { margin-top: 2rem; min-width: 0; }
-.overview-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem 1rem; margin-bottom: .75rem; }
-.overview-section-heading h2 { margin: 0; font-size: 1rem; font-weight: 650; }
-.overview-section-heading p { margin: 0; color: var(--muted-foreground); font-size: .875rem; }
-.overview-attention { padding: 1.5rem; border: 1px solid var(--border); border-radius: .65rem; background: var(--card); }
-.overview-task, .overview-business-row { display: flex; justify-content: space-between; align-items: center; gap: 1.25rem 2rem; min-width: 0; padding-block: 1.25rem; }
-.overview-task + .overview-task, .overview-business-row + .overview-business-row { border-top: 1px solid var(--border); }
-.overview-task:last-child { padding-bottom: 0; }
-.overview-task h3, .overview-business-row h3 { margin: 0; font-size: .9375rem; font-weight: 600; line-height: 1.6; }
-.overview-task p, .overview-business-row p { margin: .35rem 0 0; font-size: .875rem; line-height: 1.7; overflow-wrap: anywhere; }
-.overview-task p > strong { font-size: 1.6rem; font-weight: 650; letter-spacing: -.03em; line-height: 1.4; font-variant-numeric: tabular-nums; }
-.overview-task-extra { display: inline-block; margin-left: 1rem; color: var(--muted-foreground); }
-.overview-object { display: flex; align-items: start; gap: .9rem; min-width: 0; }
-.overview-object > svg { margin-top: .25rem; flex-shrink: 0; color: var(--muted-foreground); }
-.overview-object > div, .overview-business-row > div { min-width: 0; }
-.overview-task > a, .overview-business-row > a { flex-shrink: 0; }
-.overview-source { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-.overview-row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: .75rem; }
-.overview-text-link { padding: .5rem .25rem; font-size: .875rem; text-decoration: underline; text-underline-offset: .2rem; }
-.overview-text-link:focus-visible, .overview-diagnostics > summary:focus-visible { outline: 2px solid var(--foreground); outline-offset: 3px; }
-.overview-clear { margin: 1rem 0 0; color: var(--success); font-size: .9375rem; }
-.overview-diagnostics { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--border); font-size: .875rem; line-height: 1.7; overflow-wrap: anywhere; }
-.overview-diagnostics > summary { width: fit-content; cursor: pointer; font-weight: 600; padding-block: .5rem; }
-.overview-diagnostics > p { margin-top: 1rem; color: var(--muted-foreground); }
-.overview-diagnostic-list { margin-top: 1rem; }
-.overview-diagnostic-list > div { padding-block: .65rem; }
-.overview-diagnostic-list dt { font-weight: 550; }
-.overview-diagnostic-list dd { margin: .25rem 0 0; color: var(--muted-foreground); }
-.overview-diagnostic-list code { display: block; }
-.overview-permissions { display: flex; flex-wrap: wrap; gap: .5rem; }
-.overview-permissions code { max-width: 100%; overflow-wrap: anywhere; }
-.is-refreshing { animation: overview-spin 1s linear infinite; }
-@keyframes overview-arrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-@keyframes overview-spin { to { transform: rotate(360deg); } }
-@media(max-width:760px) {
-  .overview-heading { gap: 1rem; align-items: start; }.overview-heading h1 { font-size: 1.5rem; }
-  .overview-attention { padding: 1.1rem; }
-  .overview-task, .overview-business-row { flex-direction: column; align-items: stretch; gap: 1rem; }
-  .overview-task > a, .overview-business-row > a { align-self: start; }
-  .overview-task-extra { display: block; margin: .25rem 0 0; }
-  .overview-row-actions { justify-content: start; }
-}
-@media(prefers-reduced-motion:reduce) { .overview-workspace, .is-refreshing { animation: none; } }
-
-/* ---------------------------------------------------------------------------
-   Shared operational surfaces.
-
-   These class names predate the component kit and are consumed across the
-   seven operations views. They are kept as names — rewriting the markup of
-   every view at once would be a large, hard-to-review change — but restyled
-   onto the semantic tokens above, so they now match the shadcn components
-   they sit beside instead of the retired engineering-drawing theme.
-   --------------------------------------------------------------------------- */
-@layer components {
-  /* Section eyebrow above a page title. Quiet label, not a brand accent. */
-  .eyebrow {
-    color: var(--muted-foreground);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-  }
-
-  /* Right-hand summary chip in a page header (e.g. "可读写 / 平台权限"). */
-  .access-context {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--card);
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    color: var(--muted-foreground);
-  }
-
-  .access-context strong {
-    color: var(--foreground);
-    font-weight: 600;
-  }
-
-  /* Inline identifiers. Muted chip, never a coloured brand token. */
-  code {
-    border-radius: calc(var(--radius) - 2px);
-    background: var(--muted);
-    padding: 0.15em 0.4em;
-    color: var(--foreground);
-    font-family: var(--font-mono);
-    font-size: 0.8125em;
-  }
-
-  /* Counter tiles. */
-  .operation-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-    gap: 0.75rem;
-    margin-top: 1.5rem;
-  }
-
-  .operation-summary-grid article {
-    display: grid;
-    gap: 0.25rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--card);
-    padding: 0.875rem 1rem;
-  }
-
-  .operation-summary-grid span {
-    color: var(--muted-foreground);
-    font-size: 0.8125rem;
-  }
-
-  .operation-summary-grid strong {
-    font-size: 1.5rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
-  }
-
-  /* Content panels, plus the state/notice banners that share their shell. */
-  .operation-panel,
-  .operation-state,
-  .operation-notice {
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--card);
-  }
-
-  .operation-panel {
-    margin-top: 1rem;
-    padding: 1.25rem;
-    overflow-wrap: anywhere;
-  }
-
-  .operation-panel h2 {
-    margin: 0 0 1rem;
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-  }
-
-  .operation-state,
-  .operation-notice {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.75rem;
-    margin-top: 1rem;
-    padding: 0.875rem 1rem;
-    font-size: 0.875rem;
-    color: var(--muted-foreground);
-  }
-
-  .operation-notice {
-    border-left: 3px solid var(--info);
-    color: var(--foreground);
-  }
-
-  .operation-list {
-    display: grid;
-    gap: 0;
-  }
-
-  .operation-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    border-top: 1px solid var(--border);
-    padding: 0.875rem 0;
-  }
-
-  .operation-row:first-child {
-    border-top: 0;
-    padding-top: 0;
-  }
-
-  .operation-row p,
-  .compact-row span {
-    color: var(--muted-foreground);
-    font-size: 0.8125rem;
-  }
-
-  .operation-row code {
-    display: inline-block;
-    margin: 0.25rem 0.25rem 0 0;
-  }
-
-  .operation-actions {
-    display: flex;
-    align-items: end;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .operation-actions label,
-  .grant-editor label {
-    display: grid;
-    gap: 0.3rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--muted-foreground);
-  }
-
-  /* Controls inside panels, matched to the Input/Button components. */
-  .operation-panel button,
-  .operation-notice button {
-    min-height: 2.25rem;
-    border: 1px solid var(--primary);
-    border-radius: calc(var(--radius) - 2px);
-    background: var(--primary);
-    padding: 0.4rem 0.85rem;
-    color: var(--primary-foreground);
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: opacity 120ms ease;
-  }
-
-  .operation-panel button:hover,
-  .operation-notice button:hover {
-    opacity: 0.9;
-  }
-
-  .operation-panel button:disabled {
-    opacity: 0.5;
-    pointer-events: none;
-  }
-
-  .operation-panel .secondary-action {
-    border-color: var(--border);
-    background: var(--card);
-    color: var(--foreground);
-  }
-
-  .operation-panel .secondary-action:hover {
-    background: var(--accent);
-    opacity: 1;
-  }
-
-  .operation-panel select,
-  .operation-panel input {
-    min-height: 2.25rem;
-    min-width: 0;
-    border: 1px solid var(--input);
-    border-radius: calc(var(--radius) - 2px);
-    background: var(--card);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.875rem;
-  }
-
-  .operation-panel select:focus-visible,
-  .operation-panel input:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 1px;
-  }
-
-  .account-access-editor {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .grant-editor {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-    align-items: end;
-    gap: 0.6rem;
-    margin-top: 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius) - 2px);
-    padding: 0.75rem;
-    background: var(--muted);
-  }
-
-  .operation-two-column {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
-  }
-
-  .compact-row {
-    display: grid;
-    gap: 0.2rem;
-    border-top: 1px solid var(--border);
-    padding: 0.7rem 0;
-  }
-
-  .compact-row:first-of-type {
-    border-top: 0;
-  }
-
-  .mail-grid {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 0.5rem 1rem;
-    font-size: 0.875rem;
-  }
-
-  .mail-grid dt {
-    color: var(--muted-foreground);
-  }
-
-  .mail-grid dd {
-    margin: 0;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-}
-
-@media (max-width: 700px) {
-  .operation-row,
-  .operation-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .operation-two-column {
-    grid-template-columns: 1fr;
-  }
+.console-code-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #334155;
+  word-break: break-all;
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"henukit.dev/console-gateway/internal/accountportfolio"
+	"henukit.dev/console-gateway/internal/campus"
+	"henukit.dev/console-gateway/internal/career"
 	"henukit.dev/console-gateway/internal/food"
 	"henukit.dev/console-gateway/internal/httpapi"
 	"henukit.dev/console-gateway/internal/library"
@@ -39,6 +41,10 @@ type Config struct {
 	FoodCredentials                            overview.Credentials
 	AccountPortfolioAPIURL                     string
 	AccountPortfolioCredentials                overview.Credentials
+	CareerAPIURL                               string
+	CareerCredentials                          overview.Credentials
+	CampusAPIURL                               string
+	CampusCredentials                          overview.Credentials
 	Logger                                     *slog.Logger
 }
 
@@ -101,6 +107,26 @@ func New(config Config) (http.Handler, error) {
 			return nil, err
 		}
 	}
+	var careerClient *career.Client
+	if config.CareerAPIURL != "" {
+		if config.CareerCredentials.ClientSecret == config.ClientSecret {
+			return nil, fmt.Errorf("career console secret must be separate from Platform Core OAuth credentials")
+		}
+		careerClient, err = career.New(config.CareerAPIURL, config.CareerCredentials.ClientID, config.CareerCredentials.ClientSecret, config.CareerCredentials.KeyID, config.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var campusClient *campus.Client
+	if config.CampusAPIURL != "" {
+		if config.CampusCredentials.ClientSecret == config.ClientSecret {
+			return nil, fmt.Errorf("campus console secret must be separate from Platform Core OAuth credentials")
+		}
+		campusClient, err = campus.New(config.CampusAPIURL, config.CampusCredentials.ClientID, config.CampusCredentials.ClientSecret, config.CampusCredentials.KeyID, config.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for id, credential := range config.OverviewCredentials {
 		if credential.ClientSecret == config.ClientSecret {
 			return nil, fmt.Errorf("%s summary secret must be separate from Platform Core OAuth credentials", id)
@@ -110,5 +136,5 @@ func New(config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient, foodClient, accountPortfolioClient, quizcraftClient)
+	return httpapi.New(config.PlatformAccountOrigin, config.ClientID, config.RedirectURI, client, noticeClient, aggregator, config.Redis, codec, config.Logger, libraryClient, foodClient, accountPortfolioClient, quizcraftClient, careerClient, campusClient)
 }

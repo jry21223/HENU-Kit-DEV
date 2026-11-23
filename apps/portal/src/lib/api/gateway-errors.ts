@@ -51,6 +51,9 @@ export const GATEWAY_USER_MESSAGE_CODES: ReadonlySet<string> = new Set([
   "career_service_unavailable",
   "career_unavailable",
   "lifetime_required",
+  "AUTH_REQUIRED",
+  "CAMPUS_WRITES_UNAVAILABLE",
+  "CAMPUS_UPSTREAM_UNAVAILABLE",
   // 通用与 QQ 绑定页
   "portal_api_unavailable",
   "proxy_error",

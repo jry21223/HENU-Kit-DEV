@@ -1,5 +1,6 @@
 ---
-status: accepted
+status: superseded
+superseded_by: 0060
 ---
 
 # HENUKit Console 使用 shadcn-vue 组件体系

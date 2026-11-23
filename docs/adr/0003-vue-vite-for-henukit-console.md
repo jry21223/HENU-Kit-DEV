@@ -1,5 +1,6 @@
 ---
-status: accepted
+status: superseded
+superseded_by: 0060
 ---
 
 # HENUKit Console 使用 Vue 3、TypeScript 和 Vite

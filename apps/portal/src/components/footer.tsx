@@ -14,7 +14,7 @@ const LINKS = [
   { index: "05", label: "求职雷达", href: "/career" },
 ];
 
-export default function Footer() {
+export default function Footer({ copyrightYear }: { copyrightYear: number }) {
   const sectionRef = useRef<HTMLElement>(null);
   const giantRef = useRef<HTMLParagraphElement>(null);
 
@@ -123,7 +123,7 @@ export default function Footer() {
               ))}
             </nav>
             <p className="font-mono text-xs tracking-widest text-ink/60">
-              © {new Date().getFullYear()} henukit
+              © {copyrightYear} henukit
             </p>
           </div>
           <LegalNotice className="mt-6 border-t border-line pt-4" />

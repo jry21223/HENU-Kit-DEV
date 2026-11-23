@@ -51,4 +51,19 @@ describe("authStore", () => {
     expect(authStore.get().user).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("clearCachedSession clears authStore state synchronously without network calls", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_ALLOW_MOCK", "1");
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+
+    const { authStore } = await import("./store");
+    const { clearCachedSession } = await import("@/lib/api/client");
+    authStore.login("小河同学");
+    expect(authStore.get().user?.name).toBe("小河同学");
+
+    clearCachedSession();
+    expect(authStore.get().user).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

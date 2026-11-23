@@ -179,8 +179,8 @@ export default function CareerHistoryView({ state }: { state: CareerHistoryViewS
                       {careerScanStageLabel(search.stage)}
                     </span>
                   ) : null}
-                  <span className="font-mono text-xs tracking-wider text-ink/60">
-                    #{search.id.slice(0, 8)}
+                  <span title={search.id} className="font-mono text-xs tracking-wider text-ink/60">
+                    #{search.id.length > 9 ? `${search.id.slice(0, 4)}…${search.id.slice(-4)}` : search.id}
                   </span>
                 </div>
                 <p className="mt-1.5 text-xs leading-5 text-ink/60">

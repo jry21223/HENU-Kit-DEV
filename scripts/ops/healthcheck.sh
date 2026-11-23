@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# Deprecated: probes the retired Study stack. Retained for historical troubleshooting only.
 set -eu
 
 API_HEALTH_URL="${API_HEALTH_URL:-http://localhost:8080/readyz}"

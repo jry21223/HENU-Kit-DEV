@@ -80,7 +80,7 @@ func (db *PortalDB) GetItem(id string) (*Item, error) {
 	err := db.conn.QueryRow(`
 		SELECT id, type, category, title, "desc", price, seller, credit,
 		       deals_done, wants, place, deadline, status, time, images
-		FROM portal_campus_items WHERE id = $1
+		FROM portal_campus_items WHERE id = $1 AND status != 'hidden'
 	`, id).Scan(
 		&it.ID, &it.Type, &it.Category, &it.Title, &it.Desc,
 		&it.Price, &it.Seller, &it.Credit, &it.DealsDone,
@@ -96,11 +96,11 @@ func (db *PortalDB) GetItem(id string) (*Item, error) {
 	return &it, nil
 }
 
-// GetMessages returns messages for an item.
+// GetMessages returns visible messages for an item.
 func (db *PortalDB) GetMessages(itemID string) ([]DealMessage, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, item_id, author, time, text
-		FROM portal_campus_messages WHERE item_id = $1 ORDER BY created_at
+		FROM portal_campus_messages WHERE item_id = $1 AND hidden = false ORDER BY created_at
 	`, itemID)
 	if err != nil {
 		return nil, fmt.Errorf("query messages: %w", err)

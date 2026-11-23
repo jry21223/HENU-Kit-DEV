@@ -6,6 +6,7 @@
 packages/api-contracts/
 ├── openapi/
 │   ├── console-gateway.yaml
+│   ├── console-extensions.yaml
 │   ├── food.yaml
 │   ├── library.yaml
 │   ├── notice.yaml
@@ -26,6 +27,8 @@ packages/api-contracts/
 - 写接口按场景声明 `Idempotency-Key`。
 - 内部服务接口与浏览器接口使用不同 tag、安全方案和路径空间。
 - 生成客户端和服务端类型不得手工修改；生成命令应进入 CI。
+
+`openapi/console-extensions.yaml` 收录来源目录、平台角色与待办、积分与会员订单，以及 Library、Career、Campus 的扩展接口。控制台路径通过 Console Gateway 调用，学生互助路径通过 Portal Gateway 调用。`x-upstream` 指明对应的业务服务路由。此文件独立于现有 Console Gateway 客户端生成入口。
 
 ## 当前实现状态
 

@@ -10,6 +10,9 @@ import {
 import type { CareerScanPollState } from "@/lib/career/career-scan-state";
 import type { CareerSearch } from "@/lib/api/types";
 import { visibleCareerMatches } from "@/lib/career/result";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { matchesSearchText } from "@/lib/search-text";
 
 /**
  * 异步扫描任务状态区（#402）：active/completed/failed 三态展示。
@@ -22,17 +25,19 @@ export default function CareerScanStatusPanel({
   state,
   emailEnabled,
   onRetry,
+  filterJobs = false,
 }: {
   state: CareerScanPollState;
   /** 画像里的邮件简报开关；决定 active 态提示是否承诺邮件通知。 */
   emailEnabled: boolean;
   onRetry: () => void;
+  filterJobs?: boolean;
 }) {
   if (state.kind === "active") {
     return <ActivePanel search={state.search} pollError={state.pollError} emailEnabled={emailEnabled} />;
   }
   if (state.kind === "completed") {
-    return <CompletedPanel search={state.search} />;
+    return <CompletedPanel key={state.search.id} search={state.search} filterJobs={filterJobs} />;
   }
   return <FailedPanel search={state.search} onRetry={onRetry} />;
 }
@@ -54,7 +59,7 @@ function ActivePanel({
       className="mt-6 max-w-xl border border-ink px-4 py-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-xs tracking-[0.2em] text-ink/60">TASK RUNNING</p>
+        <p className="font-mono text-xs text-ink/60">正在扫描</p>
         <span className="border border-ink/30 px-2 py-0.5 font-mono text-xs text-ink/60">
           {careerSearchStatusLabel(search.status)}
         </span>
@@ -86,8 +91,16 @@ function ActivePanel({
   );
 }
 
-function CompletedPanel({ search }: { search: CareerSearch }) {
-  const matches = search.result ? visibleCareerMatches(search.result) : [];
+function CompletedPanel({ search, filterJobs }: { search: CareerSearch; filterJobs: boolean }) {
+  const [query, setQuery] = useState("");
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const jobs = search.result ? visibleCareerMatches(search.result) : [];
+  const jobSources = [...new Set(jobs.map((job) => job.source_key?.trim()).filter(Boolean))];
+  const matches = jobs.filter((job) =>
+    (!selectedSource || selectedSource === job.source_key?.trim()) &&
+    matchesSearchText(query, job.title, job.company, job.location ?? "", ...job.match_reasons)
+  );
+  const includesOtherJobs = search.result?.matched_count === 0 || matches.some((job) => job.match_score <= 0);
   const sources = search.result?.sources ?? [];
   const digestStatus = careerDigestStatusLabel(search) ?? "历史任务无邮件状态";
   return (
@@ -97,7 +110,7 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
       className="mt-6 max-w-3xl border border-ink px-4 py-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-xs tracking-[0.2em] text-ink/60">TASK COMPLETED</p>
+        <p className="font-mono text-xs text-ink/60">扫描完成</p>
         <span className="border border-ink/40 px-2 py-0.5 font-mono text-xs text-ink/70">
           {careerSearchStatusLabel(search.status)}
         </span>
@@ -106,7 +119,7 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
         {search.result?.summary ?? "扫描已完成，结果已保存。"}
       </p>
       <p className="mt-1 font-mono text-xs text-ink/60">
-        <span className="tracking-[0.15em]">#{search.id.slice(0, 8)}</span> · {formatCareerSearchTime(search.created_at)}
+        {formatCareerSearchTime(search.created_at)}
         {` · ${digestStatus}`}
       </p>
       {search.result ? (
@@ -118,14 +131,14 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
       ) : null}
       {sources.length ? (
         <div className="mt-4">
-          <p className="font-mono text-xs tracking-[0.18em] text-ink/60">SOURCE REPORT</p>
+          <p className="font-mono text-xs text-ink/60">招聘来源状态</p>
           <ul className="mt-2 grid gap-2 sm:grid-cols-2">
             {sources.map((source) => (
               <li key={source.key} className="flex items-center justify-between gap-3 border border-line px-3 py-2 text-xs">
                 <span className="font-mono text-ink/70">{source.key.replace(/^getwork\./, "")}</span>
                 <span className={source.status === "success" ? "text-ink/60" : "text-accent-text"}>
                   {source.status === "success"
-                    ? `已响应 · 可展示 ${source.found} / 抓取 ${source.fetched ?? source.found} / 未展示 ${source.rejected ?? 0}`
+                    ? `已响应 · 收录 ${source.found} 个岗位`
                     : "暂时不可用"}
                 </span>
               </li>
@@ -133,10 +146,27 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
           </ul>
         </div>
       ) : null}
+      {filterJobs && jobs.length > 0 ? (
+        <div className="mt-4 space-y-3">
+          <label className="block text-xs text-ink/70">
+            搜索岗位
+            <Input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="岗位、公司或城市" className="mt-1" />
+          </label>
+          {jobSources.length > 0 && (
+            <div role="group" aria-label="岗位来源" className="flex flex-wrap gap-2">
+              {[null, ...jobSources].map((source) => (
+                <button type="button" key={source === null ? "all-sources" : `source:${source}`} aria-pressed={selectedSource === source} onClick={() => setSelectedSource(source)} className="min-h-11 min-w-11 border border-line px-3 text-xs aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-paper focus-visible:outline-2 focus-visible:outline-focus-ring">
+                  {source === null ? "全部来源" : source.replace(/^getwork\./, "") || source}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
       {matches.length ? (
         <div className="mt-4">
           <p className="text-xs leading-5 text-ink/60">
-            以下共 {matches.length} 个已保留岗位，按画像相关性排序。每次最多保留 200 个，保留范围内不再用分数阈值隐藏。
+            {includesOtherJobs ? `展示共 ${matches.length} 个岗位` : `以下共 ${matches.length} 个匹配岗位`}，已按与你求职画像的相关性由高到低排序。
           </p>
           <ol className="mt-3 space-y-3">
           {matches.map((job) => (
@@ -161,6 +191,8 @@ function CompletedPanel({ search }: { search: CareerSearch }) {
           ))}
           </ol>
         </div>
+      ) : jobs.length ? (
+        <p className="mt-3 text-sm text-ink/70">没有符合当前筛选条件的岗位。</p>
       ) : search.result ? (
         <p className="mt-3 text-xs leading-5 text-ink/60">本次各来源未返回可展示的岗位，可根据上方来源状态稍后重试。</p>
       ) : null}
@@ -176,7 +208,7 @@ function FailedPanel({ search, onRetry }: { search: CareerSearch; onRetry: () =>
       className="mt-6 max-w-xl border border-accent px-4 py-4"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-xs tracking-[0.2em] text-accent-text">TASK FAILED</p>
+        <p className="font-mono text-xs text-accent-text">扫描未完成</p>
         <span className="border border-accent/60 px-2 py-0.5 font-mono text-xs text-accent-text">
           {careerSearchStatusLabel(search.status)}
         </span>

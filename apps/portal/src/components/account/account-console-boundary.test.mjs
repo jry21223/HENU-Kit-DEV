@@ -30,6 +30,9 @@ test("account console keeps browser identity on the real Portal Session boundary
   assert.match(layout, /fetchSession/);
   assert.match(layout, /AccountConsoleSessionProvider/);
   assert.match(layout, /requireLogin/);
+  assert.match(layout, /clearCachedSession\(\)/);
+  assert.match(layout, /const requireLogin =[^]*?clearCachedSession\(\);\s*redirectToAccountLogin\(\);/);
+  assert.match(layout, /await logout\(\);\s*requestVersion\.current \+= 1;\s*clearCachedSession\(\);\s*router\.replace/);
   assert.doesNotMatch(layout, /\bAccountEntry\b/);
   assert.match(overview, /useAccountConsoleSession/);
   for (const source of [overview, wallet, membership, notifications, tickets]) {

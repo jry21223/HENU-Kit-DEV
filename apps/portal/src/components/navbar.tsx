@@ -208,12 +208,14 @@ export default function Navbar() {
           onFocus={revealKeyboardFocus}
           className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-line bg-paper md:hidden"
         >
-          {LINKS.map((link) => (
+          {/* 每次打开，五行自上而下错峰落下（enter-drop，减少动态效果时不播）。 */}
+          {LINKS.map((link, index) => (
             <Link
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
-              className={cn("flex items-center gap-3 border-b border-line px-5 py-4 font-mono text-sm", INSET_FOCUS_RING)}
+              style={{ animationDelay: `${index * 0.04}s` }}
+              className={cn("enter-drop flex items-center gap-3 border-b border-line px-5 py-4 font-mono text-sm", INSET_FOCUS_RING)}
             >
               <span className="text-accent-text">{link.index}</span>
               {link.label}
@@ -230,7 +232,7 @@ export default function Navbar() {
       {/* 手机菜单遮罩：盖住面板下方露出的页面，点一下关闭菜单。放在 header 外面：
           header 滚动时带 transform，fixed 子元素会被它框住。 */}
       {open && (
-        <div aria-hidden onClick={closeMenu} className="fixed inset-0 z-40 bg-ink/50 md:hidden" />
+        <div aria-hidden onClick={closeMenu} className="enter-fade fixed inset-0 z-40 bg-ink/50 md:hidden" style={{ animationDuration: "0.25s" }} />
       )}
     </>
   );

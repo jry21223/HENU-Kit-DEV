@@ -1,66 +1,73 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-/**
- * 互助单详情在列表缓存也回退不到这条单子时，分清“单子不存在”（只显示 404 页）和
- * “暂时读不到”（说明原因并给重试），与资料详情一致。
- */
-describe("campusItemIsMissing", () => {
+describe("loadCampusItemDetail", () => {
   beforeEach(() => {
-    vi.resetModules();
     vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_ALLOW_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_PORTAL_GATEWAY_URL", "");
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    (await import("./gateway")).resetCampusGatewayCache();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    vi.resetModules();
   });
 
-  it("treats a 404 from the item endpoint as missing", async () => {
-    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(Response.json({ error: "not_found" }, { status: 404 }))
-    );
-    const { fetchCampusItemDetail } = await import("@/lib/api/client");
-    const { campusItemIsMissing } = await import("./use-campus-item-detail");
+  it.each([
+    ["HTTP 404", () => Response.json({ error: "not_found" }, { status: 404 })],
+    ["hidden detail", () => Response.json({ item: { id: "h-01", status: "hidden" }, messages: [] })],
+  ] as const)("ignores and evicts a cached visible item on %s", async (_label, response) => {
+    const { getCampusItemOrFallback, getGatewayItems, rememberCampusItems } = await import("./gateway");
+    const { campusStore } = await import("./mock");
+    const { loadCampusItemDetail } = await import("./use-campus-item-detail");
+    const cached = campusStore.get().items.find((item) => item.id === "h-01")!;
+    const other = campusStore.get().items.find((item) => item.id === "h-02")!;
+    rememberCampusItems([cached, other], null);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response()).mockRejectedValueOnce(new TypeError("Offline")));
 
-    const error = await fetchCampusItemDetail("campus-gone").catch((cause: unknown) => cause);
-    expect(campusItemIsMissing(error)).toBe(true);
+    expect(getCampusItemOrFallback(cached.id).item).toBe(cached);
+    expect(await loadCampusItemDetail(cached.id, vi.fn())).toMatchObject({ loadState: "not-found", item: null, messages: [] });
+    expect(getCampusItemOrFallback(cached.id).item).toBeNull();
+    expect(getGatewayItems()).toEqual([other]);
+    expect(await loadCampusItemDetail(cached.id, vi.fn())).toMatchObject({ loadState: "error", item: null });
   });
 
-  it("treats an empty answer as missing: local demo data without the item has nothing to retry", async () => {
-    // 本地演示模式：没有接口地址、允许演示数据。列表缓存和演示数据都没有这条，重试也不会有。
+  it("only falls back to visible mock items in local mock mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "0");
     vi.stubEnv("NEXT_PUBLIC_PORTAL_ALLOW_MOCK", "1");
-    vi.stubEnv("NEXT_PUBLIC_PORTAL_GATEWAY_URL", "");
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-    const { fetchCampusItemDetail } = await import("@/lib/api/client");
-    const { campusItemIsMissing } = await import("./use-campus-item-detail");
+    const { getCampusItemOrFallback, rememberCampusItems } = await import("./gateway");
+    const { loadCampusItemDetail } = await import("./use-campus-item-detail");
 
-    const error = await fetchCampusItemDetail("campus-unknown").catch((cause: unknown) => cause);
+    const visible = getCampusItemOrFallback("h-01").item!;
+    expect(await loadCampusItemDetail(visible.id, vi.fn())).toMatchObject({ loadState: "ready", item: visible });
+    for (const id of ["campus-unknown", "s-05"]) {
+      expect(await loadCampusItemDetail(id, vi.fn())).toMatchObject({ loadState: "not-found", item: null, messages: [] });
+    }
+    rememberCampusItems([{ ...visible, status: "hidden" }], null);
+    expect(getCampusItemOrFallback(visible.id)).toEqual({ item: null, messages: [] });
     expect(fetch).not.toHaveBeenCalled();
-    expect(campusItemIsMissing(error)).toBe(true);
   });
 
-  it("keeps outages, non-JSON pages and network failures retryable", async () => {
-    vi.stubEnv("NEXT_PUBLIC_PORTAL_REQUIRE_GATEWAY", "1");
-    const html = "<!DOCTYPE html><html><body>verify you are human</body></html>";
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(Response.json({ error: "upstream_unavailable" }, { status: 503 }))
-        .mockResolvedValueOnce(new Response(html, { status: 200, headers: { "Content-Type": "text/html" } }))
-        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-    );
-    const { fetchCampusItemDetail } = await import("@/lib/api/client");
-    const { campusItemIsMissing } = await import("./use-campus-item-detail");
+  it.each([
+    ["503", () => Promise.resolve(Response.json({ error: "upstream_unavailable" }, { status: 503 }))],
+    ["HTML", () => Promise.resolve(new Response("<!doctype html><html></html>", { headers: { "Content-Type": "text/html" } }))],
+    ["network error", () => Promise.reject(new TypeError("Failed to fetch"))],
+  ] as const)("keeps %s retryable unless a visible list item is cached", async (_label, fetchResponse) => {
+    vi.stubGlobal("fetch", vi.fn(fetchResponse));
+    const { rememberCampusItems } = await import("./gateway");
+    const { campusStore } = await import("./mock");
+    const { loadCampusItemDetail } = await import("./use-campus-item-detail");
+    const cached = campusStore.get().items.find((item) => item.id === "h-01")!;
+    const retry = vi.fn();
 
-    for (const failure of ["503", "HTML page", "network"]) {
-      const error = await fetchCampusItemDetail("campus-item").catch((cause: unknown) => cause);
-      expect(error, failure).toBeInstanceOf(Error);
-      expect(campusItemIsMissing(error), failure).toBe(false);
-    }
+    expect(await loadCampusItemDetail(cached.id, retry)).toMatchObject({ loadState: "error", item: null, retry });
+    rememberCampusItems([{ ...cached, status: "hidden" }], null);
+    expect(await loadCampusItemDetail(cached.id, retry)).toMatchObject({ loadState: "error", item: null, retry });
+    rememberCampusItems([cached], null);
+    expect(await loadCampusItemDetail(cached.id, retry)).toMatchObject({ loadState: "ready", item: cached });
   });
 });

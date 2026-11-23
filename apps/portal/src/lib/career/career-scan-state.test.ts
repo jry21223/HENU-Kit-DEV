@@ -300,10 +300,10 @@ describe("career scan labels", () => {
 
   it("describes digest enqueue and retry states without claiming inbox delivery", () => {
     expect(careerDigestStatusLabel(search({ digest_status: "sent", has_email: true }))).toBe(
-      "邮件简报已进入发送队列"
+      "邮件简报正在发送，请留意邮箱"
     );
     expect(careerDigestStatusLabel(search({ digest_status: "retry" }))).toContain("正在重试");
-    expect(careerDigestStatusLabel(search({ digest_status: "sending" }))).toContain("加入发送队列");
+    expect(careerDigestStatusLabel(search({ digest_status: "sending" }))).toBe("正在准备邮件简报");
     expect(careerDigestStatusLabel(search({ digest_status: "skipped" }))).toBe("未启用邮件简报");
     expect(careerDigestStatusLabel(search({ status: "completed", digest_status: undefined, has_email: false }))).toBe(
       "历史任务无邮件状态"

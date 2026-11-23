@@ -26,6 +26,8 @@ const INTERNAL_TERMS = [
   "原文件字节",
   "PERSISTED",
   "IMMUTABLE",
+  "可空",
+  "进入发送队列",
   "LEDGER",
   "Redis",
   // 面向评审的承诺与暗示存在「假数据」的说法
@@ -61,6 +63,9 @@ const ENGLISH_INFORMATION = [
   "FILES INDEXED",
   "SYNCING",
   "LOADING…",
+  "AUTH CHECK",
+  "CREATING ORDER",
+  "QR RENDERING",
   "MEMBERSHIP LOADING",
   "TICKETS LOADING",
   "NOTIFICATIONS LOADING",

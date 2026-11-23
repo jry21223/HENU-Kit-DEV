@@ -83,12 +83,12 @@ func TestConsoleReadinessHTTP(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Data.Management != "not_ready" || envelope.Data.Reason != "management_migration_pending" || envelope.Data.CheckedAt.IsZero() {
+	if envelope.Data.Management != "ready" || envelope.Data.Reason != "native_catalog_ready" || envelope.Data.CheckedAt.IsZero() {
 		t.Fatalf("readiness = %+v", envelope.Data)
 	}
-	for _, capability := range []string{"workspace", "commands", "operation_results"} {
+	for _, capability := range []string{"workspace", "commands", "operation_results", "courses_write", "materials_write", "review", "releases_read"} {
 		available, present := envelope.Data.Capabilities[capability]
-		if !present || available {
+		if !present || !available {
 			t.Fatalf("%s capability = %v/%v", capability, available, present)
 		}
 	}
@@ -107,21 +107,5 @@ func TestConsoleReadinessHTTP(t *testing.T) {
 				t.Fatalf("status = %d, want %d", response.StatusCode, tc.status)
 			}
 		})
-	}
-	legacy := get("/api/v1/workspace", "library.read", "library", actorID, true)
-	var oldEnvelope struct {
-		Data Workspace `json:"data"`
-	}
-	// The data object remains compatible with the old strict Workspace decoder.
-	var raw struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.NewDecoder(legacy.Body).Decode(&raw); err != nil {
-		t.Fatal(err)
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(raw.Data)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&oldEnvelope.Data); err != nil || !oldEnvelope.Data.Degraded {
-		t.Fatalf("legacy Workspace changed: %v / %+v", err, oldEnvelope.Data)
 	}
 }

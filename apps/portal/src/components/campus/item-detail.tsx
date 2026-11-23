@@ -1,6 +1,9 @@
 "use client";
 
 import { categoryOf } from "@/lib/campus/mock";
+import { useState } from "react";
+import type { CampusItem, CampusMessage } from "@/lib/api/types";
+import { CampusExchangePanel, CampusMessageForm } from "./item-actions";
 import Img from "@/components/ui/img";
 import { useReveal } from "@/components/account/use-reveal";
 import { cn } from "@/lib/cn";
@@ -43,7 +46,14 @@ export default function ItemDetail({ id }: { id: string }) {
     );
   }
 
-  const { item, messages } = state;
+  return <CampusItemContent key={id} initialItem={state.item} initialMessages={state.messages} />;
+}
+
+function CampusItemContent({ initialItem, initialMessages }: { initialItem: CampusItem; initialMessages: CampusMessage[] }) {
+  const [status, setStatus] = useState(initialItem.status);
+  const [newMessages, setNewMessages] = useState<CampusMessage[]>([]);
+  const item = { ...initialItem, status };
+  const messages = [...initialMessages, ...newMessages];
   const cat = categoryOf(item.category);
 
   return (
@@ -125,12 +135,7 @@ export default function ItemDetail({ id }: { id: string }) {
               ))}
             </ul>
             <div className="mt-6 border-t border-line pt-5">
-              <p
-                data-campus-message-state="unavailable"
-                className="font-mono text-xs text-ink/60"
-              >
-                留言暂未开放，开放后即可在这里咨询发单人。
-              </p>
+              <CampusMessageForm id={item.id} onMessage={(message) => setNewMessages((current) => [...current, message])} />
             </div>
           </section>
         </div>
@@ -152,31 +157,11 @@ export default function ItemDetail({ id }: { id: string }) {
                 data-campus-escrow-state="unavailable"
                 className="mt-3 border border-dashed border-ink/30 px-2.5 py-1.5 font-mono text-xs text-ink/60"
               >
-                接单与结算暂未开放，暂不涉及资金托管。
+                金额仅供双方沟通参考，请自行约定结算方式。
               </p>
 
-              {item.status === "open" ? (
-                <button
-                  type="button"
-                  disabled
-                  className="mt-5 w-full cursor-not-allowed border border-line py-3 font-mono text-sm text-ink/40"
-                >
-                  {item.type === "help" ? "接单功能即将开放" : "想要功能即将开放"}
-                </button>
-              ) : (
-                <p className="mt-5 border border-line py-3 text-center font-mono text-sm text-ink/60">
-                  {item.status === "ongoing" ? "进行中 · 已被接" : item.status === "done" ? "已完成" : "已隐藏"}
-                </p>
-              )}
-
-              <button
-                type="button"
-                disabled
-                className="mt-3 w-full cursor-not-allowed border border-line py-2.5 font-mono text-xs text-ink/40"
-              >
-                ☆ 想要 · {item.wants}
-              </button>
             </div>
+            <CampusExchangePanel item={item} onStatus={setStatus} />
 
             {/* 卖家信用卡 */}
             <div data-enter className="border border-ink/25 p-5">
