@@ -7,6 +7,7 @@
 import { apiFetchRequired, hasGateway, mockAllowed } from "@/lib/api/client";
 import type { CampusCategory, CampusItem, CampusMessage } from "@/lib/api/types";
 import { campusStore } from "@/lib/campus/mock";
+import type { FoodPostImageInput } from "@/lib/food/submit";
 
 let gatewayItems: CampusItem[] | null = null;
 let gatewayCategories: CampusCategory[] | null = null;
@@ -84,6 +85,7 @@ export type CampusPublication = {
   price: number;
   place: string;
   deadline?: string;
+  images?: FoodPostImageInput[];
 };
 
 const ROOT = "/api/v1/campus";

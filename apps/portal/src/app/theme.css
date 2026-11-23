@@ -2,6 +2,7 @@
    改色值时改 tokens.json 与 tokens.css，再运行 pnpm --filter @henukit/portal generate:theme。 */
 @theme {
   --color-paper: #f2f0ea;
+  --color-paper-raised: #ffffff;
   --color-ink: #161513;
   --color-accent: #ff4d00;
   --color-accent-text: #bb3800;

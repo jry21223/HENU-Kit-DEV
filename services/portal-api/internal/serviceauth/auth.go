@@ -1,12 +1,14 @@
 package serviceauth
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -77,10 +79,14 @@ func (v *Verifier) recordNonce(nonce string, now time.Time) bool {
 }
 
 func (v *Verifier) Middleware(requireActor bool, requireConsoleScope bool) func(http.Handler) http.Handler {
+	return v.MiddlewareWithMaxBody(requireActor, requireConsoleScope, MaxSignedBodyBytes)
+}
+
+func (v *Verifier) MiddlewareWithMaxBody(requireActor bool, requireConsoleScope bool, maxBody int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if v == nil {
-				writeAuthError(w, r, http.StatusServiceUnavailable, "SERVICE_AUTH_UNCONFIGURED", "campus service credentials are not configured")
+				writeAuthError(w, r, http.StatusServiceUnavailable, "CAMPUS_WRITES_UNAVAILABLE", "互助服务暂时无法办理此操作，请稍后再试。")
 				return
 			}
 			clientID, basicSecret, basic := r.BasicAuth()
@@ -101,12 +107,17 @@ func (v *Verifier) Middleware(requireActor bool, requireConsoleScope bool) func(
 				writeAuthError(w, r, http.StatusUnauthorized, "INVALID_SERVICE_AUTH", "service nonce is invalid")
 				return
 			}
-			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxSignedBodyBytes))
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 			if err != nil {
-				writeAuthError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "request body is too large")
+				var oversized *http.MaxBytesError
+				if errors.As(err, &oversized) {
+					writeAuthError(w, r, http.StatusRequestEntityTooLarge, "INVALID_REQUEST", "请求内容过大，请缩减内容后重试。")
+					return
+				}
+				writeAuthError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "请求内容读取失败，请重试。")
 				return
 			}
-			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			r.Body = io.NopCloser(bytes.NewReader(body))
 			digest := sha256.Sum256(body)
 			canonical := strings.Join([]string{r.Method, r.URL.RequestURI(), r.Header.Get("X-Timestamp"), nonce, hex.EncodeToString(digest[:])}, "\n")
 			mac := hmac.New(sha256.New, []byte(v.Secret))

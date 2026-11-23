@@ -19,6 +19,7 @@ export const THEME_PATH = path.resolve(HERE, "../src/app/theme.css");
 /** Tailwind 颜色名 → tokens.json 里的 color.<group>.<name>。 */
 export const COLOR_MAP = [
   ["paper", "surface.paper"],
+  ["paper-raised", "surface.raised"],
   ["ink", "text.primary"],
   ["accent", "brand.accent"],
   // 浅色底上的橙字，不论大小（DESIGN_SYSTEM.md 的“文字配色”）。

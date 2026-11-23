@@ -1,6 +1,7 @@
 package campus
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -35,13 +36,14 @@ type ContactSnapshot struct {
 }
 
 type CreateItemInput struct {
-	Type     string  `json:"type"`
-	Category string  `json:"category"`
-	Title    string  `json:"title"`
-	Desc     string  `json:"desc"`
-	Price    float64 `json:"price"`
-	Place    string  `json:"place"`
-	Deadline string  `json:"deadline"`
+	Type     string             `json:"type"`
+	Category string             `json:"category"`
+	Title    string             `json:"title"`
+	Desc     string             `json:"desc"`
+	Price    float64            `json:"price"`
+	Place    string             `json:"place"`
+	Deadline string             `json:"deadline"`
+	Images   []CampusImageInput `json:"images,omitempty"`
 }
 
 type Exchange struct {
@@ -196,7 +198,7 @@ func (db *PortalDB) UpsertContactBook(userID string, input ContactBook) (Contact
 	return ContactBook{QQ: qq, Wechat: wechat, Phone: phone, Note: note, UpdatedAt: &updated}, nil
 }
 
-func (db *PortalDB) CreateItem(actorUserID, sellerName string, in CreateItemInput) (Item, error) {
+func (db *PortalDB) CreateItem(ctx context.Context, actorUserID, sellerName string, in CreateItemInput) (Item, error) {
 	in.Type = strings.TrimSpace(in.Type)
 	in.Category = strings.TrimSpace(in.Category)
 	in.Title = strings.TrimSpace(in.Title)
@@ -228,7 +230,16 @@ func (db *PortalDB) CreateItem(actorUserID, sellerName string, in CreateItemInpu
 		d := in.Deadline
 		deadlinePtr = &d
 	}
-	_, err := db.conn.Exec(`
+	images, err := sanitizeCampusImages(ctx, in.Images)
+	if err != nil {
+		return Item{}, err
+	}
+	tx, err := db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return Item{}, err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO portal_campus_items
 		  (id, type, category, title, "desc", price, seller, credit, deals_done, wants, place, deadline, status, time, images, author_user_id, version, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, 90, 0, 0, $8, $9, 'open', $10, '[]'::jsonb, $11::uuid, 1, now(), now())
@@ -236,10 +247,23 @@ func (db *PortalDB) CreateItem(actorUserID, sellerName string, in CreateItemInpu
 	if err != nil {
 		return Item{}, err
 	}
+	urls := make([]string, 0, len(images))
+	for position, image := range images {
+		_, err := tx.ExecContext(ctx, `INSERT INTO portal_campus_item_images
+			(id, item_id, position, content_type, byte_size, sha256, bytes) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+			randomID("img"), id, position, image.ContentType, len(image.Bytes), image.SHA256, image.Bytes)
+		if err != nil {
+			return Item{}, err
+		}
+		urls = append(urls, campusImageURL(id, position, image.SHA256))
+	}
+	if err := tx.Commit(); err != nil {
+		return Item{}, err
+	}
 	return Item{
 		ID: id, Type: in.Type, Category: in.Category, Title: in.Title, Desc: in.Desc,
 		Price: in.Price, Seller: seller, Credit: 90, Place: in.Place,
-		Deadline: deadlinePtr, Status: "open", Time: nowLabel, Images: []string{},
+		Deadline: deadlinePtr, Status: "open", Time: nowLabel, Images: urls,
 	}, nil
 }
 

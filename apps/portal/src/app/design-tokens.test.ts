@@ -221,6 +221,11 @@ describe("globals.css 的颜色来自 design-tokens（#536）", () => {
     const accentText = TOKENS_JSON.color.brand.accent_text.$value.toLowerCase();
     expect(theme).toContain(`--color-accent-text: ${accentText};`);
   });
+
+  it("浮起卡片/输入面有自己的 Tailwind 颜色 paper-raised", () => {
+    const raisedSurface = TOKENS_JSON.color.surface.raised.$value.toLowerCase();
+    expect(theme).toContain(`--color-paper-raised: ${raisedSurface};`);
+  });
 });
 
 describe("透明度写法在不支持 color-mix() 的浏览器里有静态回退", () => {

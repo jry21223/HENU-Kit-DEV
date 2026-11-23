@@ -1,18 +1,24 @@
 "use client";
 
-import { categoryOf } from "@/lib/campus/mock";
 import { useState } from "react";
-import type { CampusItem, CampusMessage } from "@/lib/api/types";
-import { CampusExchangePanel, CampusMessageForm } from "./item-actions";
-import Img from "@/components/ui/img";
 import { useReveal } from "@/components/account/use-reveal";
-import { cn } from "@/lib/cn";
-import { useCampusItemDetail } from "@/lib/campus/use-campus-item-detail";
 import { DetailStateBackLink } from "@/components/back-link";
 import { ErrorBanner } from "@/components/data-state";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import Img from "@/components/ui/img";
 import { useDocumentTitle } from "@/components/use-document-title";
+import type { CampusItem, CampusMessage } from "@/lib/api/types";
+import { categoryOf } from "@/lib/campus/mock";
+import { useCampusItemDetail } from "@/lib/campus/use-campus-item-detail";
+import { cn } from "@/lib/cn";
+import { CampusExchangePanel, CampusMessageForm } from "./item-actions";
 
 const STATUS_LABEL = { open: "待接单", ongoing: "进行中", done: "已完成", hidden: "已隐藏" } as const;
+
+export function normalizeCampusPhotos(images?: string[]): string[] {
+  if (!images?.length) return [];
+  return images.filter((src): src is string => typeof src === "string" && src.trim().length > 0).slice(0, 6);
+}
 
 export default function ItemDetail({ id }: { id: string }) {
   const state = useCampusItemDetail(id);
@@ -49,28 +55,99 @@ export default function ItemDetail({ id }: { id: string }) {
   return <CampusItemContent key={id} initialItem={state.item} initialMessages={state.messages} />;
 }
 
-function CampusItemContent({ initialItem, initialMessages }: { initialItem: CampusItem; initialMessages: CampusMessage[] }) {
+export function CampusItemContent({
+  initialItem,
+  initialMessages,
+}: {
+  initialItem: CampusItem;
+  initialMessages: CampusMessage[];
+}) {
   const [status, setStatus] = useState(initialItem.status);
   const [newMessages, setNewMessages] = useState<CampusMessage[]>([]);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const item = { ...initialItem, status };
   const messages = [...initialMessages, ...newMessages];
   const cat = categoryOf(item.category);
+  const photos = normalizeCampusPhotos(item.images);
+  const activeIndex = photoIndex < photos.length ? photoIndex : 0;
+  const activePhoto = photos[activeIndex];
+
+  const showPrevious = () =>
+    setPhotoIndex((current) => (current - 1 + photos.length) % photos.length);
+  const showNext = () =>
+    setPhotoIndex((current) => (current + 1) % photos.length);
 
   return (
     <main className="mx-auto max-w-site px-5 py-10 md:px-8">
       <div className="gap-10 lg:flex">
-        {/* 左侧：单子内容 + 留言 */}
+        {/* 左侧：单子图片、正文与留言 */}
         <div className="min-w-0 flex-1">
-          <div data-enter className="bg-blueprint relative flex h-44 items-center justify-center border border-ink/25">
-            {item.images?.[0] ? (
-              <Img
-                src={item.images[0]}
-                alt={item.title}
-                label={cat.code}
-                loading="eager"
-                fetchPriority="high"
-                className="h-full w-full border-0"
-              />
+          <div
+            data-enter
+            className={cn(
+              "relative w-full overflow-hidden border border-ink/25",
+              photos.length
+                ? "aspect-[4/3] max-h-[28rem] bg-paper-raised"
+                : "bg-blueprint flex h-44 items-center justify-center"
+            )}
+          >
+            {activePhoto ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`查看大图：${item.title}，第 ${activeIndex + 1} 张，共 ${photos.length} 张`}
+                    className="block h-full w-full cursor-zoom-in focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
+                  >
+                    <Img
+                      key={activePhoto}
+                      src={activePhoto}
+                      alt={`${item.title}，图片 ${activeIndex + 1} / ${photos.length}`}
+                      label={cat.code}
+                      loading="eager"
+                      fetchPriority="high"
+                      className="h-full w-full border-0 object-contain"
+                    />
+                  </button>
+                </DialogTrigger>
+                <DialogContent aria-describedby={undefined} className="w-[min(92vw,64rem)] p-5 sm:p-6">
+                  <DialogTitle className="pr-10">
+                    {item.title}
+                    {photos.length > 1 ? `（${activeIndex + 1} / ${photos.length}）` : ""}
+                  </DialogTitle>
+                  <div className="mt-4 overflow-hidden border border-line bg-paper-raised">
+                    <Img
+                      key={`preview-${activePhoto}`}
+                      src={activePhoto}
+                      alt={`${item.title}，大图 ${activeIndex + 1} / ${photos.length}`}
+                      label={cat.code}
+                      loading="eager"
+                      className="h-[65vh] w-full border-0 object-contain"
+                    />
+                  </div>
+                  {photos.length > 1 && (
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={showPrevious}
+                        className="inline-flex min-h-11 items-center border border-ink/30 bg-paper-raised px-4 font-mono text-xs text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-focus-ring"
+                      >
+                        ← 上一张
+                      </button>
+                      <span className="font-mono text-xs tabular-nums text-ink/70">
+                        {activeIndex + 1} / {photos.length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={showNext}
+                        className="inline-flex min-h-11 items-center border border-ink/30 bg-paper-raised px-4 font-mono text-xs text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-focus-ring"
+                      >
+                        下一张 →
+                      </button>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
             ) : (
               <span aria-hidden className="font-display text-6xl font-bold tracking-widest text-ink/20">
                 {cat.code}
@@ -78,29 +155,82 @@ function CampusItemContent({ initialItem, initialMessages }: { initialItem: Camp
             )}
             <span
               className={cn(
-                "absolute left-0 top-0 px-2 py-0.5 font-mono text-xs",
+                "pointer-events-none absolute left-0 top-0 px-2 py-0.5 font-mono text-xs",
                 item.type === "help" ? "bg-accent text-ink" : "bg-ink text-paper"
               )}
             >
               {item.type === "help" ? "求助单" : "闲置单"}
             </span>
-            <span className="absolute right-3 top-3 font-mono text-xs text-ink/60">
+            <span className="pointer-events-none absolute right-2 top-2 border border-ink/25 bg-paper/95 px-2 py-0.5 font-mono text-xs text-ink/75">
               {STATUS_LABEL[item.status]}
             </span>
+            {photos.length > 1 && (
+              <span className="pointer-events-none absolute bottom-2 right-2 border border-ink/25 bg-paper/95 px-2 py-0.5 font-mono text-xs tabular-nums text-ink">
+                {activeIndex + 1} / {photos.length}
+              </span>
+            )}
           </div>
+
+          {photos.length > 1 && (
+            <div data-enter className="mt-3 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-mono text-xs text-ink/65">
+                  共 {photos.length} 张图片，点击主图可查看大图
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={showPrevious}
+                    aria-label="查看上一张图片"
+                    className="inline-flex min-h-11 items-center border border-ink/25 bg-paper-raised px-3 font-mono text-xs text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-focus-ring"
+                  >
+                    ← 上一张
+                  </button>
+                  <button
+                    type="button"
+                    onClick={showNext}
+                    aria-label="查看下一张图片"
+                    className="inline-flex min-h-11 items-center border border-ink/25 bg-paper-raised px-3 font-mono text-xs text-ink transition-colors hover:border-ink focus-visible:outline-2 focus-visible:outline-focus-ring"
+                  >
+                    下一张 →
+                  </button>
+                </div>
+              </div>
+              <div
+                role="group"
+                aria-label="单子图片"
+                className="grid grid-cols-3 gap-2 sm:grid-cols-6"
+              >
+                {photos.map((src, index) => (
+                  <button
+                    key={`${src}-${index}`}
+                    type="button"
+                    aria-label={`查看图片 ${index + 1}`}
+                    aria-pressed={activeIndex === index}
+                    onClick={() => setPhotoIndex(index)}
+                    className={cn(
+                      "block min-h-11 min-w-0 overflow-hidden border p-0.5 transition-colors focus-visible:outline-2 focus-visible:outline-focus-ring",
+                      activeIndex === index
+                        ? "border-ink bg-ink"
+                        : "border-ink/20 bg-paper-raised hover:border-ink/60"
+                    )}
+                  >
+                    <Img
+                      src={src}
+                      alt=""
+                      label={String(index + 1).padStart(2, "0")}
+                      className="aspect-[4/3] w-full border-0"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <h1 data-enter className="mt-6 font-display text-3xl font-bold leading-tight tracking-tight">
             {item.title}
           </h1>
 
-          {/* 图集（第 2 张起） */}
-          {item.images && item.images.length > 1 && (
-            <div data-enter className={cn("mt-4 grid gap-2", item.images.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
-              {item.images.slice(1).map((src, i) => (
-                <Img key={i} src={src} alt={`${item.title} 图 ${i + 2}`} label={`FIG.${i + 2}`} className="h-32 w-full" />
-              ))}
-            </div>
-          )}
           <p data-enter className="mt-4 whitespace-pre-line text-sm leading-7 text-ink/80">
             {item.desc}
           </p>
@@ -112,7 +242,7 @@ function CampusItemContent({ initialItem, initialMessages }: { initialItem: Camp
             <p>发布于 · {item.time}</p>
           </div>
 
-          {/* 留言区（真实数据来自服务端；留言发布接口尚未接通） */}
+          {/* 留言区 */}
           <section data-enter className="mt-10">
             <p className="font-mono text-xs text-ink/60">
               <span className="tracking-[0.25em]">MESSAGES</span> / 留言 · {messages.length}
@@ -159,7 +289,6 @@ function CampusItemContent({ initialItem, initialMessages }: { initialItem: Camp
               >
                 金额仅供双方沟通参考，请自行约定结算方式。
               </p>
-
             </div>
             <CampusExchangePanel item={item} onStatus={setStatus} />
 

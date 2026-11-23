@@ -48,6 +48,7 @@ type Handler struct {
 	foodPosts          *foodposts.Client
 	career             *career.Client
 	campus             *campus.Client
+	campusUploadSlots  chan struct{}
 	practiceCommands   *practice.CommandClient
 	quizCraftCatalog   *practice.Client
 	redis              *redis.Client
@@ -136,7 +137,8 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		}
 	}
 	var campusClient *campus.Client
-	if strings.TrimSpace(cfg.CampusPortalAuth.ClientID) != "" && strings.TrimSpace(cfg.CampusPortalAuth.ClientSecret) != "" {
+	if strings.TrimSpace(cfg.CampusPortalAuth.ClientID) != "" &&
+		strings.TrimSpace(cfg.CampusPortalAuth.KeyID) != "" && len(cfg.CampusPortalAuth.ClientSecret) >= 16 {
 		campusClient, err = campus.NewClient(
 			cfg.PortalAPIURL,
 			cfg.CampusPortalAuth.ClientID, cfg.CampusPortalAuth.ClientSecret, cfg.CampusPortalAuth.KeyID,
@@ -201,6 +203,7 @@ func New(cfg config.Config, rdb *redis.Client) (*Handler, error) {
 		foodPosts:          foodPosts,
 		career:             careerClient,
 		campus:             campusClient,
+		campusUploadSlots:  make(chan struct{}, 1),
 		practiceCommands:   practiceCommands,
 		quizCraftCatalog:   quizCraftCatalog,
 		redis:              rdb,
@@ -322,6 +325,7 @@ func (h *Handler) Router() chi.Router {
 	r.Get("/api/v1/campus/contact-book", h.campusGetContactBook)
 	r.Put("/api/v1/campus/contact-book", h.campusPutContactBook)
 	r.Post("/api/v1/campus/items", h.campusCreateItem)
+	r.Get("/api/v1/campus/items/{id}/images/{position}", h.proxyToPortalAPI)
 	r.Post("/api/v1/campus/items/{id}/messages", h.campusCreateMessage)
 	r.Get("/api/v1/campus/items/{id}/exchanges", h.campusListExchanges)
 	r.Post("/api/v1/campus/items/{id}/exchanges", h.campusRequestExchange)
@@ -1649,7 +1653,7 @@ func readFoodPostBody(r *http.Request) ([]byte, error) {
 // --- Proxy to portal-api ---
 
 func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
-	targetURL := h.portalAPIURL + r.URL.Path
+	targetURL := h.portalAPIURL + r.URL.EscapedPath()
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
 	}
@@ -1660,7 +1664,7 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Header.Set("X-Request-Id", w.Header().Get("X-Request-Id"))
-	// Let a cached food photo revalidate instead of transferring the bytes again.
+	// Forward conditional reads for cached images.
 	if match := r.Header.Get("If-None-Match"); match != "" {
 		req.Header.Set("If-None-Match", match)
 	}
@@ -1672,16 +1676,13 @@ func (h *Handler) proxyToPortalAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Most Portal API routes answer JSON, but food photos come back as image
-	// bytes; forwarding them as application/json would stop a browser rendering
-	// them. Carry the upstream content type, and the headers that let a photo be
-	// cached and revalidated, rather than assuming a single shape.
 	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/json"
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	} else if resp.StatusCode != http.StatusNotModified {
+		w.Header().Set("Content-Type", "application/json")
 	}
-	w.Header().Set("Content-Type", contentType)
-	for _, header := range []string{"Cache-Control", "ETag", "Content-Disposition", "X-Content-Type-Options"} {
+	for _, header := range []string{"Cache-Control", "ETag", "Content-Disposition", "X-Content-Type-Options", "Content-Security-Policy"} {
 		if value := resp.Header.Get(header); value != "" {
 			w.Header().Set(header, value)
 		}
