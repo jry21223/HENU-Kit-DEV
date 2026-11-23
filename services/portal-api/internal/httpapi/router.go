@@ -105,6 +105,9 @@ func NewRouter() (http.Handler, error) {
 	r.Get("/api/v1/campus/items/{id}", func(w http.ResponseWriter, req *http.Request) {
 		getCampusItem(w, req, campusSource, mode)
 	})
+	r.Get("/api/v1/campus/items/{id}/images/{position}", func(w http.ResponseWriter, req *http.Request) {
+		handleCampusItemImage(w, req, campusSource)
+	})
 	r.Get("/api/v1/campus/categories", func(w http.ResponseWriter, req *http.Request) {
 		listCategories(w, req, campusSource, mode)
 	})

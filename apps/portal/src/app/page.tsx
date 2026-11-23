@@ -7,7 +7,6 @@ import SectionFood from "@/components/section-food";
 import SectionCampus from "@/components/section-campus";
 import SectionCareer from "@/components/section-career";
 import Footer from "@/components/footer";
-import SnapScroll from "@/components/snap-scroll";
 import { homeMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = homeMetadata;
@@ -15,7 +14,6 @@ export const metadata: Metadata = homeMetadata;
 export default function Home() {
   return (
     <>
-      <SnapScroll />
       <Navbar />
       <main>
         <Hero />

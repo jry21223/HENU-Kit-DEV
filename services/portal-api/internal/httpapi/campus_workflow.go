@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +34,24 @@ func buildCampusVerifiers() (*serviceauth.Verifier, *serviceauth.Verifier, error
 }
 
 func mountCampusWorkflowRoutes(r chi.Router, src campusSource, portalVerifier, consoleVerifier *serviceauth.Verifier) {
+	// Limit concurrent signed upload buffers as well as image decoding.
+	uploads := make(chan struct{}, 1)
+	create := portalVerifier.MiddlewareWithMaxBody(true, false, 20<<20)(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		handleCreateCampusItem(w, req, src)
+	}))
+	r.Post("/api/v1/campus/items", func(w http.ResponseWriter, req *http.Request) {
+		select {
+		case uploads <- struct{}{}:
+			defer func() { <-uploads }()
+		case <-req.Context().Done():
+			return
+		}
+		controller := http.NewResponseController(w)
+		if controller.SetReadDeadline(time.Now().Add(2*time.Minute)) == nil {
+			defer controller.SetReadDeadline(time.Time{})
+		}
+		create.ServeHTTP(w, req)
+	})
 	// Student authenticated campus write & privacy contact-book routes (signed by portal-gateway).
 	r.Group(func(pr chi.Router) {
 		pr.Use(portalVerifier.Middleware(true, false))
@@ -40,9 +60,6 @@ func mountCampusWorkflowRoutes(r chi.Router, src campusSource, portalVerifier, c
 		})
 		pr.Put("/api/v1/campus/contact-book", func(w http.ResponseWriter, req *http.Request) {
 			handlePutContactBook(w, req, src)
-		})
-		pr.Post("/api/v1/campus/items", func(w http.ResponseWriter, req *http.Request) {
-			handleCreateCampusItem(w, req, src)
 		})
 		pr.Post("/api/v1/campus/items/{id}/messages", func(w http.ResponseWriter, req *http.Request) {
 			handleCreateCampusMessage(w, req, src)
@@ -139,17 +156,48 @@ func handleCreateCampusItem(w http.ResponseWriter, r *http.Request, src campusSo
 		writeCampusError(w, http.StatusBadRequest, "INVALID_REQUEST", "发布内容格式有误")
 		return
 	}
-	item, err := src.portalDB.CreateItem(actor.UserID, actor.DisplayName, in)
+	item, err := src.portalDB.CreateItem(r.Context(), actor.UserID, actor.DisplayName, in)
+	if errors.Is(err, campus.ErrInvalidImage) {
+		writeCampusError(w, http.StatusBadRequest, "INVALID_IMAGE", "请上传最多 6 张 JPG、PNG 或 WebP 图片，单张不能超过 2 MiB。图片尺寸过大时请缩小后重试。")
+		return
+	}
 	if errors.Is(err, campus.ErrInvalidInput) {
 		writeCampusError(w, http.StatusBadRequest, "INVALID_INPUT", "请完整填写类型、标题、详情、地点与价格")
 		return
 	}
 	if err != nil {
-		writeCampusError(w, http.StatusServiceUnavailable, "DATABASE_ERROR", "发布单子失败")
+		writeCampusError(w, http.StatusServiceUnavailable, "DATABASE_ERROR", "暂时无法发布单子，请稍后重试。")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusCreated, map[string]any{"item": item, "request_id": requestIDOf(w)})
+}
+
+func handleCampusItemImage(w http.ResponseWriter, r *http.Request, src campusSource) {
+	position, err := strconv.Atoi(chi.URLParam(r, "position"))
+	if err != nil || position < 0 || position > 5 {
+		writeCampusError(w, http.StatusNotFound, "IMAGE_NOT_FOUND", "这张图片不存在。")
+		return
+	}
+	if src.portalDB == nil {
+		writeCampusError(w, http.StatusServiceUnavailable, "PORTAL_DATABASE_UNAVAILABLE", "暂时无法加载图片，请稍后再试。")
+		return
+	}
+	image, err := src.portalDB.GetItemImage(r.Context(), chi.URLParam(r, "id"), position)
+	if err != nil {
+		writeCampusError(w, http.StatusServiceUnavailable, "DATABASE_ERROR", "暂时无法加载图片，请稍后再试。")
+		return
+	}
+	if image == nil {
+		writeCampusError(w, http.StatusNotFound, "IMAGE_NOT_FOUND", "这张图片不存在。")
+		return
+	}
+	w.Header().Set("Content-Type", image.ContentType)
+	w.Header().Set("ETag", `"`+image.SHA256+`"`)
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(image.Bytes))
 }
 
 func handleCreateCampusMessage(w http.ResponseWriter, r *http.Request, src campusSource) {

@@ -7,7 +7,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatPortalError, PortalUnauthorizedError } from "@/lib/api/client";
 import type { CampusItem, CampusMessage } from "@/lib/api/types";
 import { completeCampusItem, CONTACT_CHANNELS, postCampusMessage, readCampusContactBook, readCampusExchanges, requestCampusExchange, respondCampusExchange, type ContactBook, type ContactChannel, type Exchange } from "@/lib/campus/gateway";
-import { CampusContactDialog, loginForCampus, useCampusViewer } from "./campus-actions";
+import {
+  CampusContactDialog,
+  formatCampusUnavailableMessage,
+  isCampusWritesUnavailable,
+  loginForCampus,
+  useCampusViewer,
+} from "./campus-actions";
 
 const CHANNELS = Object.keys(CONTACT_CHANNELS) as ContactChannel[];
 const EXCHANGE_LABELS = { requested: "待回复", accepted: "已同意", declined: "已婉拒", cancelled: "已取消" };
@@ -70,6 +76,7 @@ function ExchangeActions({ item, viewerID, path, onStatus }: { item: CampusItem;
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");
   const [expired, setExpired] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const inFlight = useRef(false);
   const itemID = item.id;
@@ -81,12 +88,15 @@ function ExchangeActions({ item, viewerID, path, onStatus }: { item: CampusItem;
         setExpired(true);
         return;
       }
+      setUnavailable(false);
       setBook(contact.contact);
       setView(exchanges);
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
+      const serviceUnavailable = isCampusWritesUnavailable(error);
+      setUnavailable(serviceUnavailable);
       setExpired(error instanceof PortalUnauthorizedError);
-      setFailure(formatPortalError(error));
+      setFailure(serviceUnavailable ? formatCampusUnavailableMessage(error) : formatPortalError(error));
     });
     return () => controller.abort();
   }, [itemID, viewerID, attempt]);
@@ -114,9 +124,19 @@ function ExchangeActions({ item, viewerID, path, onStatus }: { item: CampusItem;
   }
 
   if (expired) return <Button asChild className="mt-3" variant="outline"><Link href={loginForCampus(path)}>重新登录</Link></Button>;
-  if (!view || !book) return failure ? (
-    <div className="mt-3 space-y-2"><p role="alert" className="text-sm text-accent-text">{failure}</p><Button variant="outline" onClick={() => { setFailure(""); setAttempt((value) => value + 1); }}>重新加载</Button></div>
-  ) : <p role="status" className="mt-3 text-sm">正在加载交换申请…</p>;
+  if (!view || !book) {
+    if (unavailable) {
+      return (
+        <div role="status" className="mt-3 space-y-1 border border-ink/20 bg-paper-raised p-3">
+          <p className="font-mono text-xs text-ink/70">暂未开启</p>
+          <p className="text-sm leading-6 text-ink">{failure}</p>
+        </div>
+      );
+    }
+    return failure ? (
+      <div className="mt-3 space-y-2"><p role="alert" className="text-sm text-accent-text">{failure}</p><Button variant="outline" onClick={() => { setFailure(""); setAttempt((value) => value + 1); }}>重新加载</Button></div>
+    ) : <p role="status" className="mt-3 text-sm">正在加载交换申请…</p>;
+  }
 
   const eligible = view.exchanges.filter((exchange) => exchange.requester_user_id === viewerID || exchange.owner_user_id === viewerID);
   const canRequest = !view.is_owner && item.status === "open" && !eligible.some((exchange) => exchange.status === "requested" || exchange.status === "accepted");

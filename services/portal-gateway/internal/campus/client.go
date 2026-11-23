@@ -35,7 +35,7 @@ func NewClient(baseURL, clientID, clientSecret, keyID string) (*Client, error) {
 	return &Client{
 		baseURL:    baseURL,
 		signer:     serviceauth.NewSigner(strings.TrimSpace(clientID), clientSecret, strings.TrimSpace(keyID)),
-		httpClient: &http.Client{Timeout: 8 * time.Second},
+		httpClient: &http.Client{Timeout: 15 * time.Second},
 	}, nil
 }
 

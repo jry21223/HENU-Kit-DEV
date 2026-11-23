@@ -115,10 +115,9 @@ body {
   display: none;
 }
 
-/* 整屏模块标记：md+ 由 GSAP Observer 接管滚动切换（见 snap-scroll.tsx），
-   snap-align 仅为语义标记；小屏为普通滚动 */
+/* 首页模块标记：md+ 视口保持整屏节奏，全程使用浏览器原生滚动，不做 JS 滚轮/触摸劫持 */
 .snap-screen {
-  scroll-snap-align: start;
+  scroll-snap-align: none;
 }
 
 /* 首屏入场（#537）：纯 CSS keyframes，随首帧样式一起开始播放，不等水合。
