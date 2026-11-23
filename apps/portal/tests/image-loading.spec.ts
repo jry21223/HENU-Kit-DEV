@@ -308,12 +308,12 @@ test("detail pages load the lead photo right away and leave the rest of the gall
 
   await page.goto(`/campus/item/${CAMPUS_DETAIL.item.id}`);
   await settle(page);
-  const lead = page.getByRole("img", { name: CAMPUS_DETAIL.item.title, exact: true });
+  const lead = page.getByRole("img", { name: `${CAMPUS_DETAIL.item.title}，图片 1 / 3`, exact: true });
   await expect(lead).toHaveAttribute("loading", "eager");
   await expect(lead).toHaveAttribute("fetchpriority", "high");
-  const rest = page.getByRole("img", { name: /^互助单子 1 图 \d+$/ });
-  await expect(rest).toHaveCount(2);
-  for (const photo of await rest.all()) {
+  const thumbnails = page.getByRole("group", { name: "单子图片" }).locator("img");
+  await expect(thumbnails).toHaveCount(3);
+  for (const photo of await thumbnails.all()) {
     await expect(photo).toHaveAttribute("loading", "lazy");
   }
 });
