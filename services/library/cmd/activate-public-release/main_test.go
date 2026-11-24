@@ -2,10 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	library "henukit.dev/library"
 )
@@ -72,5 +79,87 @@ func TestUnsupportedEnvironmentRejectsCredentialAuthorityAndProxyOverrides(t *te
 				t.Fatalf("unsupportedEnvironment()=%q, want %q", actual, name)
 			}
 		})
+	}
+}
+
+func TestActivationOutcomeSurfacesTheLibraryCause(t *testing.T) {
+	cause := errors.New("public release object verification failed for 线性代数/电子版教材/x.pdf")
+	message, failed := activationOutcome(io.Discard, library.PublicReleaseActivationResult{}, cause)
+	if !failed {
+		t.Fatal("activationOutcome() reported success, want a failure")
+	}
+	if !strings.HasPrefix(message, "Library public release activation failed: ") {
+		t.Fatalf("activationOutcome() = %q, want the stable operator-facing prefix", message)
+	}
+	if !strings.Contains(message, cause.Error()) {
+		t.Fatalf("activationOutcome() = %q, want it to include %q", message, cause.Error())
+	}
+}
+
+func TestActivationOutcomeWithholdsInfrastructureDetail(t *testing.T) {
+	secrets := []string{
+		"172.19.0.2", "5432", "henukit", "library",
+		"library_public_releases_pkey", "duplicate key value", "release_id",
+		"Key (release_id) already exists.", "dial", "connection refused",
+	}
+	for name, cause := range map[string]error{
+		"PgError": &pgconn.PgError{
+			Code: "23505", Message: "duplicate key value violates unique constraint",
+			ConstraintName: "library_public_releases_pkey", Detail: "Key (release_id) already exists.",
+		},
+		"ConnectError": &pgconn.ConnectError{
+			Config: &pgconn.Config{User: "henukit", Database: "library", Host: "172.19.0.2", Port: 5432},
+		},
+		"OpError": &net.OpError{
+			Op: "dial", Net: "tcp",
+			Addr: &net.TCPAddr{IP: net.ParseIP("172.19.0.2"), Port: 5432},
+			Err:  errors.New("connection refused"),
+		},
+		"wrapped":      fmt.Errorf("commit activation: %w", &pgconn.PgError{Code: "23505", ConstraintName: "library_public_releases_pkey"}),
+		"ScanArgError": pgx.ScanArgError{ColumnIndex: 3, FieldName: "release_id", Err: errors.New("cannot scan")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			message, failed := activationOutcome(io.Discard, library.PublicReleaseActivationResult{}, cause)
+			if !failed {
+				t.Fatal("activationOutcome() reported success, want a failure")
+			}
+			if !strings.HasPrefix(message, "Library public release activation failed: "+databaseCause) {
+				t.Fatalf("activationOutcome() = %q, want the fixed database classification", message)
+			}
+			for _, secret := range secrets {
+				if strings.Contains(message, secret) {
+					t.Fatalf("activationOutcome() = %q, must not disclose %q", message, secret)
+				}
+			}
+		})
+	}
+}
+
+func TestActivationOutcomeEncodesSuccessAndReportsNoFailure(t *testing.T) {
+	var encoded strings.Builder
+	if message, failed := activationOutcome(&encoded, library.PublicReleaseActivationResult{ReleaseID: "abc"}, nil); failed {
+		t.Fatalf("activationOutcome() = %q, want no failure on success", message)
+	}
+	if !strings.Contains(encoded.String(), "abc") {
+		t.Fatalf("activationOutcome() wrote %q, want the encoded result", encoded.String())
+	}
+}
+
+func TestActivationOutcomeKeepsTheSQLStateButNotItsDetail(t *testing.T) {
+	cause := &pgconn.PgError{
+		Code: "23505", Message: "duplicate key value violates unique constraint",
+		ConstraintName: "library_public_releases_pkey", Detail: "Key (release_id) already exists.",
+	}
+	message, failed := activationOutcome(io.Discard, library.PublicReleaseActivationResult{}, cause)
+	if !failed {
+		t.Fatal("activationOutcome() reported success, want a failure")
+	}
+	if !strings.Contains(message, "SQLSTATE 23505") {
+		t.Fatalf("activationOutcome() = %q, want the SQLSTATE so database failures stay distinguishable", message)
+	}
+	for _, detail := range []string{"library_public_releases_pkey", "duplicate key value", "Key (release_id) already exists."} {
+		if strings.Contains(message, detail) {
+			t.Fatalf("activationOutcome() = %q, must not disclose %q", message, detail)
+		}
 	}
 }
