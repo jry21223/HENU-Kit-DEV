@@ -2,35 +2,51 @@ import { expect, test } from "@playwright/test";
 import { mockGuestGateway, mockSignedInGateway } from "./support/gateway";
 
 /**
- * 互助平台开放前的降级（#568）：保留 /campus 浏览页；二级导航不再给出未开放的「我的交易」
- * 「发布」入口，直接访问这两个路由时说明「即将开放」，而不是空壳页或登录跳转；首页第 04 模块
- * 标明「即将开放」；/campus 取数失败时不重复请求同一批接口。
+ * 互助平台二级入口路由（/campus/publish、/campus/deals）：承接旧链接与书签，
+ * 如实说明已在互助广场与单子详情页提供发单、联系方式簿与双方同意后的联系方式交换，
+ * 不再提示「即将开放」，并明确不提供在线资金托管/结算；同时校验 /campus 取数失败时不重复请求。
  */
 
 test.use({ contextOptions: { reducedMotion: "reduce" } });
 
-for (const [path, heading] of [
-  ["/campus/deals", "我的交易"],
-  ["/campus/publish", "发布单子"],
+for (const entry of [
+  {
+    path: "/campus/deals",
+    heading: "我的交易",
+    ctaLabel: "前往互助平台",
+    expectedTexts: ["联系方式簿", "单子详情页", "不提供在线资金托管或支付结算"],
+  },
+  {
+    path: "/campus/publish",
+    heading: "发布单子",
+    ctaLabel: "前往互助平台发布",
+    expectedTexts: ["发布新单子", "最多 6 张图片", "联系方式簿", "不提供在线资金托管或支付结算"],
+  },
 ] as const) {
-  test(`${path} says it is coming soon, for guests`, async ({ page }) => {
+  test(`${entry.path} guides guests to /campus without contradictory coming-soon copy`, async ({ page }) => {
     await mockGuestGateway(page);
-    await page.goto(path);
-    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await page.goto(entry.path);
+    await expect(page).toHaveURL(new RegExp(`${entry.path}$`));
     const main = page.getByRole("main");
-    await expect(main.getByRole("heading", { level: 1, name: heading })).toBeVisible();
-    await expect(main.getByText("即将开放").first()).toBeVisible();
+    await expect(main.getByRole("heading", { level: 1, name: entry.heading })).toBeVisible();
+    await expect(main).not.toContainText("即将开放");
+    for (const text of entry.expectedTexts) {
+      await expect(main).toContainText(text);
+    }
     await expect(main.getByRole("textbox")).toHaveCount(0);
-    await expect(main.getByRole("link", { name: "去浏览互助信息" })).toHaveAttribute("href", "/campus");
+    await expect(main.getByRole("link", { name: entry.ctaLabel })).toHaveAttribute("href", "/campus");
   });
 }
 
-test("signed-in users see the same notice instead of the empty publish form", async ({ page }) => {
+test("signed-in users on /campus/publish see the entry guidance to /campus", async ({ page }) => {
   await mockSignedInGateway(page);
   await page.goto("/campus/publish");
-  await expect(page.getByRole("main").getByText("即将开放").first()).toBeVisible();
-  await expect(page.getByRole("main").getByRole("textbox")).toHaveCount(0);
-  await expect(page.getByRole("main").getByRole("button", { name: /发布/ })).toHaveCount(0);
+  const main = page.getByRole("main");
+  await expect(main.getByRole("heading", { level: 1, name: "发布单子" })).toBeVisible();
+  await expect(main).not.toContainText("即将开放");
+  await expect(main).toContainText("发布新单子");
+  await expect(main.getByRole("textbox")).toHaveCount(0);
+  await expect(main.getByRole("link", { name: "前往互助平台发布" })).toHaveAttribute("href", "/campus");
 });
 
 test("the campus sub-site header lists no unopened entries", async ({ page }) => {
@@ -44,11 +60,15 @@ test("the campus sub-site header lists no unopened entries", async ({ page }) =>
   await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "互助平台" })).toBeVisible();
 });
 
-test("the homepage marks module 04 as coming soon", async ({ page }) => {
+test("the homepage module 04 reflects Campus publishing, two-way contact exchange, and no online custody", async ({ page }) => {
   await mockGuestGateway(page);
   await page.goto("/");
   const section = page.locator("section").filter({ has: page.getByRole("heading", { level: 2, name: "互助平台" }) });
-  await expect(section.getByText("即将开放").first()).toBeAttached();
+  await expect(section).not.toContainText("即将开放");
+  await expect(section).not.toContainText("暂未开放");
+  await expect(section).toContainText("双向同意后换联系方式 · 无在线结算");
+  await expect(section).toContainText("不提供在线支付与资金托管，金额仅供沟通参考。");
+  await expect(section.getByRole("link", { name: "进入互助平台" })).toHaveAttribute("href", "/campus");
 });
 
 test("a failed campus list is requested once per attempt, not twice", async ({ page }) => {

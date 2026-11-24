@@ -149,7 +149,8 @@ describe("Portal search discovery routes", () => {
       .find((line) => line.includes("https://henukit.cn/campus"));
     for (const text of [String(campusMetadata.description), llmsCampus ?? ""]) {
       expect(text).toContain("双方同意后交换联系方式");
-      expect(text).toContain("线上接单与结算暂未开放");
+      expect(text).toContain("不提供在线支付与资金托管");
+      expect(text).not.toContain("暂未开放");
     }
   });
 

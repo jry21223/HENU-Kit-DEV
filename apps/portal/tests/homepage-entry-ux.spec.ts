@@ -161,14 +161,14 @@ test.describe("Homepage task entry", () => {
       await expect(page.locator("header").getByRole("link", { name: new RegExp(name) })).toHaveAttribute("href", route);
     }
     await page.getByRole("button", { name: "关闭菜单" }).click();
-    await expect(page.getByText("发布、接单和结算暂未开放。", { exact: true })).toBeVisible();
-    await expect(page.getByText(/实名认证|发单有人接|全覆盖|真实订单即将上线|互助接单/)).toHaveCount(0);
+    await expect(page.getByText("不提供在线支付与资金托管，金额仅供沟通参考。", { exact: true })).toBeVisible();
+    await expect(page.getByText(/实名认证|发单有人接|全覆盖|真实订单即将上线|互助接单|发布、接单即将开放|发布、接单和结算暂未开放/)).toHaveCount(0);
 
     await page.route("**/api/v1/campus/items", (route) => route.fulfill({ json: { items: [], request_id: "campus-empty" } }));
     await page.route("**/api/v1/campus/categories", (route) => route.fulfill({ json: { categories: [], request_id: "campus-categories" } }));
     await page.goto("/campus");
     await expect(page.getByText("发布互助或闲置单，双方同意后交换联系方式。", { exact: true })).toBeVisible();
-    await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /双方同意后交换联系方式/);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /双方同意后交换联系方式.*不提供在线支付与资金托管/);
     await expect(page.getByText(/发单有人接|实名认证|即将上线/)).toHaveCount(0);
   });
 

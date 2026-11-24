@@ -61,10 +61,34 @@ for (const doc of [
     for (const section of doc.sections) {
       await expect(page.getByRole("heading", { level: 2, name: section })).toBeVisible();
     }
-    await expect(page.locator("main")).toContainText("最近更新");
+    await expect(page.locator("main")).toContainText("最近更新：2026 年 11 月 25 日");
     await expect(page.locator("main")).toContainText("非河南大学官方");
   });
 }
+
+test("the privacy policy reflects Campus Mutual Aid publishing and two-way contact exchange", async ({ page }) => {
+  await page.goto("/privacy");
+  const main = page.locator("main");
+  await expect(page.getByRole("heading", { level: 3, name: "互助平台" })).toBeVisible();
+  await expect(main).not.toContainText("互助平台目前只提供浏览");
+  await expect(main).not.toContainText("发布、接单和结算尚未开放");
+  await expect(main).toContainText("最多 6 张图片");
+  await expect(main).toContainText("联系方式簿");
+  await expect(main).toContainText("运营后台也无法查看你的私人联系方式");
+  await expect(main).toContainText("双方主动同意交换");
+  await expect(main).toContainText("隐藏后单子及其图片不可公开访问");
+  await expect(main).toContainText("不提供资金托管或在线支付结算");
+});
+
+test("the user agreement reflects Campus Mutual Aid rules and no online custody", async ({ page }) => {
+  await page.goto("/terms");
+  const main = page.locator("main");
+  await expect(main).not.toContainText("互助平台（目前仅提供浏览）");
+  await expect(main).toContainText("互助与闲置信息发布");
+  await expect(main).toContainText("双方同意后的联系方式交换");
+  await expect(main).toContainText("不提供在线支付或资金托管");
+  await expect(main).toContainText("线下交接与结算由双方自行核实");
+});
 
 /** DESIGN_SYSTEM §1 的完整声明；§16 要求首页首屏出现它，页脚只放短版。 */
 const FULL_STATEMENT = "HENU Kit 是由河南大学学生自主发起并维护的校园工具项目，非河南大学官方产品，不代表学校官方立场。";

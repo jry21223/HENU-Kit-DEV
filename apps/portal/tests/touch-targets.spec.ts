@@ -305,11 +305,11 @@ for (const width of [390, 1440]) {
     await expectTouchTargets(page, "/food/publish（已登录，有图）");
     await expectImageDeleteClearOfNeighbours(page);
 
-    // 互助发布页尚未开放（#568），只剩「即将开放」说明，没有表单和图片上传。
+    // 互助发布入口页引导前往 /campus 发单，确认主操作链接不小于 44×44。
     await page.goto("/campus/publish");
     await waitForHydration(page);
-    await expect(page.getByRole("main").getByText("即将开放").first()).toBeVisible();
-    await expectTouchTargets(page, "/campus/publish（即将开放）");
+    await expect(page.getByRole("main").getByRole("link", { name: "前往互助平台发布" })).toBeVisible();
+    await expectTouchTargets(page, "/campus/publish（发单入口）");
   });
 }
 

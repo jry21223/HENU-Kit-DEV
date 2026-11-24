@@ -27,4 +27,4 @@ export const LEGAL_LINKS = [
 ] as const;
 
 /** 隐私政策与用户协议的最近更新日期；内容有变更时一并更新。 */
-export const LEGAL_UPDATED_AT = "2026 年 9 月 27 日";
+export const LEGAL_UPDATED_AT = "2026 年 11 月 25 日";
