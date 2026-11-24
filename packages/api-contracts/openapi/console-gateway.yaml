@@ -1952,7 +1952,7 @@ components:
         owner_user_id: { type: string, format: uuid }
         priority: { type: string, enum: [low, normal, high, urgent] }
         sla_due_at: { type: string, format: date-time }
-        status: { type: string, enum: [open, in_progress, blocked, resolved, archived] }
+        status: { type: string, enum: [open, in_progress, blocked, resolved, cancelled, archived] }
         version: { type: integer, minimum: 1 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }

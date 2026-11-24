@@ -159,36 +159,49 @@ func (h *service) loadWorkspace(ctx context.Context) (Workspace, error) {
 		ORDER BY r.activated_at DESC
 		LIMIT 30
 	`)
-	if err == nil {
-		defer relRows.Close()
-		for relRows.Next() {
-			var rel ReleaseSummary
-			if scanErr := relRows.Scan(&rel.ReleaseID, &rel.State, &rel.ActivatedAt, &rel.ReceiptSHA256, &rel.SnapshotCount); scanErr == nil {
-				ws.Releases = append(ws.Releases, rel)
-			}
+	if err != nil {
+		return ws, fmt.Errorf("query library_public_releases: %w", err)
+	}
+	defer relRows.Close()
+	for relRows.Next() {
+		var rel ReleaseSummary
+		if err := relRows.Scan(&rel.ReleaseID, &rel.State, &rel.ActivatedAt, &rel.ReceiptSHA256, &rel.SnapshotCount); err != nil {
+			return ws, fmt.Errorf("scan library_public_releases: %w", err)
 		}
+		ws.Releases = append(ws.Releases, rel)
+	}
+	if err := relRows.Err(); err != nil {
+		return ws, fmt.Errorf("read library_public_releases: %w", err)
 	}
 
-	_ = h.database.QueryRow(ctx, `
-		SELECT count(*), count(*) FILTER (WHERE started_at >= now() - interval '24 hours')
+	if err := h.database.QueryRow(ctx, `
+		SELECT count(*), count(*) FILTER (WHERE issued_at >= now() - interval '24 hours')
 		FROM library_download_start_events
-	`).Scan(&ws.DownloadStats.TotalStarts, &ws.DownloadStats.Last24hStarts)
+	`).Scan(&ws.DownloadStats.TotalStarts, &ws.DownloadStats.Last24hStarts); err != nil {
+		return ws, fmt.Errorf("count library_download_start_events: %w", err)
+	}
 
 	dlRows, err := h.database.Query(ctx, `
-		SELECT e.id::text, e.material_id, COALESCE(s.title, e.material_id), COALESCE(s.access_level, 'public_free'), e.started_at
+		SELECT e.id::text, e.material_id::text, COALESCE(s.title, e.material_id::text),
+		       COALESCE(s.access_level, 'public_free'), e.issued_at
 		FROM library_download_start_events e
 		LEFT JOIN library_public_material_snapshots s ON s.release_id = e.release_id AND s.material_id = e.material_id
-		ORDER BY e.started_at DESC
+		ORDER BY e.issued_at DESC
 		LIMIT 30
 	`)
-	if err == nil {
-		defer dlRows.Close()
-		for dlRows.Next() {
-			var d Download
-			if scanErr := dlRows.Scan(&d.ID, &d.MaterialID, &d.MaterialTitle, &d.AccessLevel, &d.DownloadedAt); scanErr == nil {
-				ws.Downloads = append(ws.Downloads, d)
-			}
+	if err != nil {
+		return ws, fmt.Errorf("query library_download_start_events: %w", err)
+	}
+	defer dlRows.Close()
+	for dlRows.Next() {
+		var d Download
+		if err := dlRows.Scan(&d.ID, &d.MaterialID, &d.MaterialTitle, &d.AccessLevel, &d.DownloadedAt); err != nil {
+			return ws, fmt.Errorf("scan library_download_start_events: %w", err)
 		}
+		ws.Downloads = append(ws.Downloads, d)
+	}
+	if err := dlRows.Err(); err != nil {
+		return ws, fmt.Errorf("read library_download_start_events: %w", err)
 	}
 
 	return ws, nil

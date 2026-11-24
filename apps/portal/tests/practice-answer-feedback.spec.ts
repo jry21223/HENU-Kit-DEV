@@ -181,6 +181,12 @@ test(`Markdown figure rows work in options and explanations at ${viewport.width}
     analysis: `配置说明。\n\n![解析左图](${sources[0]})\n\n![解析右图](${sources[1]})\n\n\`\`\`text\n[MSR] ospf 1\n area 0\n  network 10.1.1.0 0.0.0.255\n\`\`\`\n\n配置结束。`,
   });
   await page.setViewportSize(viewport);
+  await expect.poll(() =>
+    page.locator(".swiper-slide-active").evaluate((el) => {
+      const width = el.getBoundingClientRect().width;
+      return width > 0 && width <= window.innerWidth;
+    })
+  ).toBe(true);
   const option = page.getByRole("button", { name: /配置甲/ });
   const left = option.getByRole("img", { name: "选项左图" });
   const right = option.getByRole("img", { name: "选项右图" });
@@ -226,6 +232,12 @@ test(`consecutive source figures share a compact row at ${viewport.width}×${vie
     content: `以下关于电路交换和分组交换的描述正确的是____。（选择一项或多项）\n\n![题图](${sources[0]})\n![题图](${sources[1]})`,
   });
   await page.setViewportSize(viewport);
+  await expect.poll(() =>
+    page.locator(".swiper-slide-active").evaluate((el) => {
+      const width = el.getBoundingClientRect().width;
+      return width > 0 && width <= window.innerWidth;
+    })
+  ).toBe(true);
   await page.evaluate(() => document.fonts.ready);
   const figures = page.getByRole("img", { name: "题图", exact: true });
   await expect(figures).toHaveCount(2);
@@ -292,6 +304,12 @@ test(`source figures stay compact without cropping or upscaling at ${viewport.wi
     analysis: `根据题图检查各条链路。\n![纵向配置](${portrait})\n![方形拓扑](${square})\n![横向拓扑](${landscape})`,
   });
   await page.setViewportSize(viewport);
+  await expect.poll(() =>
+    page.locator(".swiper-slide-active").evaluate((el) => {
+      const width = el.getBoundingClientRect().width;
+      return width > 0 && width <= window.innerWidth;
+    })
+  ).toBe(true);
   await page.evaluate(() => document.fonts.ready);
   const figure = page.getByRole("img", { name: "网络拓扑", exact: true });
   await expect(figure).toBeVisible();

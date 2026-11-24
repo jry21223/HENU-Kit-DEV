@@ -391,26 +391,47 @@ export function createWorkshopBank(
   );
 }
 
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+interface WorkshopImportQuestion {
+  source_question_id?: unknown;
+  type?: unknown;
+  chapter_id?: unknown;
+  chapter?: unknown;
+  chapter_name?: unknown;
+  content?: unknown;
+  options?: unknown;
+  answer?: unknown;
+  analysis?: unknown;
+  explanation?: unknown;
+}
+
 export function importWorkshopBankVersion(
   bankID: string,
   input: {
     expected_version: number;
     source_sha256: string;
-    questions: WorkshopQuestionItem[];
+    questions: WorkshopImportQuestion[];
     notes?: string;
   },
   idempotencyKey: string,
 ) {
-  const mappedQuestions = input.questions.map((q) => ({
-    source_question_id: q.source_question_id,
-    type: q.type === "multiple" ? "multi" : q.type,
-    chapter_id: q.chapter_id ?? "ch-01",
-    chapter: q.chapter_name ?? "默认章节",
-    content: q.content,
-    ...(q.options ? { options: q.options } : {}),
-    answer: q.answer,
-    ...(q.explanation ? { analysis: q.explanation } : {}),
-  }));
+  const mappedQuestions = input.questions.map((q) => {
+    const chapter = [q.chapter, q.chapter_name].find(isNonBlankString) ?? "默认章节";
+    const analysis = [q.analysis, q.explanation].find(isNonBlankString);
+    return {
+      source_question_id: q.source_question_id,
+      type: q.type === "multiple" ? "multi" : q.type,
+      chapter_id: q.chapter_id ?? "ch-01",
+      chapter,
+      content: q.content,
+      ...(q.options ? { options: q.options } : {}),
+      answer: q.answer,
+      ...(analysis ? { analysis } : {}),
+    };
+  });
   return postWorkshop<WorkshopImportReport>(
     `/api/v1/quizcraft/workshop/banks/${encodeURIComponent(bankID)}/imports`,
     {

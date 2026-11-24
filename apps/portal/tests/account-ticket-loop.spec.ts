@@ -5,6 +5,12 @@ const userID = "11111111-1111-4111-8111-111111111111";
 
 type TicketStatus = "open" | "in_progress" | "resolved";
 
+const notificationTitles = { reply: "工单有新回复", status: "工单状态已更新" };
+
+function notificationItem(page: Page, title: string) {
+  return page.getByRole("article").filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+}
+
 test("user creates a ticket, Console replies and resolves it, then the user reads durable notifications", async ({ page: portalPage }) => {
   let status: TicketStatus = "open";
   let version = 1;
@@ -90,7 +96,7 @@ test("user creates a ticket, Console replies and resolves it, then the user read
       });
       status = "in_progress";
       version = 2;
-      addNotification("ticket_operator_reply", "工单有新回复", "客服已回复你的问题。");
+      addNotification("ticket_operator_reply", notificationTitles.reply, "客服已回复你的问题。");
       await fulfill(route, 200, { data: { ticket: ticket() }, request_id: "req_console_reply" });
     },
     transition: async (route) => {
@@ -105,7 +111,7 @@ test("user creates a ticket, Console replies and resolves it, then the user read
       });
       status = "resolved";
       version = 3;
-      addNotification("ticket_status", "工单状态已更新", "工单已标记为已解决。");
+      addNotification("ticket_status", notificationTitles.status, "工单已标记为已解决。");
       await fulfill(route, 200, { data: { ticket: ticket() }, request_id: "req_console_transition" });
     },
   });
@@ -122,8 +128,32 @@ test("user creates a ticket, Console replies and resolves it, then the user read
   await portalPage.goto("/account/notifications", { waitUntil: "domcontentloaded" });
   await expect(portalPage.getByText("客服已回复你的问题。")).toBeVisible();
   await expect(portalPage.getByText("工单已标记为已解决。")).toBeVisible();
-  await portalPage.getByRole("button", { name: "标为已读" }).first().click();
-  await expect(portalPage.getByText("已读", { exact: true })).toBeVisible();
+  const statusItem = notificationItem(portalPage, notificationTitles.status);
+  const replyItem = notificationItem(portalPage, notificationTitles.reply);
+  await statusItem.getByRole("button", { name: "标为已读", exact: true }).click();
+  await expect(statusItem.getByText("已读", { exact: true })).toBeVisible();
+  await expect(replyItem.getByRole("button", { name: "标为已读", exact: true })).toBeVisible();
+});
+
+test("user marks all ticket notifications as read", async ({ page }) => {
+  await installNotificationRoutes(page, Object.values(notificationTitles).map((title, index) => ({
+    id: `81818181-8181-4818-8818-${String(index + 1).padStart(12, "0")}`,
+    kind: index === 0 ? "ticket_operator_reply" : "ticket_status",
+    title,
+    body: title,
+    created_at: "2030-01-01T00:00:00Z",
+  })));
+
+  await page.goto("/account/notifications", { waitUntil: "domcontentloaded" });
+  const singleRead = page.getByRole("button", { name: "标为已读", exact: true });
+  await expect(singleRead).toHaveCount(2);
+  await page.getByRole("button", { name: "全部标为已读", exact: true }).click();
+  for (const title of Object.values(notificationTitles)) {
+    await expect(notificationItem(page, title).getByText("已读", { exact: true })).toBeVisible();
+  }
+  await expect(singleRead).toHaveCount(0);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByText("已读", { exact: true })).toHaveCount(2);
 });
 
 async function installPortalRoutes(
@@ -136,9 +166,7 @@ async function installPortalRoutes(
     create: (route: Parameters<Page["route"]>[1] extends (...args: infer Args) => unknown ? Args[0] : never) => Promise<void>;
   }
 ) {
-  await page.route("**/api/v1/session", (route) =>
-    fulfill(route, 200, { user_id: userID, display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" })
-  );
+  await installNotificationRoutes(page, state.notifications);
   await page.route("**/api/v1/account/tickets", async (route) => {
     if (route.request().method() === "POST") {
       await state.create(route as never);
@@ -147,10 +175,16 @@ async function installPortalRoutes(
     await fulfill(route, 200, { data: { tickets: state.messages.length === 0 ? [] : [state.ticket()] }, request_id: "req_portal_tickets" });
   });
   await page.route(`**/api/v1/account/tickets/${ticketID}`, (route) => fulfill(route, 200, { data: state.detail(), request_id: "req_portal_ticket_detail" }));
-  await page.route("**/api/v1/account/notifications", (route) => fulfill(route, 200, { data: { notifications: state.notifications }, request_id: "req_portal_notifications" }));
+}
+
+async function installNotificationRoutes(page: Page, notifications: Array<Record<string, string>>) {
+  await page.route("**/api/v1/session", (route) =>
+    fulfill(route, 200, { user_id: userID, display_name: "小河同学", expires_at: "2030-01-01T00:00:00Z" })
+  );
+  await page.route("**/api/v1/account/notifications", (route) => fulfill(route, 200, { data: { notifications }, request_id: "req_portal_notifications" }));
   await page.route("**/api/v1/account/notifications/*/read", async (route) => {
     expect(route.request().headers()["idempotency-key"]).toMatch(/^portal-notification:/);
-    const notification = state.notifications.find((value) => route.request().url().includes(value.id));
+    const notification = notifications.find((value) => route.request().url().includes(value.id));
     expect(notification).toBeDefined();
     notification!.read_at = "2030-01-01T00:03:00Z";
     await fulfill(route, 200, { data: { notification }, request_id: "req_portal_notification_read" });

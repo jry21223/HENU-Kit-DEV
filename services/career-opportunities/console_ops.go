@@ -13,6 +13,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type consoleQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 type consoleCounts struct {
 	Profiles          int `json:"profiles"`
 	SearchesTotal     int `json:"searches_total"`
@@ -46,7 +51,6 @@ type consoleExtractionItem struct {
 	ID           string     `json:"id"`
 	UserID       string     `json:"user_id"`
 	Status       string     `json:"status"`
-	FileName     string     `json:"file_name"`
 	ErrorCode    string     `json:"error_code"`
 	ErrorMessage string     `json:"error_message"`
 	CreatedAt    time.Time  `json:"created_at"`
@@ -88,12 +92,12 @@ func (h *service) requireConsolePermission(w http.ResponseWriter, r *http.Reques
 	return true
 }
 
-func (h *service) loadConsoleCounts(ctx context.Context) (consoleCounts, error) {
+func loadConsoleCounts(ctx context.Context, db consoleQuerier) (consoleCounts, error) {
 	var c consoleCounts
-	if err := h.database.QueryRow(ctx, `SELECT count(*) FROM career_profiles`).Scan(&c.Profiles); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM career_profiles`).Scan(&c.Profiles); err != nil {
 		return c, err
 	}
-	if err := h.database.QueryRow(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*),
 		       count(*) FILTER (WHERE status = 'queued'),
 		       count(*) FILTER (WHERE status = 'running'),
@@ -103,10 +107,10 @@ func (h *service) loadConsoleCounts(ctx context.Context) (consoleCounts, error) 
 	`).Scan(&c.SearchesTotal, &c.SearchesQueued, &c.SearchesRunning, &c.SearchesCompleted, &c.SearchesFailed); err != nil {
 		return c, err
 	}
-	if err := h.database.QueryRow(ctx, `SELECT count(*) FROM career_resume_extractions`).Scan(&c.ExtractionsTotal); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM career_resume_extractions`).Scan(&c.ExtractionsTotal); err != nil {
 		return c, err
 	}
-	if err := h.database.QueryRow(ctx, `
+	if err := db.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE status IN ('sending', 'retry')),
 		       count(*) FILTER (WHERE status = 'sent')
 		FROM career_digest_deliveries
@@ -114,6 +118,10 @@ func (h *service) loadConsoleCounts(ctx context.Context) (consoleCounts, error) 
 		return c, err
 	}
 	return c, nil
+}
+
+func (h *service) loadConsoleCounts(ctx context.Context) (consoleCounts, error) {
+	return loadConsoleCounts(ctx, h.database)
 }
 
 func (h *service) consoleSummary(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +166,11 @@ func (h *service) consoleWorkspace(w http.ResponseWriter, r *http.Request) {
 	if !h.requireConsolePermission(w, r, "career.read") {
 		return
 	}
-	counts, err := h.loadConsoleCounts(r.Context())
+	h.writeConsoleWorkspace(w, r, h.database)
+}
+
+func (h *service) writeConsoleWorkspace(w http.ResponseWriter, r *http.Request, db consoleQuerier) {
+	counts, err := loadConsoleCounts(r.Context(), db)
 	if err != nil {
 		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "career database unavailable")
 		return
@@ -177,7 +189,7 @@ func (h *service) consoleWorkspace(w http.ResponseWriter, r *http.Request) {
 		DigestDeliveries: []consoleDigestItem{},
 	}
 
-	sRows, err := h.database.Query(r.Context(), `
+	sRows, err := db.Query(r.Context(), `
 		SELECT s.id::text, s.user_id::text, s.status, COALESCE(s.stage, ''),
 		       COALESCE(r.source_count, 0), COALESCE(r.job_count, 0), COALESCE(r.matched_count, 0),
 		       COALESCE(s.error_code, ''), COALESCE(s.error_message, ''),
@@ -205,45 +217,65 @@ func (h *service) consoleWorkspace(w http.ResponseWriter, r *http.Request) {
 		}
 		payload.Searches = append(payload.Searches, item)
 	}
+	if err := sRows.Err(); err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "failed to read career searches")
+		return
+	}
 
-	eRows, err := h.database.Query(r.Context(), `
-		SELECT id::text, user_id::text, status, file_name,
+	eRows, err := db.Query(r.Context(), `
+		SELECT id::text, user_id::text, status,
 		       COALESCE(error_code, ''), COALESCE(error_message, ''),
 		       created_at, completed_at, failed_at
 		FROM career_resume_extractions
 		ORDER BY created_at DESC
 		LIMIT 30
 	`)
-	if err == nil {
-		defer eRows.Close()
-		for eRows.Next() {
-			var item consoleExtractionItem
-			if scanErr := eRows.Scan(
-				&item.ID, &item.UserID, &item.Status, &item.FileName,
-				&item.ErrorCode, &item.ErrorMessage,
-				&item.CreatedAt, &item.CompletedAt, &item.FailedAt,
-			); scanErr == nil {
-				payload.Extractions = append(payload.Extractions, item)
-			}
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "failed to load career resume extractions")
+		return
+	}
+	defer eRows.Close()
+	for eRows.Next() {
+		var item consoleExtractionItem
+		if err := eRows.Scan(
+			&item.ID, &item.UserID, &item.Status,
+			&item.ErrorCode, &item.ErrorMessage,
+			&item.CreatedAt, &item.CompletedAt, &item.FailedAt,
+		); err != nil {
+			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "failed to scan career resume extractions")
+			return
 		}
+		payload.Extractions = append(payload.Extractions, item)
+	}
+	if err := eRows.Err(); err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "failed to read career resume extractions")
+		return
 	}
 
-	dRows, err := h.database.Query(r.Context(), `
+	dRows, err := db.Query(r.Context(), `
 		SELECT search_id::text, status, attempted_at, enqueued_at, created_at, updated_at
 		FROM career_digest_deliveries
 		ORDER BY updated_at DESC
 		LIMIT 30
 	`)
-	if err == nil {
-		defer dRows.Close()
-		for dRows.Next() {
-			var item consoleDigestItem
-			if scanErr := dRows.Scan(
-				&item.SearchID, &item.Status, &item.AttemptedAt, &item.EnqueuedAt, &item.CreatedAt, &item.UpdatedAt,
-			); scanErr == nil {
-				payload.DigestDeliveries = append(payload.DigestDeliveries, item)
-			}
+	if err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "failed to load career digest deliveries")
+		return
+	}
+	defer dRows.Close()
+	for dRows.Next() {
+		var item consoleDigestItem
+		if err := dRows.Scan(
+			&item.SearchID, &item.Status, &item.AttemptedAt, &item.EnqueuedAt, &item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
+			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "failed to scan career digest deliveries")
+			return
 		}
+		payload.DigestDeliveries = append(payload.DigestDeliveries, item)
+	}
+	if err := dRows.Err(); err != nil {
+		writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", "failed to read career digest deliveries")
+		return
 	}
 
 	writeData(w, r, http.StatusOK, payload)

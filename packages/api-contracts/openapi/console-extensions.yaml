@@ -1278,6 +1278,7 @@ components:
             - in_progress
             - blocked
             - resolved
+            - cancelled
             - archived
         priority:
           type: string
@@ -1315,6 +1316,7 @@ components:
             - in_progress
             - blocked
             - resolved
+            - cancelled
             - archived
         priority:
           type: string
@@ -1923,7 +1925,6 @@ components:
         - id
         - user_id
         - status
-        - file_name
         - error_code
         - error_message
         - created_at
@@ -1943,8 +1944,6 @@ components:
             - running
             - completed
             - failed
-        file_name:
-          type: string
         error_code:
           type: string
         error_message:

@@ -498,11 +498,22 @@ export function PlatformPage() {
 
   const visibleInbox = useMemo(
     () =>
-      (operations?.inbox_items ?? []).filter(
-        (item) => inboxFilter === "all" || item.status === inboxFilter,
-      ),
+      (operations?.inbox_items ?? []).filter((item) => {
+        if (inboxFilter === "all") return true;
+        if (inboxFilter === "cancelled" || inboxFilter === "archived") {
+          return item.status === "cancelled" || item.status === "archived";
+        }
+        return item.status === inboxFilter;
+      }),
     [operations, inboxFilter],
   );
+
+  const handleInboxFilterChange = (nextFilter: InboxStatusFilter) => {
+    setInboxFilter(nextFilter);
+    if (operations && operations.pagination.inbox_items.page > 1) {
+      void handleLoadPage("inbox_page", 1);
+    }
+  };
 
   const accountColumns: ColumnsType<PlatformOperationsSnapshot["accounts"][number]> = [
     {
@@ -732,6 +743,7 @@ export function PlatformPage() {
             onClick={() => {
               setAccountQueryInput("");
               setSubmittedAccountQuery("");
+              setInboxFilter("all");
               setCursorHistory(emptyPlatformCursorHistory());
               void load(firstPlatformPages());
             }}
@@ -894,12 +906,13 @@ export function PlatformPage() {
                 label: `跨产品待办 (${operations.inbox_items.length})`,
                 children: (
                   <Space orientation="vertical" size={14} style={{ width: "100%" }}>
-                    <Space>
+                    <Space wrap>
                       <Typography.Text type="secondary">状态筛选：</Typography.Text>
                       <Select
+                        aria-label="待办状态筛选"
                         style={{ width: 150 }}
                         value={inboxFilter}
-                        onChange={(v) => setInboxFilter(v)}
+                        onChange={(v) => handleInboxFilterChange(v)}
                         options={[
                           { label: "全部状态", value: "all" },
                           { label: "待处理", value: "open" },
@@ -909,6 +922,9 @@ export function PlatformPage() {
                           { label: "已归档", value: "cancelled" },
                         ]}
                       />
+                      {inboxFilter !== "all" && (
+                        <Button onClick={() => handleInboxFilterChange("all")}>重置筛选</Button>
+                      )}
                     </Space>
                     <Table
                       rowKey="id"
@@ -966,7 +982,7 @@ export function PlatformPage() {
                                     开始处理
                                   </Button>
                                 )}
-                                {item.status !== "resolved" && item.status !== "archived" && (item.status as string) !== "cancelled" && (
+                                {item.status !== "resolved" && item.status !== "archived" && item.status !== "cancelled" && (
                                   <Button
                                     type="primary"
                                     size="small"
@@ -1009,6 +1025,44 @@ export function PlatformPage() {
                         ),
                       }}
                     />
+                    <div
+                      data-testid="inbox-pagination"
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                    >
+                      <Button
+                        icon={<LeftOutlined />}
+                        disabled={operations.pagination.inbox_items.page <= 1}
+                        onClick={() =>
+                          void handleLoadPage(
+                            "inbox_page",
+                            operations.pagination.inbox_items.page - 1,
+                          )
+                        }
+                      >
+                        上一页
+                      </Button>
+                      <Typography.Text type="secondary">
+                        第 {operations.pagination.inbox_items.page} 页
+                      </Typography.Text>
+                      <Button
+                        icon={<RightOutlined />}
+                        iconPlacement="end"
+                        disabled={
+                          operations.pagination.inbox_items.next_page === null ||
+                          !operations.pagination.inbox_items.next_cursor
+                        }
+                        onClick={() =>
+                          operations.pagination.inbox_items.next_page &&
+                          operations.pagination.inbox_items.next_cursor &&
+                          void handleLoadPage(
+                            "inbox_page",
+                            operations.pagination.inbox_items.next_page,
+                          )
+                        }
+                      >
+                        下一页
+                      </Button>
+                    </div>
                   </Space>
                 ),
               },

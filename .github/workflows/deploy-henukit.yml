@@ -126,6 +126,18 @@ jobs:
           # successful activation into a one-second timeout.
           node --test --test-concurrency=1 \
             scripts/ops/tests/watch-henukit-actions.test.mjs
+      - name: Verify additional operations contracts
+        run: |
+          node --test --test-concurrency=1 \
+            scripts/ops/tests/convert-henukit-slides.test.mjs \
+            scripts/ops/tests/deploy-epay-gateway-patches.test.mjs \
+            scripts/ops/tests/getwork-relay-watcher-contract.test.mjs \
+            scripts/ops/tests/henukit-ingress.test.mjs
+      - name: Verify root-owned release adoption and signer rotation
+        run: |
+          sudo "$(command -v node)" --test --test-concurrency=1 \
+            scripts/ops/tests/adopt-henukit-degraded-baseline.test.mjs \
+            scripts/ops/tests/rotate-henukit-release-signers.test.mjs
       - name: Require Linux watcher foreign-owner authority rejection
         run: |
           set -euo pipefail
@@ -152,6 +164,10 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install Portal and Console browser-test dependencies
         run: pnpm install --frozen-lockfile --filter @henukit/portal... --filter @henukit/console...
+      - name: Verify Portal types
+        run: pnpm --filter @henukit/portal typecheck
+      - name: Lint Portal source
+        run: pnpm --filter @henukit/portal lint
       - name: Verify Portal unit behavior
         run: pnpm --filter @henukit/portal test
       - name: Verify Portal unit contracts

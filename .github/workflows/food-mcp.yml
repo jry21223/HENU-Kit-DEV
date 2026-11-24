@@ -1,0 +1,33 @@
+name: Food MCP
+
+on:
+  pull_request:
+    paths:
+      - services/food-mcp/**
+      - .github/workflows/food-mcp.yml
+  push:
+    branches: [main]
+    paths:
+      - services/food-mcp/**
+      - .github/workflows/food-mcp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/food-mcp
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: services/food-mcp/go.mod
+          cache-dependency-path: services/food-mcp/go.sum
+      - name: Vet Food MCP
+        run: go vet ./...
+      - name: Test Food MCP with race detection
+        run: CGO_ENABLED=1 go test -race -count=1 ./...

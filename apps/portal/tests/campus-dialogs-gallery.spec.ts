@@ -96,13 +96,24 @@ test.describe("Campus 弹窗与多图展示", () => {
       });
       await expect(dialog.getByRole("alert")).toContainText("仅支持 JPG、PNG、WebP");
 
-      // 删除图片恢复 0/6
-      await removeBtn.click();
-      await expect(dialog.getByText("图片（0/6，单张 ≤2MB，选填）")).toBeVisible();
-
       // 弹窗内部无横向溢出
       const overflow = await dialog.evaluate((el) => el.scrollWidth - el.clientWidth);
       expect(overflow, `dialog overflow at ${viewport.width}px`).toBeLessThanOrEqual(1);
+
+      await dialog.getByRole("button", { name: "取消", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await page.getByRole("button", { name: "发布新单子" }).click();
+      await expect(helpBtn).toHaveAttribute("aria-pressed", "true");
+      await expect(sellBtn).toHaveAttribute("aria-pressed", "false");
+      await expect(catGroup.getByRole("button", { name: "快递代取" })).toHaveAttribute("aria-pressed", "true");
+      await expect(catGroup.getByRole("button", { name: "数码外设" })).toHaveAttribute("aria-pressed", "false");
+      await expect(dialog.getByText("图片（0/6，单张 ≤2MB，选填）")).toBeVisible();
+      await expect(dialog.getByRole("alert")).toHaveCount(0);
+
+      await fileInput.setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: TINY_PNG });
+      await expect(removeBtn).toBeVisible();
+      await removeBtn.click();
+      await expect(dialog.getByText("图片（0/6，单张 ≤2MB，选填）")).toBeVisible();
 
       await dialog.getByRole("button", { name: "关闭窗口" }).click();
       await expect(dialog).toBeHidden();

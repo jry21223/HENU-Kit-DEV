@@ -45,7 +45,7 @@ const (
 	AccountMembershipOrderRefundsRoute  = "/api/v1/account/membership-orders/{order_id}/refunds"
 	AccountMembershipOrderRefundRoute   = "/api/v1/account/membership-orders/{order_id}/refunds/{refund_id}"
 	LogoutRoute                         = "/api/v1/session/logout"
-	SourceSHA256                        = "bd20661f392212b45eca484c865d6c6df067e6cb0a6ab46d61eab12b53406155"
+	SourceSHA256                        = "ec65c798a992c912022e3545d97cc2bff48aa548c13b9319061746f0ccfc8ad4"
 )
 
 type ConsoleAccessContext struct {
