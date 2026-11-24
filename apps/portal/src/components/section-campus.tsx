@@ -5,9 +5,12 @@ import { gsap, useGSAP, FINE_MOTION, ScrollTrigger, isOnScreen } from "@/lib/gsa
 import SectionHeading from "@/components/ui/section-heading";
 import MagneticButton from "@/components/ui/magnetic-button";
 
-const FEATURES = ["按类别浏览互助与闲置", "搜索你关注的信息"];
+const FEATURES = [
+  "发布互助求助与闲置单，支持最多 6 张配图",
+  "公开留言沟通，双方同意后交换联系方式",
+];
 
-/** 浏览 → 筛选 → 查看：当前开放的信息浏览流程。 */
+/** 发单 → 留言 → 交换：同校互助与闲置沟通流程。 */
 function FlowDiagram() {
   // 图里的字随图缩放。图宽不到 28rem（手机）时节点文字放大，屏幕上仍不小于 12px；
   // STEP 编号是读屏跳过的装饰，这时不显示（DESIGN_SYSTEM.md 第 4 节）。
@@ -25,19 +28,19 @@ function FlowDiagram() {
         <g data-flow-node>
           <rect x="10" y="46" width="60" height="48" stroke="#161513" />
           <text x="40" y="70" textAnchor="middle" dominantBaseline="central" className={nodeText} fill="#161513">
-            浏览
+            发单
           </text>
         </g>
         <g data-flow-node>
           <rect x="204" y="46" width="76" height="48" stroke="#161513" />
           <text x="242" y="70" textAnchor="middle" dominantBaseline="central" className={nodeText} fill="#161513">
-            筛选
+            留言
           </text>
         </g>
         <g data-flow-node>
           <rect x="414" y="46" width="60" height="48" stroke="#161513" />
           <text x="444" y="70" textAnchor="middle" dominantBaseline="central" className={nodeText} fill="#161513">
-            查看
+            交换
           </text>
         </g>
 
@@ -139,13 +142,11 @@ export default function SectionCampus() {
       <div className="mx-auto grid max-w-site items-center gap-12 px-5 py-24 md:min-h-svh md:grid-cols-2 md:px-8">
         <div>
           <SectionHeading index="04" en="CAMPUS MUTUAL AID" title="互助平台" />
-          {/* 发布、接单和结算还没开放：模块名旁直接标明，免得它看起来像已在运营（#568）。 */}
           <p className="mt-4 inline-block border border-accent px-2 py-0.5 font-mono text-xs text-accent-text">
-            发布、接单即将开放
+            双向同意后换联系方式 · 无在线结算
           </p>
           <p className="mt-6 max-w-sm text-sm leading-7 text-ink/70">
-            看看同校的互助需求与闲置信息，
-            按类别查找你关注的内容。
+            发布同校互助需求或闲置信息，先公开留言沟通，双方同意后再交换联系方式。
           </p>
           <ul className="mt-6 space-y-2 font-mono text-xs text-ink/60">
             {FEATURES.map((f) => (
@@ -156,7 +157,7 @@ export default function SectionCampus() {
             ))}
           </ul>
           <MagneticButton href="/campus" className="mt-8">
-            浏览互助信息
+            进入互助平台
           </MagneticButton>
 
           <div className="mt-12">
@@ -164,8 +165,6 @@ export default function SectionCampus() {
           </div>
         </div>
 
-        {/* 订单卡：当前互助平台的发布/接单/结算尚未接通后端，
-            不再展示硬编码示例订单；待真实订单可用后再接数据。 */}
         <div className="flex items-center">
           <article
             data-order-card
@@ -173,14 +172,14 @@ export default function SectionCampus() {
           >
             <div className="flex items-center justify-between font-mono text-xs text-ink/60">
               <span className="tracking-[0.25em]">CAMPUS AID</span>
-              <span className="border border-ink/30 px-2 py-0.5">信息浏览</span>
+              <span className="border border-ink/30 px-2 py-0.5">互助 · 闲置</span>
             </div>
-            <h3 className="mt-5 font-display text-3xl font-bold">先看看校园所需</h3>
+            <h3 className="mt-5 font-display text-3xl font-bold">发布单子，双方同意再换联系</h3>
             <p className="mt-2 text-sm text-ink/60">
-              可浏览互助与闲置信息，查找分类或搜索关键词。
+              支持发布互助与闲置单、公开留言，并在联系方式簿里选择渠道，仅在双方同意后互相展示。
             </p>
             <p className="mt-6 border-t border-line pt-4 text-xs leading-6 text-ink/60">
-              发布、接单和结算暂未开放。
+              不提供在线支付与资金托管，金额仅供沟通参考。
             </p>
           </article>
         </div>
