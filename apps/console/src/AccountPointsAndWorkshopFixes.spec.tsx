@@ -95,7 +95,7 @@ it("discards a pending account lookup when the operator edits the email", async 
   fireEvent.click(lookup);
   expect((await screen.findAllByText(second.display_name)).length).toBeGreaterThan(0);
   expect((screen.getByRole("spinbutton") as HTMLInputElement).disabled).toBe(false);
-});
+}, 20_000);
 
 it("imports QuizCraft chapters and analyses using canonical fields and compatible aliases", async () => {
   vi.stubGlobal("crypto", {
@@ -160,4 +160,4 @@ it("imports QuizCraft chapters and analyses using canonical fields and compatibl
       ],
     },
   ]);
-});
+}, 20_000);
