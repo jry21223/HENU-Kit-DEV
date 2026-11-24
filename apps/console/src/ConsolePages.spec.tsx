@@ -120,7 +120,7 @@ describe("Console module pages", () => {
       }
       if (pathname.endsWith("/career/workspace")) return jsonResponse({ data: {
         job_source_enabled: false, counts: { profiles: 2, searches_queued: 0, searches_running: 0, searches_completed: 1, searches_failed: 0, digests_pending: 1 },
-        searches: [], extractions: [{ id: "extract-one", status: "completed", file_name: "私人简历.pdf", created_at: fullSession.expires_at }],
+        searches: [], extractions: [{ id: "extract-one", user_id: fullSession.user.id, status: "completed", error_code: "", error_message: "", created_at: fullSession.expires_at, completed_at: fullSession.expires_at, failed_at: null }],
         digest_deliveries: [{ search_id: "scan-one", status: "retry", updated_at: fullSession.expires_at }],
       }, request_id: "req_career" });
       return jsonResponse({}, 404);
@@ -672,6 +672,186 @@ describe("Console module pages", () => {
     fireEvent.click(screen.getByText(/跨产品待办/));
     expect(await screen.findByText("刷题练习")).toBeTruthy();
     expect(await screen.findByText("题目纠错反馈")).toBeTruthy();
+  });
+
+  it("archives a resolved inbox item as cancelled and keeps PlatformPage valid on reload", async () => {
+    let archived = false;
+    const inboxUpdates: unknown[] = [];
+    const buildOps = () => ({
+      access_context: fullSession.access_context,
+      accounts: [
+        {
+          id: "171f1c6f-7b10-4c92-91a2-b39bf5af5302",
+          display_name: "张老师",
+          email: "zhang@henu.edu.cn",
+          email_verified: true,
+          status: "active",
+          authorization_revision: 1,
+          created_at: "2026-11-22T00:00:00Z",
+          grants: [{ role_code: "operations-operator", scope: { kind: "platform" } }],
+        },
+      ],
+      sessions: [],
+      inbox_items: [
+        {
+          id: "11111111-1111-4111-8111-111111111199",
+          priority: "high",
+          source_product_code: "quizcraft",
+          source_resource_type: "feedback",
+          source_resource_id: "fb-archive-001",
+          status: archived ? "cancelled" : "resolved",
+          version: archived ? 2 : 1,
+          created_at: "2026-11-22T02:00:00Z",
+          updated_at: "2026-11-22T02:00:00Z",
+        },
+      ],
+      audit: [],
+      mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 5, failed: 0, dead_letters: 0 },
+      pagination: {
+        accounts: { page: 1, next_page: null, next_cursor: null },
+        sessions: { page: 1, next_page: null, next_cursor: null },
+        inbox_items: { page: 1, next_page: null, next_cursor: null },
+        audit: { page: 1, next_page: null, next_cursor: null },
+      },
+      dependencies: { postgres: "ready", redis: "ready" },
+      generated_at: "2026-11-22T04:00:00Z",
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.pathname + input.search : input.url;
+      if (url.includes("/api/v1/session")) return jsonResponse({ data: fullSession, request_id: "req_session" });
+      if (url.includes("/api/v1/operations/roles")) return jsonResponse({ data: { roles: [] }, request_id: "req_roles" });
+      if (url.includes("/api/v1/operations/inbox/11111111-1111-4111-8111-111111111199/updates")) {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        inboxUpdates.push(body);
+        archived = true;
+        return jsonResponse({
+          data: {
+            id: "11111111-1111-4111-8111-111111111199",
+            priority: "high",
+            source_product_code: "quizcraft",
+            source_resource_type: "feedback",
+            source_resource_id: "fb-archive-001",
+            status: "cancelled",
+            version: 2,
+            created_at: "2026-11-22T02:00:00Z",
+            updated_at: "2026-11-22T02:05:00Z",
+          },
+          request_id: "req_archive_ok",
+        });
+      }
+      if (url.includes("/api/v1/operations")) {
+        return jsonResponse({ data: buildOps(), request_id: "req_ops_archive" });
+      }
+      return jsonResponse({ data: {}, request_id: "req_fallback" });
+    });
+
+    renderAt("/operations");
+    expect(await screen.findByText("张老师")).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/跨产品待办/));
+    expect(await screen.findByText("fb-archive-001")).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/^归\s*档$/).closest("button")!);
+    await waitFor(() => expect(inboxUpdates).toHaveLength(1));
+    expect(inboxUpdates[0]).toMatchObject({ expected_version: 1, status: "cancelled" });
+    expect(await screen.findByText("已归档")).toBeTruthy();
+
+    // 刷新工作台重新校验包含 cancelled 状态的完整快照：不应触发 invalid / 不可用态
+    fireEvent.click(screen.getByText(/^刷\s*新$/).closest("button")!);
+    expect(await screen.findByText("fb-archive-001")).toBeTruthy();
+    expect(await screen.findByText("已归档")).toBeTruthy();
+  });
+
+  it("paginates PlatformPage inbox_items via inbox_page cursor and resets filter on refresh", async () => {
+    const operationUrls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.pathname + input.search : input.url;
+      if (url.includes("/api/v1/session")) return jsonResponse({ data: fullSession, request_id: "req_session" });
+      if (url.includes("/api/v1/operations/roles")) return jsonResponse({ data: { roles: [] }, request_id: "req_roles" });
+      if (url.includes("/api/v1/operations")) {
+        operationUrls.push(url);
+        const parsed = new URL(url, "https://console.henukit.test");
+        const inboxPage = Number(parsed.searchParams.get("inbox_page") ?? "1");
+        const isPage2 = inboxPage === 2 && parsed.searchParams.get("inbox_cursor") === "cursor_inbox_p2";
+        return jsonResponse({
+          data: {
+            access_context: fullSession.access_context,
+            accounts: [],
+            sessions: [],
+            inbox_items: [
+              isPage2
+                ? {
+                    id: "22222222-2222-4222-8222-222222222202",
+                    priority: "normal",
+                    source_product_code: "food",
+                    source_resource_type: "anomaly_ticket",
+                    source_resource_id: "inbox-item-page-2",
+                    status: "open",
+                    version: 1,
+                    created_at: "2026-11-21T02:00:00Z",
+                    updated_at: "2026-11-21T02:00:00Z",
+                  }
+                : {
+                    id: "11111111-1111-4111-8111-111111111101",
+                    priority: "high",
+                    source_product_code: "quizcraft",
+                    source_resource_type: "feedback",
+                    source_resource_id: "inbox-item-page-1",
+                    status: "open",
+                    version: 1,
+                    created_at: "2026-11-22T02:00:00Z",
+                    updated_at: "2026-11-22T02:00:00Z",
+                  },
+            ],
+            audit: [],
+            mail: { pending: 0, processing: 0, retry_due: 0, accepted: 0, delivered: 5, failed: 0, dead_letters: 0 },
+            pagination: {
+              accounts: { page: 1, next_page: null, next_cursor: null },
+              sessions: { page: 1, next_page: null, next_cursor: null },
+              inbox_items: isPage2
+                ? { page: 2, next_page: null, next_cursor: null }
+                : { page: 1, next_page: 2, next_cursor: "cursor_inbox_p2" },
+              audit: { page: 1, next_page: null, next_cursor: null },
+            },
+            dependencies: { postgres: "ready", redis: "ready" },
+            generated_at: "2026-11-22T04:00:00Z",
+          },
+          request_id: "req_ops_paged",
+        });
+      }
+      return jsonResponse({ data: {}, request_id: "req_fallback" });
+    });
+
+    renderAt("/operations");
+    fireEvent.click(await screen.findByText(/跨产品待办/));
+    expect(await screen.findByText("inbox-item-page-1")).toBeTruthy();
+
+    const pager = screen.getByTestId("inbox-pagination");
+    expect(within(pager).getByText("第 1 页")).toBeTruthy();
+    expect(within(pager).getByText("上一页").closest("button")).toHaveProperty("disabled", true);
+    const nextBtn = within(pager).getByText("下一页").closest("button")!;
+    expect(nextBtn.disabled).toBe(false);
+
+    fireEvent.click(nextBtn);
+    expect(await screen.findByText("inbox-item-page-2")).toBeTruthy();
+    expect(within(screen.getByTestId("inbox-pagination")).getByText("第 2 页")).toBeTruthy();
+    expect(
+      operationUrls.some((u) => u.includes("inbox_page=2") && u.includes("inbox_cursor=cursor_inbox_p2")),
+    ).toBe(true);
+
+    fireEvent.click(within(screen.getByTestId("inbox-pagination")).getByText("上一页").closest("button")!);
+    expect(await screen.findByText("inbox-item-page-1")).toBeTruthy();
+    expect(within(screen.getByTestId("inbox-pagination")).getByText("第 1 页")).toBeTruthy();
+    const lastUrl = operationUrls[operationUrls.length - 1] ?? "";
+    expect(lastUrl.includes("inbox_page=1") && !lastUrl.includes("inbox_cursor=")).toBe(true);
+
+    // 翻到第 2 页后点刷新，页码复位到第 1 页
+    fireEvent.click(within(screen.getByTestId("inbox-pagination")).getByText("下一页").closest("button")!);
+    expect(await screen.findByText("inbox-item-page-2")).toBeTruthy();
+    fireEvent.click(screen.getByText(/^刷\s*新$/).closest("button")!);
+    expect(await screen.findByText("inbox-item-page-1")).toBeTruthy();
+    expect(within(screen.getByTestId("inbox-pagination")).getByText("第 1 页")).toBeTruthy();
   });
 
   it("renders NoticePage with status segmented filter and source selection", async () => {

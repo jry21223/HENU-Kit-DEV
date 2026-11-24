@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { formatPortalError, PortalUnauthorizedError } from "@/lib/api/client";
+import { formatPortalError, PortalHttpError, PortalUnauthorizedError } from "@/lib/api/client";
 import type { CampusItem, CampusMessage } from "@/lib/api/types";
 import { completeCampusItem, CONTACT_CHANNELS, postCampusMessage, readCampusContactBook, readCampusExchanges, requestCampusExchange, respondCampusExchange, type ContactBook, type ContactChannel, type Exchange } from "@/lib/campus/gateway";
 import {
@@ -17,6 +17,16 @@ import {
 
 const CHANNELS = Object.keys(CONTACT_CHANNELS) as ContactChannel[];
 const EXCHANGE_LABELS = { requested: "待回复", accepted: "已同意", declined: "已婉拒", cancelled: "已取消" };
+
+export function formatCampusExchangeError(error: unknown): string {
+  if (error instanceof PortalHttpError && error.status === 409 && error.errorCode === "ITEM_NOT_OPEN") {
+    return "单子状态已变化，请刷新查看最新状态。";
+  }
+  if (isCampusWritesUnavailable(error)) {
+    return formatCampusUnavailableMessage(error);
+  }
+  return formatPortalError(error);
+}
 
 export function CampusMessageForm({ id, onMessage }: { id: string; onMessage: (message: CampusMessage) => void }) {
   const { ready, user } = useCampusViewer();
@@ -111,7 +121,7 @@ function ExchangeActions({ item, viewerID, path, onStatus }: { item: CampusItem;
       await action();
     } catch (error) {
       setExpired(error instanceof PortalUnauthorizedError);
-      setFailure(formatPortalError(error));
+      setFailure(formatCampusExchangeError(error));
     } finally {
       inFlight.current = false;
       setBusy(false);

@@ -359,3 +359,121 @@ func campusImageTestDatabase(t *testing.T) (*sql.DB, string) {
 	}
 	return conn, dbURL.String()
 }
+
+func TestAcceptCampusExchangeRequiresOpenItem(t *testing.T) {
+	conn, dsn := campusImageTestDatabase(t)
+	const clientID, keyID, secret = "portal-gw", "pk1", "campus-portal-secret-at-least-32-bytes"
+	const owner = "11111111-1111-4111-8111-111111111111"
+	requesters := []string{"22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"}
+	t.Setenv("PORTAL_API_MODE", "mock")
+	t.Setenv("STUDY_DATABASE_URL", "")
+	t.Setenv("PORTAL_DATABASE_URL", dsn)
+	t.Setenv("CAMPUS_PORTAL_CLIENT_ID", clientID)
+	t.Setenv("CAMPUS_PORTAL_KEY_ID", keyID)
+	t.Setenv("CAMPUS_PORTAL_SECRET", secret)
+	t.Setenv("CAMPUS_CONSOLE_SECRET", "")
+	router, err := NewRouter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`INSERT INTO portal_campus_contacts (user_id, qq) VALUES ($1, 'private-owner-qq')`, owner); err != nil {
+		t.Fatal(err)
+	}
+	request := func(method, path, actor, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("X-Actor-User-Id", actor)
+		signCampusReq(req, clientID, keyID, secret, body)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for _, status := range []string{"done", "hidden", "open"} {
+		t.Run(status, func(t *testing.T) {
+			if _, err := conn.Exec(`INSERT INTO portal_campus_items (id, type, title, status, author_user_id)
+				VALUES ($1, 'sell', '教材', $2, $3)`, status, status, owner); err != nil {
+				t.Fatal(err)
+			}
+			count := 1
+			if status == "open" {
+				count = 2
+			}
+			prefix := "/api/v1/campus/items/" + status + "/exchanges"
+			exchanges := make([]string, count)
+			for i := range exchanges {
+				if err := conn.QueryRow(`INSERT INTO portal_campus_exchanges
+					(item_id, requester_user_id, owner_user_id, requester_channels, requester_snapshot)
+					VALUES ($1, $2, $3, '["qq"]', '{"qq":"private-requester-qq"}') RETURNING id::text`,
+					status, requesters[i], owner).Scan(&exchanges[i]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			responses := make(chan *httptest.ResponseRecorder, count)
+			start := make(chan struct{})
+			for _, exchange := range exchanges {
+				go func() {
+					<-start
+					responses <- request(http.MethodPost, prefix+"/"+exchange+"/respond", owner, `{"decision":"accept"}`)
+				}()
+			}
+			close(start)
+			var acceptedID string
+			for range count {
+				rec := <-responses
+				switch rec.Code {
+				case http.StatusOK:
+					if status != "open" || acceptedID != "" {
+						t.Fatalf("unexpected successful accept for item status %q", status)
+					}
+					var payload struct{ Exchange campus.Exchange }
+					if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+						t.Fatal(err)
+					}
+					acceptedID = payload.Exchange.ID
+				case http.StatusConflict:
+					if !strings.Contains(rec.Body.String(), "ITEM_NOT_OPEN") || !strings.Contains(rec.Body.String(), "单子状态已变化") ||
+						strings.Contains(rec.Body.String(), "snapshot") || strings.Contains(rec.Body.String(), "private-") {
+						t.Fatalf("unsafe or unclear conflict response: %s", rec.Body)
+					}
+				default:
+					t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body)
+				}
+			}
+			if status == "open" && !slices.Contains(exchanges, acceptedID) {
+				t.Fatal("exactly one concurrent accept must succeed")
+			}
+			wantStatus := status
+			if acceptedID != "" {
+				wantStatus = "ongoing"
+			}
+			var itemStatus string
+			if err := conn.QueryRow(`SELECT status FROM portal_campus_items WHERE id = $1`, status).Scan(&itemStatus); err != nil || itemStatus != wantStatus {
+				t.Fatalf("item status = %q, err = %v, want %q", itemStatus, err, wantStatus)
+			}
+			for i, id := range exchanges {
+				if id == acceptedID {
+					continue
+				}
+				var state string
+				var ownerSnapshot bool
+				if err := conn.QueryRow(`SELECT status, owner_snapshot IS NOT NULL FROM portal_campus_exchanges WHERE id = $1`, id).Scan(&state, &ownerSnapshot); err != nil || state != "requested" || ownerSnapshot {
+					t.Fatalf("losing exchange status = %q, owner snapshot = %v, err = %v", state, ownerSnapshot, err)
+				}
+				if status == "hidden" {
+					continue // Hidden listings already reject exchange reads.
+				}
+				for _, actor := range []string{owner, requesters[i]} {
+					rec := request(http.MethodGet, prefix, actor, "")
+					var payload struct{ Exchanges []campus.Exchange }
+					if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &payload) != nil {
+						t.Fatalf("exchange list = %d %s", rec.Code, rec.Body)
+					}
+					index := slices.IndexFunc(payload.Exchanges, func(ex campus.Exchange) bool { return ex.ID == id })
+					if index < 0 || payload.Exchanges[index].RequesterSnapshot != nil || payload.Exchanges[index].OwnerSnapshot != nil {
+						t.Fatal("requested exchange must be listed without contact snapshots")
+					}
+				}
+			}
+		})
+	}
+}

@@ -6,18 +6,277 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
+
+type stubRow struct {
+	values []any
+	err    error
+}
+
+func (r stubRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	return assignValues(dest, r.values)
+}
+
+type stubRows struct {
+	rows    [][]any
+	index   int
+	scanErr error
+	iterErr error
+	closed  bool
+}
+
+func (r *stubRows) Close()                                       { r.closed = true }
+func (r *stubRows) Err() error                                   { return r.iterErr }
+func (r *stubRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (r *stubRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *stubRows) RawValues() [][]byte                          { return nil }
+func (r *stubRows) Conn() *pgx.Conn                              { return nil }
+func (r *stubRows) Values() ([]any, error)                       { return nil, nil }
+
+func (r *stubRows) Next() bool {
+	if r.closed || r.index >= len(r.rows) {
+		return false
+	}
+	r.index++
+	return true
+}
+
+func (r *stubRows) Scan(dest ...any) error {
+	if r.scanErr != nil {
+		return r.scanErr
+	}
+	return assignValues(dest, r.rows[r.index-1])
+}
+
+func assignValues(dest []any, values []any) error {
+	if len(dest) != len(values) {
+		return errors.New("scan column count mismatch")
+	}
+	for i := range dest {
+		dv := reflect.ValueOf(dest[i])
+		if dv.Kind() != reflect.Ptr || dv.IsNil() {
+			return errors.New("scan destination must be non-nil pointer")
+		}
+		if values[i] == nil {
+			dv.Elem().Set(reflect.Zero(dv.Elem().Type()))
+			continue
+		}
+		dv.Elem().Set(reflect.ValueOf(values[i]))
+	}
+	return nil
+}
+
+type fakeConsoleDB struct {
+	countRows  []stubRow
+	countIndex int
+	queries    []string
+	queryFn    func(sql string) (pgx.Rows, error)
+}
+
+func (db *fakeConsoleDB) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+	if db.countIndex >= len(db.countRows) {
+		return stubRow{err: errors.New("unexpected QueryRow call")}
+	}
+	row := db.countRows[db.countIndex]
+	db.countIndex++
+	return row
+}
+
+func (db *fakeConsoleDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error) {
+	db.queries = append(db.queries, sql)
+	return db.queryFn(sql)
+}
+
+func okConsoleCountRows() []stubRow {
+	return []stubRow{
+		{values: []any{2}},
+		{values: []any{3, 0, 1, 2, 0}},
+		{values: []any{1}},
+		{values: []any{1, 1}},
+	}
+}
+
+func TestConsoleWorkspaceOmitsRawResumeFileName(t *testing.T) {
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	completedAt := now.Add(-time.Minute)
+	searchID := "22222222-2222-4222-8222-222222222222"
+	extractID := "33333333-3333-4333-8333-333333333333"
+	userID := "11111111-1111-4111-8111-111111111111"
+
+	db := &fakeConsoleDB{
+		countRows: okConsoleCountRows(),
+		queryFn: func(sql string) (pgx.Rows, error) {
+			switch {
+			case strings.Contains(sql, "FROM career_searches"):
+				return &stubRows{rows: [][]any{{
+					searchID, userID, "completed", "rendering",
+					2, 10, 4, "", "",
+					now, &now, &completedAt, (*time.Time)(nil), &completedAt,
+				}}}, nil
+			case strings.Contains(sql, "FROM career_resume_extractions"):
+				if strings.Contains(strings.ToLower(sql), "file_name") {
+					t.Fatalf("career_resume_extractions query must not select file_name: %s", sql)
+				}
+				return &stubRows{rows: [][]any{{
+					extractID, userID, "completed", "", "",
+					now, &completedAt, (*time.Time)(nil),
+				}}}, nil
+			case strings.Contains(sql, "FROM career_digest_deliveries"):
+				return &stubRows{rows: [][]any{{
+					searchID, "sent", &completedAt, &now, now, completedAt,
+				}}}, nil
+			default:
+				return nil, errors.New("unexpected query")
+			}
+		},
+	}
+
+	svc := &service{aiMode: "mock", now: func() time.Time { return now }}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/console/workspace", nil)
+	rec := httptest.NewRecorder()
+	svc.writeConsoleWorkspace(rec, req, db)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	raw := rec.Body.String()
+	if strings.Contains(raw, `"file_name"`) {
+		t.Fatalf("workspace response must not contain file_name key: %s", raw)
+	}
+	var envelope struct {
+		Data struct {
+			Extractions []map[string]any `json:"extractions"`
+			Searches    []map[string]any `json:"searches"`
+			Digests     []map[string]any `json:"digest_deliveries"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(envelope.Data.Extractions) != 1 || len(envelope.Data.Searches) != 1 || len(envelope.Data.Digests) != 1 {
+		t.Fatalf("unexpected workspace lengths: extractions=%d searches=%d digests=%d",
+			len(envelope.Data.Extractions), len(envelope.Data.Searches), len(envelope.Data.Digests))
+	}
+	if _, hasFileName := envelope.Data.Extractions[0]["file_name"]; hasFileName {
+		t.Fatalf("extraction object unexpectedly contains file_name: %+v", envelope.Data.Extractions[0])
+	}
+	if envelope.Data.Extractions[0]["id"] != extractID || envelope.Data.Extractions[0]["status"] != "completed" {
+		t.Fatalf("unexpected extraction payload: %+v", envelope.Data.Extractions[0])
+	}
+}
+
+func TestConsoleWorkspacePropagatesSubqueryErrors(t *testing.T) {
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	dbErr := errors.New("simulated db failure")
+
+	cases := []struct {
+		name    string
+		queryFn func(sql string) (pgx.Rows, error)
+	}{
+		{
+			name: "extractions query error",
+			queryFn: func(sql string) (pgx.Rows, error) {
+				if strings.Contains(sql, "FROM career_resume_extractions") {
+					return nil, dbErr
+				}
+				return &stubRows{}, nil
+			},
+		},
+		{
+			name: "extractions scan error",
+			queryFn: func(sql string) (pgx.Rows, error) {
+				if strings.Contains(sql, "FROM career_resume_extractions") {
+					return &stubRows{rows: [][]any{{1}}, scanErr: dbErr}, nil
+				}
+				return &stubRows{}, nil
+			},
+		},
+		{
+			name: "extractions rows err",
+			queryFn: func(sql string) (pgx.Rows, error) {
+				if strings.Contains(sql, "FROM career_resume_extractions") {
+					return &stubRows{iterErr: dbErr}, nil
+				}
+				return &stubRows{}, nil
+			},
+		},
+		{
+			name: "digests query error",
+			queryFn: func(sql string) (pgx.Rows, error) {
+				if strings.Contains(sql, "FROM career_digest_deliveries") {
+					return nil, dbErr
+				}
+				return &stubRows{}, nil
+			},
+		},
+		{
+			name: "digests scan error",
+			queryFn: func(sql string) (pgx.Rows, error) {
+				if strings.Contains(sql, "FROM career_digest_deliveries") {
+					return &stubRows{rows: [][]any{{1}}, scanErr: dbErr}, nil
+				}
+				return &stubRows{}, nil
+			},
+		},
+		{
+			name: "digests rows err",
+			queryFn: func(sql string) (pgx.Rows, error) {
+				if strings.Contains(sql, "FROM career_digest_deliveries") {
+					return &stubRows{iterErr: dbErr}, nil
+				}
+				return &stubRows{}, nil
+			},
+		},
+		{
+			name: "searches rows err",
+			queryFn: func(sql string) (pgx.Rows, error) {
+				if strings.Contains(sql, "FROM career_searches") {
+					return &stubRows{iterErr: dbErr}, nil
+				}
+				return &stubRows{}, nil
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := &fakeConsoleDB{
+				countRows: okConsoleCountRows(),
+				queryFn:   tc.queryFn,
+			}
+			svc := &service{aiMode: "mock", now: func() time.Time { return now }}
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/console/workspace", nil)
+			rec := httptest.NewRecorder()
+			svc.writeConsoleWorkspace(rec, req, db)
+
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503; body=%s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), `"DEPENDENCY_UNAVAILABLE"`) {
+				t.Fatalf("expected DEPENDENCY_UNAVAILABLE error, got %s", rec.Body.String())
+			}
+		})
+	}
+}
 
 func TestConsoleCredentialIndependence(t *testing.T) {
 	redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})

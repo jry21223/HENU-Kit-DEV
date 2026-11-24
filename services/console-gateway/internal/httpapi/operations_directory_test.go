@@ -129,6 +129,14 @@ func TestOperationsDirectoryAndAccountReadRoutes(t *testing.T) {
 	if res.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"in_progress"`) {
 		t.Fatalf("POST inbox update valid = %d %s", res.StatusCode, raw)
 	}
+	for _, archiveStatus := range []string{"cancelled", "archived"} {
+		res = do(http.MethodPost, "/api/v1/operations/inbox/"+itemID+"/updates", true, server.URL, "idem-inbox-archive-"+archiveStatus, []byte(`{"expected_version":2,"status":"`+archiveStatus+`"}`))
+		raw, _ = io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("POST inbox archive status=%s = %d %s", archiveStatus, res.StatusCode, raw)
+		}
+	}
 	res = do(http.MethodPost, "/api/v1/operations/inbox/not-a-uuid/updates", true, server.URL, "idem-inbox-12345", []byte(`{"expected_version":1,"status":"resolved"}`))
 	res.Body.Close()
 	if res.StatusCode != http.StatusBadRequest {

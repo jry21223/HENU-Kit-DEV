@@ -271,6 +271,17 @@ function ContactForm({
   );
 }
 
+export function updateCampusPublishDialog(
+  open: boolean,
+  pending: boolean,
+  resetDraft: () => void,
+  setOpen: (open: boolean) => void,
+) {
+  if (pending) return;
+  if (!open) resetDraft();
+  setOpen(open);
+}
+
 export function CampusPublishDialog({
   categories,
 }: {
@@ -299,6 +310,10 @@ export function CampusPublishDialog({
     setPhotoError("");
     setFailure("");
     setExpired(false);
+  }
+
+  function changePublishDialogOpen(next: boolean) {
+    updateCampusPublishDialog(next, busy || readingPhotos, resetDraft, setOpen);
   }
 
   async function selectPhotos(event: ChangeEvent<HTMLInputElement>) {
@@ -375,11 +390,7 @@ export function CampusPublishDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => {
-        if (busy || readingPhotos) return;
-        setOpen(next);
-        if (!next) resetDraft();
-      }}
+      onOpenChange={changePublishDialogOpen}
     >
       <DialogTrigger asChild>
         <Button>发布新单子</Button>
@@ -612,7 +623,7 @@ export function CampusPublishDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setOpen(false)}
+                  onClick={() => changePublishDialogOpen(false)}
                   disabled={busy || readingPhotos}
                 >
                   取消

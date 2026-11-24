@@ -1,11 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PortalHttpError, PortalNetworkError } from "@/lib/api/client";
 import type { CampusItem } from "@/lib/api/types";
 import {
   formatCampusUnavailableMessage,
   isCampusWritesUnavailable,
+  updateCampusPublishDialog,
 } from "./campus-actions";
+import { formatCampusExchangeError } from "./item-actions";
 import { CampusItemContent, normalizeCampusPhotos } from "./item-detail";
 
 const BASE_ITEM: CampusItem = {
@@ -24,6 +26,30 @@ const BASE_ITEM: CampusItem = {
   status: "open",
   time: "2026-11-23",
 };
+
+describe("campus publish dialog", () => {
+  it("resets the draft before closing and preserves it when opening", () => {
+    const resetDraft = vi.fn();
+    const setOpen = vi.fn();
+    updateCampusPublishDialog(true, false, resetDraft, setOpen);
+    expect(setOpen).toHaveBeenLastCalledWith(true);
+    expect(resetDraft).not.toHaveBeenCalled();
+    setOpen.mockClear();
+
+    updateCampusPublishDialog(false, false, resetDraft, setOpen);
+    expect(resetDraft).toHaveBeenCalledOnce();
+    expect(resetDraft).toHaveBeenCalledBefore(setOpen);
+    expect(setOpen).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps the dialog and draft intact while an operation is pending", () => {
+    const resetDraft = vi.fn();
+    const setOpen = vi.fn();
+    updateCampusPublishDialog(false, true, resetDraft, setOpen);
+    expect(resetDraft).not.toHaveBeenCalled();
+    expect(setOpen).not.toHaveBeenCalled();
+  });
+});
 
 describe("campus write unavailable classification", () => {
   it("detects HTTP 503 CAMPUS_WRITES_UNAVAILABLE and excludes transient errors", () => {
@@ -61,6 +87,28 @@ describe("campus write unavailable classification", () => {
 
     expect(isCampusWritesUnavailable(bare503)).toBe(true);
     expect(formatCampusUnavailableMessage(bare503)).toContain("暂未开启");
+  });
+
+  it("surfaces action-neutral refresh guidance on 409 ITEM_NOT_OPEN for both request and accept paths", () => {
+    const acceptConflict = new PortalHttpError(
+      "/api/v1/campus/items/1/exchanges/ex-1/respond",
+      409,
+      "ITEM_NOT_OPEN",
+      "req_campus_409",
+      "ITEM_NOT_OPEN",
+      "单子状态已变化，无法同意交换。请刷新查看最新状态。"
+    );
+    const requestConflict = new PortalHttpError(
+      "/api/v1/campus/items/1/exchanges",
+      409,
+      "ITEM_NOT_OPEN",
+      "req_campus_409_req",
+      "ITEM_NOT_OPEN",
+      "单子已结束"
+    );
+
+    expect(formatCampusExchangeError(acceptConflict)).toBe("单子状态已变化，请刷新查看最新状态。");
+    expect(formatCampusExchangeError(requestConflict)).toBe("单子状态已变化，请刷新查看最新状态。");
   });
 });
 

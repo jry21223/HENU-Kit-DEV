@@ -1,4 +1,4 @@
-// Code generated from console-gateway.yaml (SHA256 bd20661f392212b45eca484c865d6c6df067e6cb0a6ab46d61eab12b53406155); DO NOT EDIT.
+// Code generated from console-gateway.yaml (SHA256 ec65c798a992c912022e3545d97cc2bff48aa548c13b9319061746f0ccfc8ad4); DO NOT EDIT.
 import { consoleRequest, readConsoleJSON, consoleReturnTo } from "./console-session";
 
 export interface ConsoleAccessContext {
@@ -668,7 +668,7 @@ export interface PlatformOperationsInboxItem {
   source_resource_id: string;
   source_resource_type: string;
   source_resource_url?: string;
-  status: "open" | "in_progress" | "blocked" | "resolved" | "archived";
+  status: "open" | "in_progress" | "blocked" | "resolved" | "cancelled" | "archived";
   updated_at: string;
   version: number;
 }
@@ -1137,7 +1137,7 @@ function isPlatformOperationsDependencies(value: unknown): value is PlatformOper
 }
 
 function isPlatformOperationsInboxItem(value: unknown): value is PlatformOperationsInboxItem {
-  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && (!("owner_user_id" in value) || isUUID(value["owner_user_id"])) && "priority" in value && typeof value["priority"] === "string" && ["low","normal","high","urgent"].includes(value["priority"]) && (!("sla_due_at" in value) || isDateTime(value["sla_due_at"])) && "source_product_code" in value && typeof value["source_product_code"] === "string" && "source_resource_id" in value && typeof value["source_resource_id"] === "string" && "source_resource_type" in value && typeof value["source_resource_type"] === "string" && (!("source_resource_url" in value) || typeof value["source_resource_url"] === "string") && "status" in value && typeof value["status"] === "string" && ["open","in_progress","blocked","resolved","archived"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","id","owner_user_id","priority","sla_due_at","source_product_code","source_resource_id","source_resource_type","source_resource_url","status","updated_at","version"].includes(key));
+  return isRecord(value) && "created_at" in value && isDateTime(value["created_at"]) && "id" in value && isUUID(value["id"]) && (!("owner_user_id" in value) || isUUID(value["owner_user_id"])) && "priority" in value && typeof value["priority"] === "string" && ["low","normal","high","urgent"].includes(value["priority"]) && (!("sla_due_at" in value) || isDateTime(value["sla_due_at"])) && "source_product_code" in value && typeof value["source_product_code"] === "string" && "source_resource_id" in value && typeof value["source_resource_id"] === "string" && "source_resource_type" in value && typeof value["source_resource_type"] === "string" && (!("source_resource_url" in value) || typeof value["source_resource_url"] === "string") && "status" in value && typeof value["status"] === "string" && ["open","in_progress","blocked","resolved","cancelled","archived"].includes(value["status"]) && "updated_at" in value && isDateTime(value["updated_at"]) && "version" in value && typeof value["version"] === "number" && Number.isSafeInteger(value["version"]) && value["version"] >= 1 && Object.keys(value).every((key) => ["created_at","id","owner_user_id","priority","sla_due_at","source_product_code","source_resource_id","source_resource_type","source_resource_url","status","updated_at","version"].includes(key));
 }
 
 function isPlatformOperationsMailStatus(value: unknown): value is PlatformOperationsMailStatus {

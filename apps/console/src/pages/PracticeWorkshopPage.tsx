@@ -270,12 +270,12 @@ export function PracticeWorkshopPage() {
       message.error("JSON 格式有误，请检查括号与引号后重试。");
       return;
     }
-    const questions: WorkshopQuestionItem[] | undefined = Array.isArray(parsed)
+    const questions = Array.isArray(parsed)
       ? parsed
-      : parsed && typeof parsed === "object" && Array.isArray((parsed as { questions?: unknown }).questions)
-        ? ((parsed as { questions: WorkshopQuestionItem[] }).questions)
+      : parsed && typeof parsed === "object" && "questions" in parsed
+        ? parsed.questions
         : undefined;
-    if (!questions || questions.length === 0) {
+    if (!Array.isArray(questions) || questions.length === 0) {
       message.error("JSON 中未找到非空的 questions 题目数组。");
       return;
     }

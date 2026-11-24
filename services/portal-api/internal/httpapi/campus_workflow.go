@@ -320,6 +320,9 @@ func handleRespondCampusExchange(w http.ResponseWriter, r *http.Request, src cam
 	case errors.Is(err, campus.ErrNotFound):
 		writeCampusError(w, http.StatusNotFound, "NOT_FOUND", "单子或交换记录不存在")
 		return
+	case errors.Is(err, campus.ErrItemNotOpen):
+		writeCampusError(w, http.StatusConflict, "ITEM_NOT_OPEN", "单子状态已变化，无法同意交换。请刷新查看最新状态。")
+		return
 	case errors.Is(err, campus.ErrConflict):
 		writeCampusError(w, http.StatusConflict, "EXCHANGE_ALREADY_SETTLED", "该申请已被处理，请刷新查看最新状态")
 		return

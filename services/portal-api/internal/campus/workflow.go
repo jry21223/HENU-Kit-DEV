@@ -16,6 +16,7 @@ var (
 	ErrNotFound             = errors.New("not found")
 	ErrForbidden            = errors.New("forbidden")
 	ErrConflict             = errors.New("conflict")
+	ErrItemNotOpen          = fmt.Errorf("item is not open: %w", ErrConflict)
 	ErrContactNotConfigured = errors.New("contact not configured")
 	ErrInvalidInput         = errors.New("invalid input")
 )
@@ -474,6 +475,9 @@ func (db *PortalDB) RespondExchange(itemID, exchangeID, ownerUserID, decision st
 	}
 	ownerSnap, granted := buildSnapshot(book, channels)
 	if len(granted) == 0 {
+		if itemStatus != "open" {
+			return Exchange{}, "", ErrItemNotOpen
+		}
 		return Exchange{}, "", ErrContactNotConfigured
 	}
 	grantedJSON, _ := json.Marshal(granted)
@@ -502,12 +506,20 @@ func (db *PortalDB) RespondExchange(itemID, exchangeID, ownerUserID, decision st
 		return Exchange{}, "", err
 	}
 
-	if _, err := tx.Exec(`
+	result, err := tx.Exec(`
 		UPDATE portal_campus_items
 		SET status = 'ongoing', accepted_by_user_id = $2::uuid, accepted_by_name = $3, accepted_at = now(), version = version + 1, updated_at = now()
 		WHERE id = $1 AND status = 'open'
-	`, itemID, ex.RequesterUserID, ex.RequesterName); err != nil {
+	`, itemID, ex.RequesterUserID, ex.RequesterName)
+	if err != nil {
 		return Exchange{}, "", err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return Exchange{}, "", err
+	}
+	if affected != 1 {
+		return Exchange{}, "", ErrItemNotOpen
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -298,9 +298,11 @@ export function AccountPointsPage() {
                     placeholder="student@henu.edu.cn"
                     value={targetEmail}
                     onChange={(e) => {
+                      ++lookupSeqRef.current;
                       setTargetEmail(e.target.value);
                       setAccount(undefined);
                       setLookupState("idle");
+                      setConfirmOpen(false);
                     }}
                     onPressEnter={() => void handleLookup()}
                   />
